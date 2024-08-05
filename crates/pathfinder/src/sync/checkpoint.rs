@@ -715,14 +715,13 @@ mod tests {
                         transaction_count: dto.transaction_count,
                         event_commitment: dto.event_commitment,
                         event_count: dto.event_count,
+                        state_diff_commitment: dto.state_diff_commitment,
                         ..Default::default()
                     },
                     signature: BlockCommitmentSignature {
                         r: dto.signature[0],
                         s: dto.signature[1],
                     },
-                    state_diff_commitment: dto.state_diff_commitment,
-                    ..Default::default()
                 }
             }
         }
@@ -781,15 +780,9 @@ mod tests {
                     .map(|n| {
                         let block_number = BlockNumber::new_or_panic(n);
                         let block_id = block_number.into();
-                        let (state_diff_commitment, state_diff_length) = db
-                            .state_diff_commitment_and_length(block_number)
-                            .unwrap()
-                            .unwrap();
                         P2PSignedBlockHeader {
                             header: db.block_header(block_id).unwrap().unwrap().into(),
                             signature: db.signature(block_id).unwrap().unwrap(),
-                            state_diff_commitment,
-                            state_diff_length: state_diff_length as u64,
                         }
                     })
                     .collect::<Vec<_>>()
@@ -1124,7 +1117,7 @@ mod tests {
                     .map(|block| {
                         Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests((
                             UnverifiedStateUpdateData {
-                                expected_commitment: block.header.state_diff_commitment,
+                                expected_commitment: block.header.header.state_diff_commitment,
                                 state_diff: block.state_update.clone().into(),
                             },
                             block.header.header.number,

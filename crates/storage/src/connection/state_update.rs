@@ -239,26 +239,6 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    /// `state_diff_length` is defined as
-    /// `num_storage_diffs + num_nonce_updates + num_deployed_contracts +
-    /// num_declared_classes`
-    pub fn update_state_diff_commitment_and_length(
-        &self,
-        block_number: BlockNumber,
-        commitment: StateDiffCommitment,
-        len: u64,
-    ) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached(r"UPDATE block_headers SET state_diff_commitment=?, state_diff_length=? WHERE number=?")
-            .context("Preparing update statement")?;
-
-        stmt.execute(params![&commitment, &len, &block_number,])
-            .context("Updating state diff commitment and length")?;
-
-        Ok(())
-    }
-
     fn block_details(
         &self,
         block: BlockId,
@@ -495,22 +475,6 @@ impl Transaction<'_> {
         }
 
         Ok(ret)
-    }
-
-    pub fn state_diff_commitment_and_length(
-        &self,
-        block_number: BlockNumber,
-    ) -> anyhow::Result<Option<(StateDiffCommitment, usize)>> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached(r"SELECT state_diff_commitment, state_diff_length FROM block_headers WHERE number = ?")
-            .context("Preparing statement")?;
-
-        stmt.query_row(params![&block_number], |row| {
-            Ok((row.get_state_diff_commitment(0)?, row.get(1)?))
-        })
-        .optional()
-        .context("Querying state diff commitment")
     }
 
     /// Items are sorted in descending order.

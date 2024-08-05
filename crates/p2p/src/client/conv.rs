@@ -107,8 +107,8 @@ impl ToDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             sequencer_address: Address(self.header.sequencer_address.0),
             state_root: Hash(self.header.state_commitment.0),
             state_diff_commitment: p2p_proto::common::StateDiffCommitment {
-                state_diff_length: self.state_diff_length,
-                root: Hash(self.state_diff_commitment.0),
+                state_diff_length: self.header.state_diff_length,
+                root: Hash(self.header.state_diff_commitment.0),
             },
             transactions: p2p_proto::common::Patricia {
                 n_leaves: self

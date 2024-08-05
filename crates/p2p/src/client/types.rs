@@ -116,6 +116,8 @@ pub struct BlockHeader {
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
     pub receipt_commitment: ReceiptCommitment,
+    pub state_diff_commitment: StateDiffCommitment,
+    pub state_diff_length: u64,
 }
 
 // TODO make it a variant of the core type
@@ -123,8 +125,6 @@ pub struct BlockHeader {
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,
-    pub state_diff_commitment: StateDiffCommitment,
-    pub state_diff_length: u64,
 }
 
 impl SignedBlockHeader {
@@ -136,8 +136,6 @@ impl SignedBlockHeader {
         pathfinder_common::SignedBlockHeader {
             header: self.header.finalize(storage_commitment, class_commitment),
             signature: self.signature,
-            state_diff_commitment: self.state_diff_commitment,
-            state_diff_length: self.state_diff_length,
         }
     }
 }
@@ -147,8 +145,6 @@ impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
         Self {
             header: h.header.into(),
             signature: h.signature,
-            state_diff_commitment: h.state_diff_commitment,
-            state_diff_length: h.state_diff_length,
         }
     }
 }
@@ -179,6 +175,8 @@ impl BlockHeader {
             receipt_commitment: self.receipt_commitment,
             storage_commitment,
             class_commitment,
+            state_diff_commitment: self.state_diff_commitment,
+            state_diff_length: self.state_diff_length,
         }
     }
 }
@@ -203,6 +201,8 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
             event_count: h.event_count,
             l1_da_mode: h.l1_da_mode,
             receipt_commitment: h.receipt_commitment,
+            state_diff_commitment: h.state_diff_commitment,
+            state_diff_length: h.state_diff_length,
         }
     }
 }
@@ -240,10 +240,10 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 event_count: dto.events.n_leaves.try_into()?,
                 receipt_commitment: ReceiptCommitment(dto.receipts.0),
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
+                state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
+                state_diff_length: dto.state_diff_commitment.state_diff_length,
             },
             signature,
-            state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
-            state_diff_length: dto.state_diff_commitment.state_diff_length,
         })
     }
 }

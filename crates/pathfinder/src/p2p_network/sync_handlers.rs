@@ -132,22 +132,14 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let state_diff_cl = db_tx.state_diff_commitment_and_length(block_number)?;
-            if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
-                tracing::trace!(?header, "Sending block header");
+            tracing::trace!(?header, "Sending block header");
 
-                let sbh = SignedBlockHeader {
-                    header,
-                    signature,
-                    state_diff_commitment,
-                    state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
-                };
+            let sbh = SignedBlockHeader { header, signature };
 
-                tx.blocking_send(BlockHeadersResponse::Header(Box::new(sbh.to_dto())))
-                    .map_err(|_| anyhow::anyhow!("Sending header"))?;
+            tx.blocking_send(BlockHeadersResponse::Header(Box::new(sbh.to_dto())))
+                .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
-                return Ok(true);
-            }
+            return Ok(true);
         }
     }
 

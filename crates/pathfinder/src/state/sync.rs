@@ -890,6 +890,8 @@ async fn l2_update(
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
             receipt_commitment,
+            state_diff_commitment,
+            state_diff_length: state_update.state_diff_length(),
         };
 
         transaction
@@ -919,14 +921,6 @@ async fn l2_update(
         transaction
             .insert_state_update(block.block_number, &state_update)
             .context("Insert state update into database")?;
-
-        transaction
-            .update_state_diff_commitment_and_length(
-                header.number,
-                state_diff_commitment,
-                state_update.state_diff_length(),
-            )
-            .context("Inserting state diff length into database")?;
 
         // Insert signature
         transaction

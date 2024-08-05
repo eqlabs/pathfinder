@@ -424,11 +424,6 @@ fn resolve_block(
         .context("Reading transactions from database")?
         .context("Transaction data missing")?;
 
-    let (state_diff_commitment, state_diff_commitment_length) = tx
-        .state_diff_commitment_and_length(header.number)
-        .context("Reading state diff commitment and length form database")?
-        .context("State diff commitment and length missing")?;
-
     let receipts = transactions_receipts
         .iter()
         .map(|(_, r, _)| r.clone())
@@ -473,8 +468,8 @@ fn resolve_block(
         transaction_commitment: header.transaction_commitment,
         event_commitment: header.event_commitment,
         receipt_commitment: Some(receipt_commitment),
-        state_diff_commitment: Some(state_diff_commitment),
-        state_diff_length: Some(state_diff_commitment_length as u64),
+        state_diff_commitment: Some(header.state_diff_commitment),
+        state_diff_length: Some(header.state_diff_length),
     })
 }
 

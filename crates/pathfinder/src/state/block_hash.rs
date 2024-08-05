@@ -19,7 +19,6 @@ use pathfinder_common::{
     L1DataAvailabilityMode,
     ReceiptCommitment,
     SequencerAddress,
-    SignedBlockHeader,
     StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
@@ -150,11 +149,7 @@ pub struct BlockHeaderData {
 }
 
 impl BlockHeaderData {
-    pub fn from_header(
-        header: &BlockHeader,
-        state_diff_commitment: StateDiffCommitment,
-        state_diff_length: u64,
-    ) -> Self {
+    pub fn from_header(header: &BlockHeader) -> Self {
         Self {
             hash: header.hash,
             parent_hash: header.parent_hash,
@@ -171,14 +166,14 @@ impl BlockHeaderData {
             event_count: header.event_count.try_into().expect("ptr size is 64bits"),
             starknet_version: header.starknet_version,
             starknet_version_str: header.starknet_version.to_string(),
-            state_diff_length,
+            state_diff_length: header.state_diff_length,
             eth_l1_gas_price: header.eth_l1_gas_price,
             strk_l1_gas_price: header.strk_l1_gas_price,
             eth_l1_data_gas_price: header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
             receipt_commitment: header.receipt_commitment,
             l1_da_mode: header.l1_da_mode,
-            state_diff_commitment,
+            state_diff_commitment: header.state_diff_commitment,
         }
     }
 
@@ -221,39 +216,6 @@ impl BlockHeaderData {
             receipt_commitment: block.receipt_commitment.unwrap_or_default(),
             l1_da_mode: block.l1_da_mode.into(),
         })
-    }
-
-    pub fn from_signed_header(sbh: &SignedBlockHeader) -> Self {
-        Self {
-            hash: sbh.header.hash,
-            parent_hash: sbh.header.parent_hash,
-            number: sbh.header.number,
-            timestamp: sbh.header.timestamp,
-            sequencer_address: sbh.header.sequencer_address,
-            state_commitment: sbh.header.state_commitment,
-            transaction_commitment: sbh.header.transaction_commitment,
-            transaction_count: sbh
-                .header
-                .transaction_count
-                .try_into()
-                .expect("ptr size is 64 bits"),
-            event_commitment: sbh.header.event_commitment,
-            event_count: sbh
-                .header
-                .event_count
-                .try_into()
-                .expect("ptr size is 64 bits"),
-            state_diff_commitment: sbh.state_diff_commitment,
-            state_diff_length: sbh.state_diff_length,
-            starknet_version: sbh.header.starknet_version,
-            starknet_version_str: sbh.header.starknet_version.to_string(),
-            eth_l1_gas_price: sbh.header.eth_l1_gas_price,
-            strk_l1_gas_price: sbh.header.strk_l1_gas_price,
-            eth_l1_data_gas_price: sbh.header.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: sbh.header.strk_l1_data_gas_price,
-            receipt_commitment: sbh.header.receipt_commitment,
-            l1_da_mode: sbh.header.l1_da_mode,
-        }
     }
 }
 

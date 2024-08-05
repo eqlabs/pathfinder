@@ -514,7 +514,7 @@ impl<P> StateDiffSource<P> {
                 let (peer, state_diff) = loop {
                     let state_diff = p2p
                         .clone()
-                        .state_diff_for_block(header.header.number, header.state_diff_length)
+                        .state_diff_for_block(header.header.number, header.header.state_diff_length)
                         .await;
                     match state_diff {
                         Ok(Some(state_diff)) => break state_diff,
@@ -532,7 +532,7 @@ impl<P> StateDiffSource<P> {
                         peer,
                         (
                             UnverifiedStateUpdateData {
-                                expected_commitment: header.state_diff_commitment,
+                                expected_commitment: header.header.state_diff_commitment,
                                 state_diff,
                             },
                             header.header.starknet_version,
@@ -712,13 +712,7 @@ impl ProcessStage for StoreBlock {
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let BlockData {
-            header:
-                P2PSignedBlockHeader {
-                    header,
-                    signature,
-                    state_diff_commitment,
-                    state_diff_length,
-                },
+            header: P2PSignedBlockHeader { header, signature },
             mut events,
             state_diff,
             transactions,
@@ -751,6 +745,8 @@ impl ProcessStage for StoreBlock {
             event_count: header.event_count,
             l1_da_mode: header.l1_da_mode,
             receipt_commitment: header.receipt_commitment,
+            state_diff_commitment: header.state_diff_commitment,
+            state_diff_length: header.state_diff_length,
         };
 
         db.insert_block_header(&header)
@@ -758,13 +754,6 @@ impl ProcessStage for StoreBlock {
 
         db.insert_signature(block_number, &signature)
             .context("Inserting signature")?;
-
-        db.update_state_diff_commitment_and_length(
-            block_number,
-            state_diff_commitment,
-            state_diff_length,
-        )
-        .context("Updating state diff commitment and length")?;
 
         let mut ordered_events = Vec::new();
         transactions.iter().for_each(|(t, _)| {
@@ -853,8 +842,8 @@ mod tests {
         let blocks = fake::init::with_n_blocks_and_config(
             N,
             Config {
-                calculate_block_hash: Box::new(|sbh: &SignedBlockHeader| {
-                    compute_final_hash(&BlockHeaderData::from_signed_header(sbh))
+                calculate_block_hash: Box::new(|header: &BlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_header(header))
                 }),
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
@@ -895,10 +884,6 @@ mod tests {
             let block_id = block_number.into();
             let header = db.block_header(block_id).unwrap().unwrap();
             let signature = db.signature(block_id).unwrap().unwrap();
-            let (state_diff_commitment, state_diff_length) = db
-                .state_diff_commitment_and_length(block_number)
-                .unwrap()
-                .unwrap();
             let transaction_data = db.transaction_data_for_block(block_id).unwrap().unwrap();
             let state_update_data: StateUpdateData =
                 db.state_update(block_id).unwrap().unwrap().into();
@@ -923,12 +908,12 @@ mod tests {
             pretty_assertions_sorted::assert_eq!(header, expected.header.header);
             pretty_assertions_sorted::assert_eq!(signature, expected.header.signature);
             pretty_assertions_sorted::assert_eq!(
-                state_diff_commitment,
-                expected.header.state_diff_commitment
+                header.state_diff_commitment,
+                expected.header.header.state_diff_commitment
             );
             pretty_assertions_sorted::assert_eq!(
-                state_diff_length as u64,
-                expected.header.state_diff_length
+                header.state_diff_length,
+                expected.header.header.state_diff_length
             );
             pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
             pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
