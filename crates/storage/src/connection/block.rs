@@ -8,6 +8,7 @@ use pathfinder_common::{
     BlockNumber,
     GasPrice,
     StarknetVersion,
+    StateDiffCommitment,
     TransactionCommitment,
 };
 
@@ -19,8 +20,8 @@ impl Transaction<'_> {
         // Insert the header
         self.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment)
-            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment)",
+                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment,  state_diff_commitment,  state_diff_length)
+            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment, :state_diff_commitment, :state_diff_length)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -41,6 +42,8 @@ impl Transaction<'_> {
             ":state_commitment": &header.state_commitment,
             ":l1_da_mode": &header.l1_da_mode,
             ":receipt_commitment": &header.receipt_commitment,
+            ":state_diff_commitment": &header.state_diff_commitment,
+            ":state_diff_length": &header.state_diff_length,
         },
     ).context("Inserting block header")?;
 
@@ -519,6 +522,10 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
     let state_commitment = row.get_state_commitment("state_commitment")?;
     let l1_da_mode = row.get_l1_da_mode("l1_da_mode")?;
     let receipt_commitment = row.get_receipt_commitment("receipt_commitment")?;
+    let state_diff_commitment = row
+        .get_optional_felt("state_diff_commitment")?
+        .unwrap_or_default();
+    let state_diff_length: u64 = row.get("state_diff_length")?;
 
     let header = BlockHeader {
         hash,
@@ -540,6 +547,8 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         event_count,
         l1_da_mode,
         receipt_commitment,
+        state_diff_commitment: StateDiffCommitment(state_diff_commitment),
+        state_diff_length,
     };
 
     Ok(header)
@@ -589,6 +598,8 @@ mod tests {
             event_count: 40,
             l1_da_mode: L1DataAvailabilityMode::Blob,
             receipt_commitment: receipt_commitment_bytes!(b"receipt commitment genesis"),
+            state_diff_commitment: state_diff_commitment!("12"),
+            state_diff_length: 12,
         };
         let header1 = genesis
             .child_builder()

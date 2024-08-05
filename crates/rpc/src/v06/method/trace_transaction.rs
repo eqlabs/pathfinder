@@ -332,6 +332,8 @@ pub mod tests {
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
             receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: 0,
         };
         transaction
             .insert_block_header(&BlockHeader {

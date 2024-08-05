@@ -221,6 +221,8 @@ impl serde::Serialize for BlockHeader {
             event_count,
             l1_da_mode,
             receipt_commitment,
+            state_diff_commitment: _,
+            state_diff_length: _,
         } = &self.0;
 
         let mut map = serializer.serialize_map(Some(15))?;

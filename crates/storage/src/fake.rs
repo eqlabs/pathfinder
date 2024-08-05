@@ -57,12 +57,6 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
             .unwrap();
             tx.insert_signature(header.header.number, &header.signature)
                 .unwrap();
-            tx.update_state_diff_commitment_and_length(
-                header.header.number,
-                header.state_diff_commitment,
-                header.state_diff_length,
-            )
-            .unwrap();
 
             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
                 tx.insert_cairo_class(*cairo_hash, definition).unwrap()
@@ -335,7 +329,6 @@ pub mod init {
                 header: SignedBlockHeader {
                     header,
                     signature: Faker.fake_with_rng(rng),
-                    ..Default::default()
                 },
                 transaction_data,
                 state_update: StateUpdate {
@@ -458,11 +451,12 @@ pub mod init {
             for Block {
                 header:
                     SignedBlockHeader {
-                        state_diff_length,
-                        state_diff_commitment,
                         header:
                             BlockHeader {
-                                starknet_version, ..
+                                starknet_version,
+                                state_diff_length,
+                                state_diff_commitment,
+                                ..
                             },
                         ..
                     },

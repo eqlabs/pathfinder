@@ -54,9 +54,6 @@ fn main() -> anyhow::Result<()> {
         let txn_data_for_block = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
-        let (state_diff_commitment, state_diff_length) = tx
-            .state_diff_commitment_and_length(block_number)?
-            .ok_or_else(|| anyhow::anyhow!("State diff commitment missing"))?;
         drop(tx);
 
         let computed_receipt_commitment = calculate_receipt_commitment(
@@ -75,8 +72,7 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Receipt commitment mismatch at block number {block_number}");
         }
 
-        let bhd =
-            BlockHeaderData::from_header(&header, state_diff_commitment, state_diff_length as u64);
+        let bhd = BlockHeaderData::from_header(&header);
 
         let result = verify_block_hash(bhd, chain, chain_id)?;
 

@@ -24,6 +24,8 @@ pub struct BlockHeader {
     pub event_count: usize,
     pub l1_da_mode: L1DataAvailabilityMode,
     pub receipt_commitment: ReceiptCommitment,
+    pub state_diff_commitment: StateDiffCommitment,
+    pub state_diff_length: u64,
 }
 
 #[derive(
@@ -40,8 +42,6 @@ pub enum L1DataAvailabilityMode {
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,
-    pub state_diff_commitment: StateDiffCommitment,
-    pub state_diff_length: u64,
 }
 
 pub struct BlockHeaderBuilder(BlockHeader);

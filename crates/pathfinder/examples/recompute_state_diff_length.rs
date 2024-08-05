@@ -33,29 +33,24 @@ fn main() -> anyhow::Result<()> {
         let state_update = tx
             .state_update(block_id)?
             .context("Fetching state update")?;
-        let (state_diff_commitment_in_header, state_diff_length_in_header) = tx
-            .state_diff_commitment_and_length(block_number)?
-            .context("Fetching state diff length")?;
+        let header = tx
+            .block_header(block_id)?
+            .context("Fetching block header")?;
 
         let state_diff_length = state_update.state_diff_length();
         let state_diff_commitment = state_update.compute_state_diff_commitment(version);
 
-        if state_diff_length as usize != state_diff_length_in_header
-            || state_diff_commitment != state_diff_commitment_in_header
+        if state_diff_length != header.state_diff_length
+            || state_diff_commitment != header.state_diff_commitment
         {
             println!(
                 "State diff length mismatch at {block_number}: header length \
                  {state_diff_length_in_header}, actual length {state_diff_length}, header \
                  commitment {state_diff_commitment_in_header}, actual commitment \
-                 {state_diff_commitment}"
+                 {state_diff_commitment}",
+                state_diff_length_in_header = header.state_diff_length,
+                state_diff_commitment_in_header = header.state_diff_commitment,
             );
-
-            tx.update_state_diff_commitment_and_length(
-                block_number,
-                state_diff_commitment,
-                state_diff_length,
-            )
-            .context("Updating state diff length")?;
         }
     }
 

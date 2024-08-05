@@ -263,8 +263,8 @@ impl VerifyHashAndSignature {
                     transaction_count: h.transaction_count.try_into().expect("ptr size is 64 bits"),
                     event_commitment: h.event_commitment,
                     event_count: h.event_count.try_into().expect("ptr size is 64 bits"),
-                    state_diff_commitment: header.state_diff_commitment,
-                    state_diff_length: header.state_diff_length,
+                    state_diff_commitment: header.header.state_diff_commitment,
+                    state_diff_length: header.header.state_diff_length,
                     starknet_version: h.starknet_version,
                     starknet_version_str: h.starknet_version.to_string(),
                     eth_l1_gas_price: h.eth_l1_gas_price,
@@ -287,7 +287,7 @@ impl VerifyHashAndSignature {
             .verify(
                 self.public_key,
                 header.header.hash,
-                header.state_diff_commitment,
+                header.header.state_diff_commitment,
             )
             .is_ok()
     }
@@ -308,25 +308,13 @@ impl ProcessStage for Persist {
             .transaction()
             .context("Creating database transaction")?;
 
-        for SignedBlockHeader {
-            header,
-            signature,
-            state_diff_commitment,
-            state_diff_length,
-        } in input
-        {
+        for SignedBlockHeader { header, signature } in input {
             // TODO update storage and class tries
             let header = header.finalize(StorageCommitment::ZERO, ClassCommitment::ZERO);
             tx.insert_block_header(&header)
                 .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)
                 .context("Persisting block signature")?;
-            tx.update_state_diff_commitment_and_length(
-                header.number,
-                state_diff_commitment,
-                state_diff_length,
-            )
-            .context("Persisting state diff length")?;
         }
 
         tx.commit().context("Committing database transaction")?;
