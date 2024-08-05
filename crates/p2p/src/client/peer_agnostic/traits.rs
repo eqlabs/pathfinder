@@ -39,9 +39,7 @@ pub trait TransactionStream {
         transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
             + Send
             + 'static,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
+    ) -> impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>>;
 }
 
 pub trait StateDiffStream {

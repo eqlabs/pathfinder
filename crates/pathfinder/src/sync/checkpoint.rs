@@ -292,18 +292,12 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    stream: impl Stream<
-            Item = Result<
-                PeerData<(UnverifiedTransactionData, BlockNumber)>,
-                PeerData<anyhow::Error>,
-            >,
-        > + Send
-        + 'static,
+    stream: impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>> + Send + 'static,
     storage: Storage,
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
         .pipe(transactions::CalculateHashes(chain_id), 10)
@@ -938,9 +932,7 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions: Vec<
-                Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
-            >,
+            pub streamed_transactions: Vec<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -963,7 +955,7 @@ mod tests {
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
 
-                        anyhow::Result::Ok(PeerData::for_tests((
+                        PeerData::for_tests((
                             UnverifiedTransactionData {
                                 expected_commitment: transaction_commitment,
                                 transactions: block
@@ -973,7 +965,7 @@ mod tests {
                                     .collect::<Vec<_>>(),
                             },
                             block.header.header.number,
-                        )))
+                        ))
                     })
                     .collect::<Vec<_>>();
                 let expected_transactions = blocks
@@ -1063,22 +1055,6 @@ mod tests {
                 )
                 .await,
                 Err(SyncError::TransactionCommitmentMismatch(_))
-            );
-        }
-
-        #[tokio::test]
-        async fn stream_failure() {
-            assert_matches!(
-                handle_transaction_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
-                    StorageBuilder::in_memory().unwrap(),
-                    ChainId::SEPOLIA_TESTNET,
-                    BlockNumber::GENESIS,
-                )
-                .await,
-                Err(SyncError::Other(_))
             );
         }
 

@@ -146,9 +146,9 @@ async fn make_header_stream(
     // Expected number of transactions per block
     vec![2],
     // Expected stream
-    //               transaction  transaction index
-    //                         |  |
-    vec![Ok((peer(0), vec![txn(0, 0), txn(1, 1)]))]
+    //            transaction  transaction index
+    //                      |  |
+    vec![(peer(0), vec![txn(0, 0), txn(1, 1)])]
 )]
 #[case::one_peer_2_blocks(
     // Peer gives responses for all blocks in one go
@@ -156,8 +156,8 @@ async fn make_header_stream(
     vec![Ok((peer(0), vec![txn_resp(2, 0), txn_resp(3, 0), TxnFin]))],
     vec![1, 1],
     vec![
-        Ok((peer(0), vec![txn(2, 0)])), // block 0
-        Ok((peer(0), vec![txn(3, 0)]))  // block 1
+        (peer(0), vec![txn(2, 0)]), // block 0
+        (peer(0), vec![txn(3, 0)])  // block 1
     ]
 )]
 #[case::one_peer_2_blocks_in_2_attempts(
@@ -169,8 +169,8 @@ async fn make_header_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), vec![txn(4, 0)])),
-        Ok((peer(0), vec![txn(5, 0)]))
+        (peer(0), vec![txn(4, 0)]),
+        (peer(0), vec![txn(5, 0)])
     ]
 )]
 #[case::two_peers_1_block_per_peer(
@@ -184,8 +184,8 @@ async fn make_header_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), vec![txn(6, 0)])),
-        Ok((peer(1), vec![txn(7, 0)]))
+        (peer(0), vec![txn(6, 0)]),
+        (peer(1), vec![txn(7, 0)])
     ]
 )]
 #[case::first_peer_premature_eos_with_fin(
@@ -197,8 +197,8 @@ async fn make_header_stream(
     ],
     vec![1, 2],
     vec![
-        Ok((peer(0), vec![txn(8, 0)])),
-        Ok((peer(1), vec![txn(9, 0), txn(10, 1)]))
+        (peer(0), vec![txn(8, 0)]),
+        (peer(1), vec![txn(9, 0), txn(10, 1)])
     ]
 )]
 #[case::first_peer_full_block_no_fin(
@@ -211,8 +211,8 @@ async fn make_header_stream(
     vec![1, 1],
     vec![
         // We assume this block 0 could be correct
-        Ok((peer(0), vec![txn(11, 0)])), // block 0
-        Ok((peer(1), vec![txn(12, 0)]))  // block 1
+        (peer(0), vec![txn(11, 0)]), // block 0
+        (peer(1), vec![txn(12, 0)])  // block 1
     ]
 )]
 #[case::last_peer_full_block_no_fin(
@@ -223,8 +223,8 @@ async fn make_header_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), vec![txn(11, 0)])), // block 0
-        Ok((peer(1), vec![txn(12, 0)]))  // block 1
+        (peer(0), vec![txn(11, 0)]), // block 0
+        (peer(1), vec![txn(12, 0)])  // block 1
     ]
 )]
 // The same as above but the first peer gives half of the second block before closing the
@@ -239,8 +239,8 @@ async fn make_header_stream(
     vec![1, 2],
     vec![
         // We assume this block could be correct so we move to the next one
-        Ok((peer(0), vec![txn(13, 0)])),            // block 0
-        Ok((peer(1), vec![txn(14, 0), txn(15, 1)])) // block 1
+        (peer(0), vec![txn(13, 0)]),            // block 0
+        (peer(1), vec![txn(14, 0), txn(15, 1)]) // block 1
     ]
 )]
 #[case::count_steam_is_too_short(
@@ -251,22 +251,19 @@ async fn make_header_stream(
         Ok((peer(0), vec![txn_resp(17, 0), TxnFin]))
     ],
     vec![1], // but only 1 block provided in the count stream
-    vec![
-        Ok((peer(0), vec![txn(16, 0)])),
-        Err(peer(0)) // the second block is not processed
-    ]
+    vec![(peer(0), vec![txn(16, 0)])]
 )]
 #[case::too_many_responses_with_fin(
     1,
     vec![Ok((peer(0), vec![txn_resp(18, 0), txn_resp(19, 0), TxnFin]))],
     vec![1],
-    vec![Ok((peer(0), vec![txn(18, 0)]))]
+    vec![(peer(0), vec![txn(18, 0)])]
 )]
 #[case::too_many_responses_no_fin(
     1,
     vec![Ok((peer(0), vec![txn_resp(18, 0), txn_resp(19, 0)]))],
     vec![1],
-    vec![Ok((peer(0), vec![txn(18, 0)]))]
+    vec![(peer(0), vec![txn(18, 0)])]
 )]
 #[case::empty_response_streams_are_ignored(
     1,
@@ -276,7 +273,7 @@ async fn make_header_stream(
         Ok((peer(2), vec![]))
     ],
     vec![1],
-    vec![Ok((peer(1), vec![txn(20, 0)]))]
+    vec![(peer(1), vec![txn(20, 0)])]
 )]
 #[case::empty_responses_are_ignored(
     1,
@@ -286,14 +283,14 @@ async fn make_header_stream(
         Ok((peer(2), vec![TxnFin]))
     ],
     vec![1],
-    vec![Ok((peer(1), vec![txn(20, 0)]))]
+    vec![(peer(1), vec![txn(20, 0)])]
 )]
 #[test_log::test(tokio::test)]
 async fn make_transaction_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<TransactionsResponse>), TestPeer>>,
     #[case] num_txns_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), TestPeer>>,
+    #[case] expected_stream: Vec<(TestPeer, Vec<TestTxn>)>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -319,7 +316,7 @@ async fn make_transaction_stream(
         get_peers,
         send_request,
     )
-    .map_ok(|x| {
+    .map(|x| {
         (
             TestPeer(x.peer),
             x.data
@@ -330,7 +327,6 @@ async fn make_transaction_stream(
                 .collect(),
         )
     })
-    .map_err(|x| TestPeer(x.peer))
     .collect::<Vec<_>>()
     .await;
 
