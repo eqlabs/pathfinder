@@ -675,6 +675,14 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
+                // If the remote hangs up we get an outbound stream error even if earlier the
+                // request was sent successfully and we got
+                // `OutboundRequestSentAwaitingResponses`. The same applies to the other sync
+                // protocols below.
+                //
+                // In that case there's no pending sync request in the map.
+                //
+                // TODO (p2p-stream) Shouldn't this stream be closed earlier anyway?
                 if let Some(sender) = self.pending_sync_requests.headers.remove(&request_id) {
                     let _ = sender.send(Err(error.into()));
                 }
@@ -685,12 +693,9 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .classes
-                    .remove(&request_id)
-                    .expect("Event sync request still to be pending")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_sync_requests.classes.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
                 p2p_stream::Event::OutboundFailure {
@@ -702,12 +707,9 @@ impl MainLoop {
                     ?error,
                     "Outbound state diff sync request failed"
                 );
-                let _ = self
-                    .pending_sync_requests
-                    .state_diffs
-                    .remove(&request_id)
-                    .expect("State diff sync request still to be pending")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_sync_requests.state_diffs.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
                 p2p_stream::Event::OutboundFailure {
@@ -719,12 +721,9 @@ impl MainLoop {
                     ?error,
                     "Outbound transaction sync request failed"
                 );
-                let _ = self
-                    .pending_sync_requests
-                    .transactions
-                    .remove(&request_id)
-                    .expect("Transaction sync request still to be pending")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_sync_requests.transactions.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
                 p2p_stream::Event::OutboundFailure {
@@ -732,12 +731,9 @@ impl MainLoop {
                 },
             )) => {
                 tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .events
-                    .remove(&request_id)
-                    .expect("Event sync request still to be pending")
-                    .send(Err(error.into()));
+                if let Some(sender) = self.pending_sync_requests.events.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             // ===========================
             // NAT hole punching
