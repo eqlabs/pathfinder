@@ -9,16 +9,16 @@ use pathfinder_common::{
     BlockCommitmentSignature,
     BlockCommitmentSignatureElem,
     BlockHash,
+    BlockHeader,
     BlockNumber,
     BlockTimestamp,
     ClassCommitment,
     EventCommitment,
     Fee,
     GasPrice,
-    L1DataAvailabilityMode,
     ReceiptCommitment,
     SequencerAddress,
-    StarknetVersion,
+    SignedBlockHeader,
     StateCommitment,
     StateDiffCommitment,
     StorageCommitment,
@@ -96,121 +96,8 @@ pub type UnverifiedStateUpdateWithBlockNumber = (UnverifiedStateUpdateData, Bloc
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 
-// TODO make it a variant of the core type
-#[derive(Debug, Clone, PartialEq, Eq, Default, Dummy)]
-pub struct BlockHeader {
-    pub hash: BlockHash,
-    pub parent_hash: BlockHash,
-    pub number: BlockNumber,
-    pub timestamp: BlockTimestamp,
-    pub eth_l1_gas_price: GasPrice,
-    pub strk_l1_gas_price: GasPrice,
-    pub eth_l1_data_gas_price: GasPrice,
-    pub strk_l1_data_gas_price: GasPrice,
-    pub sequencer_address: SequencerAddress,
-    pub starknet_version: StarknetVersion,
-    pub event_commitment: EventCommitment,
-    pub state_commitment: StateCommitment,
-    pub transaction_commitment: TransactionCommitment,
-    pub transaction_count: usize,
-    pub event_count: usize,
-    pub l1_da_mode: L1DataAvailabilityMode,
-    pub receipt_commitment: ReceiptCommitment,
-    pub state_diff_commitment: StateDiffCommitment,
-    pub state_diff_length: u64,
-}
-
-// TODO make it a variant of the core type
-#[derive(Clone, PartialEq, Default, TaggedDebug, Dummy)]
-pub struct SignedBlockHeader {
-    pub header: BlockHeader,
-    pub signature: BlockCommitmentSignature,
-}
-
-impl SignedBlockHeader {
-    pub fn finalize(
-        self,
-        storage_commitment: StorageCommitment,
-        class_commitment: ClassCommitment,
-    ) -> pathfinder_common::SignedBlockHeader {
-        pathfinder_common::SignedBlockHeader {
-            header: self.header.finalize(storage_commitment, class_commitment),
-            signature: self.signature,
-        }
-    }
-}
-
-impl From<pathfinder_common::SignedBlockHeader> for SignedBlockHeader {
-    fn from(h: pathfinder_common::SignedBlockHeader) -> Self {
-        Self {
-            header: h.header.into(),
-            signature: h.signature,
-        }
-    }
-}
-
-impl BlockHeader {
-    pub fn finalize(
-        self,
-        storage_commitment: StorageCommitment,
-        class_commitment: ClassCommitment,
-    ) -> pathfinder_common::BlockHeader {
-        pathfinder_common::BlockHeader {
-            hash: self.hash,
-            parent_hash: self.parent_hash,
-            number: self.number,
-            timestamp: self.timestamp,
-            eth_l1_gas_price: self.eth_l1_gas_price,
-            strk_l1_gas_price: self.strk_l1_gas_price,
-            eth_l1_data_gas_price: self.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: self.strk_l1_data_gas_price,
-            sequencer_address: self.sequencer_address,
-            starknet_version: self.starknet_version,
-            event_commitment: self.event_commitment,
-            state_commitment: self.state_commitment,
-            transaction_commitment: self.transaction_commitment,
-            transaction_count: self.transaction_count,
-            event_count: self.event_count,
-            l1_da_mode: self.l1_da_mode,
-            receipt_commitment: self.receipt_commitment,
-            storage_commitment,
-            class_commitment,
-            state_diff_commitment: self.state_diff_commitment,
-            state_diff_length: self.state_diff_length,
-        }
-    }
-}
-
-impl From<pathfinder_common::BlockHeader> for BlockHeader {
-    fn from(h: pathfinder_common::BlockHeader) -> Self {
-        Self {
-            hash: h.hash,
-            parent_hash: h.parent_hash,
-            number: h.number,
-            timestamp: h.timestamp,
-            eth_l1_gas_price: h.eth_l1_gas_price,
-            strk_l1_gas_price: h.strk_l1_gas_price,
-            eth_l1_data_gas_price: h.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: h.strk_l1_data_gas_price,
-            sequencer_address: h.sequencer_address,
-            starknet_version: h.starknet_version,
-            event_commitment: h.event_commitment,
-            state_commitment: h.state_commitment,
-            transaction_commitment: h.transaction_commitment,
-            transaction_count: h.transaction_count,
-            event_count: h.event_count,
-            l1_da_mode: h.l1_da_mode,
-            receipt_commitment: h.receipt_commitment,
-            state_diff_commitment: h.state_diff_commitment,
-            state_diff_length: h.state_diff_length,
-        }
-    }
-}
-
-impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
-    type Error = anyhow::Error;
-
-    fn try_from(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
+impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
+    fn try_from_dto(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
         anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
         let signature = dto
             .signatures
@@ -242,6 +129,8 @@ impl TryFrom<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
                 state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
                 state_diff_length: dto.state_diff_commitment.state_diff_length,
+                class_commitment: ClassCommitment::ZERO,
+                storage_commitment: StorageCommitment::ZERO,
             },
             signature,
         })

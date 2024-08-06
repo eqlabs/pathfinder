@@ -1,7 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
-use p2p::client::types::SignedBlockHeader;
 use p2p::PeerData;
 use p2p_proto::header;
 use pathfinder_common::{
@@ -12,6 +11,7 @@ use pathfinder_common::{
     ChainId,
     ClassCommitment,
     PublicKey,
+    SignedBlockHeader,
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
@@ -248,7 +248,7 @@ impl VerifyHashAndSignature {
         }
     }
 
-    fn verify_hash(&self, header: &p2p::client::types::BlockHeader) -> bool {
+    fn verify_hash(&self, header: &BlockHeader) -> bool {
         matches!(
             verify_block_hash(
                 BlockHeaderData {
@@ -311,8 +311,12 @@ impl ProcessStage for Persist {
             .context("Creating database transaction")?;
 
         for SignedBlockHeader { header, signature } in input {
-            // TODO update storage and class tries
-            let header = header.finalize(StorageCommitment::ZERO, ClassCommitment::ZERO);
+            // TODO update storage and class tries on the header
+            let header = BlockHeader {
+                storage_commitment: Default::default(),
+                class_commitment: Default::default(),
+                ..header
+            };
             tx.insert_block_header(&header)
                 .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)
