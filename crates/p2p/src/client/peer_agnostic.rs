@@ -711,32 +711,6 @@ mod header_stream {
     }
 }
 
-struct Restorable<T> {
-    data: T,
-    backup: T,
-}
-
-impl<T: Copy> Restorable<T> {
-    fn new(data: T) -> Self {
-        Self { data, backup: data }
-    }
-
-    fn get(&self) -> T {
-        self.data
-    }
-
-    fn restore(&mut self) -> T {
-        self.data = self.backup;
-        self.data
-    }
-}
-
-impl<T> AsMut<T> for Restorable<T> {
-    fn as_mut(&mut self) -> &mut T {
-        &mut self.data
-    }
-}
-
 mod transaction_stream {
     use super::*;
 
@@ -746,7 +720,7 @@ mod transaction_stream {
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
-        counts_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
             + Send
             + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
@@ -760,15 +734,15 @@ mod transaction_stream {
 
         let (tx, rx) = mpsc::channel(1);
         tokio::spawn(async move {
-            let mut counts_stream = Box::pin(counts_stream);
+            let mut counts_and_commitments_stream = Box::pin(counts_and_commitments_stream);
 
-            let Some(Ok(cnt)) = counts_stream.next().await else {
+            let Some(Ok(cnt)) = counts_and_commitments_stream.next().await else {
                 tracing::debug!("Transaction counts and commitments stream terminated prematurely");
                 return;
             };
 
             // Transaction counter for the currently received block
-            let mut cnt = Restorable::new(cnt);
+            let mut progress = TransactionStreamProgress::new(cnt);
 
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
@@ -783,20 +757,22 @@ mod transaction_stream {
 
                     let mut transactions = Vec::new();
                     // If the previous peer failed to provide the entire block we need to start over
-                    cnt.restore();
-                    tracing::trace!(number=%cnt.get().0, "Expecting transaction responses");
+                    progress.rollback();
+                    tracing::trace!(number=%progress.count(), "Expecting transaction responses");
 
                     while let Some(resp) = responses.next().await {
                         let txn_idx = into_idx(transactions.len());
-                        match handle_response(peer, resp, &mut cnt, txn_idx, start == stop).await {
+                        match handle_response(peer, resp, &mut progress, txn_idx, start == stop)
+                            .await
+                        {
                             Action::NextPeer => continue 'next_peer,
                             Action::TerminateStream => break 'outer,
                             Action::TryYield(t, r) => {
                                 transactions.push((t, r));
                                 if try_yield(
                                     peer,
-                                    &mut cnt,
-                                    &mut counts_stream,
+                                    &mut progress,
+                                    &mut counts_and_commitments_stream,
                                     &mut transactions,
                                     &mut start,
                                     stop,
@@ -814,7 +790,7 @@ mod transaction_stream {
                     // We got all the data we need but the last peer has not sent a Fin.
                     // TODO punish the peer
                     tracing::debug!(%peer, "Fin missing");
-                    if cnt.get().0 == 0 && start == stop {
+                    if progress.count() == 0 && start == stop {
                         break 'outer;
                     }
                 }
@@ -828,7 +804,7 @@ mod transaction_stream {
     async fn handle_response(
         peer: PeerId,
         response: TransactionsResponse,
-        cnt: &mut Restorable<(usize, TransactionCommitment)>,
+        progress: &mut TransactionStreamProgress,
         txn_idx: TransactionIndex,
         is_last_block: bool,
     ) -> Action {
@@ -846,9 +822,9 @@ mod transaction_stream {
                     return Action::NextPeer;
                 };
 
-                match cnt.as_mut().0.checked_sub(1) {
+                match progress.count_mut().checked_sub(1) {
                     Some(x) => {
-                        cnt.as_mut().0 = x;
+                        *progress.count_mut() = x;
                         Action::TryYield(t, r)
                     }
                     None => {
@@ -862,8 +838,7 @@ mod transaction_stream {
                 }
             }
             TransactionsResponse::Fin => {
-                // if counter.0 > 0 {
-                if cnt.get().0 > 0 {
+                if progress.count() > 0 {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Premature transaction stream Fin");
                     return Action::NextPeer;
@@ -900,8 +875,8 @@ mod transaction_stream {
     /// Returns true if the stream should be terminated
     async fn try_yield(
         peer: PeerId,
-        cnt: &mut Restorable<(usize, TransactionCommitment)>,
-        counts_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        progress: &mut TransactionStreamProgress,
+        counts_and_commitments_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
                   + Unpin
                   + Send
                   + 'static),
@@ -910,7 +885,7 @@ mod transaction_stream {
         stop: BlockNumber,
         tx: mpsc::Sender<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
     ) -> bool {
-        if cnt.get().0 == 0 {
+        if progress.count() == 0 {
             tracing::trace!(block_number=%start, "All transactions received for block");
 
             _ = tx
@@ -918,7 +893,7 @@ mod transaction_stream {
                     peer,
                     (
                         UnverifiedTransactionData {
-                            expected_commitment: cnt.get().1,
+                            expected_commitment: progress.commitment(),
                             transactions: std::mem::take(transactions),
                         },
                         *start,
@@ -930,8 +905,8 @@ mod transaction_stream {
                 tracing::trace!(next_block=%start, "Moving to next block");
                 *start += 1;
 
-                if let Some(Ok(x)) = counts_stream.next().await {
-                    *cnt = Restorable::new(x);
+                if let Some(Ok(x)) = counts_and_commitments_stream.next().await {
+                    *progress = TransactionStreamProgress::new(x);
                 } else {
                     tracing::debug!(%peer, "Transaction counts and commitments stream terminated prematurely");
                     return true;
@@ -946,6 +921,40 @@ mod transaction_stream {
         NextPeer,
         TerminateStream,
         TryYield(TransactionVariant, Receipt),
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct TransactionStreamProgress {
+        count: usize,
+        commitment: TransactionCommitment,
+        count_backup: usize,
+    }
+
+    impl TransactionStreamProgress {
+        fn new((count, commitment): (usize, TransactionCommitment)) -> Self {
+            Self {
+                count,
+                commitment,
+                count_backup: count,
+            }
+        }
+
+        fn count(&self) -> usize {
+            self.count
+        }
+
+        fn count_mut(&mut self) -> &mut usize {
+            &mut self.count
+        }
+
+        fn commitment(&self) -> TransactionCommitment {
+            self.commitment
+        }
+
+        fn rollback(&mut self) -> Self {
+            self.count = self.count_backup;
+            *self
+        }
     }
 }
 
