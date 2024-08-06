@@ -107,7 +107,7 @@ use crate::client::peer_agnostic::fixtures::*;
     vec![(peer(1), hdr(11))]
 )]
 #[test_log::test(tokio::test)]
-async fn make_header_stream(
+async fn header_stream_make(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<BlockHeadersResponse>), TestPeer>>,
     #[case] expected_stream: Vec<(TestPeer, SignedBlockHeader)>,
@@ -127,7 +127,7 @@ async fn make_header_stream(
         let start = BlockNumber::GENESIS;
         let stop = start + (num_blocks - 1) as u64;
 
-        let actual = super::make_header_stream(start, stop, reverse, get_peers, send_request)
+        let actual = super::header_stream::make(start, stop, reverse, get_peers, send_request)
             .map(|x| (TestPeer(x.peer), x.data))
             .collect::<Vec<_>>()
             .await;
@@ -305,7 +305,7 @@ async fn make_transaction_stream(
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
 
-    let actual = super::make_transaction_stream(
+    let actual = super::transaction_stream::make(
         start,
         stop,
         stream::iter(
