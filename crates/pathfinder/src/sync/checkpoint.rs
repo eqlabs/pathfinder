@@ -16,7 +16,6 @@ use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{
     ClassDefinition,
     EventsForBlockByTransaction,
-    SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
@@ -33,6 +32,7 @@ use pathfinder_common::{
     ChainId,
     ClassHash,
     PublicKey,
+    SignedBlockHeader,
     TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -254,7 +254,7 @@ impl Sync {
 }
 
 async fn handle_header_stream(
-    stream: impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send + 'static,
+    stream: impl Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
     chain: Chain,
     chain_id: ChainId,
@@ -650,7 +650,6 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::types::BlockHeader as P2PBlockHeader;
         use p2p::libp2p::PeerId;
         use p2p_proto::header;
         use pathfinder_common::{
@@ -677,8 +676,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_headers: Vec<PeerData<P2PSignedBlockHeader>>,
-            pub expected_headers: Vec<P2PSignedBlockHeader>,
+            pub streamed_headers: Vec<PeerData<SignedBlockHeader>>,
+            pub expected_headers: Vec<SignedBlockHeader>,
             pub storage: Storage,
             pub head: (BlockNumber, BlockHash),
             pub public_key: PublicKey,
@@ -701,10 +700,10 @@ mod tests {
             pub state_diff_commitment: StateDiffCommitment,
         }
 
-        impl From<Fixture> for P2PSignedBlockHeader {
+        impl From<Fixture> for SignedBlockHeader {
             fn from(dto: Fixture) -> Self {
                 Self {
-                    header: P2PBlockHeader {
+                    header: BlockHeader {
                         hash: dto.block_hash,
                         number: dto.block_number,
                         parent_hash: dto.parent_block_hash,
@@ -732,7 +731,7 @@ mod tests {
                     .unwrap()
                     .into_iter()
                     .map(Into::into)
-                    .collect::<Vec<P2PSignedBlockHeader>>();
+                    .collect::<Vec<SignedBlockHeader>>();
 
             let hdr = &expected_headers.last().unwrap().header;
             Setup {
@@ -780,8 +779,8 @@ mod tests {
                     .map(|n| {
                         let block_number = BlockNumber::new_or_panic(n);
                         let block_id = block_number.into();
-                        P2PSignedBlockHeader {
-                            header: db.block_header(block_id).unwrap().unwrap().into(),
+                        SignedBlockHeader {
+                            header: db.block_header(block_id).unwrap().unwrap(),
                             signature: db.signature(block_id).unwrap().unwrap(),
                         }
                     })

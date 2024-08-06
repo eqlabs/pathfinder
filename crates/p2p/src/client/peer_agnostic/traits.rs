@@ -3,7 +3,13 @@ use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::{BlockNumber, StateDiffCommitment, TransactionCommitment, TransactionHash};
+use pathfinder_common::{
+    BlockNumber,
+    SignedBlockHeader,
+    StateDiffCommitment,
+    TransactionCommitment,
+    TransactionHash,
+};
 
 use crate::client::types::{
     ClassDefinition,
@@ -11,7 +17,6 @@ use crate::client::types::{
     EventsForBlockByTransaction,
     IncorrectStateDiffCount,
     Receipt,
-    SignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };

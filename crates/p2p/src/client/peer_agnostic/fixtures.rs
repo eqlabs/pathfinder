@@ -15,13 +15,13 @@ use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
+    BlockHeader,
     BlockNumber,
     CasmHash,
-    ClassCommitment,
     ClassHash,
     ContractAddress,
     SierraHash,
-    StorageCommitment,
+    SignedBlockHeader,
     TransactionHash,
     TransactionIndex,
 };
@@ -32,7 +32,6 @@ use tokio::sync::Mutex;
 use super::{ClassDefinition, UnverifiedStateUpdateData};
 use crate::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
 use crate::client::peer_agnostic::Receipt;
-use crate::client::types::{BlockHeader, SignedBlockHeader};
 
 #[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestPeer(pub PeerId);
@@ -104,8 +103,6 @@ pub async fn send_request<T>(
 
 pub fn hdr_resp(tag: i32) -> BlockHeadersResponse {
     let h = hdr(tag);
-    // TODO
-    let h = h.finalize(StorageCommitment::ZERO, ClassCommitment::ZERO);
     BlockHeadersResponse::Header(Box::new(h.to_dto()))
 }
 
@@ -113,6 +110,9 @@ pub fn hdr(tag: i32) -> SignedBlockHeader {
     Tagged::get(format!("header {tag}"), || SignedBlockHeader {
         header: BlockHeader {
             number: BlockNumber::new_or_panic(tag as u64),
+            // TODO Set storage and class commitment
+            storage_commitment: Default::default(),
+            class_commitment: Default::default(),
             ..Faker.fake()
         },
         ..Faker.fake()

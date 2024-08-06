@@ -29,6 +29,7 @@ use pathfinder_common::{
     ContractAddress,
     ContractNonce,
     SierraHash,
+    SignedBlockHeader,
     StateDiffCommitment,
     StorageAddress,
     StorageValue,
@@ -61,7 +62,6 @@ use crate::client::types::{
     EventsForBlockByTransaction,
     IncorrectStateDiffCount,
     Receipt,
-    SignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
     UnverifiedTransactionDataWithBlockNumber,
@@ -647,7 +647,7 @@ where
 
                     match signed_header {
                         BlockHeadersResponse::Header(hdr) => {
-                            match SignedBlockHeader::try_from(*hdr) {
+                            match SignedBlockHeader::try_from_dto(*hdr) {
                                 Ok(hdr) => {
                                     yield PeerData::new(peer, hdr);
 

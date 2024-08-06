@@ -104,7 +104,7 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::types::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
+    use p2p::client::types::Receipt;
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -131,6 +131,7 @@ mod prop {
         ContractAddress,
         ContractNonce,
         SierraHash,
+        SignedBlockHeader,
         StorageAddress,
         StorageValue,
         TransactionHash,
@@ -182,7 +183,15 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|Block { header, .. }| P2PSignedBlockHeader::from(header)).collect::<Vec<_>>();
+                .into_iter().map(|Block { header, .. }| pathfinder_common::SignedBlockHeader {
+                    header: pathfinder_common::BlockHeader {
+                        // TODO Set the storage and class commitment
+                        storage_commitment: Default::default(),
+                        class_commitment: Default::default(),
+                        ..header.header
+                    },
+                    signature: header.signature,
+                }).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -201,7 +210,7 @@ mod prop {
 
             // Check the rest
             let actual = responses.into_iter().map(|response| match response {
-                BlockHeadersResponse::Header(hdr) => P2PSignedBlockHeader::try_from(*hdr).unwrap(),
+                BlockHeadersResponse::Header(hdr) => SignedBlockHeader::try_from_dto(*hdr).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 

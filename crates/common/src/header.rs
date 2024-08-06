@@ -38,7 +38,7 @@ pub enum L1DataAvailabilityMode {
     Blob,
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Dummy)]
 pub struct SignedBlockHeader {
     pub header: BlockHeader,
     pub signature: BlockCommitmentSignature,

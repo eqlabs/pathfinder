@@ -7,11 +7,9 @@ use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{
-    BlockHeader as P2PBlockHeader,
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     IncorrectStateDiffCount,
-    SignedBlockHeader as P2PSignedBlockHeader,
     UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
@@ -177,7 +175,7 @@ struct HeaderSource<L, P> {
 }
 
 impl<L, P> HeaderSource<L, P> {
-    fn spawn(self) -> SyncReceiver<P2PSignedBlockHeader>
+    fn spawn(self) -> SyncReceiver<SignedBlockHeader>
     where
         L: Stream<Item = (BlockNumber, BlockHash)> + Send + 'static,
         P: Clone + HeaderStream + Send + 'static,
@@ -293,14 +291,14 @@ impl TransactionsFanout {
 }
 
 struct HeaderFanout {
-    headers: SyncReceiver<P2PSignedBlockHeader>,
-    events: BoxStream<'static, P2PBlockHeader>,
-    state_diff: BoxStream<'static, P2PSignedBlockHeader>,
-    transactions: BoxStream<'static, P2PBlockHeader>,
+    headers: SyncReceiver<SignedBlockHeader>,
+    events: BoxStream<'static, BlockHeader>,
+    state_diff: BoxStream<'static, SignedBlockHeader>,
+    transactions: BoxStream<'static, BlockHeader>,
 }
 
 impl HeaderFanout {
-    fn from_source(mut source: SyncReceiver<P2PSignedBlockHeader>, buffer: usize) -> Self {
+    fn from_source(mut source: SyncReceiver<SignedBlockHeader>, buffer: usize) -> Self {
         let (h_tx, h_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
@@ -342,7 +340,7 @@ impl HeaderFanout {
 
 struct TransactionSource<P> {
     p2p: P,
-    headers: BoxStream<'static, P2PBlockHeader>,
+    headers: BoxStream<'static, BlockHeader>,
 }
 
 impl<P> TransactionSource<P> {
@@ -413,7 +411,7 @@ impl<P> TransactionSource<P> {
 
 struct EventSource<P> {
     p2p: P,
-    headers: BoxStream<'static, P2PBlockHeader>,
+    headers: BoxStream<'static, BlockHeader>,
     transactions: BoxStream<'static, Vec<TransactionHash>>,
 }
 
@@ -498,7 +496,7 @@ impl<P> EventSource<P> {
 
 struct StateDiffSource<P> {
     p2p: P,
-    headers: BoxStream<'static, P2PSignedBlockHeader>,
+    headers: BoxStream<'static, SignedBlockHeader>,
 }
 
 impl<P> StateDiffSource<P> {
@@ -616,7 +614,7 @@ impl<P> ClassSource<P> {
 }
 
 struct BlockStream {
-    pub header: SyncReceiver<P2PSignedBlockHeader>,
+    pub header: SyncReceiver<SignedBlockHeader>,
     pub events: SyncReceiver<HashMap<TransactionHash, Vec<Event>>>,
     pub state_diff: SyncReceiver<StateUpdateData>,
     pub transactions: SyncReceiver<Vec<(Transaction, Receipt)>>,
@@ -688,7 +686,7 @@ impl BlockStream {
 }
 
 struct BlockData {
-    pub header: P2PSignedBlockHeader,
+    pub header: SignedBlockHeader,
     pub events: HashMap<TransactionHash, Vec<Event>>,
     pub state_diff: StateUpdateData,
     pub transactions: Vec<(Transaction, Receipt)>,
@@ -712,7 +710,7 @@ impl ProcessStage for StoreBlock {
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let BlockData {
-            header: P2PSignedBlockHeader { header, signature },
+            header: SignedBlockHeader { header, signature },
             mut events,
             state_diff,
             transactions,
@@ -944,7 +942,7 @@ mod tests {
             start: BlockNumber,
             stop: BlockNumber,
             reverse: bool,
-        ) -> impl Stream<Item = PeerData<P2PSignedBlockHeader>> + Send {
+        ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send {
             assert!(!reverse);
             assert_eq!(start, self.blocks.first().unwrap().header.header.number);
             assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
@@ -952,7 +950,7 @@ mod tests {
             stream::iter(
                 self.blocks
                     .into_iter()
-                    .map(|block| PeerData::for_tests(block.header.into())),
+                    .map(|block| PeerData::for_tests(block.header)),
             )
         }
     }
