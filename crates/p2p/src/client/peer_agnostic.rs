@@ -582,12 +582,6 @@ impl BlockClient for Client {
     }
 }
 
-enum Action {
-    NextResponse,
-    NextPeer,
-    Done,
-}
-
 mod header_stream {
     use super::*;
 
@@ -640,7 +634,7 @@ mod header_stream {
                         match handle_response(peer, r, dir, &mut start, stop, tx.clone()).await {
                             Action::NextResponse => {}
                             Action::NextPeer => continue 'next_peer,
-                            Action::Done => break 'outer,
+                            Action::TerminateStream => break 'outer,
                         }
                     }
 
@@ -671,7 +665,7 @@ mod header_stream {
                 Ok(hdr) => {
                     if done(direction, *start, stop) {
                         tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
-                        return Action::Done;
+                        return Action::TerminateStream;
                     }
 
                     _ = tx.send(PeerData::new(peer, hdr)).await;
@@ -686,7 +680,7 @@ mod header_stream {
                 Err(error) => {
                     tracing::debug!(%peer, %error, "Header stream failed");
                     if done(direction, *start, stop) {
-                        return Action::Done;
+                        return Action::TerminateStream;
                     }
 
                     Action::NextPeer
@@ -695,12 +689,18 @@ mod header_stream {
             BlockHeadersResponse::Fin => {
                 tracing::debug!(%peer, "Header stream Fin");
                 if done(direction, *start, stop) {
-                    return Action::Done;
+                    return Action::TerminateStream;
                 }
 
                 Action::NextPeer
             }
         }
+    }
+
+    enum Action {
+        NextResponse,
+        NextPeer,
+        TerminateStream,
     }
 
     fn done(direction: Direction, start: i64, stop: i64) -> bool {
@@ -711,14 +711,42 @@ mod header_stream {
     }
 }
 
+struct Restorable<T> {
+    data: T,
+    backup: T,
+}
+
+impl<T: Copy> Restorable<T> {
+    fn new(data: T) -> Self {
+        Self { data, backup: data }
+    }
+
+    fn get(&self) -> T {
+        self.data
+    }
+
+    fn restore(&mut self) -> T {
+        self.data = self.backup;
+        self.data
+    }
+}
+
+impl<T> AsMut<T> for Restorable<T> {
+    fn as_mut(&mut self) -> &mut T {
+        &mut self.data
+    }
+}
+
 mod transaction_stream {
     use super::*;
 
+    /// ### Important
+    ///
     /// Caller must guarantee `start <= stop`
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
-        counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        counts_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
             + Send
             + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
@@ -732,26 +760,20 @@ mod transaction_stream {
 
         let (tx, rx) = mpsc::channel(1);
         tokio::spawn(async move {
-            let mut counts_stream = Box::pin(counts_and_commitments_stream);
+            let mut counts_stream = Box::pin(counts_stream);
 
-            let Some(Ok(mut counter_backup)) = counts_stream.next().await else {
+            let Some(Ok(cnt)) = counts_stream.next().await else {
                 tracing::debug!("Transaction counts and commitments stream terminated prematurely");
                 return;
             };
 
+            // Transaction counter for the currently received block
+            let mut cnt = Restorable::new(cnt);
+
             // Loop which refreshes peer set once we exhaust it.
             'outer: loop {
                 'next_peer: for peer in get_peers().await {
-                    let request = TransactionsRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit: stop.get() - start.get() + 1,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses = match send_request(peer, request).await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
                         Err(error) => {
                             tracing::debug!(%peer, reason=%error, "Transactions request failed");
@@ -760,35 +782,39 @@ mod transaction_stream {
                     };
 
                     let mut transactions = Vec::new();
-                    let mut counter = counter_backup;
-                    tracing::trace!(number=%counter.0, "Expecting transaction responses");
+                    // If the previous peer failed to provide the entire block we need to start over
+                    cnt.restore();
+                    tracing::trace!(number=%cnt.get().0, "Expecting transaction responses");
 
-                    while let Some(response) = responses.next().await {
-                        match handle_response(
-                            peer,
-                            response,
-                            &mut counter,
-                            &mut counter_backup,
-                            &mut counts_stream,
-                            &mut transactions,
-                            &mut start,
-                            stop,
-                            tx.clone(),
-                        )
-                        .await
-                        {
-                            Action::NextResponse => {}
+                    while let Some(resp) = responses.next().await {
+                        let txn_idx = into_idx(transactions.len());
+                        match handle_response(peer, resp, &mut cnt, txn_idx, start == stop).await {
                             Action::NextPeer => continue 'next_peer,
-                            Action::Done => break 'outer,
+                            Action::TerminateStream => break 'outer,
+                            Action::TryYield(t, r) => {
+                                transactions.push((t, r));
+                                if try_yield(
+                                    peer,
+                                    &mut cnt,
+                                    &mut counts_stream,
+                                    &mut transactions,
+                                    &mut start,
+                                    stop,
+                                    tx.clone(),
+                                )
+                                .await
+                                {
+                                    break 'outer;
+                                }
+                                // Move to the next response
+                            }
                         }
                     }
 
+                    // We got all the data we need but the last peer has not sent a Fin.
                     // TODO punish the peer
                     tracing::debug!(%peer, "Fin missing");
-                    // The above situation can also happen when we've received all the data we need
-                    // but the last peer has not sent a Fin.
-                    if counter.0 == 0 && start == stop {
-                        // We're done, terminate the stream
+                    if cnt.get().0 == 0 && start == stop {
                         break 'outer;
                     }
                 }
@@ -798,19 +824,13 @@ mod transaction_stream {
         ReceiverStream::new(rx)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_response(
         peer: PeerId,
         response: TransactionsResponse,
-        counter: &mut (usize, TransactionCommitment),
-        counter_backup: &mut (usize, TransactionCommitment),
-        counts_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
-                  + Unpin
-                  + Send
-                  + 'static),
-        transactions: &mut Vec<(TransactionVariant, Receipt)>,
-        start: &mut BlockNumber,
-        stop: BlockNumber,
-        tx: mpsc::Sender<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
+        cnt: &mut Restorable<(usize, TransactionCommitment)>,
+        txn_idx: TransactionIndex,
+        is_last_block: bool,
     ) -> Action {
         match response {
             TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
@@ -819,51 +839,78 @@ mod transaction_stream {
             }) => {
                 let (Ok(t), Ok(r)) = (
                     TransactionVariant::try_from_dto(transaction),
-                    Receipt::try_from((
-                        receipt,
-                        TransactionIndex::new_or_panic(
-                            transactions.len().try_into().expect("ptr size is 64bits"),
-                        ),
-                    )),
+                    Receipt::try_from((receipt, txn_idx)),
                 ) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Transaction or receipt failed to parse");
                     return Action::NextPeer;
                 };
 
-                match counter.0.checked_sub(1) {
+                match cnt.as_mut().0.checked_sub(1) {
                     Some(x) => {
-                        counter.0 = x;
-                        transactions.push((t, r));
+                        cnt.as_mut().0 = x;
+                        Action::TryYield(t, r)
                     }
                     None => {
                         // TODO punish the peer
-                        tracing::debug!(%peer, %start, %stop, "Too many transactions");
-                        // We can only get here in case of the last block, which
-                        // means
-                        // that the stream should be terminated
-                        debug_assert!(*start == stop);
-                        return Action::Done;
+                        tracing::debug!(%peer, "Too many transactions");
+                        // We can only get here in case of the last block, which means that the
+                        // stream should be terminated
+                        debug_assert!(is_last_block);
+                        Action::TerminateStream
                     }
                 }
             }
             TransactionsResponse::Fin => {
-                if counter.0 > 0 {
+                // if counter.0 > 0 {
+                if cnt.get().0 > 0 {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Premature transaction stream Fin");
                     return Action::NextPeer;
                 }
 
-                if *start == stop {
+                if is_last_block {
                     // We're done, terminate the stream
-                    return Action::Done;
+                    return Action::TerminateStream;
                 }
-            }
-        };
 
-        if counter.0 == 0 {
-            // The counter for this block has been exhausted which means that this
-            // block is complete.
+                // This peer will not give us more blocks, move to the next peer
+                Action::NextPeer
+            }
+        }
+    }
+
+    fn make_request(start: BlockNumber, stop: BlockNumber) -> TransactionsRequest {
+        TransactionsRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop.get() - start.get() + 1,
+                step: 1.into(),
+            },
+        }
+    }
+
+    fn into_idx(len: usize) -> TransactionIndex {
+        TransactionIndex::new_or_panic(len.try_into().expect("ptr size is 64bits"))
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn try_yield(
+        peer: PeerId,
+        cnt: &mut Restorable<(usize, TransactionCommitment)>,
+        counts_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+                  + Unpin
+                  + Send
+                  + 'static),
+        transactions: &mut Vec<(TransactionVariant, Receipt)>,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
+    ) -> bool {
+        if cnt.get().0 == 0 {
             tracing::trace!(block_number=%start, "All transactions received for block");
 
             _ = tx
@@ -871,7 +918,7 @@ mod transaction_stream {
                     peer,
                     (
                         UnverifiedTransactionData {
-                            expected_commitment: std::mem::take(&mut counter.1),
+                            expected_commitment: cnt.get().1,
                             transactions: std::mem::take(transactions),
                         },
                         *start,
@@ -880,21 +927,25 @@ mod transaction_stream {
                 .await;
 
             if *start < stop {
-                // Move to the next block
-                *start += 1;
                 tracing::trace!(next_block=%start, "Moving to next block");
+                *start += 1;
 
                 if let Some(Ok(x)) = counts_stream.next().await {
-                    *counter_backup = x;
-                    *counter = x;
+                    *cnt = Restorable::new(x);
                 } else {
                     tracing::debug!(%peer, "Transaction counts and commitments stream terminated prematurely");
-                    return Action::Done;
+                    return true;
                 };
             }
         }
 
-        Action::NextResponse
+        false
+    }
+
+    enum Action {
+        NextPeer,
+        TerminateStream,
+        TryYield(TransactionVariant, Receipt),
     }
 }
 
