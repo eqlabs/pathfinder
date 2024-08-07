@@ -764,8 +764,8 @@ mod transaction_stream {
                         {
                             Action::NextPeer => continue 'next_peer,
                             Action::TerminateStream => break 'outer,
-                            Action::TryYield(t, r) => {
-                                transactions.push((t, r));
+                            Action::TryYield(txn) => {
+                                transactions.push(*txn);
                                 if try_yield(
                                     peer,
                                     &mut progress,
@@ -823,7 +823,7 @@ mod transaction_stream {
                 match progress.count_mut().checked_sub(1) {
                     Some(x) => {
                         *progress.count_mut() = x;
-                        Action::TryYield(t, r)
+                        Action::TryYield(Box::new((t, r)))
                     }
                     None => {
                         // TODO punish the peer
@@ -917,7 +917,7 @@ mod transaction_stream {
     enum Action {
         NextPeer,
         TerminateStream,
-        TryYield(TransactionVariant, Receipt),
+        TryYield(Box<(TransactionVariant, Receipt)>),
     }
 
     #[derive(Clone, Copy, Debug)]
