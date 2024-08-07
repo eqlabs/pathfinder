@@ -784,6 +784,8 @@ mod transaction_stream {
                         }
                     }
 
+                    // FIXME
+
                     // We got all the data we need but the last peer has not sent a Fin.
                     // TODO punish the peer
                     tracing::debug!(%peer, "Fin missing");
@@ -797,7 +799,6 @@ mod transaction_stream {
         ReceiverStream::new(rx)
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_response(
         peer: PeerId,
         response: TransactionsResponse,
@@ -842,7 +843,6 @@ mod transaction_stream {
                 }
 
                 if is_last_block {
-                    // We're done, terminate the stream
                     return Action::TerminateStream;
                 }
 
@@ -964,7 +964,7 @@ mod state_diff_stream {
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+        len_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
             + Send
             + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
@@ -978,228 +978,208 @@ mod state_diff_stream {
 
         let (tx, rx) = mpsc::channel(1);
         tokio::spawn(async move {
-            pin_mut!(state_diff_length_and_commitment_stream);
+            let mut len_and_commitment_stream = Box::pin(len_and_commitment_stream);
 
-            let Some(Ok(cnt)) = state_diff_length_and_commitment_stream.next().await else {
+            let Some(Ok(cnt)) = len_and_commitment_stream.next().await else {
                 tracing::debug!("Transaction counts and commitments stream terminated prematurely");
                 return;
             };
 
             let mut progress = StateDiffStreamProgress::new(cnt);
 
-            if start <= stop {
-                // Loop which refreshes peer set once we exhaust it.
-                'outer: loop {
-                    'next_peer: for peer in get_peers().await {
-                        let mut responses = match send_request(peer, make_request(start, stop))
-                            .await
-                        {
-                            Ok(x) => x,
-                            Err(error) => {
-                                // Failed to establish connection, try next peer.
-                                tracing::debug!(%peer, reason=%error, "State diffs request failed");
-                                continue 'next_peer;
-                            }
-                        };
+            // Loop which refreshes peer set once we exhaust it.
+            'outer: loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
+                        Ok(x) => x,
+                        Err(error) => {
+                            tracing::debug!(%peer, reason=%error, "State diff request failed");
+                            continue 'next_peer;
+                        }
+                    };
 
-                        // If the previous peer failed to provide the entire block we need to start
-                        // over
-                        progress.rollback();
-                        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+                    // If the previous peer failed to provide the entire block we need to start over
+                    progress.rollback();
+                    tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
 
-                        let mut state_diff = StateUpdateData::default();
+                    let mut state_diff = StateUpdateData::default();
 
-                        while let Some(state_diff_response) = responses.next().await {
-                            match state_diff_response {
-                                StateDiffsResponse::ContractDiff(ContractDiff {
-                                    address,
-                                    nonce,
-                                    class_hash,
-                                    values,
-                                    domain: _,
-                                }) => {
-                                    let address = ContractAddress(address.0);
-
-                                    match progress.count_mut().checked_sub(values.len()) {
-                                        Some(x) => *progress.count_mut() = x,
-                                        None => {
-                                            tracing::debug!(%peer, %start, "Too many storage diffs: {} > {}", values.len(), progress.count());
-                                            // TODO punish the peer
-
-                                            // We can only get here in case of the last block, which
-                                            // means that the stream should be terminated
-                                            debug_assert!(start == stop);
-                                            break 'outer;
-                                        }
-                                    }
-
-                                    if address == ContractAddress::ONE {
-                                        let storage = &mut state_diff
-                                            .system_contract_updates
-                                            .entry(address)
-                                            .or_default()
-                                            .storage;
-                                        values.into_iter().for_each(
-                                            |ContractStoredValue { key, value }| {
-                                                storage.insert(
-                                                    StorageAddress(key),
-                                                    StorageValue(value),
-                                                );
-                                            },
-                                        );
-                                    } else {
-                                        let update = &mut state_diff
-                                            .contract_updates
-                                            .entry(address)
-                                            .or_default();
-                                        values.into_iter().for_each(
-                                            |ContractStoredValue { key, value }| {
-                                                update.storage.insert(
-                                                    StorageAddress(key),
-                                                    StorageValue(value),
-                                                );
-                                            },
-                                        );
-
-                                        if let Some(nonce) = nonce {
-                                            match progress.count_mut().checked_sub(1) {
-                                                Some(x) => *progress.count_mut() = x,
-                                                None => {
-                                                    tracing::debug!(%peer, %start, "Too many nonce updates");
-                                                    // TODO punish the peer
-
-                                                    // We can only get here in case of the last
-                                                    // block, which means that the stream should be
-                                                    // terminated
-                                                    debug_assert!(start == stop);
-                                                    break 'outer;
-                                                }
-                                            }
-
-                                            update.nonce = Some(ContractNonce(nonce));
-                                        }
-
-                                        if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0))
-                                        {
-                                            match progress.count_mut().checked_sub(1) {
-                                                Some(x) => *progress.count_mut() = x,
-                                                None => {
-                                                    tracing::debug!(%peer, %start, "Too many deployed contracts");
-                                                    // TODO punish the peer
-
-                                                    // We can only get here in case of the last
-                                                    // block, which means that the stream should be
-                                                    // terminated
-                                                    debug_assert!(start == stop);
-                                                    break 'outer;
-                                                }
-                                            }
-
-                                            update.class =
-                                                Some(ContractClassUpdate::Deploy(class_hash));
-                                        }
-                                    }
+                    while let Some(state_diff_response) = responses.next().await {
+                        match handle_response(
+                            peer,
+                            state_diff_response,
+                            &mut state_diff,
+                            &mut progress,
+                            start == stop,
+                        ) {
+                            Action::NextPeer => continue 'next_peer,
+                            Action::TerminateStream => break 'outer,
+                            Action::TryYield => {
+                                if try_yield(
+                                    peer,
+                                    &mut progress,
+                                    &mut len_and_commitment_stream,
+                                    &mut state_diff,
+                                    &mut start,
+                                    stop,
+                                    tx.clone(),
+                                )
+                                .await
+                                {
+                                    break 'outer;
                                 }
-                                StateDiffsResponse::DeclaredClass(DeclaredClass {
-                                    class_hash,
-                                    compiled_class_hash,
-                                }) => {
-                                    if let Some(compiled_class_hash) = compiled_class_hash {
-                                        state_diff.declared_sierra_classes.insert(
-                                            SierraHash(class_hash.0),
-                                            CasmHash(compiled_class_hash.0),
-                                        );
-                                    } else {
-                                        state_diff
-                                            .declared_cairo_classes
-                                            .insert(ClassHash(class_hash.0));
-                                    }
-
-                                    match progress.count_mut().checked_sub(1) {
-                                        Some(x) => *progress.count_mut() = x,
-                                        None => {
-                                            tracing::debug!(%peer, %start, "Too many declared classes");
-                                            // TODO punish the peer
-
-                                            // We can only get here in case of the last block, which
-                                            // means that the stream should be terminated
-                                            debug_assert!(start == stop);
-                                            break 'outer;
-                                        }
-                                    }
-                                }
-                                StateDiffsResponse::Fin => {
-                                    if progress.count() == 0 {
-                                        if start == stop {
-                                            // We're done, terminate the stream
-                                            break 'outer;
-                                        }
-                                    } else {
-                                        tracing::debug!(%peer, "Premature state diff stream Fin");
-                                        // TODO punish the peer
-                                        continue 'next_peer;
-                                    }
-                                }
-                            };
-
-                            if progress.count() == 0 {
-                                // All the counters for this block have been exhausted which means
-                                // that the state update for this block is complete.
-                                tracing::trace!(block_number=%start, "State diff received for block");
-
-                                _ = tx
-                                    .send(PeerData::new(
-                                        peer,
-                                        (
-                                            UnverifiedStateUpdateData {
-                                                expected_commitment: progress.commitment(),
-                                                state_diff: std::mem::take(&mut state_diff),
-                                            },
-                                            start,
-                                        ),
-                                    ))
-                                    .await;
-
-                                if start < stop {
-                                    // Move to the next block
-                                    start += 1;
-                                    tracing::trace!(next_block=%start, "Moving to next block");
-
-                                    let Some(Ok(cnt)) =
-                                        state_diff_length_and_commitment_stream.next().await
-                                    else {
-                                        tracing::debug!(
-                                            "Transaction counts and commitments stream terminated \
-                                             prematurely"
-                                        );
-                                        break 'outer;
-                                    };
-
-                                    progress = StateDiffStreamProgress::new(cnt);
-
-                                    tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
-                                }
+                                // Move to the next response
                             }
                         }
+                    }
 
-                        // TODO punish the peer
-                        // If we reach here, the peer did not send a Fin, so the counter for the
-                        // current block should be reset and we should start
-                        // from the current block again but from the next peer.
-                        tracing::debug!(%peer, "Fin missing");
+                    // FIXME
 
-                        // The above situation can also happen when we've received all the data we
-                        // need but the last peer has not sent a Fin.
-                        if progress.count() == 0 && start == stop {
-                            // We're done, terminate the stream
-                            break 'outer;
-                        }
+                    // We got all the data we need but the last peer has not sent a Fin.
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Fin missing");
+                    if progress.count() == 0 && start == stop {
+                        break 'outer;
                     }
                 }
             }
         });
 
         ReceiverStream::new(rx)
+    }
+
+    fn handle_response(
+        peer: PeerId,
+        response: StateDiffsResponse,
+        state_diff: &mut StateUpdateData,
+        progress: &mut StateDiffStreamProgress,
+        is_last_block: bool,
+    ) -> Action {
+        match response {
+            StateDiffsResponse::ContractDiff(ContractDiff {
+                address,
+                nonce,
+                class_hash,
+                values,
+                domain: _,
+            }) => {
+                let address = ContractAddress(address.0);
+
+                match progress.count_mut().checked_sub(values.len()) {
+                    Some(x) => *progress.count_mut() = x,
+                    None => {
+                        // TODO punish the peer
+                        tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), progress.count());
+                        // We can only get here in case of the last block, which means that the
+                        // stream should be terminated
+                        debug_assert!(is_last_block);
+                        return Action::TerminateStream;
+                    }
+                }
+
+                if address == ContractAddress::ONE {
+                    let storage = &mut state_diff
+                        .system_contract_updates
+                        .entry(address)
+                        .or_default()
+                        .storage;
+                    values
+                        .into_iter()
+                        .for_each(|ContractStoredValue { key, value }| {
+                            storage.insert(StorageAddress(key), StorageValue(value));
+                        });
+
+                    Action::TryYield
+                } else {
+                    let update = &mut state_diff.contract_updates.entry(address).or_default();
+                    values
+                        .into_iter()
+                        .for_each(|ContractStoredValue { key, value }| {
+                            update
+                                .storage
+                                .insert(StorageAddress(key), StorageValue(value));
+                        });
+
+                    if let Some(nonce) = nonce {
+                        match progress.count_mut().checked_sub(1) {
+                            Some(x) => *progress.count_mut() = x,
+                            None => {
+                                // TODO punish the peer
+                                tracing::debug!(%peer, "Too many nonce updates");
+                                // We can only get here in case of the last block, which means that
+                                // the stream should be terminated
+                                debug_assert!(is_last_block);
+                                return Action::TerminateStream;
+                            }
+                        }
+
+                        update.nonce = Some(ContractNonce(nonce));
+                    }
+
+                    if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
+                        match progress.count_mut().checked_sub(1) {
+                            Some(x) => *progress.count_mut() = x,
+                            None => {
+                                // TODO punish the peer
+                                tracing::debug!(%peer, "Too many deployed contracts");
+                                // We can only get here in case of the last block, which means that
+                                // the stream should be terminated
+                                debug_assert!(is_last_block);
+                                return Action::TerminateStream;
+                            }
+                        }
+
+                        update.class = Some(ContractClassUpdate::Deploy(class_hash));
+                    }
+
+                    Action::TryYield
+                }
+            }
+            StateDiffsResponse::DeclaredClass(DeclaredClass {
+                class_hash,
+                compiled_class_hash,
+            }) => {
+                if let Some(compiled_class_hash) = compiled_class_hash {
+                    state_diff
+                        .declared_sierra_classes
+                        .insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                } else {
+                    state_diff
+                        .declared_cairo_classes
+                        .insert(ClassHash(class_hash.0));
+                }
+
+                match progress.count_mut().checked_sub(1) {
+                    Some(x) => {
+                        *progress.count_mut() = x;
+                        Action::TryYield
+                    }
+                    None => {
+                        // TODO punish the peer
+                        tracing::debug!(%peer, "Too many declared classes");
+
+                        // We can only get here in case of the last block, which
+                        // means that the stream should be terminated
+                        debug_assert!(is_last_block);
+                        Action::TerminateStream
+                    }
+                }
+            }
+            StateDiffsResponse::Fin => {
+                if progress.count() > 0 {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Premature state diff stream Fin");
+                    return Action::NextPeer;
+                }
+
+                if is_last_block {
+                    return Action::TerminateStream;
+                }
+
+                // This peer will not give us more blocks
+                Action::TryYield
+            }
+        }
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> StateDiffsRequest {
@@ -1211,6 +1191,67 @@ mod state_diff_stream {
                 step: 1.into(),
             },
         }
+    }
+
+    enum Action {
+        NextPeer,
+        TerminateStream,
+        TryYield,
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn try_yield(
+        peer: PeerId,
+        progress: &mut StateDiffStreamProgress,
+        state_diff_length_and_commitment_stream: &mut (impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+                  + Unpin
+                  + Send
+                  + 'static),
+        state_diff: &mut StateUpdateData,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<PeerData<(UnverifiedStateUpdateData, BlockNumber)>>,
+    ) -> bool {
+        if progress.count() == 0 {
+            // All the counters for this block have been exhausted which means
+            // that the state update for this block is complete.
+            tracing::trace!(block_number=%start, "State diff received for block");
+
+            _ = tx
+                .send(PeerData::new(
+                    peer,
+                    (
+                        UnverifiedStateUpdateData {
+                            expected_commitment: progress.commitment(),
+                            state_diff: std::mem::take(state_diff),
+                        },
+                        *start,
+                    ),
+                ))
+                .await;
+
+            if *start < stop {
+                // Move to the next block
+                *start += 1;
+                tracing::trace!(next_block=%start, "Moving to next block");
+
+                let Some(Ok(cnt)) = state_diff_length_and_commitment_stream.next().await else {
+                    tracing::debug!(
+                        "Transaction counts and commitments stream terminated prematurely"
+                    );
+
+                    return true;
+                };
+
+                *progress = StateDiffStreamProgress::new(cnt);
+
+                tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+            }
+        }
+
+        false
     }
 
     #[derive(Clone, Copy, Debug)]

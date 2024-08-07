@@ -1088,9 +1088,7 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_state_diffs: Vec<
-                Result<PeerData<UnverifiedStateUpdateWithBlockNumber>, PeerData<anyhow::Error>>,
-            >,
+            pub streamed_state_diffs: Vec<PeerData<UnverifiedStateUpdateWithBlockNumber>>,
             pub expected_state_diffs: Vec<StateUpdateData>,
             pub storage: Storage,
         }
@@ -1193,8 +1191,6 @@ mod tests {
             } = setup(1).await;
 
             streamed_state_diffs[0]
-                .as_mut()
-                .unwrap()
                 .data
                 .0
                 .state_diff
@@ -1210,22 +1206,6 @@ mod tests {
                 )
                 .await,
                 Err(SyncError::StateDiffCommitmentMismatch(_))
-            );
-        }
-
-        #[tokio::test]
-        async fn stream_failure() {
-            assert_matches!(
-                handle_state_diff_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
-                    StorageBuilder::in_memory().unwrap(),
-                    BlockNumber::GENESIS,
-                    false,
-                )
-                .await,
-                Err(SyncError::Other(_))
             );
         }
 
