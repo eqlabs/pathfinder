@@ -784,12 +784,12 @@ mod transaction_stream {
                         }
                     }
 
-                    // FIXME
-
-                    // We got all the data we need but the last peer has not sent a Fin.
+                    // The current peer is not giving us a Fin
                     // TODO punish the peer
                     tracing::debug!(%peer, "Fin missing");
+
                     if progress.count() == 0 && start == stop {
+                        // The last block we were looking for was not followed by a Fin
                         break 'outer;
                     }
                 }
@@ -1033,12 +1033,12 @@ mod state_diff_stream {
                         }
                     }
 
-                    // FIXME
-
-                    // We got all the data we need but the last peer has not sent a Fin.
+                    // The current peer is not giving us a Fin
                     // TODO punish the peer
                     tracing::debug!(%peer, "Fin missing");
+
                     if progress.count() == 0 && start == stop {
+                        // The last block we were looking for was not followed by a Fin
                         break 'outer;
                     }
                 }
