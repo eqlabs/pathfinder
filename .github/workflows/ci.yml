@@ -23,19 +23,14 @@ jobs:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
-          remove-docker-images: "true"
-          root-reserve-mb: "2048"
-          temp-reserve-mb: "2048"
+          root-reserve-mb: "3072"
+          temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
       - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -47,8 +42,7 @@ jobs:
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
       - name: Compile unit tests
-        # --build-jobs 1 as we are constantly OOMing during compilation.
-        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings --build-jobs 1
+        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
       - name: Store timings
