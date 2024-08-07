@@ -6,9 +6,12 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    ClassCommitment,
     GasPrice,
     StarknetVersion,
+    StateCommitment,
     StateDiffCommitment,
+    StorageCommitment,
     TransactionCommitment,
 };
 
@@ -355,6 +358,37 @@ impl Transaction<'_> {
         Ok(header)
     }
 
+    pub fn state_commitment(&self, block: BlockId) -> anyhow::Result<Option<StateCommitment>> {
+        let sql = match block {
+            BlockId::Latest => {
+                "SELECT state_commitment FROM block_headers ORDER BY number DESC LIMIT 1"
+            }
+            BlockId::Number(_) => "SELECT state_commitment FROM block_headers WHERE number = ?",
+            BlockId::Hash(_) => "SELECT state_commitment FROM block_headers WHERE hash = ?",
+        };
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(sql)
+            .context("Preparing block header query")?;
+
+        let state_commitment = match block {
+            BlockId::Latest => {
+                stmt.query_row([], |row| row.get_state_commitment("state_commitment"))
+            }
+            BlockId::Number(number) => stmt.query_row(params![&number], |row| {
+                row.get_state_commitment("state_commitment")
+            }),
+            BlockId::Hash(hash) => stmt.query_row(params![&hash], |row| {
+                row.get_state_commitment("state_commitment")
+            }),
+        }
+        .optional()
+        .context("Querying for block header")?;
+
+        Ok(state_commitment)
+    }
+
     pub fn block_is_l1_accepted(&self, block: BlockId) -> anyhow::Result<bool> {
         let Some(l1_l2) = self.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
             return Ok(false);
@@ -416,6 +450,29 @@ impl Transaction<'_> {
         stmt.query_row([], |row| row.get_block_number(0))
             .optional()
             .context("Querying highest block with events")
+    }
+
+    pub fn update_storage_and_class_commitments(
+        &self,
+        block_number: BlockNumber,
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached(
+                r"UPDATE block_headers SET storage_commitment=?, class_commitment=? WHERE number=?",
+            )
+            .context("Preparing update statement")?;
+
+        stmt.execute(params![
+            &storage_commitment,
+            &class_commitment,
+            &block_number,
+        ])
+        .context("Updating storage and class commitments")?;
+
+        Ok(())
     }
 
     pub fn event_counts(

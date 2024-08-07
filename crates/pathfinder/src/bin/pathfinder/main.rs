@@ -264,6 +264,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             gossiper,
             gateway_public_key,
             p2p_client,
+            config.verify_tree_hashes,
         )
     } else {
         tokio::task::spawn(futures::future::pending())
@@ -496,6 +497,7 @@ fn start_sync(
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     if config.p2p.proxy {
         start_feeder_gateway_sync(
@@ -518,6 +520,7 @@ fn start_sync(
             p2p_client,
             gateway_public_key,
             config.p2p.l1_checkpoint_override,
+            verify_tree_hashes,
         )
     }
 }
@@ -591,6 +594,7 @@ fn start_p2p_sync(
     p2p_client: p2p::client::peer_agnostic::Client,
     gateway_public_key: pathfinder_common::PublicKey,
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
+    verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync = pathfinder_lib::sync::Sync {
         storage,
@@ -602,6 +606,7 @@ fn start_p2p_sync(
         chain: pathfinder_context.network,
         public_key: gateway_public_key,
         l1_checkpoint_override,
+        verify_tree_hashes,
     };
     tokio::spawn(sync.run())
 }

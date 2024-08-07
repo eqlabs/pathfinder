@@ -311,12 +311,6 @@ impl ProcessStage for Persist {
             .context("Creating database transaction")?;
 
         for SignedBlockHeader { header, signature } in input {
-            // TODO update storage and class tries on the header
-            let header = BlockHeader {
-                storage_commitment: Default::default(),
-                class_commitment: Default::default(),
-                ..header
-            };
             tx.insert_block_header(&header)
                 .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)

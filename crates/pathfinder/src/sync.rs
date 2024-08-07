@@ -45,6 +45,7 @@ pub struct Sync {
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub l1_checkpoint_override: Option<EthereumStateUpdate>,
+    pub verify_tree_hashes: bool,
 }
 
 impl Sync {
@@ -90,6 +91,7 @@ impl Sync {
                 chain: self.chain,
                 chain_id: self.chain_id,
                 public_key: self.public_key,
+                verify_tree_hashes: self.verify_tree_hashes,
             }
             .run(checkpoint)
             .await;

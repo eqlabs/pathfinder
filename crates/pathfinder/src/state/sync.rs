@@ -1043,7 +1043,7 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
     })
 }
 
-fn update_starknet_state(
+pub fn update_starknet_state(
     transaction: &Transaction<'_>,
     state_update: &StateUpdate,
     verify_hashes: bool,
