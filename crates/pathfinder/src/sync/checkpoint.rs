@@ -312,18 +312,12 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl Stream<
-            Item = Result<
-                PeerData<(UnverifiedStateUpdateData, BlockNumber)>,
-                PeerData<anyhow::Error>,
-            >,
-        > + Send
-        + 'static,
+    stream: impl Stream<Item = PeerData<(UnverifiedStateUpdateData, BlockNumber)>> + Send + 'static,
     storage: Storage,
     start: BlockNumber,
     verify_tree_hashes: bool,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
         .pipe(state_updates::VerifyCommitment, 10)
@@ -1107,13 +1101,13 @@ mod tests {
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests((
+                        PeerData::for_tests((
                             UnverifiedStateUpdateData {
                                 expected_commitment: block.header.header.state_diff_commitment,
                                 state_diff: block.state_update.clone().into(),
                             },
                             block.header.header.number,
-                        )))
+                        ))
                     })
                     .collect::<Vec<_>>();
                 let expected_state_diffs = blocks

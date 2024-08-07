@@ -338,15 +338,15 @@ async fn make_transaction_stream(
     1,
     vec![Ok((peer(0), vec![contract_diff(0), declared_class(0), SDFin]))],
     vec![len(0)],
-    vec![Ok((peer(0), state_diff(0)))]
+    vec![(peer(0), state_diff(0))]
 )]
 #[case::one_peer_2_blocks(
     2,
     vec![Ok((peer(0), vec![contract_diff(1), declared_class(1), contract_diff(2), declared_class(2), SDFin]))],
     vec![len(1), len(2)],
     vec![
-        Ok((peer(0), state_diff(1))),
-        Ok((peer(0), state_diff(2)))
+        (peer(0), state_diff(1)),
+        (peer(0), state_diff(2))
     ]
 )]
 #[case::one_peer_2_blocks_in_2_attempts(
@@ -358,8 +358,8 @@ async fn make_transaction_stream(
     ],
     vec![len(3), len(4)],
     vec![
-        Ok((peer(0), state_diff(3))),
-        Ok((peer(0), state_diff(4)))
+        (peer(0), state_diff(3)),
+        (peer(0), state_diff(4))
     ]
 )]
 #[case::two_peers_1_block_per_peer(
@@ -373,8 +373,8 @@ async fn make_transaction_stream(
     ],
     vec![len(5), len(6)],
     vec![
-        Ok((peer(0), state_diff(5))),
-        Ok((peer(1), state_diff(6)))
+        (peer(0), state_diff(5)),
+        (peer(1), state_diff(6))
     ]
 )]
 #[case::first_peer_premature_eos_with_fin(
@@ -386,8 +386,8 @@ async fn make_transaction_stream(
     ],
     vec![len(7), len(8)],
     vec![
-        Ok((peer(0), state_diff(7))),
-        Ok((peer(1), state_diff(8)))
+        (peer(0), state_diff(7)),
+        (peer(1), state_diff(8))
     ]
 )]
 #[case::first_peer_full_block_no_fin(
@@ -399,8 +399,8 @@ async fn make_transaction_stream(
     ],
     vec![len(9), len(10)],
     vec![
-        Ok((peer(0), state_diff(9))),
-        Ok((peer(1), state_diff(10)))
+        (peer(0), state_diff(9)),
+        (peer(1), state_diff(10))
     ]
 )]
 #[case::last_peer_full_block_no_fin(
@@ -411,8 +411,8 @@ async fn make_transaction_stream(
     ],
     vec![len(9), len(10)],
     vec![
-        Ok((peer(0), state_diff(9))),
-        Ok((peer(1), state_diff(10)))
+        (peer(0), state_diff(9)),
+        (peer(1), state_diff(10))
     ]
 )]
 // The same as above but the first peer gives half of the second block before closing the
@@ -426,8 +426,8 @@ async fn make_transaction_stream(
     ],
     vec![len(11), len(12)],
     vec![
-        Ok((peer(0), state_diff(11))),
-        Ok((peer(1), state_diff(12)))
+        (peer(0), state_diff(11)),
+        (peer(1), state_diff(12))
     ]
 )]
 #[case::count_steam_is_too_short(
@@ -438,58 +438,55 @@ async fn make_transaction_stream(
         Ok((peer(0), vec![contract_diff(14), declared_class(14), SDFin]))
     ],
     vec![len(13)], // but only 1 block provided in the count stream
-    vec![
-        Ok((peer(0), state_diff(13))),
-        Err(peer(0)) // the second block is not processed
-    ]
+    vec![(peer(0), state_diff(13))]
 )]
 #[case::too_many_responses_storage_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(15), declared_class(15), surplus_storage(), SDFin]))],
     vec![len(15)],
-    vec![Ok((peer(0), state_diff(15)))]
+    vec![(peer(0), state_diff(15))]
 )]
 #[case::too_many_responses_storage_no_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(15), declared_class(15), surplus_storage()]))],
     vec![len(15)],
-    vec![Ok((peer(0), state_diff(15)))]
+    vec![(peer(0), state_diff(15))]
 )]
 #[case::too_many_responses_nonce_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(16), declared_class(16), surplus_nonce(), SDFin]))],
     vec![len(16)],
-    vec![Ok((peer(0), state_diff(16)))]
+    vec![(peer(0), state_diff(16))]
 )]
 #[case::too_many_responses_nonce_no_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(16), declared_class(16), surplus_nonce()]))],
     vec![len(16)],
-    vec![Ok((peer(0), state_diff(16)))]
+    vec![(peer(0), state_diff(16))]
 )]
 #[case::too_many_responses_class_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(17), declared_class(17), surplus_class(), SDFin]))],
     vec![len(17)],
-    vec![Ok((peer(0), state_diff(17)))]
+    vec![(peer(0), state_diff(17))]
 )]
 #[case::too_many_responses_class_no_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(17), declared_class(17), surplus_class()]))],
     vec![len(17)],
-    vec![Ok((peer(0), state_diff(17)))]
+    vec![(peer(0), state_diff(17))]
 )]
 #[case::too_many_responses_declaration_with_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(18), declared_class(18), declared_class(19), SDFin]))],
     vec![len(18)],
-    vec![Ok((peer(0), state_diff(18)))]
+    vec![(peer(0), state_diff(18))]
 )]
 #[case::too_many_responses_declaration_no_fin(
     1,
     vec![Ok((peer(0), vec![contract_diff(18), declared_class(18), declared_class(19)]))],
     vec![len(18)],
-    vec![Ok((peer(0), state_diff(18)))]
+    vec![(peer(0), state_diff(18))]
 )]
 #[case::empty_response_streams_are_ignored(
     1,
@@ -499,7 +496,7 @@ async fn make_transaction_stream(
         Ok((peer(2), vec![]))
     ],
     vec![len(20)],
-    vec![Ok((peer(1), state_diff(20)))]
+    vec![(peer(1), state_diff(20))]
 )]
 #[case::empty_responses_are_ignored(
     1,
@@ -509,25 +506,30 @@ async fn make_transaction_stream(
         Ok((peer(2), vec![SDFin]))
     ],
     vec![len(20)],
-    vec![Ok((peer(1), state_diff(20)))]
+    vec![(peer(1), state_diff(20))]
 )]
 #[test_log::test(tokio::test)]
 async fn make_state_diff_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>>,
     #[case] state_diff_len_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, UnverifiedStateUpdateData), TestPeer>>,
+    #[case] expected_stream: Vec<(TestPeer, UnverifiedStateUpdateData)>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: StateDiffsRequest| async { send_request(responses.clone()).await };
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: StateDiffsRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
 
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
 
-    let actual = super::make_state_diff_stream(
+    let actual = super::state_diff_stream::make(
         start,
         stop,
         stream::iter(
@@ -538,15 +540,14 @@ async fn make_state_diff_stream(
         get_peers,
         send_request,
     )
-    .map_ok(|x| (TestPeer(x.peer), x.data))
-    .map_err(|x| TestPeer(x.peer))
+    .map(|x| (TestPeer(x.peer), x.data))
     .collect::<Vec<_>>()
     .await;
 
     let expected = expected_stream
         .into_iter()
         .enumerate()
-        .map(|(i, x)| x.map(|(p, su)| (p, (su, BlockNumber::new_or_panic(i as u64)))))
+        .map(|(i, (p, su))| (p, (su, BlockNumber::new_or_panic(i as u64))))
         .collect::<Vec<_>>();
 
     pretty_assertions_sorted::assert_eq!(actual, expected);

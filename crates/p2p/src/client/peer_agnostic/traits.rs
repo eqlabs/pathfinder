@@ -52,12 +52,10 @@ pub trait StateDiffStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<
-            Item = anyhow::Result<(usize, StateDiffCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
+        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+            + Send
+            + 'static,
+    ) -> impl Stream<Item = PeerData<(UnverifiedStateUpdateData, BlockNumber)>>;
 }
 
 pub trait ClassStream {
