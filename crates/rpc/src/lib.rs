@@ -198,6 +198,7 @@ impl RpcServer {
             .route("/rpc/v0_7", post(rpc_handler))
             .with_state(v07_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
+            .route("/rpc/pathfinder/v0_1", post(rpc_handler))
             .with_state(pathfinder_routes.clone());
 
         let router = if self.context.websocket.is_some() {
@@ -894,6 +895,8 @@ mod tests {
     #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
     
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
+    #[case::pathfinder("/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[])]
+
 
     #[tokio::test]
     async fn rpc_routing(
