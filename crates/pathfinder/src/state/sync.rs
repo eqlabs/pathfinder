@@ -4,12 +4,14 @@ pub mod l2;
 mod pending;
 pub mod revert;
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
+use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
@@ -839,7 +841,11 @@ async fn l2_update(
             .context("Create database transaction")?;
         let (storage_commitment, class_commitment) = update_starknet_state(
             &transaction,
-            &state_update,
+            StarknetStateUpdate {
+                contract_updates: &state_update.contract_updates,
+                system_contract_updates: &state_update.system_contract_updates,
+                declared_sierra_classes: &state_update.declared_sierra_classes,
+            },
             verify_tree_hashes,
             block.block_number,
             storage,
@@ -1043,9 +1049,15 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
     })
 }
 
+pub struct StarknetStateUpdate<'a> {
+    pub contract_updates: &'a HashMap<ContractAddress, ContractUpdate>,
+    pub system_contract_updates: &'a HashMap<ContractAddress, SystemContractUpdate>,
+    pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
+}
+
 pub fn update_starknet_state(
     transaction: &Transaction<'_>,
-    state_update: &StateUpdate,
+    state_update: StarknetStateUpdate<'_>,
     verify_hashes: bool,
     block: BlockNumber,
     // we need this so that we can create extra read-only transactions for
@@ -1109,7 +1121,7 @@ pub fn update_starknet_state(
             .context("Inserting contract update result")?;
     }
 
-    for (contract, update) in &state_update.system_contract_updates {
+    for (contract, update) in state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
             &update.storage,
@@ -1151,7 +1163,7 @@ pub fn update_starknet_state(
     }
     .with_verify_hashes(verify_hashes);
 
-    for (sierra, casm) in &state_update.declared_sierra_classes {
+    for (sierra, casm) in state_update.declared_sierra_classes {
         let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
 
         transaction

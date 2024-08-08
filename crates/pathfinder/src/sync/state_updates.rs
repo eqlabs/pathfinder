@@ -21,7 +21,7 @@ use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::task::spawn_blocking;
 
-use crate::state::update_starknet_state;
+use crate::state::{update_starknet_state, StarknetStateUpdate};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
 
@@ -151,44 +151,32 @@ impl ProcessStage for UpdateStarknetState {
 
         let tail = self.current_block;
 
-        let header = db
-            .block_header(tail.into())
-            .context("Querying block header")?
-            .context("Block header not found")?;
-        let parent_state_commitment = match self.current_block.parent() {
-            Some(parent) => db
-                .state_commitment(parent.into())
-                .context("Querying parent block header")?
-                .context("Parent block header not found")?,
-            None => StateCommitment::default(),
-        };
-        let state_update = StateUpdate {
-            block_hash: header.hash,
-            parent_state_commitment,
-            state_commitment: header.state_commitment,
-            contract_updates: state_update.contract_updates,
-            system_contract_updates: state_update.system_contract_updates,
-            declared_cairo_classes: state_update.declared_cairo_classes,
-            declared_sierra_classes: state_update.declared_sierra_classes,
-        };
-
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
-            &state_update,
+            StarknetStateUpdate {
+                contract_updates: &state_update.contract_updates,
+                system_contract_updates: &state_update.system_contract_updates,
+                declared_sierra_classes: &state_update.declared_sierra_classes,
+            },
             self.verify_tree_hashes,
-            header.number,
+            self.current_block,
             self.storage.clone(),
         )
         .context("Updating Starknet state")?;
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+
         // Ensure that roots match.
-        if state_commitment != header.state_commitment {
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let expected_state_commitment = db
+            .state_commitment(self.current_block.into())
+            .context("Querying state commitment")?
+            .context("State commitment not found")?;
+        if state_commitment != expected_state_commitment {
             return Err(SyncError2::StateRootMismatch);
         }
 
         db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
             .context("Updating storage commitment")?;
-        db.insert_state_update(self.current_block, &state_update)
+        db.insert_state_update_data(self.current_block, &state_update)
             .context("Inserting state update data")?;
         db.commit().context("Committing db transaction")?;
 
