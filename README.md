@@ -284,7 +284,7 @@ The `path` of the URL used to access the JSON-RPC server determines which versio
 - the `v0.5.1` API is exposed on the `/`, `/rpc/v0.5` and `/rpc/v0_5` path
 - the `v0.6.0` API is exposed on the `/rpc/v0_6` path via HTTP and on `/ws/rpc/v0_6` via Websocket
 - the `v0.7.0` API is exposed on the `/rpc/v0_7` path via HTTP and on `/ws/rpc/v0_7` via Websocket
-- the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1` via HTTP and `/ws/rpc/pathfinder/v0_1` via Websocket.
+- the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1` and `/rpc/pathfinder/v0_1` via HTTP and `/ws/rpc/pathfinder/v0_1` via Websocket.
 
 Version of the API, which is served on the root (`/`) path via HTTP and on `/ws` via Websocket, can be configured via the pathfinder parameter `--rpc.root-version` (or the `RPC_ROOT_VERSION` environment variable).
 
