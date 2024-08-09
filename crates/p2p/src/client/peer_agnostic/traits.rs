@@ -79,8 +79,8 @@ pub trait EventStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>;
+        event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = PeerData<EventsForBlockByTransaction>>;
 }
 
 pub trait BlockClient {

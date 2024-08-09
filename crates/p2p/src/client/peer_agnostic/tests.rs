@@ -1,4 +1,4 @@
-use futures::{stream, TryStreamExt};
+use futures::stream;
 use rstest::rstest;
 use BlockHeadersResponse::Fin as HdrFin;
 use ClassesResponse::Fin as ClassFin;
@@ -749,17 +749,17 @@ async fn make_class_definition_stream(
     vec![Ok((peer(0), vec![event_resp(0, 0), event_resp(1, 0), event_resp(2, 2), EventFin]))],
     vec![3],
     //                                      transaction
-    //                                events   |                block
-    //                                   / \   |                  |
-    vec![Ok((peer(0), events(vec![(vec![0, 1], 0), (vec![2], 2)], 0)))]
+    //                             events   |                block
+    //                                / \   |                  |
+    vec![(peer(0), events(vec![(vec![0, 1], 0), (vec![2], 2)], 0))]
 )]
 #[case::one_peer_2_blocks(
     2,
     vec![Ok((peer(0), vec![event_resp(3, 3), event_resp(4, 3), event_resp(5, 5), event_resp(6, 6), EventFin]))],
     vec![2, 2],
     vec![
-        Ok((peer(0), events(vec![(vec![3, 4], 3)], 0))),
-        Ok((peer(0), events(vec![(vec![5], 5), (vec![6], 6)], 1)))
+        (peer(0), events(vec![(vec![3, 4], 3)], 0)),
+        (peer(0), events(vec![(vec![5], 5), (vec![6], 6)], 1))
     ]
 )]
 #[case::one_peer_2_blocks_in_2_attempts(
@@ -771,8 +771,8 @@ async fn make_class_definition_stream(
     ],
     vec![2, 2],
     vec![
-        Ok((peer(0), events(vec![(vec![7], 7), (vec![8], 8)], 0))),
-        Ok((peer(0), events(vec![(vec![9, 10], 9)], 1))),
+        (peer(0), events(vec![(vec![7], 7), (vec![8], 8)], 0)),
+        (peer(0), events(vec![(vec![9, 10], 9)], 1)),
     ]
 )]
 #[case::two_peers_1_block_per_peer(
@@ -786,8 +786,8 @@ async fn make_class_definition_stream(
     ],
     vec![2, 1],
     vec![
-        Ok((peer(0), events(vec![(vec![11, 12], 11)], 0))),
-        Ok((peer(1), events(vec![(vec![13], 13)], 1))),
+        (peer(0), events(vec![(vec![11, 12], 11)], 0)),
+        (peer(1), events(vec![(vec![13], 13)], 1)),
     ]
 )]
 #[case::first_peer_premature_eos_with_fin(
@@ -799,8 +799,8 @@ async fn make_class_definition_stream(
     ],
     vec![2, 2],
     vec![
-        Ok((peer(0), events(vec![(vec![14, 15], 14)], 0))),
-        Ok((peer(1), events(vec![(vec![16, 17], 16)], 1))),
+        (peer(0), events(vec![(vec![14, 15], 14)], 0)),
+        (peer(1), events(vec![(vec![16, 17], 16)], 1)),
     ]
 )]
 #[case::first_peer_full_block_no_fin(
@@ -812,8 +812,8 @@ async fn make_class_definition_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), events(vec![(vec![18], 18)], 0))),
-        Ok((peer(1), events(vec![(vec![19], 19)], 1))),
+        (peer(0), events(vec![(vec![18], 18)], 0)),
+        (peer(1), events(vec![(vec![19], 19)], 1)),
     ]
 )]
 #[case::last_peer_full_block_no_fin(
@@ -824,8 +824,8 @@ async fn make_class_definition_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), events(vec![(vec![18], 18)], 0))),
-        Ok((peer(1), events(vec![(vec![19], 19)], 1))),
+        (peer(0), events(vec![(vec![18], 18)], 0)),
+        (peer(1), events(vec![(vec![19], 19)], 1)),
     ]
 )]
 // The same as above but the first peer gives half of the second block before closing the
@@ -839,8 +839,8 @@ async fn make_class_definition_stream(
     ],
     vec![2, 3],
     vec![
-        Ok((peer(0), events(vec![(vec![20], 20), (vec![21], 21)], 0))),
-        Ok((peer(1), events(vec![(vec![22, 23, 24], 22)], 1))),
+        (peer(0), events(vec![(vec![20], 20), (vec![21], 21)], 0)),
+        (peer(1), events(vec![(vec![22, 23, 24], 22)], 1)),
     ]
 )]
 #[case::count_steam_is_too_short(
@@ -852,8 +852,8 @@ async fn make_class_definition_stream(
     ],
     vec![1], // but only 1 block provided in the count stream
     vec![
-        Ok((peer(0), events(vec![(vec![25], 25)], 0))),
-        Err(peer(0)) // the second block is not processed
+        (peer(0), events(vec![(vec![25], 25)], 0)),
+        // the second block is not processed
     ]
 )]
 #[case::too_many_responses_with_fin(
@@ -861,7 +861,7 @@ async fn make_class_definition_stream(
     vec![Ok((peer(0), vec![event_resp(27, 27), event_resp(28, 27), event_resp(29, 27), EventFin]))],
     vec![1],
     vec![
-        Ok((peer(0), events(vec![(vec![27], 27)], 0))),
+        (peer(0), events(vec![(vec![27], 27)], 0)),
     ]
 )]
 #[case::too_many_responses_no_fin(
@@ -869,7 +869,7 @@ async fn make_class_definition_stream(
     vec![Ok((peer(0), vec![event_resp(27, 27), event_resp(28, 27), event_resp(29, 27)]))],
     vec![1],
     vec![
-        Ok((peer(0), events(vec![(vec![27], 27)], 0))),
+        (peer(0), events(vec![(vec![27], 27)], 0)),
     ]
 )]
 #[case::empty_response_streams_are_ignored(
@@ -881,7 +881,7 @@ async fn make_class_definition_stream(
     ],
     vec![1],
     vec![
-        Ok((peer(0), events(vec![(vec![30], 30)], 0)))
+        (peer(0), events(vec![(vec![30], 30)], 0))
     ]
 )]
 #[case::empty_responses_are_ignored(
@@ -893,7 +893,7 @@ async fn make_class_definition_stream(
     ],
     vec![1],
     vec![
-        Ok((peer(0), events(vec![(vec![30], 30)], 0)))
+        (peer(0), events(vec![(vec![30], 30)], 0))
     ]
 )]
 #[test_log::test(tokio::test)]
@@ -901,25 +901,30 @@ async fn make_event_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<EventsResponse>), TestPeer>>,
     #[case] events_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, TaggedEventsForBlockByTransaction), TestPeer>>,
+    #[case] expected_stream: Vec<(TestPeer, TaggedEventsForBlockByTransaction)>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: EventsRequest| async { send_request(responses.clone()).await };
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: EventsRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
 
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
 
-    let actual = super::make_event_stream(
+    let actual = super::event_stream::make(
         start,
         stop,
         stream::iter(events_per_block.into_iter().map(Ok)),
         get_peers,
         send_request,
     )
-    .map_ok(|x| {
+    .map(|x| {
         (
             TestPeer(x.peer),
             (
@@ -932,7 +937,6 @@ async fn make_event_stream(
             ),
         )
     })
-    .map_err(|x| TestPeer(x.peer))
     .collect::<Vec<_>>()
     .await;
 

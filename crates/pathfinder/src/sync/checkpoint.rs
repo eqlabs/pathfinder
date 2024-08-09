@@ -372,12 +372,11 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 }
 
 async fn handle_event_stream(
-    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+    stream: impl Stream<Item = PeerData<EventsForBlockByTransaction>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
-        .map_err(|e| e.data.into())
-        .and_then(|x| events::verify_commitment(x, storage.clone()))
+        .then(|x| events::verify_commitment(x, storage.clone()))
         .try_chunks(100)
         .map_err(|e| e.1)
         .and_then(|x| events::persist(storage.clone(), x))
@@ -1480,8 +1479,7 @@ mod tests {
         use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events:
-                Vec<Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+            pub streamed_events: Vec<PeerData<EventsForBlockByTransaction>>,
             pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
             pub storage: Storage,
         }
@@ -1492,14 +1490,14 @@ mod tests {
                 let streamed_events = blocks
                     .iter()
                     .map(|block| {
-                        Result::Ok(PeerData::for_tests((
+                        PeerData::for_tests((
                             block.header.header.number,
                             block
                                 .transaction_data
                                 .iter()
                                 .map(|(tx, _, events)| (tx.hash, events.clone()))
                                 .collect::<Vec<_>>(),
-                        )))
+                        ))
                     })
                     .collect::<Vec<_>>();
                 let expected_events = blocks
@@ -1583,7 +1581,7 @@ mod tests {
                 expected_events,
                 storage,
             } = setup(NUM_BLOCKS, false).await;
-            let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
+            let expected_peer_id = streamed_events[0].peer;
 
             assert_matches::assert_matches!(
                 handle_event_stream(stream::iter(streamed_events), storage.clone())
@@ -1594,25 +1592,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn stream_failure() {
-            assert_matches::assert_matches!(
-                handle_event_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
-                    StorageBuilder::in_memory().unwrap()
-                )
-                .await
-                .unwrap_err(),
-                SyncError::Other(_)
-            );
-        }
-
-        #[tokio::test]
         async fn header_missing() {
             assert_matches::assert_matches!(
                 handle_event_stream(
-                    stream::once(std::future::ready(Ok(Faker.fake()))),
+                    stream::once(std::future::ready(Faker.fake())),
                     StorageBuilder::in_memory().unwrap()
                 )
                 .await
