@@ -605,7 +605,7 @@ mod header_stream {
         let (tx, rx) = mpsc::channel(1);
         tokio::spawn(async move {
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
+            loop {
                 'next_peer: for peer in get_peers().await {
                     let limit = start.max(stop) - start.min(stop) + 1;
 
@@ -630,13 +630,13 @@ mod header_stream {
                         match handle_response(peer, r, dir, &mut start, stop, tx.clone()).await {
                             Action::NextResponse => {}
                             Action::NextPeer => continue 'next_peer,
-                            Action::TerminateStream => break 'outer,
+                            Action::TerminateStream => return,
                         }
                     }
 
                     if done(dir, start, stop) {
                         tracing::debug!(%peer, "Header stream Fin missing");
-                        break 'outer;
+                        return;
                     }
 
                     // TODO: track how much and how fast this peer responded
@@ -741,7 +741,7 @@ mod transaction_stream {
             let mut progress = TransactionStreamProgress::new(cnt);
 
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
+            loop {
                 'next_peer: for peer in get_peers().await {
                     let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
@@ -762,7 +762,7 @@ mod transaction_stream {
                             .await
                         {
                             Action::NextPeer => continue 'next_peer,
-                            Action::TerminateStream => break 'outer,
+                            Action::TerminateStream => return,
                             Action::TryYield(txn) => {
                                 transactions.push(*txn);
                                 if try_yield(
@@ -776,7 +776,7 @@ mod transaction_stream {
                                 )
                                 .await
                                 {
-                                    break 'outer;
+                                    return;
                                 }
                                 // Move to the next response
                             }
@@ -789,7 +789,7 @@ mod transaction_stream {
 
                     if progress.count() == 0 && start == stop {
                         // The last block we were looking for was not followed by a Fin
-                        break 'outer;
+                        return;
                     }
                 }
             }
@@ -1025,7 +1025,7 @@ mod state_diff_stream {
                                 )
                                 .await
                                 {
-                                    break 'outer;
+                                    return;
                                 }
                                 // Move to the next response
                             }
@@ -1038,7 +1038,7 @@ mod state_diff_stream {
 
                     if progress.count() == 0 && start == stop {
                         // The last block we were looking for was not followed by a Fin
-                        break 'outer;
+                        return;
                     }
                 }
             }
@@ -1316,7 +1316,7 @@ mod class_definition_stream {
             let mut progress = BlockProgress::new(cnt);
 
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
+            loop {
                 'next_peer: for peer in get_peers().await {
                     let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
@@ -1358,11 +1358,11 @@ mod class_definition_stream {
                         )
                         .await
                         {
-                            break 'outer;
+                            return;
                         }
                     }
 
-                    break 'outer;
+                    return;
                 }
             }
         });
@@ -1486,7 +1486,7 @@ mod event_stream {
             let mut progress = BlockProgress::new(cnt);
 
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
+            loop {
                 'next_peer: for peer in get_peers().await {
                     let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
@@ -1533,11 +1533,11 @@ mod event_stream {
                         )
                         .await
                         {
-                            break 'outer;
+                            return;
                         }
                     }
 
-                    break 'outer;
+                    return;
                 }
             }
         });
