@@ -710,9 +710,6 @@ mod header_stream {
 mod transaction_stream {
     use super::*;
 
-    /// ### Important
-    ///
-    /// Caller must guarantee `start <= stop`
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
@@ -750,47 +747,43 @@ mod transaction_stream {
                             continue 'next_peer;
                         }
                     };
-
-                    let mut transactions = Vec::new();
                     // If the previous peer failed to provide the entire block we need to start over
                     progress.rollback();
-                    tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
 
-                    while let Some(resp) = responses.next().await {
-                        let txn_idx = into_idx(transactions.len());
-                        match handle_response(peer, resp, &mut progress, txn_idx, start == stop)
-                            .await
-                        {
-                            Action::NextPeer => continue 'next_peer,
-                            Action::TerminateStream => return,
-                            Action::TryYield(txn) => {
-                                transactions.push(*txn);
-                                if try_yield(
-                                    peer,
-                                    &mut progress,
-                                    &mut counts_and_commitments_stream,
-                                    &mut transactions,
-                                    &mut start,
-                                    stop,
-                                    tx.clone(),
-                                )
-                                .await
-                                {
-                                    return;
+                    while start <= stop {
+                        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+                        let mut transactions = Vec::new();
+
+                        while progress.count() > 0 {
+                            match responses.next().await {
+                                Some(r) => {
+                                    let i = into_idx(transactions.len());
+                                    match handle_response(peer, r, i) {
+                                        Some(x) => transactions.push(x),
+                                        None => continue 'next_peer,
+                                    }
                                 }
-                                // Move to the next response
+                                None => continue 'next_peer,
                             }
+                            *progress.count_mut() -= 1;
+                        }
+
+                        if yield_block(
+                            peer,
+                            &mut progress,
+                            &mut counts_and_commitments_stream,
+                            transactions,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
+                            return;
                         }
                     }
 
-                    // The current peer is not giving us a Fin
-                    // TODO punish the peer
-                    tracing::debug!(%peer, "Fin missing");
-
-                    if progress.count() == 0 && start == stop {
-                        // The last block we were looking for was not followed by a Fin
-                        return;
-                    }
+                    return;
                 }
             }
         });
@@ -798,55 +791,33 @@ mod transaction_stream {
         ReceiverStream::new(rx)
     }
 
-    async fn handle_response(
+    /// ### Important
+    ///
+    /// Return None if the caller should move to the next peer
+    fn handle_response(
         peer: PeerId,
         response: TransactionsResponse,
-        progress: &mut TransactionStreamProgress,
         txn_idx: TransactionIndex,
-        is_last_block: bool,
-    ) -> Action {
+    ) -> Option<(TransactionVariant, Receipt)> {
         match response {
             TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
                 transaction,
                 receipt,
             }) => {
-                let (Ok(t), Ok(r)) = (
+                if let (Ok(t), Ok(r)) = (
                     TransactionVariant::try_from_dto(transaction),
                     Receipt::try_from((receipt, txn_idx)),
-                ) else {
+                ) {
+                    Some((t, r))
+                } else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Transaction or receipt failed to parse");
-                    return Action::NextPeer;
-                };
-
-                match progress.count_mut().checked_sub(1) {
-                    Some(x) => {
-                        *progress.count_mut() = x;
-                        Action::TryYield(Box::new((t, r)))
-                    }
-                    None => {
-                        // TODO punish the peer
-                        tracing::debug!(%peer, "Too many transactions");
-                        // We can only get here in case of the last block, which means that the
-                        // stream should be terminated
-                        debug_assert!(is_last_block);
-                        Action::TerminateStream
-                    }
+                    None
                 }
             }
             TransactionsResponse::Fin => {
-                if progress.count() > 0 {
-                    // TODO punish the peer
-                    tracing::debug!(%peer, "Premature transaction stream Fin");
-                    return Action::NextPeer;
-                }
-
-                if is_last_block {
-                    return Action::TerminateStream;
-                }
-
                 // This peer will not give us more blocks, move to the next peer
-                Action::NextPeer
+                None
             }
         }
     }
@@ -869,54 +840,49 @@ mod transaction_stream {
     /// ### Important
     ///
     /// Returns true if the stream should be terminated
-    async fn try_yield(
+    async fn yield_block(
         peer: PeerId,
         progress: &mut TransactionStreamProgress,
         counts_and_commitments_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
                   + Unpin
                   + Send
                   + 'static),
-        transactions: &mut Vec<(TransactionVariant, Receipt)>,
+        transactions: Vec<(TransactionVariant, Receipt)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
         tx: mpsc::Sender<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
     ) -> bool {
-        if progress.count() == 0 {
-            tracing::trace!(block_number=%start, "All transactions received for block");
+        tracing::trace!(block_number=%start, "All transactions received for block");
 
-            _ = tx
-                .send(PeerData::new(
-                    peer,
-                    (
-                        UnverifiedTransactionData {
-                            expected_commitment: progress.commitment(),
-                            transactions: std::mem::take(transactions),
-                        },
-                        *start,
-                    ),
-                ))
-                .await;
+        _ = tx
+            .send(PeerData::new(
+                peer,
+                (
+                    UnverifiedTransactionData {
+                        expected_commitment: progress.commitment(),
+                        transactions,
+                    },
+                    *start,
+                ),
+            ))
+            .await;
 
-            if *start < stop {
-                tracing::trace!(next_block=%start, "Moving to next block");
-                *start += 1;
-
-                if let Some(Ok(x)) = counts_and_commitments_stream.next().await {
-                    *progress = TransactionStreamProgress::new(x);
-                } else {
-                    tracing::debug!(%peer, "Transaction counts and commitments stream terminated prematurely");
-                    return true;
-                };
-            }
+        if *start == stop {
+            return true;
         }
 
-        false
-    }
+        *start += 1;
 
-    enum Action {
-        NextPeer,
-        TerminateStream,
-        TryYield(Box<(TransactionVariant, Receipt)>),
+        let Some(Ok(x)) = counts_and_commitments_stream.next().await else {
+            tracing::debug!("Transaction counts and commitments stream terminated prematurely");
+            return true;
+        };
+
+        *progress = TransactionStreamProgress::new(x);
+
+        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+
+        false
     }
 
     #[derive(Clone, Copy, Debug)]
