@@ -36,7 +36,7 @@ pub trait TransactionStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        transaction_counts_and_commitments_stream: impl Stream<Item = (usize, TransactionCommitment)>
             + Send
             + 'static,
     ) -> impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>>;

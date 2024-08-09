@@ -15,6 +15,8 @@ use pathfinder_common::{
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::{SyncError, SyncError2};
 use super::stream::ProcessStage;
@@ -54,15 +56,17 @@ pub(super) fn counts_and_commitments_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<(usize, TransactionCommitment)>> {
+    err_tx: mpsc::Sender<anyhow::Error>,
+) -> impl futures::Stream<Item = (usize, TransactionCommitment)> {
     const BATCH_SIZE: usize = 1000;
 
-    async_stream::try_stream! {
+    let (tx, rx) = mpsc::channel(1);
+    tokio::spawn(async move {
         let mut batch = VecDeque::new();
 
         while start <= stop {
             if let Some(counts) = batch.pop_front() {
-                yield counts;
+                _ = tx.send(counts).await;
                 continue;
             }
 
@@ -76,7 +80,7 @@ pub(super) fn counts_and_commitments_stream(
             .expect(">0");
             let storage = storage.clone();
 
-            batch = tokio::task::spawn_blocking(move || {
+            let result = tokio::task::spawn_blocking(move || {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
@@ -85,22 +89,33 @@ pub(super) fn counts_and_commitments_stream(
                     .context("Querying transaction counts")
             })
             .await
-            .context("Joining blocking task")??;
+            .context("Joining blocking task");
 
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No transaction counts found for range: start {start}, batch_size: {batch_size}"
-                ))?;
-                break;
+            match result {
+                Ok(Ok(b)) if !b.is_empty() => {
+                    batch = b;
+                }
+                Ok(Ok(_)) => {
+                    let _ = err_tx.send(anyhow::anyhow!(
+                        "No transaction counts found for range: start {start}, batch_size: \
+                         {batch_size}"
+                    ));
+                }
+                Ok(Err(e)) | Err(e) => {
+                    let _ = err_tx.send(e);
+                    return;
+                }
             }
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
 
         while let Some(counts) = batch.pop_front() {
-            yield counts;
+            _ = tx.send(counts).await;
         }
-    }
+    });
+
+    ReceiverStream::new(rx)
 }
 
 pub struct CalculateHashes(pub ChainId);

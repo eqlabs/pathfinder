@@ -168,7 +168,7 @@ impl TransactionStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        transaction_counts_and_commitments_stream: impl Stream<Item = (usize, TransactionCommitment)>
             + Send
             + 'static,
     ) -> impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>> {
@@ -716,7 +716,7 @@ mod transaction_stream {
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
-        counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        counts_and_commitments_stream: impl Stream<Item = (usize, TransactionCommitment)>
             + Send
             + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
@@ -732,7 +732,7 @@ mod transaction_stream {
         tokio::spawn(async move {
             let mut counts_and_commitments_stream = Box::pin(counts_and_commitments_stream);
 
-            let Some(Ok(cnt)) = counts_and_commitments_stream.next().await else {
+            let Some(cnt) = counts_and_commitments_stream.next().await else {
                 tracing::debug!("Transaction counts and commitments stream terminated prematurely");
                 return;
             };
@@ -846,7 +846,7 @@ mod transaction_stream {
     async fn yield_block(
         peer: PeerId,
         progress: &mut TransactionStreamProgress,
-        counts_and_commitments_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+        counts_and_commitments_stream: &mut (impl Stream<Item = (usize, TransactionCommitment)>
                   + Unpin
                   + Send
                   + 'static),
@@ -876,7 +876,7 @@ mod transaction_stream {
 
         *start += 1;
 
-        let Some(Ok(x)) = counts_and_commitments_stream.next().await else {
+        let Some(x) = counts_and_commitments_stream.next().await else {
             tracing::debug!("Transaction counts and commitments stream terminated prematurely");
             return true;
         };

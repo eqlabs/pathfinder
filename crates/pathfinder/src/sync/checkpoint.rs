@@ -40,7 +40,7 @@ use pathfinder_storage::Storage;
 use primitive_types::H160;
 use serde_json::de;
 use starknet_gateway_client::{Client, GatewayApi};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
@@ -177,14 +177,24 @@ impl Sync {
             return Ok(());
         };
 
+        let (db_err_tx, mut db_err_rx) = mpsc::channel(1);
+
         let transaction_stream = self.p2p.clone().transaction_stream(
             start,
             stop,
-            transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
+            transactions::counts_and_commitments_stream(
+                self.storage.clone(),
+                start,
+                stop,
+                db_err_tx,
+            ),
         );
 
-        handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
-            .await?;
+        // Short circuit on DB error
+        tokio::select! {
+            r = handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start) => r,
+            e = db_err_rx.recv() => Err(e.expect("sender exists").into()),
+        }?;
 
         Ok(())
     }
