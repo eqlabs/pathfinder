@@ -607,24 +607,14 @@ mod header_stream {
             // Loop which refreshes peer set once we exhaust it.
             loop {
                 'next_peer: for peer in get_peers().await {
-                    let limit = start.max(stop) - start.min(stop) + 1;
-
-                    let request = BlockHeadersRequest {
-                        iteration: Iteration {
-                            start: u64::try_from(start).expect("start >= 0").into(),
-                            direction: dir,
-                            limit: limit.try_into().expect("limit >= 0"),
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses = match send_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            tracing::debug!(%peer, reason=%error, "Headers request failed");
-                            continue 'next_peer;
-                        }
-                    };
+                    let mut responses =
+                        match send_request(peer, make_request(start, stop, dir)).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                tracing::debug!(%peer, reason=%error, "Headers request failed");
+                                continue 'next_peer;
+                            }
+                        };
 
                     while let Some(r) = responses.next().await {
                         match handle_response(peer, r, dir, &mut start, stop, tx.clone()).await {
@@ -690,6 +680,19 @@ mod header_stream {
 
                 Action::NextPeer
             }
+        }
+    }
+
+    fn make_request(start: i64, stop: i64, dir: Direction) -> BlockHeadersRequest {
+        let limit = start.max(stop) - start.min(stop) + 1;
+
+        BlockHeadersRequest {
+            iteration: Iteration {
+                start: u64::try_from(start).expect("start >= 0").into(),
+                direction: dir,
+                limit: limit.try_into().expect("limit >= 0"),
+                step: 1.into(),
+            },
         }
     }
 
