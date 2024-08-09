@@ -73,6 +73,11 @@ zeroize = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
+alloy = { version = "0.2.1", features = [
+    "contract",
+    "provider-ws",
+    "rpc-types-eth",
+] }
 assert_matches = { workspace = true }
 const-decoder = { workspace = true }
 flate2 = { workspace = true }
