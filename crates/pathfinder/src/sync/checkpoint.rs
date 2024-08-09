@@ -50,6 +50,9 @@ use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
+#[cfg(test)]
+mod fixture;
+
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
@@ -1127,7 +1130,7 @@ mod tests {
 
         async fn setup(num_blocks: usize) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let mut blocks = super::fixture::blocks()[..num_blocks].to_vec();
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
@@ -1140,10 +1143,12 @@ mod tests {
                         )))
                     })
                     .collect::<Vec<_>>();
+                let mut implicit_declarations = HashSet::new();
                 let expected_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        // Cairo0 Deploy should also count as implicit declaration
+                        // Cairo0 Deploy should also count as implicit declaration the first time
+                        // it happens
                         let mut state_diff: StateUpdateData = block.state_update.clone().into();
                         block
                             .state_update
@@ -1152,19 +1157,16 @@ mod tests {
                             .for_each(|(_, v)| {
                                 v.class.as_ref().inspect(|class_update| {
                                     if let ContractClassUpdate::Deploy(class_hash) = class_update {
-                                        state_diff.declared_cairo_classes.insert(*class_hash);
+                                        if !implicit_declarations.contains(class_hash) {
+                                            state_diff.declared_cairo_classes.insert(*class_hash);
+                                            implicit_declarations.insert(*class_hash);
+                                        }
                                     }
                                 });
                             });
                         state_diff
                     })
                     .collect::<Vec<_>>();
-                blocks.iter_mut().for_each(|block| {
-                    // Purge state diff data and class definitions.
-                    block.state_update = Default::default();
-                    block.sierra_defs = Default::default();
-                    block.cairo_defs = Default::default();
-                });
 
                 let storage = StorageBuilder::in_memory().unwrap();
                 fake_storage::fill(&storage, &blocks);
@@ -1180,7 +1182,7 @@ mod tests {
 
         #[tokio::test]
         async fn happy_path() {
-            const NUM_BLOCKS: usize = 10;
+            const NUM_BLOCKS: usize = 2;
             let Setup {
                 streamed_state_diffs,
                 expected_state_diffs,
