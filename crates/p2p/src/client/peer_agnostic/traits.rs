@@ -64,7 +64,7 @@ pub trait ClassStream {
         start: BlockNumber,
         stop: BlockNumber,
         declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>;
+    ) -> impl Stream<Item = PeerData<ClassDefinition>>;
 }
 
 pub trait EventStream {

@@ -560,17 +560,17 @@ async fn make_state_diff_stream(
     //                                |
     vec![Ok((peer(0), vec![class_resp(0), ClassFin]))],
     vec![1],
-    //                  class  block
-    //                      |  |
-    vec![Ok((peer(0), class(0, 0)))]
+    //               class  block
+    //                   |  |
+    vec![(peer(0), class(0, 0))]
 )]
 #[case::one_peer_2_blocks(
     2,
     vec![Ok((peer(0), vec![class_resp(1), class_resp(2), ClassFin]))],
     vec![1, 1],
     vec![
-        Ok((peer(0), class(1, 0))),
-        Ok((peer(0), class(2, 1)))
+        (peer(0), class(1, 0)),
+        (peer(0), class(2, 1))
     ]
 )]
 #[case::one_peer_2_blocks_in_2_attempts(
@@ -582,10 +582,10 @@ async fn make_state_diff_stream(
     ],
     vec![2, 2],
     vec![
-        Ok((peer(0), class(3, 0))),
-        Ok((peer(0), class(4, 0))),
-        Ok((peer(0), class(5, 1))),
-        Ok((peer(0), class(6, 1)))
+        (peer(0), class(3, 0)),
+        (peer(0), class(4, 0)),
+        (peer(0), class(5, 1)),
+        (peer(0), class(6, 1))
     ]
 )]
 #[case::two_peers_1_block_per_peer(
@@ -599,8 +599,8 @@ async fn make_state_diff_stream(
     ],
     vec![1, 1],
     vec![
-        Ok((peer(0), class(7, 0))),
-        Ok((peer(1), class(8, 1)))
+        (peer(0), class(7, 0)),
+        (peer(1), class(8, 1))
     ]
 )]
 #[case::first_peer_premature_eos_with_fin(
@@ -612,9 +612,9 @@ async fn make_state_diff_stream(
     ],
     vec![1, 2],
     vec![
-        Ok((peer(0), class(9, 0))),
-        Ok((peer(1), class(10, 1))),
-        Ok((peer(1), class(11, 1)))
+        (peer(0), class(9, 0)),
+        (peer(1), class(10, 1)),
+        (peer(1), class(11, 1))
     ]
 )]
 #[case::first_peer_full_block_no_fin(
@@ -626,9 +626,9 @@ async fn make_state_diff_stream(
     ],
     vec![2, 1],
     vec![
-        Ok((peer(0), class(12, 0))),
-        Ok((peer(0), class(13, 0))),
-        Ok((peer(1), class(14, 1))),
+        (peer(0), class(12, 0)),
+        (peer(0), class(13, 0)),
+        (peer(1), class(14, 1)),
     ]
 )]
 #[case::last_peer_full_block_no_fin(
@@ -639,9 +639,9 @@ async fn make_state_diff_stream(
     ],
     vec![2, 1],
     vec![
-        Ok((peer(0), class(12, 0))),
-        Ok((peer(0), class(13, 0))),
-        Ok((peer(1), class(14, 1))),
+        (peer(0), class(12, 0)),
+        (peer(0), class(13, 0)),
+        (peer(1), class(14, 1)),
     ]
 )]
 // The same as above but the first peer gives half of the second block before closing the
@@ -655,10 +655,10 @@ async fn make_state_diff_stream(
     ],
     vec![1, 3],
     vec![
-        Ok((peer(0), class(15, 0))),
-        Ok((peer(1), class(16, 1))),
-        Ok((peer(1), class(17, 1))),
-        Ok((peer(1), class(18, 1))),
+        (peer(0), class(15, 0)),
+        (peer(1), class(16, 1)),
+        (peer(1), class(17, 1)),
+        (peer(1), class(18, 1)),
     ]
 )]
 #[case::count_steam_is_too_short(
@@ -670,21 +670,21 @@ async fn make_state_diff_stream(
     ],
     vec![1], // but only 1 block provided in the count stream
     vec![
-        Ok((peer(0), class(19, 0))),
-        Err(peer(0)) // the second block is not processed
+        (peer(0), class(19, 0)),
+        // the second block is not processed
     ]
 )]
 #[case::too_many_responses_declaration_with_fin(
     1,
     vec![Ok((peer(0), vec![class_resp(21), class_resp(22), ClassFin]))],
     vec![1],
-    vec![Ok((peer(0), class(21, 0)))]
+    vec![(peer(0), class(21, 0))]
 )]
 #[case::too_many_responses_declaration_no_fin(
     1,
     vec![Ok((peer(0), vec![class_resp(21), class_resp(22)]))],
     vec![1],
-    vec![Ok((peer(0), class(21, 0)))]
+    vec![(peer(0), class(21, 0))]
 )]
 #[case::empty_response_streams_are_ignored(
     1,
@@ -694,7 +694,7 @@ async fn make_state_diff_stream(
         Ok((peer(2), vec![]))
     ],
     vec![1],
-    vec![Ok((peer(1), class(22, 0)))]
+    vec![(peer(1), class(22, 0))]
 )]
 #[case::empty_responses_are_ignored(
     1,
@@ -704,14 +704,14 @@ async fn make_state_diff_stream(
         Ok((peer(2), vec![ClassFin]))
     ],
     vec![1],
-    vec![Ok((peer(1), class(22, 0)))]
+    vec![(peer(1), class(22, 0))]
 )]
 #[test_log::test(tokio::test)]
 async fn make_class_definition_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<ClassesResponse>), TestPeer>>,
     #[case] declared_classes_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, ClassDefinition), TestPeer>>,
+    #[case] expected_stream: Vec<(TestPeer, ClassDefinition)>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -729,8 +729,7 @@ async fn make_class_definition_stream(
         get_peers,
         send_request,
     )
-    .map_ok(|x| (TestPeer(x.peer), x.data))
-    .map_err(|x| TestPeer(x.peer))
+    .map(|x| (TestPeer(x.peer), x.data))
     .collect::<Vec<_>>()
     .await;
 

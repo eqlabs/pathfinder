@@ -339,9 +339,7 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
-    stream: impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
-        + Send
-        + 'static,
+    stream: impl Stream<Item = PeerData<ClassDefinition>> + Send + 'static,
     storage: Storage,
     fgw: SequencerClient,
     start: BlockNumber,
@@ -351,7 +349,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         class_definitions::ExpectedDeclarationsSource::new(storage.connection()?, start, stop)
             .spawn()?;
 
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(class_definitions::VerifyLayout, 10)
         .pipe(class_definitions::ComputeHash, 10)
@@ -1282,7 +1280,7 @@ mod tests {
         }
 
         struct Setup {
-            pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>,
+            pub streamed_classes: Vec<PeerData<ClassDefinition>>,
             pub expected_defs: HashMap<ClassHash, Vec<u8>>,
             pub storage: Storage,
         }
@@ -1325,18 +1323,18 @@ mod tests {
                 ];
 
                 let streamed_classes = vec![
-                    Ok(PeerData::for_tests(ClassDefinition::Cairo {
+                    PeerData::for_tests(ClassDefinition::Cairo {
                         block_number: BlockNumber::GENESIS + 1,
                         definition: CAIRO.to_vec(),
-                    })),
-                    Ok(PeerData::for_tests(ClassDefinition::Sierra {
+                    }),
+                    PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA0.to_vec(),
-                    })),
-                    Ok(PeerData::for_tests(ClassDefinition::Sierra {
+                    }),
+                    PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA2.to_vec(),
-                    })),
+                    }),
                 ];
 
                 let expected_defs = [
@@ -1424,7 +1422,7 @@ mod tests {
 
             assert_matches!(
                 handle_class_stream(
-                    stream::once(std::future::ready(Ok(data))),
+                    stream::once(std::future::ready(data)),
                     storage,
                     FakeFgw,
                     BlockNumber::GENESIS,
@@ -1442,7 +1440,7 @@ mod tests {
                 ..
             } = setup(true).await;
 
-            match streamed_classes.last_mut().unwrap().as_mut().unwrap().data {
+            match streamed_classes.last_mut().unwrap().data {
                 ClassDefinition::Sierra {
                     ref mut block_number,
                     ..
@@ -1451,7 +1449,7 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
+            let expected_peer_id = streamed_classes.last().unwrap().peer;
 
             assert_matches!(
                 handle_class_stream(
@@ -1463,23 +1461,6 @@ mod tests {
                 )
                 .await,
                 Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
-        }
-
-        #[tokio::test]
-        async fn stream_failure() {
-            assert_matches!(
-                handle_class_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
-                    StorageBuilder::in_memory().unwrap(),
-                    FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS
-                )
-                .await,
-                Err(SyncError::Other(_))
-            );
         }
     }
 

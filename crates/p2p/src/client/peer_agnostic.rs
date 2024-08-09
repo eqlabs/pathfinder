@@ -228,7 +228,7 @@ impl ClassStream for Client {
         start: BlockNumber,
         stop: BlockNumber,
         declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>> {
+    ) -> impl Stream<Item = PeerData<ClassDefinition>> {
         let inner = self.inner.clone();
         let outer = self;
         make_class_definition_stream(
@@ -1295,17 +1295,22 @@ pub fn make_class_definition_stream<PF, RF>(
     declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
     get_peers: impl Fn() -> PF,
     send_request: impl Fn(PeerId, ClassesRequest) -> RF,
-) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
+) -> impl Stream<Item = PeerData<ClassDefinition>>
 where
     PF: Future<Output = Vec<PeerId>>,
     RF: Future<Output = anyhow::Result<fmpsc::Receiver<ClassesResponse>>>,
 {
     tracing::trace!(?start, ?stop, "Streaming classes");
 
-    async_stream::try_stream! {
-        pin_mut!(declared_class_counts_stream);
+    async_stream::stream! {
+        let mut declared_class_counts_stream = Box::pin(declared_class_counts_stream);
 
-        let mut current_count_outer = None;
+        let Some(Ok(cnt)) = declared_class_counts_stream.next().await else {
+            tracing::debug!("Declared class counts stream terminated prematurely");
+            return;
+        };
+
+        let mut current_count_outer = cnt;
 
         if start <= stop {
             // Loop which refreshes peer set once we exhaust it.
@@ -1314,7 +1319,6 @@ where
 
                 // Attempt each peer.
                 'next_peer: for peer in peers {
-                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
                     let limit = stop.get() - start.get() + 1;
 
                     let request = ClassesRequest {
@@ -1336,19 +1340,7 @@ where
                             }
                         };
 
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let x = declared_class_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-                            current_count_outer = Some(x);
-                            x
-                        }
-                    };
+                    let mut current_count = current_count_outer;
 
                     while start <= stop {
                         tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
@@ -1362,8 +1354,11 @@ where
                                         class,
                                         domain: _,
                                     }) => {
-                                        let CairoDefinition(definition) =
-                                            CairoDefinition::try_from_dto(class).map_err(peer_err)?;
+                                        let Ok(CairoDefinition(definition)) =
+                                            CairoDefinition::try_from_dto(class) else {
+                                                tracing::debug!(%peer, "Cairo definition failed to parse");
+                                                continue 'next_peer;
+                                            };
                                         class_definitions.push(ClassDefinition::Cairo {
                                             block_number: start,
                                             definition,
@@ -1373,10 +1368,13 @@ where
                                         class,
                                         domain: _,
                                     }) => {
-                                        let definition = SierraDefinition::try_from_dto(class).map_err(peer_err)?;
+                                        let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
+                                            tracing::debug!(%peer, "Sierra definition failed to parse");
+                                            continue 'next_peer;
+                                        };
                                         class_definitions.push(ClassDefinition::Sierra {
                                             block_number: start,
-                                            sierra_definition: definition.0,
+                                            sierra_definition: definition,
                                         });
                                     }
                                     ClassesResponse::Fin => {
@@ -1408,11 +1406,14 @@ where
                         }
 
                         start += 1;
-                        current_count = declared_class_counts_stream.next().await
-                            .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                            .map_err(peer_err)?
-                            .map_err(peer_err)?;
-                        current_count_outer = Some(current_count);
+
+                        let Some(Ok(cnt)) = declared_class_counts_stream.next().await else {
+                            tracing::debug!("Declared class counts stream terminated prematurely");
+                            break 'outer;
+                        };
+
+                        current_count_outer = cnt;
+                        current_count = cnt;
 
                         tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
                     }
