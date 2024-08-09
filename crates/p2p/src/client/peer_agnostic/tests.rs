@@ -674,13 +674,13 @@ async fn make_state_diff_stream(
         // the second block is not processed
     ]
 )]
-#[case::too_many_responses_declaration_with_fin(
+#[case::too_many_responses_with_fin(
     1,
     vec![Ok((peer(0), vec![class_resp(21), class_resp(22), ClassFin]))],
     vec![1],
     vec![(peer(0), class(21, 0))]
 )]
-#[case::too_many_responses_declaration_no_fin(
+#[case::too_many_responses_no_fin(
     1,
     vec![Ok((peer(0), vec![class_resp(21), class_resp(22)]))],
     vec![1],

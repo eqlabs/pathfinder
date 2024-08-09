@@ -1327,84 +1327,40 @@ mod class_definition_stream {
                             continue 'next_peer;
                         }
                     };
-
                     // If the previous peer failed to provide the entire block we need to start over
                     progress.rollback();
 
                     while start <= stop {
                         tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
-
                         let mut class_definitions = Vec::new();
 
                         while progress.get() > 0 {
-                            if let Some(class_definition) = responses.next().await {
-                                match class_definition {
-                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
-                                        class,
-                                        domain: _,
-                                    }) => {
-                                        let Ok(CairoDefinition(definition)) =
-                                            CairoDefinition::try_from_dto(class)
-                                        else {
-                                            tracing::debug!(%peer, "Cairo definition failed to parse");
-                                            continue 'next_peer;
-                                        };
-
-                                        class_definitions.push(ClassDefinition::Cairo {
-                                            block_number: start,
-                                            definition,
-                                        });
-                                    }
-                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
-                                        class,
-                                        domain: _,
-                                    }) => {
-                                        let Ok(SierraDefinition(definition)) =
-                                            SierraDefinition::try_from_dto(class)
-                                        else {
-                                            tracing::debug!(%peer, "Sierra definition failed to parse");
-                                            continue 'next_peer;
-                                        };
-                                        class_definitions.push(ClassDefinition::Sierra {
-                                            block_number: start,
-                                            sierra_definition: definition,
-                                        });
-                                    }
-                                    ClassesResponse::Fin => {
-                                        tracing::debug!(%peer, "Received FIN, continuing with next peer");
-                                        continue 'next_peer;
-                                    }
+                            if let Some(response) = responses.next().await {
+                                match handle_response(peer, response, start) {
+                                    Some(x) => class_definitions.push(x),
+                                    None => continue 'next_peer,
                                 }
-
                                 *progress.as_mut() -= 1;
                             } else {
-                                // Stream closed before receiving all expected classes
                                 tracing::debug!(%peer, "Premature class definition stream termination");
                                 // TODO punish the peer
                                 continue 'next_peer;
                             }
                         }
 
-                        tracing::trace!(block_number=%start, "All classes received for block");
-
-                        for class_definition in class_definitions {
-                            _ = tx.send(PeerData::new(peer, class_definition)).await;
-                        }
-
-                        if start == stop {
+                        if yield_block(
+                            peer,
+                            &mut progress,
+                            &mut declared_class_counts_stream,
+                            class_definitions,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
                             break 'outer;
                         }
-
-                        start += 1;
-
-                        let Some(Ok(cnt)) = declared_class_counts_stream.next().await else {
-                            tracing::debug!("Declared class counts stream terminated prematurely");
-                            break 'outer;
-                        };
-
-                        progress = BlockProgress::new(cnt);
-
-                        tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
                     }
 
                     break 'outer;
@@ -1424,6 +1380,85 @@ mod class_definition_stream {
                 step: 1.into(),
             },
         }
+    }
+
+    /// ### Important
+    ///
+    /// Returns `None` if the caller should move to the next peer
+    fn handle_response(
+        peer: PeerId,
+        response: ClassesResponse,
+        block_number: BlockNumber,
+    ) -> Option<ClassDefinition> {
+        match response {
+            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ }) => {
+                let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Cairo definition failed to parse");
+                    return None;
+                };
+
+                Some(ClassDefinition::Cairo {
+                    block_number,
+                    definition,
+                })
+            }
+            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _ }) => {
+                let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Sierra definition failed to parse");
+                    return None;
+                };
+
+                Some(ClassDefinition::Sierra {
+                    block_number,
+                    sierra_definition: definition,
+                })
+            }
+            ClassesResponse::Fin => {
+                tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                None
+            }
+        }
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn yield_block(
+        peer: PeerId,
+        progress: &mut BlockProgress,
+        declared_class_counts_stream: &mut (impl Stream<Item = anyhow::Result<usize>>
+                  + Unpin
+                  + Send
+                  + 'static),
+        class_definitions: Vec<ClassDefinition>,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<PeerData<ClassDefinition>>,
+    ) -> bool {
+        tracing::trace!(block_number=%start, "All classes received for block");
+
+        for class_definition in class_definitions {
+            _ = tx.send(PeerData::new(peer, class_definition)).await;
+        }
+
+        if *start == stop {
+            return true;
+        }
+
+        *start += 1;
+
+        let Some(Ok(cnt)) = declared_class_counts_stream.next().await else {
+            tracing::debug!("Declared class counts stream terminated prematurely");
+            return true;
+        };
+
+        *progress = BlockProgress::new(cnt);
+
+        tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
+
+        false
     }
 
     #[derive(Clone, Copy, Debug)]
