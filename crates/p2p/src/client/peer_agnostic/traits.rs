@@ -63,7 +63,7 @@ pub trait ClassStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
+        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
     ) -> impl Stream<Item = PeerData<ClassDefinition>>;
 }
 

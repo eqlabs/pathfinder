@@ -715,14 +715,19 @@ async fn make_class_definition_stream(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: ClassesRequest| async { send_request(responses.clone()).await };
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: ClassesRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
 
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
 
-    let actual = super::make_class_definition_stream(
+    let actual = super::class_definition_stream::make(
         start,
         stop,
         stream::iter(declared_classes_per_block.into_iter().map(Ok)),
