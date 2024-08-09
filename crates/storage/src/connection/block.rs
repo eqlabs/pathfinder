@@ -370,7 +370,7 @@ impl Transaction<'_> {
         let mut stmt = self
             .inner()
             .prepare_cached(sql)
-            .context("Preparing block header query")?;
+            .context("Preparing state commitment query")?;
 
         let state_commitment = match block {
             BlockId::Latest => {
