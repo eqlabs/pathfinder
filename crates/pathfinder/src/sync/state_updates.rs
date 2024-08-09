@@ -175,7 +175,7 @@ impl ProcessStage for UpdateStarknetState {
         }
 
         db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
-            .context("Updating storage commitment")?;
+            .context("Updating storage and class commitments")?;
         db.insert_state_update_data(self.current_block, &state_update)
             .context("Inserting state update data")?;
         db.commit().context("Committing db transaction")?;
