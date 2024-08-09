@@ -106,16 +106,11 @@ pub fn with_n_blocks_rng_and_config<R: Rng>(
 
 /// Raw _fake state initializers_
 pub mod init {
-    use std::collections::{HashMap, HashSet};
 
     use fake::{Fake, Faker};
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::state_update::{
-        ContractClassUpdate,
-        ContractUpdate,
-        SystemContractUpdate,
-    };
+    use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::test_utils::fake_non_empty_with_rng;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
@@ -124,14 +119,11 @@ pub mod init {
         BlockHeader,
         BlockNumber,
         ChainId,
-        ContractAddress,
         EventCommitment,
         ReceiptCommitment,
-        SierraHash,
         SignedBlockHeader,
         StarknetVersion,
         StateCommitment,
-        StateUpdate,
         TransactionCommitment,
         TransactionHash,
         TransactionIndex,
@@ -233,6 +225,8 @@ pub mod init {
             header.starknet_version = StarknetVersion::new(0, 13, 2, 0);
             header.number =
                 BlockNumber::new_or_panic(i.try_into().expect("u64 is at least as wide as usize"));
+            header.storage_commitment = Default::default();
+            header.class_commitment = Default::default();
             header.state_commitment =
                 StateCommitment::calculate(header.storage_commitment, header.class_commitment);
 
@@ -293,79 +287,15 @@ pub mod init {
                 .map(|(_, _, events)| events.len())
                 .sum();
 
-            let state_commitment = header.state_commitment;
-            let num_cairo_classes = rng.gen_range(0..=0);
-            let num_sierra_classes = rng.gen_range(0..=10);
-
-            let cairo_defs = (0..num_cairo_classes)
-                .map(|_| {
-                    let def = serde_json::to_vec(
-                        &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
-                    )
-                    .unwrap();
-                    (compute_class_hash(&def).unwrap().hash(), def)
-                })
-                .collect::<HashMap<_, _>>();
-            let sierra_defs = (0..num_sierra_classes)
-                .map(|_| {
-                    let def = serde_json::to_vec(
-                        &Faker.fake_with_rng::<class_definition::Sierra<'_>, _>(rng),
-                    )
-                    .unwrap();
-                    (
-                        SierraHash(compute_class_hash(&def).unwrap().hash().0),
-                        (def, Faker.fake_with_rng::<String, _>(rng).into_bytes()),
-                    )
-                })
-                .collect::<HashMap<_, _>>();
-
-            let declared_cairo_classes = cairo_defs.keys().copied().collect::<HashSet<_>>();
-            let declared_sierra_classes = sierra_defs
-                .keys()
-                .map(|sierra_hash| (*sierra_hash, Faker.fake()))
-                .collect::<HashMap<_, _>>();
-
             init.push(Block {
                 header: SignedBlockHeader {
                     header,
                     signature: Faker.fake_with_rng(rng),
                 },
                 transaction_data,
-                state_update: StateUpdate {
-                    // Will be fixed after block hash computation
-                    block_hash: BlockHash::ZERO,
-                    state_commitment,
-                    // Will be fixed after block hash computation
-                    parent_state_commitment: StateCommitment::ZERO,
-                    declared_cairo_classes,
-                    declared_sierra_classes,
-                    system_contract_updates: HashMap::from([(
-                        ContractAddress::ONE,
-                        SystemContractUpdate {
-                            storage: fake_non_empty_with_rng(rng),
-                        },
-                    )]),
-                    contract_updates: {
-                        let mut x = Faker.fake_with_rng::<HashMap<_, ContractUpdate>, _>(rng);
-                        x.iter_mut().for_each(|(_, u)| {
-                            // Initially generate deploys only
-                            u.class = u
-                                .class
-                                .as_ref()
-                                .map(|x| ContractClassUpdate::Deploy(x.class_hash()));
-                            // Disallow empty storage entries
-                            if u.storage.is_empty() {
-                                u.storage = fake_non_empty_with_rng(rng);
-                            }
-                        });
-                        x
-                    },
-                },
-                cairo_defs: cairo_defs.into_iter().collect(),
-                sierra_defs: sierra_defs
-                    .into_iter()
-                    .map(|(h, (s, c))| (h, s, c))
-                    .collect(),
+                state_update: Default::default(),
+                cairo_defs: Default::default(),
+                sierra_defs: Default::default(),
             });
         }
 
@@ -437,7 +367,7 @@ pub mod init {
                             state_update
                                 .contract_updates
                                 .entry(*address)
-                                // It's ulikely rng has generated an update to the previously
+                                // It's unlikely rng has generated an update to the previously
                                 // deployed class but it is still possible
                                 .or_default()
                                 .class =

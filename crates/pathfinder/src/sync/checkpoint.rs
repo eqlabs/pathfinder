@@ -62,6 +62,7 @@ pub struct Sync {
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
+    pub verify_tree_hashes: bool,
 }
 
 impl Sync {
@@ -75,6 +76,7 @@ impl Sync {
         chain_id: ChainId,
         public_key: PublicKey,
         l1_anchor_override: Option<EthereumStateUpdate>,
+        verify_tree_hashes: bool,
     ) -> Self {
         Self {
             storage,
@@ -85,6 +87,7 @@ impl Sync {
             chain,
             chain_id,
             public_key,
+            verify_tree_hashes,
         }
     }
 
@@ -121,7 +124,8 @@ impl Sync {
 
         // Sync the rest of the data in chronological order.
         self.sync_transactions(head, self.chain_id).await?;
-        self.sync_state_updates(head).await?;
+        self.sync_state_updates(head, self.verify_tree_hashes)
+            .await?;
         self.sync_class_definitions(head).await?;
         self.sync_events(head).await?;
 
@@ -186,7 +190,11 @@ impl Sync {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn sync_state_updates(&self, stop: BlockNumber) -> Result<(), SyncError> {
+    async fn sync_state_updates(
+        &self,
+        stop: BlockNumber,
+        verify_tree_hashes: bool,
+    ) -> Result<(), SyncError> {
         let Some(start) = state_updates::next_missing(self.storage.clone(), stop)
             .await
             .context("Finding next missing state update")?
@@ -200,7 +208,7 @@ impl Sync {
             state_updates::length_and_commitment_stream(self.storage.clone(), start, stop),
         );
 
-        handle_state_diff_stream(stream, self.storage.clone(), start).await?;
+        handle_state_diff_stream(stream, self.storage.clone(), start, verify_tree_hashes).await?;
 
         Ok(())
     }
@@ -319,12 +327,21 @@ async fn handle_state_diff_stream(
         + 'static,
     storage: Storage,
     start: BlockNumber,
+    verify_tree_hashes: bool,
 ) -> Result<(), SyncError> {
     Source::from_stream(stream.map_err(|e| e.map(Into::into)))
         .spawn()
         .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
         .pipe(state_updates::VerifyCommitment, 10)
-        .pipe(state_updates::Store::new(storage.connection()?, start), 10)
+        .pipe(
+            state_updates::UpdateStarknetState {
+                storage: storage.clone(),
+                connection: storage.connection()?,
+                current_block: start,
+                verify_tree_hashes,
+            },
+            10,
+        )
         .into_stream()
         .inspect_ok(|x| tracing::info!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
@@ -1174,6 +1191,7 @@ mod tests {
                 stream::iter(streamed_state_diffs),
                 storage.clone(),
                 BlockNumber::GENESIS,
+                false,
             )
             .await
             .unwrap();
@@ -1218,6 +1236,7 @@ mod tests {
                     stream::iter(streamed_state_diffs),
                     storage,
                     BlockNumber::GENESIS,
+                    false,
                 )
                 .await,
                 Err(SyncError::StateDiffCommitmentMismatch(_))
@@ -1233,6 +1252,7 @@ mod tests {
                     )))),
                     StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
+                    false,
                 )
                 .await,
                 Err(SyncError::Other(_))
@@ -1250,6 +1270,7 @@ mod tests {
                     stream::iter(streamed_state_diffs),
                     StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
+                    false,
                 )
                 .await,
                 Err(SyncError::Other(_))

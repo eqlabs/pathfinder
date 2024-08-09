@@ -118,6 +118,8 @@ pub(super) enum SyncError2 {
     ClassDefinitionsDeclarationsMismatch,
     #[error("Starknet version not found in db")]
     StarknetVersionNotFound,
+    #[error("State root mismatch")]
+    StateRootMismatch,
 }
 
 impl PartialEq for SyncError2 {
