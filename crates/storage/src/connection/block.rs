@@ -384,7 +384,7 @@ impl Transaction<'_> {
             }),
         }
         .optional()
-        .context("Querying for block header")?;
+        .context("Querying for state commitment")?;
 
         Ok(state_commitment)
     }
