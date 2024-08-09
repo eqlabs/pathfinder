@@ -967,9 +967,10 @@ mod state_diff_stream {
                         while progress.count() > 0 {
                             match responses.next().await {
                                 Some(r) => {
-                                    match handle_response(peer, r, &mut state_diff, &mut progress) {
-                                        None => continue 'next_peer,
-                                        _ => {}
+                                    if handle_response(peer, r, &mut state_diff, &mut progress)
+                                        .is_none()
+                                    {
+                                        continue 'next_peer;
                                     }
                                 }
                                 None => continue 'next_peer,
