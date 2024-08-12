@@ -76,6 +76,7 @@ pub struct SyncContext<G, E> {
     pub sequencer: G,
     pub state: Arc<SyncState>,
     pub head_poll_interval: Duration,
+    pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
@@ -95,7 +96,7 @@ where
             ethereum: value.ethereum.clone(),
             chain: value.chain,
             core_address: value.core_address,
-            poll_interval: value.head_poll_interval,
+            poll_interval: value.l1_poll_interval,
         }
     }
 }
@@ -181,6 +182,7 @@ where
         sequencer,
         state,
         head_poll_interval,
+        l1_poll_interval: _,
         pending_data,
         block_validation_mode: _,
         websocket_txs,
