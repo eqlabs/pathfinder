@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::thread;
 
 use anyhow::Context;
 use futures::pin_mut;
@@ -19,9 +19,10 @@ use starknet_gateway_types::class_hash::from_parts::{
     compute_sierra_class_hash,
 };
 use starknet_gateway_types::reply::call;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
@@ -95,13 +96,13 @@ pub(super) fn declared_class_counts_stream(
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
     const BATCH_SIZE: usize = 1000;
 
-    async_stream::try_stream! {
+    let (tx, rx) = mpsc::channel(1);
+    thread::spawn(move || {
         let mut batch = Vec::<usize>::new();
 
         while start <= stop {
             if let Some(counts) = batch.pop() {
-                yield counts;
-                continue;
+                _ = tx.blocking_send(Ok(counts));
             }
 
             let batch_size = NonZeroUsize::new(
@@ -114,31 +115,40 @@ pub(super) fn declared_class_counts_stream(
             .expect(">0");
             let storage = storage.clone();
 
-            batch = tokio::task::spawn_blocking(move || {
+            let get = move || {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.declared_classes_counts(start, batch_size)
-                    .context("Querying declared classes counts")
-            })
-            .await
-            .context("Joining blocking task")??;
+                let batch = db
+                    .declared_classes_counts(start, batch_size)
+                    .context("Querying declared classes counts")?;
 
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No declared classes counts found for range: start {start}, batch_size {batch_size}"
-                ))?;
-                break;
-            }
+                anyhow::ensure!(
+                    !batch.is_empty(),
+                    "No class counts found: start {start}, batch_size {batch_size}"
+                );
+
+                Ok(batch)
+            };
+
+            batch = match get() {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.blocking_send(Err(e));
+                    return;
+                }
+            };
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
 
         while let Some(counts) = batch.pop() {
-            yield counts;
+            _ = tx.blocking_send(Ok(counts));
         }
-    }
+    });
+
+    ReceiverStream::new(rx)
 }
 
 pub struct VerifyLayout;
@@ -297,7 +307,7 @@ impl ExpectedDeclarationsSource {
     }
 
     pub fn spawn(self) -> anyhow::Result<Receiver<ExpectedDeclarations>> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(1);
         let Self {
             mut db_connection,
             mut start,
