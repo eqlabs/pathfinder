@@ -22,6 +22,8 @@ use crate::client::types::{
 };
 use crate::PeerData;
 
+pub type StreamItem<T> = Result<PeerData<T>, PeerData<anyhow::Error>>;
+
 pub trait HeaderStream {
     fn header_stream(
         self,
@@ -39,7 +41,7 @@ pub trait TransactionStream {
         transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
             + Send
             + 'static,
-    ) -> impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>>;
+    ) -> impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>>;
 }
 
 pub trait StateDiffStream {

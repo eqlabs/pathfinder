@@ -53,6 +53,7 @@ use traits::{
     EventStream,
     HeaderStream,
     StateDiffStream,
+    StreamItem,
     TransactionStream,
 };
 
@@ -171,7 +172,7 @@ impl TransactionStream for Client {
         transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
             + Send
             + 'static,
-    ) -> impl Stream<Item = PeerData<(UnverifiedTransactionData, BlockNumber)>> {
+    ) -> impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>> {
         let inner = self.inner.clone();
         let outer = self;
         transaction_stream::make(
@@ -721,7 +722,7 @@ mod transaction_stream {
             + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
         send_request: impl Fn(PeerId, TransactionsRequest) -> RF + Send + 'static,
-    ) -> impl Stream<Item = PeerData<UnverifiedTransactionDataWithBlockNumber>>
+    ) -> impl Stream<Item = StreamItem<UnverifiedTransactionDataWithBlockNumber>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
         RF: Future<Output = anyhow::Result<fmpsc::Receiver<TransactionsResponse>>> + Send,
@@ -732,9 +733,12 @@ mod transaction_stream {
         tokio::spawn(async move {
             let mut counts_and_commitments_stream = Box::pin(counts_and_commitments_stream);
 
-            let Some(Ok(cnt)) = counts_and_commitments_stream.next().await else {
-                tracing::debug!("Transaction counts and commitments stream terminated prematurely");
-                return;
+            let cnt = match try_next(&mut counts_and_commitments_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
             };
 
             // Transaction counter for the currently received block
@@ -853,12 +857,14 @@ mod transaction_stream {
         transactions: Vec<(TransactionVariant, Receipt)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<PeerData<UnverifiedTransactionDataWithBlockNumber>>,
+        tx: mpsc::Sender<
+            Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
+        >,
     ) -> bool {
         tracing::trace!(block_number=%start, "All transactions received for block");
 
         _ = tx
-            .send(PeerData::new(
+            .send(Ok(PeerData::new(
                 peer,
                 (
                     UnverifiedTransactionData {
@@ -867,7 +873,7 @@ mod transaction_stream {
                     },
                     *start,
                 ),
-            ))
+            )))
             .await;
 
         if *start == stop {
@@ -876,9 +882,12 @@ mod transaction_stream {
 
         *start += 1;
 
-        let Some(Ok(x)) = counts_and_commitments_stream.next().await else {
-            tracing::debug!("Transaction counts and commitments stream terminated prematurely");
-            return true;
+        let x = match try_next(counts_and_commitments_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
         };
 
         *progress = TransactionStreamProgress::new(x);
@@ -1514,6 +1523,19 @@ mod event_stream {
         tracing::trace!(next_block=%start, expected_responses=%cnt, "Moving to next block");
 
         false
+    }
+}
+
+async fn try_next<T>(
+    count_stream: &mut (impl Stream<Item = anyhow::Result<T>> + Unpin + Send + 'static),
+) -> Result<T, PeerData<anyhow::Error>> {
+    match count_stream.next().await {
+        Some(Ok(cnt)) => Ok(cnt),
+        Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
+        None => Err(PeerData::new(
+            PeerId::random(),
+            anyhow::anyhow!("Count stream terminated prematurely"),
+        )),
     }
 }
 
