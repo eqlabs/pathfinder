@@ -253,7 +253,7 @@ async fn make_header_stream(
     vec![1], // but only 1 block provided in the count stream
     vec![
         Ok((peer(0), vec![txn(16, 0)])),
-        Err(peer(0)) // the second block is not processed
+        Err(()) // the second block is not processed
     ]
 )]
 #[case::too_many_responses_with_fin(
@@ -293,7 +293,7 @@ async fn make_transaction_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<TransactionsResponse>), TestPeer>>,
     #[case] num_txns_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), TestPeer>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), ()>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -331,7 +331,7 @@ async fn make_transaction_stream(
                 .collect(),
         )
     })
-    .map_err(|x| TestPeer(x.peer))
+    .map_err(|_| ())
     .collect::<Vec<_>>()
     .await;
 
@@ -445,7 +445,7 @@ async fn make_transaction_stream(
     vec![len(13)], // but only 1 block provided in the count stream
     vec![
         Ok((peer(0), state_diff(13))),
-        Err(peer(0)) // the second block is not processed
+        Err(()) // the second block is not processed
     ]
 )]
 #[case::too_many_responses_storage_with_fin(
@@ -521,7 +521,7 @@ async fn make_state_diff_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>>,
     #[case] state_diff_len_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, UnverifiedStateUpdateData), TestPeer>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, UnverifiedStateUpdateData), ()>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -549,7 +549,7 @@ async fn make_state_diff_stream(
         send_request,
     )
     .map_ok(|x| (TestPeer(x.peer), x.data))
-    .map_err(|x| TestPeer(x.peer))
+    .map_err(|_| ())
     .collect::<Vec<_>>()
     .await;
 
@@ -680,7 +680,7 @@ async fn make_state_diff_stream(
     vec![1], // but only 1 block provided in the count stream
     vec![
         Ok((peer(0), class(19, 0))),
-        Err(peer(0)) // the second block is not processed
+        Err(()) // the second block is not processed
     ]
 )]
 #[case::too_many_responses_declaration_with_fin(
@@ -720,7 +720,7 @@ async fn make_class_definition_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<ClassesResponse>), TestPeer>>,
     #[case] declared_classes_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, ClassDefinition), TestPeer>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, ClassDefinition), ()>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -744,7 +744,7 @@ async fn make_class_definition_stream(
         send_request,
     )
     .map_ok(|x| (TestPeer(x.peer), x.data))
-    .map_err(|x| TestPeer(x.peer))
+    .map_err(|_| ())
     .collect::<Vec<_>>()
     .await;
 
@@ -863,7 +863,7 @@ async fn make_class_definition_stream(
     vec![1], // but only 1 block provided in the count stream
     vec![
         Ok((peer(0), events(vec![(vec![25], 25)], 0))),
-        Err(peer(0)) // the second block is not processed
+        Err(()) // the second block is not processed
     ]
 )]
 #[case::too_many_responses_with_fin(
@@ -911,7 +911,7 @@ async fn make_event_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<EventsResponse>), TestPeer>>,
     #[case] events_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, TaggedEventsForBlockByTransaction), TestPeer>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, TaggedEventsForBlockByTransaction), ()>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -947,7 +947,7 @@ async fn make_event_stream(
             ),
         )
     })
-    .map_err(|x| TestPeer(x.peer))
+    .map_err(|_| ())
     .collect::<Vec<_>>()
     .await;
 
