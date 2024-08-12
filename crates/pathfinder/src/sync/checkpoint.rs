@@ -15,7 +15,7 @@ use p2p::client::peer_agnostic::traits::{
     TransactionStream,
 };
 use p2p::client::peer_agnostic::Client as P2PClient;
-use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, UnverifiedTransactionData};
+use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
@@ -309,22 +309,28 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    stream: impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>> + Send + 'static,
+    stream: impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>> + Send + 'static,
     storage: Storage,
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    // Source::from_stream(stream.map_err(|e| e.map(Into::into)))
-    //     .spawn()
-    //     .pipe(FetchStarknetVersionFromDb::new(storage.connection()?), 10)
-    //     .pipe(transactions::CalculateHashes(chain_id), 10)
-    //     .pipe(transactions::VerifyCommitment, 10)
-    //     .pipe(transactions::Store::new(storage.connection()?, start), 10)
-    //     .into_stream()
-    //     .inspect_ok(|x| tracing::info!(tail=%x.data, "Transactions chunk
-    // synced"))     .try_fold((), |_, _| std::future::ready(Ok(())))
-    //     .await
-    //     .map_err(SyncError::from_v2)?;
+    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+        .spawn()
+        .pipe(
+            transactions::FetchCommitmentFromDb::new(storage.connection()?),
+            10,
+        )
+        .pipe(transactions::CalculateHashes(chain_id), 10)
+        .pipe(transactions::VerifyCommitment, 10)
+        .pipe(transactions::Store::new(storage.connection()?, start), 10)
+        .into_stream()
+        .inspect_ok(|x| {
+            tracing::info!(tail=%x.data, "Transactions chunk
+    synced")
+        })
+        .try_fold((), |_, _| std::future::ready(Ok(())))
+        .await
+        .map_err(SyncError::from_v2)?;
     Ok(())
 }
 
@@ -928,10 +934,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Faker};
         use futures::stream;
-        use p2p::client::types::{
-            UnverifiedTransactionData,
-            UnverifiedTransactionDataWithBlockNumber,
-        };
+        use p2p::client::types::TransactionData;
         use p2p::libp2p::PeerId;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
@@ -944,9 +947,8 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions: Vec<
-                Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
-            >,
+            pub streamed_transactions:
+                Vec<Result<PeerData<(TransactionData, BlockNumber)>, PeerData<anyhow::Error>>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -970,14 +972,11 @@ mod tests {
                         block.header.header.transaction_commitment = transaction_commitment;
 
                         anyhow::Result::Ok(PeerData::for_tests((
-                            UnverifiedTransactionData {
-                                expected_commitment: transaction_commitment,
-                                transactions: block
-                                    .transaction_data
-                                    .iter()
-                                    .map(|x| (x.0.variant.clone(), x.1.clone().into()))
-                                    .collect::<Vec<_>>(),
-                            },
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
+                                .collect::<Vec<_>>(),
                             block.header.header.number,
                         )))
                     })

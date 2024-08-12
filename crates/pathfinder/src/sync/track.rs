@@ -10,7 +10,7 @@ use p2p::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     IncorrectStateDiffCount,
-    UnverifiedTransactionData,
+    TransactionData,
 };
 use p2p::PeerData;
 use pathfinder_common::class_definition::ClassDefinition;
@@ -343,7 +343,7 @@ struct TransactionSource<P> {
 }
 
 impl<P> TransactionSource<P> {
-    fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)>
+    fn spawn(self) -> SyncReceiver<(TransactionData, StarknetVersion, TransactionCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -393,11 +393,9 @@ impl<P> TransactionSource<P> {
                     .send(Ok(PeerData::new(
                         peer,
                         (
-                            UnverifiedTransactionData {
-                                expected_commitment: header.transaction_commitment,
-                                transactions: transactions_vec,
-                            },
+                            transactions_vec,
                             header.starknet_version,
+                            header.transaction_commitment,
                         ),
                     )))
                     .await;

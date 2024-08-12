@@ -81,7 +81,7 @@ pub(super) fn counts_stream(
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
                 let batch = db
-                    .event_counts(start.into(), batch_size)
+                    .event_counts(start, batch_size)
                     .context("Querying event counts")?;
 
                 anyhow::ensure!(

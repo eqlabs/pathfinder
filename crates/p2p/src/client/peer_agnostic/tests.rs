@@ -312,23 +312,14 @@ async fn make_transaction_stream(
     let actual = super::transaction_stream::make(
         start,
         stop,
-        stream::iter(
-            num_txns_per_block
-                .into_iter()
-                .map(|x| Ok((x, Default::default()))),
-        ),
+        stream::iter(num_txns_per_block.into_iter().map(Ok)),
         get_peers,
         send_request,
     )
     .map_ok(|x| {
         (
             TestPeer(x.peer),
-            x.data
-                .0
-                .transactions
-                .into_iter()
-                .map(TestTxn::new)
-                .collect(),
+            x.data.0.into_iter().map(TestTxn::new).collect(),
         )
     })
     .map_err(|_| ())

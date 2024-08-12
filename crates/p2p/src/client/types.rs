@@ -75,14 +75,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-/// For a single block
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnverifiedTransactionData {
-    pub expected_commitment: TransactionCommitment,
-    pub transactions: Vec<(TransactionVariant, Receipt)>,
-}
-
-pub type UnverifiedTransactionDataWithBlockNumber = (UnverifiedTransactionData, BlockNumber);
+pub type TransactionData = Vec<(TransactionVariant, Receipt)>;
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 

@@ -120,6 +120,8 @@ pub(super) enum SyncError2 {
     StarknetVersionNotFound,
     #[error("State diff commitment not found in db")]
     StateDiffCommitmentNotFound,
+    #[error("Transaction commitment not found in db")]
+    TransactionCommitmentNotFound,
     #[error("State root mismatch")]
     StateRootMismatch,
 }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p::client::types::UnverifiedTransactionData;
+use p2p::client::types::TransactionData;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -57,7 +57,7 @@ pub(super) fn counts_and_commitments_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
     batch_size: NonZeroUsize,
-) -> impl futures::Stream<Item = anyhow::Result<(usize, TransactionCommitment)>> {
+) -> impl futures::Stream<Item = anyhow::Result<usize>> {
     let (tx, rx) = mpsc::channel(1);
     std::thread::spawn(move || {
         let mut batch = VecDeque::new();
@@ -84,7 +84,7 @@ pub(super) fn counts_and_commitments_stream(
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
                 batch = db
-                    .transaction_counts_and_commitments(start.into(), batch_size)
+                    .transaction_counts(start.into(), batch_size)
                     .context("Querying transaction counts")?;
 
                 anyhow::ensure!(
@@ -118,19 +118,12 @@ pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = (UnverifiedTransactionData, StarknetVersion);
+    type Input = (TransactionData, StarknetVersion, TransactionCommitment);
     type Output = UnverifiedTransactions;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
-        let (
-            UnverifiedTransactionData {
-                expected_commitment,
-                transactions,
-                ..
-            },
-            version,
-        ) = input;
+        let (transactions, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
             .map(|(tv, r)| {
@@ -155,6 +148,42 @@ impl ProcessStage for CalculateHashes {
             transactions,
             version,
         })
+    }
+}
+
+pub struct FetchCommitmentFromDb<T> {
+    db: pathfinder_storage::Connection,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> FetchCommitmentFromDb<T> {
+    pub fn new(db: pathfinder_storage::Connection) -> Self {
+        Self {
+            db,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> ProcessStage for FetchCommitmentFromDb<T> {
+    const NAME: &'static str = "Transactions::FetchCommitmentFromDb";
+    type Input = (T, BlockNumber);
+    type Output = (T, StarknetVersion, TransactionCommitment);
+
+    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+        let mut db = self
+            .db
+            .transaction()
+            .context("Creating database transaction")?;
+        let version = db
+            .block_version(block_number)
+            .context("Fetching starknet version")?
+            .ok_or(SyncError2::StarknetVersionNotFound)?;
+        let commitment = db
+            .transaction_commitment(block_number)
+            .context("Fetching transaction commitment")?
+            .ok_or(SyncError2::TransactionCommitmentNotFound)?;
+        Ok((data, version, commitment))
     }
 }
 
@@ -244,15 +273,13 @@ mod tests {
                         SignedBlockHeader {
                             header:
                                 BlockHeader {
-                                    transaction_commitment,
-                                    transaction_count,
-                                    ..
+                                    transaction_count, ..
                                 },
                             ..
                         },
                     ..
                 } = b;
-                (transaction_count, transaction_commitment)
+                transaction_count
             })
             .collect::<Vec<_>>();
         let stream = super::counts_and_commitments_stream(
