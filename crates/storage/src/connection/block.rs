@@ -1005,7 +1005,7 @@ mod tests {
         }
 
         let result = tx
-            .event_counts(BlockNumber::GENESIS.into(), NonZeroUsize::new(10).unwrap())
+            .event_counts(BlockNumber::GENESIS, NonZeroUsize::new(10).unwrap())
             .unwrap();
 
         assert_eq!(

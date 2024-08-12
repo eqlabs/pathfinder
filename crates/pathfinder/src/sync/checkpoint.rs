@@ -947,8 +947,7 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_transactions:
-                Vec<Result<PeerData<(TransactionData, BlockNumber)>, PeerData<anyhow::Error>>>,
+            pub streamed_transactions: Vec<StreamItem<(TransactionData, BlockNumber)>>,
             pub expected_transactions: Vec<Vec<(Transaction, Receipt)>>,
             pub storage: Storage,
         }
@@ -1122,8 +1121,7 @@ mod tests {
         use super::*;
 
         struct Setup {
-            pub streamed_state_diffs:
-                Vec<Result<PeerData<(StateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>>,
+            pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,
             pub expected_state_diffs: Vec<StateUpdateData>,
             pub storage: Storage,
         }
