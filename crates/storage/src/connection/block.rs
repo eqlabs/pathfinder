@@ -551,6 +551,25 @@ impl Transaction<'_> {
 
         Ok(ret)
     }
+
+    pub fn state_diff_commitment(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<StateDiffCommitment>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT state_diff_commitment FROM block_headers WHERE number = ?")
+            .context("Preparing state diff commitment query")?;
+
+        let state_diff_commitment = stmt
+            .query_row(params![&block_number], |row| {
+                row.get_state_diff_commitment("state_diff_commitment")
+            })
+            .optional()
+            .context("Querying for state diff commitment")?;
+
+        Ok(state_diff_commitment)
+    }
 }
 
 fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader> {

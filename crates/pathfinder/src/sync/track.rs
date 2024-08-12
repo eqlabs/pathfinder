@@ -10,7 +10,6 @@ use p2p::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     IncorrectStateDiffCount,
-    UnverifiedStateUpdateData,
     UnverifiedTransactionData,
 };
 use p2p::PeerData;
@@ -500,7 +499,7 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)>
+    fn spawn(self) -> SyncReceiver<(StateUpdateData, StarknetVersion, StateDiffCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -529,11 +528,9 @@ impl<P> StateDiffSource<P> {
                     .send(Ok(PeerData::new(
                         peer,
                         (
-                            UnverifiedStateUpdateData {
-                                expected_commitment: header.header.state_diff_commitment,
-                                state_diff,
-                            },
+                            state_diff,
                             header.header.starknet_version,
+                            header.header.state_diff_commitment,
                         ),
                     )))
                     .await

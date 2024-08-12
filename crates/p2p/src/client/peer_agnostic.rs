@@ -31,7 +31,6 @@ use pathfinder_common::{
     ContractNonce,
     SierraHash,
     SignedBlockHeader,
-    StateDiffCommitment,
     StorageAddress,
     StorageValue,
     TransactionCommitment,
@@ -65,7 +64,6 @@ use crate::client::types::{
     EventsForBlockByTransaction,
     IncorrectStateDiffCount,
     Receipt,
-    UnverifiedStateUpdateData,
     UnverifiedTransactionData,
     UnverifiedTransactionDataWithBlockNumber,
 };
@@ -201,16 +199,14 @@ impl StateDiffStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
-            + Send
-            + 'static,
-    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>> {
+        state_diff_length_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>> {
         let inner = self.inner.clone();
         let outer = self;
         state_diff_stream::make(
             start,
             stop,
-            state_diff_length_and_commitment_stream,
+            state_diff_length_stream,
             move || {
                 let outer = outer.clone();
                 async move { outer.get_random_peers().await }
@@ -936,10 +932,10 @@ mod state_diff_stream {
     pub fn make<PF, RF>(
         mut start: BlockNumber,
         stop: BlockNumber,
-        count_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>> + Send + 'static,
+        length_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
         send_request: impl Fn(PeerId, StateDiffsRequest) -> RF + Send + 'static,
-    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>
+    ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
         RF: Future<Output = anyhow::Result<fmpsc::Receiver<StateDiffsResponse>>> + Send,
@@ -948,9 +944,9 @@ mod state_diff_stream {
 
         let (tx, rx) = mpsc::channel(1);
         tokio::spawn(async move {
-            let mut count_stream = Box::pin(count_stream);
+            let mut length_stream = Box::pin(length_stream);
 
-            let cnt = match try_next(&mut count_stream).await {
+            let cnt = match try_next(&mut length_stream).await {
                 Ok(x) => x,
                 Err(e) => {
                     _ = tx.send(Err(e)).await;
@@ -993,7 +989,7 @@ mod state_diff_stream {
                         if yield_block(
                             peer,
                             &mut progress,
-                            &mut count_stream,
+                            &mut length_stream,
                             state_diff,
                             &mut start,
                             stop,
@@ -1108,29 +1104,15 @@ mod state_diff_stream {
     async fn yield_block(
         peer: PeerId,
         progress: &mut StateDiffStreamProgress,
-        len_and_commitment_stream: &mut (impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
-                  + Unpin
-                  + Send
-                  + 'static),
+        len_stream: &mut (impl Stream<Item = anyhow::Result<usize>> + Unpin + Send + 'static),
         state_diff: StateUpdateData,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>,
+        tx: mpsc::Sender<StreamItem<(StateUpdateData, BlockNumber)>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "State diff received for block");
 
-        _ = tx
-            .send(Ok(PeerData::new(
-                peer,
-                (
-                    UnverifiedStateUpdateData {
-                        expected_commitment: progress.commitment(),
-                        state_diff,
-                    },
-                    *start,
-                ),
-            )))
-            .await;
+        _ = tx.send(Ok(PeerData::new(peer, (state_diff, *start)))).await;
 
         if *start == stop {
             return true;
@@ -1138,7 +1120,7 @@ mod state_diff_stream {
 
         *start += 1;
 
-        let cnt = match try_next(len_and_commitment_stream).await {
+        let cnt = match try_next(len_stream).await {
             Ok(x) => x,
             Err(e) => {
                 _ = tx.send(Err(e)).await;
@@ -1156,25 +1138,19 @@ mod state_diff_stream {
     #[derive(Clone, Copy, Debug)]
     struct StateDiffStreamProgress {
         count: usize,
-        commitment: StateDiffCommitment,
         count_backup: usize,
     }
 
     impl StateDiffStreamProgress {
-        fn new((count, commitment): (usize, StateDiffCommitment)) -> Self {
+        fn new(count: usize) -> Self {
             Self {
                 count,
-                commitment,
                 count_backup: count,
             }
         }
 
         fn count(&self) -> usize {
             self.count
-        }
-
-        fn commitment(&self) -> StateDiffCommitment {
-            self.commitment
         }
 
         fn rollback(&mut self) -> Self {
