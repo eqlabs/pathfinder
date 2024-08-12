@@ -534,6 +534,7 @@ fn start_sync(
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
         storage,
