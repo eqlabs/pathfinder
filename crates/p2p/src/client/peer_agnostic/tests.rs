@@ -724,9 +724,14 @@ async fn make_class_definition_stream(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: ClassesRequest| async { send_request(responses.clone()).await };
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: ClassesRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
 
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;
@@ -910,9 +915,14 @@ async fn make_event_stream(
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
-    let get_peers = || async { peers.clone() };
-    let send_request =
-        |_: PeerId, _: EventsRequest| async { send_request(responses.clone()).await };
+    let get_peers = move || {
+        let peers = peers.clone();
+        async move { peers }
+    };
+    let send_request = move |_: PeerId, _: EventsRequest| {
+        let responses = responses.clone();
+        async move { send_request(responses).await }
+    };
 
     let start = BlockNumber::GENESIS;
     let stop = start + (num_blocks - 1) as u64;

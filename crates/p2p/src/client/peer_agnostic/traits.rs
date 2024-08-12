@@ -57,7 +57,7 @@ pub trait StateDiffStream {
         state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
             + Send
             + 'static,
-    ) -> impl Stream<Item = PeerData<(UnverifiedStateUpdateData, BlockNumber)>>;
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>;
 }
 
 pub trait ClassStream {
@@ -66,7 +66,7 @@ pub trait ClassStream {
         start: BlockNumber,
         stop: BlockNumber,
         declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = PeerData<ClassDefinition>>;
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>>;
 }
 
 pub trait EventStream {
@@ -82,7 +82,7 @@ pub trait EventStream {
         start: BlockNumber,
         stop: BlockNumber,
         event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = PeerData<EventsForBlockByTransaction>>;
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>;
 }
 
 pub trait BlockClient {

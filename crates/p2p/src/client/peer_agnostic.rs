@@ -204,7 +204,7 @@ impl StateDiffStream for Client {
         state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
             + Send
             + 'static,
-    ) -> impl Stream<Item = PeerData<(UnverifiedStateUpdateData, BlockNumber)>> {
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>> {
         let inner = self.inner.clone();
         let outer = self;
         state_diff_stream::make(
@@ -229,7 +229,7 @@ impl ClassStream for Client {
         start: BlockNumber,
         stop: BlockNumber,
         declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = PeerData<ClassDefinition>> {
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>> {
         let inner = self.inner.clone();
         let outer = self;
         class_definition_stream::make(
@@ -261,7 +261,7 @@ impl EventStream for Client {
         start: BlockNumber,
         stop: BlockNumber,
         event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = PeerData<EventsForBlockByTransaction>> {
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>> {
         let inner = self.inner.clone();
         let outer = self;
         event_stream::make(
@@ -857,9 +857,7 @@ mod transaction_stream {
         transactions: Vec<(TransactionVariant, Receipt)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<
-            Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
-        >,
+        tx: mpsc::Sender<StreamItem<UnverifiedTransactionDataWithBlockNumber>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "All transactions received for block");
 
@@ -941,7 +939,7 @@ mod state_diff_stream {
         count_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>> + Send + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
         send_request: impl Fn(PeerId, StateDiffsRequest) -> RF + Send + 'static,
-    ) -> impl Stream<Item = PeerData<(UnverifiedStateUpdateData, BlockNumber)>>
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
         RF: Future<Output = anyhow::Result<fmpsc::Receiver<StateDiffsResponse>>> + Send,
@@ -952,9 +950,12 @@ mod state_diff_stream {
         tokio::spawn(async move {
             let mut count_stream = Box::pin(count_stream);
 
-            let Some(Ok(cnt)) = count_stream.next().await else {
-                tracing::debug!("Transaction counts and commitments stream terminated prematurely");
-                return;
+            let cnt = match try_next(&mut count_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
             };
 
             let mut progress = StateDiffStreamProgress::new(cnt);
@@ -1114,12 +1115,12 @@ mod state_diff_stream {
         state_diff: StateUpdateData,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<PeerData<(UnverifiedStateUpdateData, BlockNumber)>>,
+        tx: mpsc::Sender<StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "State diff received for block");
 
         _ = tx
-            .send(PeerData::new(
+            .send(Ok(PeerData::new(
                 peer,
                 (
                     UnverifiedStateUpdateData {
@@ -1128,7 +1129,7 @@ mod state_diff_stream {
                     },
                     *start,
                 ),
-            ))
+            )))
             .await;
 
         if *start == stop {
@@ -1137,9 +1138,12 @@ mod state_diff_stream {
 
         *start += 1;
 
-        let Some(Ok(cnt)) = len_and_commitment_stream.next().await else {
-            tracing::debug!("Transaction counts and commitments stream terminated prematurely");
-            return true;
+        let cnt = match try_next(len_and_commitment_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
         };
 
         *progress = StateDiffStreamProgress::new(cnt);
@@ -1193,7 +1197,7 @@ mod class_definition_stream {
         counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
         send_request: impl Fn(PeerId, ClassesRequest) -> RF + Send + 'static,
-    ) -> impl Stream<Item = PeerData<ClassDefinition>>
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
         RF: Future<Output = anyhow::Result<fmpsc::Receiver<ClassesResponse>>> + Send,
@@ -1204,9 +1208,12 @@ mod class_definition_stream {
         tokio::spawn(async move {
             let mut declared_class_counts_stream = Box::pin(counts_stream);
 
-            let Some(Ok(cnt)) = declared_class_counts_stream.next().await else {
-                tracing::debug!("Declared class counts stream terminated prematurely");
-                return;
+            let cnt = match try_next(&mut declared_class_counts_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
             };
 
             let mut progress = BlockProgress::new(cnt);
@@ -1327,12 +1334,12 @@ mod class_definition_stream {
         class_definitions: Vec<ClassDefinition>,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<PeerData<ClassDefinition>>,
+        tx: mpsc::Sender<StreamItem<ClassDefinition>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "All classes received for block");
 
         for class_definition in class_definitions {
-            _ = tx.send(PeerData::new(peer, class_definition)).await;
+            _ = tx.send(Ok(PeerData::new(peer, class_definition))).await;
         }
 
         if *start == stop {
@@ -1341,11 +1348,13 @@ mod class_definition_stream {
 
         *start += 1;
 
-        let Some(Ok(cnt)) = counts_stream.next().await else {
-            tracing::debug!("Declared class counts stream terminated prematurely");
-            return true;
+        let cnt = match try_next(counts_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
         };
-
         *progress = BlockProgress::new(cnt);
 
         tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
@@ -1363,7 +1372,7 @@ mod event_stream {
         counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
         get_peers: impl Fn() -> PF + Send + 'static,
         send_request: impl Fn(PeerId, EventsRequest) -> RF + Send + 'static,
-    ) -> impl Stream<Item = PeerData<EventsForBlockByTransaction>>
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
         RF: Future<Output = anyhow::Result<fmpsc::Receiver<EventsResponse>>> + Send,
@@ -1501,11 +1510,11 @@ mod event_stream {
         events: Vec<(TransactionHash, Vec<Event>)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
-        tx: mpsc::Sender<PeerData<EventsForBlockByTransaction>>,
+        tx: mpsc::Sender<StreamItem<EventsForBlockByTransaction>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "All events received for block");
 
-        _ = tx.send(PeerData::new(peer, (*start, events))).await;
+        _ = tx.send(Ok(PeerData::new(peer, (*start, events)))).await;
 
         if *start == stop {
             return true;
@@ -1513,11 +1522,13 @@ mod event_stream {
 
         *start += 1;
 
-        let Some(Ok(cnt)) = counts_stream.next().await else {
-            tracing::debug!("Event counts stream terminated prematurely");
-            return true;
+        let cnt = match try_next(counts_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
         };
-
         *progress = BlockProgress::new(cnt);
 
         tracing::trace!(next_block=%start, expected_responses=%cnt, "Moving to next block");
