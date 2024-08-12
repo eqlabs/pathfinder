@@ -573,6 +573,7 @@ fn start_feeder_gateway_sync(
         sequencer: pathfinder_context.gateway,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
+        l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,
