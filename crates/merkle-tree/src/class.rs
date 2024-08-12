@@ -1,25 +1,23 @@
-use std::ops::ControlFlow;
-
 use anyhow::Context;
 use bitvec::order::Msb0;
 use bitvec::prelude::BitSlice;
-use pathfinder_common::hash::{PedersenHash, PoseidonHash};
-use pathfinder_common::trie::TrieNode;
+
 use pathfinder_common::{
-    BlockNumber,
-    CasmHash,
+    BlockNumber
+    ,
     ClassCommitment,
     ClassCommitmentLeafHash,
     ClassHash,
-    SierraHash,
-    StorageAddress,
-    StorageValue,
+    SierraHash
+
+    ,
 };
+use pathfinder_common::hash::PoseidonHash;
+use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
-use crate::merkle_node::InternalNode;
-use crate::tree::{MerkleTree, Visit};
+use crate::tree::MerkleTree;
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
 /// Starknet's Sierra classes.
@@ -112,94 +110,6 @@ impl<'tx> ClassCommitmentTree<'tx> {
     }
 }
 
-/// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
-/// Starknet's Sierra classes.
-///
-/// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
-///
-/// Tree data is persisted by a sqlite table 'tree_class'.
-
-pub struct ClassStorageTree<'tx> {
-    tree: MerkleTree<PoseidonHash, 251>,
-    storage: ClassStorage<'tx>,
-}
-
-impl<'tx> ClassStorageTree<'tx> {
-    pub fn empty(tx: &'tx Transaction<'tx>) -> Self {
-        let storage = ClassStorage { tx, block: None };
-        let tree = MerkleTree::empty();
-
-        Self { tree, storage }
-    }
-
-    pub fn load(tx: &'tx Transaction<'tx>, block: BlockNumber) -> anyhow::Result<Self> {
-        let root = tx
-            .class_root_index(block)
-            .context("Querying class root index")?;
-
-        let Some(root) = root else {
-            return Ok(Self::empty(tx));
-        };
-
-        let storage = ClassStorage {
-            tx,
-            block: Some(block),
-        };
-
-        let tree = MerkleTree::new(root);
-
-        Ok(Self { tree, storage })
-    }
-
-    pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
-        self.tree = self.tree.with_verify_hashes(verify_hashes);
-        self
-    }
-
-    /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(
-        tx: &'tx Transaction<'tx>,
-        block: BlockNumber,
-        key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .class_root_index(block)
-            .context("Querying class root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
-        let storage = ClassStorage {
-            tx,
-            block: Some(block),
-        };
-
-        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
-    }
-
-    pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
-        let key = address.view_bits().to_owned();
-        self.tree.set(&self.storage, key, value.0)
-    }
-
-    /// Commits the changes and calculates the new node hashes. Returns the new
-    /// commitment and any potentially newly created nodes.
-    pub fn commit(self) -> anyhow::Result<(CasmHash, TrieUpdate)> {
-        let update = self.tree.commit(&self.storage)?;
-        let commitment = CasmHash(update.root_commitment);
-        Ok((commitment, update))
-    }
-
-    /// See [`MerkleTree::dfs`]
-    pub fn dfs<B, F: FnMut(&InternalNode, &BitSlice<u8, Msb0>) -> ControlFlow<B, Visit>>(
-        &mut self,
-        f: &mut F,
-    ) -> anyhow::Result<Option<B>> {
-        self.tree.dfs(&self.storage, f)
-    }
-}
-
 struct ClassTrieStorage<'tx> {
     tx: &'tx Transaction<'tx>,
     block: Option<BlockNumber>,
@@ -207,11 +117,11 @@ struct ClassTrieStorage<'tx> {
 
 impl crate::storage::Storage for ClassTrieStorage<'_> {
     fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.tx.storage_trie_node(index)
+        self.tx.class_trie_node(index)
     }
 
     fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
-        self.tx.storage_trie_node_hash(index)
+        self.tx.class_trie_node_hash(index)
     }
 
     fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {

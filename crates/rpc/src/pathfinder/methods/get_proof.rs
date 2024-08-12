@@ -3,7 +3,6 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::class::ClassStorageTree;
 use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
@@ -18,10 +17,9 @@ pub struct GetProofInput {
 }
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
-pub struct GetProofInputClass {
+pub struct GetClassProofInput {
     pub block_id: BlockId,
     pub class_hash: ClassHash,
-    pub keys: Vec<StorageAddress>,
 }
 
 // FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.
@@ -161,7 +159,7 @@ pub struct GetProofOutput {
 
 #[derive(Debug, Serialize)]
 #[skip_serializing_none]
-pub struct GetProofOutputClass {
+pub struct GetClassProofOutput {
     /// Required to verify that the hash of the class commitment and the root of
     /// the [contract_proof](GetProofOutput::contract_proof) matches the
     /// [state_commitment](Self#state_commitment). Present only for Starknet
@@ -302,16 +300,8 @@ pub async fn get_proof(
 /// particular contract.
 pub async fn get_proof_class(
     context: RpcContext,
-    input: GetProofInputClass,
-) -> Result<GetProofOutputClass, GetProofError> {
-    const MAX_KEYS: usize = 100;
-    if input.keys.len() > MAX_KEYS {
-        return Err(GetProofError::ProofLimitExceeded {
-            limit: MAX_KEYS as u32,
-            requested: input.keys.len() as u32,
-        });
-    }
-
+    input: GetClassProofInput,
+) -> Result<GetClassProofOutput, GetProofError> {
     let block_id = match input.block_id {
         BlockId::Pending => {
             return Err(GetProofError::Internal(anyhow!(
@@ -357,28 +347,13 @@ pub async fn get_proof_class(
             .context("Fetching class root existence")?;
 
         if !class_root_exists {
-            return Ok(GetProofOutputClass {
+            return Ok(GetClassProofOutput {
                 class_commitment,
                 class_proof,
             });
         };
 
-        let mut class_proofs = Vec::new();
-        for k in &input.keys {
-            let proof = ClassStorageTree::get_proof(&tx, header.number, k.view_bits())
-                .context("Get proof from class tree")?
-                .ok_or_else(|| {
-                    let e = anyhow!(
-                        "Storage proof missing for key {:?}, but should be present",
-                        k
-                    );
-                    tracing::warn!("{e}");
-                    e
-                })?;
-            class_proofs.push(ProofNodes(proof));
-        }
-
-        Ok(GetProofOutputClass {
+        Ok(GetClassProofOutput {
             class_commitment,
             class_proof,
         })
