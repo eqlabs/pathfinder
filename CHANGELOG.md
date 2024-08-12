@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Pathfinder JSON-RPC extension methods are now also exposed on the `/rpc/pathfinder/v0_1` endpoint.
+- `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
 
 ## [0.14.1] - 2024-07-29
 
