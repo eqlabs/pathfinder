@@ -22,6 +22,8 @@ use crate::client::types::{
 };
 use crate::PeerData;
 
+pub type StreamItem<T> = Result<PeerData<T>, PeerData<anyhow::Error>>;
+
 pub trait HeaderStream {
     fn header_stream(
         self,
@@ -36,12 +38,10 @@ pub trait TransactionStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<
-            Item = anyhow::Result<(usize, TransactionCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
+        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+            + Send
+            + 'static,
+    ) -> impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>>;
 }
 
 pub trait StateDiffStream {
@@ -54,12 +54,10 @@ pub trait StateDiffStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<
-            Item = anyhow::Result<(usize, StateDiffCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
-    >;
+        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+            + Send
+            + 'static,
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>;
 }
 
 pub trait ClassStream {
@@ -67,8 +65,8 @@ pub trait ClassStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>;
+        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>>;
 }
 
 pub trait EventStream {
@@ -83,8 +81,8 @@ pub trait EventStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>;
+        event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>;
 }
 
 pub trait BlockClient {

@@ -1,11 +1,12 @@
 //! _High level_ client for p2p interaction.
 //! Frees the caller from managing peers manually.
 use std::collections::HashSet;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Context;
-use futures::{pin_mut, Stream, StreamExt};
+use futures::channel::mpsc as fmpsc;
+use futures::{Stream, StreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
@@ -37,7 +38,8 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
+use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod fixtures;
@@ -51,6 +53,7 @@ use traits::{
     EventStream,
     HeaderStream,
     StateDiffStream,
+    StreamItem,
     TransactionStream,
 };
 
@@ -145,7 +148,7 @@ impl HeaderStream for Client {
     ) -> impl Stream<Item = PeerData<SignedBlockHeader>> {
         let inner = self.inner.clone();
         let outer = self;
-        make_header_stream(
+        header_stream::make(
             start,
             stop,
             reverse,
@@ -166,15 +169,13 @@ impl TransactionStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<
-            Item = anyhow::Result<(usize, TransactionCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedTransactionData, BlockNumber)>, PeerData<anyhow::Error>>,
-    > {
+        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+            + Send
+            + 'static,
+    ) -> impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>> {
         let inner = self.inner.clone();
         let outer = self;
-        make_transaction_stream(
+        transaction_stream::make(
             start,
             stop,
             transaction_counts_and_commitments_stream,
@@ -200,15 +201,13 @@ impl StateDiffStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<
-            Item = anyhow::Result<(usize, StateDiffCommitment)>,
-        >,
-    ) -> impl Stream<
-        Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
-    > {
+        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+            + Send
+            + 'static,
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>> {
         let inner = self.inner.clone();
         let outer = self;
-        make_state_diff_stream(
+        state_diff_stream::make(
             start,
             stop,
             state_diff_length_and_commitment_stream,
@@ -229,11 +228,11 @@ impl ClassStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>> {
+        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>> {
         let inner = self.inner.clone();
         let outer = self;
-        make_class_definition_stream(
+        class_definition_stream::make(
             start,
             stop,
             declared_class_counts_stream,
@@ -261,12 +260,11 @@ impl EventStream for Client {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    ) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
-    {
+        event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>> {
         let inner = self.inner.clone();
         let outer = self;
-        make_event_stream(
+        event_stream::make(
             start,
             stop,
             event_counts_stream,
@@ -581,28 +579,129 @@ impl BlockClient for Client {
     }
 }
 
-pub fn make_header_stream<PF, RF>(
-    start: BlockNumber,
-    stop: BlockNumber,
-    reverse: bool,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF,
-) -> impl Stream<Item = PeerData<SignedBlockHeader>>
-where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<BlockHeadersResponse>>,
-    >,
-{
-    let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
-    let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
+mod header_stream {
+    use super::*;
 
-    let (mut start, stop, direction) = match reverse {
-        true => (stop, start, Direction::Backward),
-        false => (start, stop, Direction::Forward),
-    };
+    pub fn make<PF, RF>(
+        start: BlockNumber,
+        stop: BlockNumber,
+        reverse: bool,
+        get_peers: impl Fn() -> PF + Send + 'static,
+        send_request: impl Fn(PeerId, BlockHeadersRequest) -> RF + Send + 'static,
+    ) -> impl Stream<Item = PeerData<SignedBlockHeader>>
+    where
+        PF: Future<Output = Vec<PeerId>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<BlockHeadersResponse>>> + Send,
+    {
+        let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
+        let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
 
-    tracing::trace!(?start, ?stop, ?direction, "Streaming headers");
+        let (mut start, stop, dir) = match reverse {
+            true => (stop, start, Direction::Backward),
+            false => (start, stop, Direction::Forward),
+        };
+
+        tracing::trace!(?start, ?stop, ?dir, "Streaming headers");
+
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            // Loop which refreshes peer set once we exhaust it.
+            loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses =
+                        match send_request(peer, make_request(start, stop, dir)).await {
+                            Ok(x) => x,
+                            Err(error) => {
+                                tracing::debug!(%peer, reason=%error, "Headers request failed");
+                                continue 'next_peer;
+                            }
+                        };
+
+                    while let Some(r) = responses.next().await {
+                        match handle_response(peer, r, dir, &mut start, stop, tx.clone()).await {
+                            Action::NextResponse => {}
+                            Action::NextPeer => continue 'next_peer,
+                            Action::TerminateStream => return,
+                        }
+                    }
+
+                    if done(dir, start, stop) {
+                        tracing::debug!(%peer, "Header stream Fin missing");
+                        return;
+                    }
+
+                    // TODO: track how much and how fast this peer responded
+                    // with i.e. don't let them drip feed us etc.
+                }
+            }
+        });
+
+        ReceiverStream::new(rx)
+    }
+
+    async fn handle_response(
+        peer: PeerId,
+        signed_header: BlockHeadersResponse,
+        direction: Direction,
+        start: &mut i64,
+        stop: i64,
+        tx: mpsc::Sender<PeerData<SignedBlockHeader>>,
+    ) -> Action {
+        match signed_header {
+            BlockHeadersResponse::Header(hdr) => match SignedBlockHeader::try_from_dto(*hdr) {
+                Ok(hdr) => {
+                    if done(direction, *start, stop) {
+                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
+                        return Action::TerminateStream;
+                    }
+
+                    _ = tx.send(PeerData::new(peer, hdr)).await;
+
+                    *start = match direction {
+                        Direction::Forward => *start + 1,
+                        Direction::Backward => *start - 1,
+                    };
+
+                    Action::NextResponse
+                }
+                Err(error) => {
+                    tracing::debug!(%peer, %error, "Header stream failed");
+                    if done(direction, *start, stop) {
+                        return Action::TerminateStream;
+                    }
+
+                    Action::NextPeer
+                }
+            },
+            BlockHeadersResponse::Fin => {
+                tracing::debug!(%peer, "Header stream Fin");
+                if done(direction, *start, stop) {
+                    return Action::TerminateStream;
+                }
+
+                Action::NextPeer
+            }
+        }
+    }
+
+    fn make_request(start: i64, stop: i64, dir: Direction) -> BlockHeadersRequest {
+        let limit = start.max(stop) - start.min(stop) + 1;
+
+        BlockHeadersRequest {
+            iteration: Iteration {
+                start: u64::try_from(start).expect("start >= 0").into(),
+                direction: dir,
+                limit: limit.try_into().expect("limit >= 0"),
+                step: 1.into(),
+            },
+        }
+    }
+
+    enum Action {
+        NextResponse,
+        NextPeer,
+        TerminateStream,
+    }
 
     fn done(direction: Direction, start: i64, stop: i64) -> bool {
         match direction {
@@ -610,789 +709,874 @@ where
             Direction::Backward => start < stop,
         }
     }
-
-    async_stream::stream! {
-        // Loop which refreshes peer set once we exhaust it.
-        'outer: loop {
-            let peers = get_peers().await;
-
-            // Attempt each peer.
-            'next_peer: for peer in peers {
-                let limit = start.max(stop) - start.min(stop) + 1;
-
-                let request = BlockHeadersRequest {
-                    iteration: Iteration {
-                        start: u64::try_from(start).expect("start >= 0").into(),
-                        direction,
-                        limit: limit.try_into().expect("limit >= 0"),
-                        step: 1.into(),
-                    },
-                };
-
-                let mut responses =
-                    match send_request(peer, request).await {
-                        Ok(x) => x,
-                        Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "Headers request failed");
-                            continue 'next_peer;
-                        }
-                    };
-
-                while let Some(signed_header) = responses.next().await {
-                    // It can be a finishing FIN or an extra header we just happily ignore
-                    if done(direction, start, stop) {
-                        break 'outer;
-                    }
-
-                    match signed_header {
-                        BlockHeadersResponse::Header(hdr) => {
-                            match SignedBlockHeader::try_from_dto(*hdr) {
-                                Ok(hdr) => {
-                                    yield PeerData::new(peer, hdr);
-
-                                    start = match direction {
-                                        Direction::Forward => start + 1,
-                                        Direction::Backward => start - 1,
-                                    };
-                                },
-                                Err(error) => {
-                                    tracing::debug!(%peer, %error, "Header stream failed");
-                                    continue 'next_peer;
-                                }
-                            }
-                        }
-                        BlockHeadersResponse::Fin => {
-                            tracing::debug!(%peer, "Header stream Fin");
-                            if done(direction, start, stop) {
-                                break 'outer;
-                            }
-                            continue 'next_peer;
-                        }
-                    };
-                }
-
-                // Stream ended without FIN but we could already have all the responses we need
-                if done(direction, start, stop) {
-                    break 'outer;
-                }
-
-                // TODO: track how much and how fast this peer responded with i.e. don't let them drip feed us etc.
-            }
-        }
-    }
 }
 
-pub fn make_transaction_stream<PF, RF>(
-    mut start: BlockNumber,
-    stop: BlockNumber,
-    transaction_counts_and_commitments_stream: impl Stream<
-        Item = anyhow::Result<(usize, TransactionCommitment)>,
-    >,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, TransactionsRequest) -> RF,
-) -> impl Stream<
-    Item = Result<PeerData<UnverifiedTransactionDataWithBlockNumber>, PeerData<anyhow::Error>>,
->
-where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<TransactionsResponse>>,
-    >,
-{
-    tracing::trace!(?start, ?stop, "Streaming Transactions");
+mod transaction_stream {
+    use super::*;
 
-    async_stream::try_stream! {
-        pin_mut!(transaction_counts_and_commitments_stream);
+    pub fn make<PF, RF>(
+        mut start: BlockNumber,
+        stop: BlockNumber,
+        counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+            + Send
+            + 'static,
+        get_peers: impl Fn() -> PF + Send + 'static,
+        send_request: impl Fn(PeerId, TransactionsRequest) -> RF + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<UnverifiedTransactionDataWithBlockNumber>>
+    where
+        PF: Future<Output = Vec<PeerId>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<TransactionsResponse>>> + Send,
+    {
+        tracing::trace!(?start, ?stop, "Streaming Transactions");
 
-        let mut current_count_outer = None;
-        let mut current_commitment = Default::default();
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            let mut counts_and_commitments_stream = Box::pin(counts_and_commitments_stream);
 
-        if start <= stop {
+            let cnt = match try_next(&mut counts_and_commitments_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
+            };
+
+            // Transaction counter for the currently received block
+            let mut progress = TransactionStreamProgress::new(cnt);
+
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = get_peers().await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                    let limit = stop.get() - start.get() + 1;
-
-                    let request = TransactionsRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses = match send_request(peer, request).await
-                    {
+            loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
                         Err(error) => {
-                            // Failed to establish connection, try next peer.
                             tracing::debug!(%peer, reason=%error, "Transactions request failed");
                             continue 'next_peer;
                         }
                     };
+                    // If the previous peer failed to provide the entire block we need to start over
+                    progress.rollback();
 
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let (count, commitment) = transaction_counts_and_commitments_stream
-                                .next()
-                                .await
-                                .with_context(|| {
-                                    format!(
-                                        "Transaction counts and commitments stream terminated \
-                                        prematurely at block {}",
-                                        start
-                                    )
-                                })
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
+                    while start <= stop {
+                        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+                        let mut transactions = Vec::new();
 
-                            current_count_outer = Some(count);
-                            current_commitment = commitment;
-                            count
+                        while progress.count() > 0 {
+                            match responses.next().await {
+                                Some(r) => {
+                                    let i = into_idx(transactions.len());
+                                    match handle_response(peer, r, i) {
+                                        Some(x) => transactions.push(x),
+                                        None => continue 'next_peer,
+                                    }
+                                }
+                                None => continue 'next_peer,
+                            }
+                            *progress.count_mut() -= 1;
                         }
-                    };
 
-                    tracing::trace!(number=%current_count, "Expecting transaction responses");
-
-                    let mut transactions = Vec::new();
-
-                    while let Some(response) = responses.next().await {
-                        match response {
-                            TransactionsResponse::TransactionWithReceipt(
-                                TransactionWithReceipt {
-                                    transaction,
-                                    receipt,
-                                },
-                            ) => {
-                                // FIXME
-                                // These conversions should all be infallible OR
-                                // we should move to the next peer when failure occurs
-                                let t = TransactionVariant::try_from_dto(transaction)
-                                    .map_err(peer_err)?;
-                                let r = Receipt::try_from((
-                                    receipt,
-                                    TransactionIndex::new_or_panic(
-                                        transactions.len().try_into().expect("ptr size is 64bits"),
-                                    ),
-                                ))
-                                .map_err(peer_err)?;
-
-                                match current_count.checked_sub(1) {
-                                    Some(x) => {
-                                        current_count = x;
-                                        transactions.push((t, r));
-                                    }
-                                    None => {
-                                        tracing::debug!(%peer, %start, %stop, "Too many transactions");
-                                        // TODO punish the peer
-
-                                        // We can only get here in case of the last block, which means that the stream should be terminated
-                                        debug_assert!(start == stop);
-                                        break 'outer;
-                                    }
-                                }
-                            }
-                            TransactionsResponse::Fin => {
-                                if current_count == 0 {
-                                    if start == stop {
-                                        // We're done, terminate the stream
-                                        break 'outer;
-                                    }
-                                } else {
-                                    tracing::debug!(%peer, "Premature transaction stream Fin");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                }
-                            }
-                        };
-
-                        if current_count == 0 {
-                            // The counter for this block has been exhausted which means
-                            // that this block is complete.
-                            tracing::trace!(block_number=%start, "All transactions received for block");
-
-                            yield PeerData::new(
-                                peer,
-                                (UnverifiedTransactionData {
-                                    expected_commitment: std::mem::take(
-                                        &mut current_commitment
-                                    ),
-                                    transactions: std::mem::take(&mut transactions),
-                                }, start)
-                            );
-
-                            if start < stop {
-                                // Move to the next block
-                                start += 1;
-                                tracing::trace!(next_block=%start, "Moving to next block");
-                                let (count, commitment) = transaction_counts_and_commitments_stream
-                                .next()
-                                .await
-                                .with_context(|| {
-                                    format!(
-                                        "Transaction counts and commitments stream terminated \
-                                        prematurely at block {}",
-                                        start
-                                    )
-                                })
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-
-                                current_count = count;
-                                current_count_outer = Some(current_count);
-                                current_commitment = commitment;
-                            }
+                        if yield_block(
+                            peer,
+                            &mut progress,
+                            &mut counts_and_commitments_stream,
+                            transactions,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
+                            return;
                         }
                     }
 
-                    // TODO punish the peer
-                    // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
-                    // and we should start from the current block again but from the next peer.
-                    //
-                    // The problem here is that the count stream was already consumed, so we assume that the full blocks that were already
-                    // processed are correct.
-                    tracing::debug!(%peer, "Fin missing");
-
-                    // The above situation can also happen when we've received all the data we need
-                    // but the last peer has not sent a Fin.
-                    if current_count == 0 && start == stop {
-                        // We're done, terminate the stream
-                        break 'outer;
-                    }
+                    return;
                 }
             }
+        });
+
+        ReceiverStream::new(rx)
+    }
+
+    /// ### Important
+    ///
+    /// Return None if the caller should move to the next peer
+    fn handle_response(
+        peer: PeerId,
+        response: TransactionsResponse,
+        txn_idx: TransactionIndex,
+    ) -> Option<(TransactionVariant, Receipt)> {
+        match response {
+            TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
+                transaction,
+                receipt,
+            }) => {
+                if let (Ok(t), Ok(r)) = (
+                    TransactionVariant::try_from_dto(transaction),
+                    Receipt::try_from((receipt, txn_idx)),
+                ) {
+                    Some((t, r))
+                } else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Transaction or receipt failed to parse");
+                    None
+                }
+            }
+            TransactionsResponse::Fin => {
+                // This peer will not give us more blocks, move to the next peer
+                None
+            }
+        }
+    }
+
+    fn make_request(start: BlockNumber, stop: BlockNumber) -> TransactionsRequest {
+        TransactionsRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop.get() - start.get() + 1,
+                step: 1.into(),
+            },
+        }
+    }
+
+    fn into_idx(len: usize) -> TransactionIndex {
+        TransactionIndex::new_or_panic(len.try_into().expect("ptr size is 64bits"))
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn yield_block(
+        peer: PeerId,
+        progress: &mut TransactionStreamProgress,
+        counts_and_commitments_stream: &mut (impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
+                  + Unpin
+                  + Send
+                  + 'static),
+        transactions: Vec<(TransactionVariant, Receipt)>,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<StreamItem<UnverifiedTransactionDataWithBlockNumber>>,
+    ) -> bool {
+        tracing::trace!(block_number=%start, "All transactions received for block");
+
+        _ = tx
+            .send(Ok(PeerData::new(
+                peer,
+                (
+                    UnverifiedTransactionData {
+                        expected_commitment: progress.commitment(),
+                        transactions,
+                    },
+                    *start,
+                ),
+            )))
+            .await;
+
+        if *start == stop {
+            return true;
+        }
+
+        *start += 1;
+
+        let x = match try_next(counts_and_commitments_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
+        };
+
+        *progress = TransactionStreamProgress::new(x);
+
+        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+
+        false
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct TransactionStreamProgress {
+        count: usize,
+        commitment: TransactionCommitment,
+        count_backup: usize,
+    }
+
+    impl TransactionStreamProgress {
+        fn new((count, commitment): (usize, TransactionCommitment)) -> Self {
+            Self {
+                count,
+                commitment,
+                count_backup: count,
+            }
+        }
+
+        fn count(&self) -> usize {
+            self.count
+        }
+
+        fn count_mut(&mut self) -> &mut usize {
+            &mut self.count
+        }
+
+        fn commitment(&self) -> TransactionCommitment {
+            self.commitment
+        }
+
+        fn rollback(&mut self) -> Self {
+            self.count = self.count_backup;
+            *self
         }
     }
 }
 
-pub fn make_state_diff_stream<PF, RF>(
-    mut start: BlockNumber,
-    stop: BlockNumber,
-    state_diff_length_and_commitment_stream: impl Stream<
-        Item = anyhow::Result<(usize, StateDiffCommitment)>,
-    >,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, StateDiffsRequest) -> RF,
-) -> impl Stream<
-    Item = Result<PeerData<(UnverifiedStateUpdateData, BlockNumber)>, PeerData<anyhow::Error>>,
->
-where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<StateDiffsResponse>>,
-    >,
-{
-    tracing::trace!(?start, ?stop, "Streaming state diffs");
+mod state_diff_stream {
+    use super::*;
 
-    async_stream::try_stream! {
-        pin_mut!(state_diff_length_and_commitment_stream);
+    pub fn make<PF, RF>(
+        mut start: BlockNumber,
+        stop: BlockNumber,
+        count_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>> + Send + 'static,
+        get_peers: impl Fn() -> PF + Send + 'static,
+        send_request: impl Fn(PeerId, StateDiffsRequest) -> RF + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>
+    where
+        PF: Future<Output = Vec<PeerId>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<StateDiffsResponse>>> + Send,
+    {
+        tracing::trace!(?start, ?stop, "Streaming state diffs");
 
-        let mut current_count_outer = None;
-        let mut current_commitment = Default::default();
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            let mut count_stream = Box::pin(count_stream);
 
-        if start <= stop {
+            let cnt = match try_next(&mut count_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
+            };
+
+            let mut progress = StateDiffStreamProgress::new(cnt);
+
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = get_peers().await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                    let limit = stop.get() - start.get() + 1;
-
-                    let request = StateDiffsRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses = match send_request(peer, request).await
-                    {
+            loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
                         Ok(x) => x,
                         Err(error) => {
-                            // Failed to establish connection, try next peer.
-                            tracing::debug!(%peer, reason=%error, "State diffs request failed");
+                            tracing::debug!(%peer, reason=%error, "State diff request failed");
                             continue 'next_peer;
                         }
                     };
+                    // If the previous peer failed to provide the entire block we need to start over
+                    progress.rollback();
 
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let (count, commitment) = state_diff_length_and_commitment_stream
-                                .next()
-                                .await
-                                .with_context(|| {
-                                    format!("Stream terminated prematurely at block {start}")
-                                })
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-                            current_count_outer = Some(count);
-                            current_commitment = commitment;
-                            count
+                    while start <= stop {
+                        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+                        let mut state_diff = StateUpdateData::default();
+
+                        while progress.count() > 0 {
+                            match responses.next().await {
+                                Some(r) => {
+                                    if handle_response(peer, r, &mut state_diff, &mut progress)
+                                        .is_none()
+                                    {
+                                        continue 'next_peer;
+                                    }
+                                }
+                                None => continue 'next_peer,
+                            }
                         }
-                    };
 
-                    tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting state diff responses");
-
-                    let mut state_diff = StateUpdateData::default();
-
-                    while let Some(state_diff_response) = responses.next().await {
-                        tracing::trace!(?state_diff_response, "Received response");
-
-                        match state_diff_response {
-                            StateDiffsResponse::ContractDiff(ContractDiff {
-                                address,
-                                nonce,
-                                class_hash,
-                                values,
-                                domain: _,
-                            }) => {
-                                let address = ContractAddress(address.0);
-
-                                match current_count.checked_sub(values.len()) {
-                                    Some(x) => current_count = x,
-                                    None => {
-                                        tracing::debug!(%peer, %start, "Too many storage diffs: {} > {}", values.len(), current_count);
-                                        // TODO punish the peer
-
-                                        // We can only get here in case of the last block, which means that the stream should be terminated
-                                        debug_assert!(start == stop);
-                                        break 'outer;
-                                    }
-                                }
-
-                                if address == ContractAddress::ONE {
-                                    let storage = &mut state_diff
-                                        .system_contract_updates
-                                        .entry(address)
-                                        .or_default()
-                                        .storage;
-                                    values.into_iter().for_each(
-                                        |ContractStoredValue { key, value }| {
-                                            storage
-                                                .insert(StorageAddress(key), StorageValue(value));
-                                        },
-                                    );
-                                } else {
-                                    let update = &mut state_diff
-                                        .contract_updates
-                                        .entry(address)
-                                        .or_default();
-                                    values.into_iter().for_each(
-                                        |ContractStoredValue { key, value }| {
-                                            update
-                                                .storage
-                                                .insert(StorageAddress(key), StorageValue(value));
-                                        },
-                                    );
-
-                                    if let Some(nonce) = nonce {
-                                        match current_count.checked_sub(1) {
-                                            Some(x) => current_count = x,
-                                            None => {
-                                                tracing::debug!(%peer, %start, "Too many nonce updates");
-                                                // TODO punish the peer
-
-                                                // We can only get here in case of the last block, which means that the stream should be terminated
-                                                debug_assert!(start == stop);
-                                                break 'outer;
-                                            }
-                                        }
-
-                                        update.nonce = Some(ContractNonce(nonce));
-                                    }
-
-                                    if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
-                                        match current_count.checked_sub(1) {
-                                            Some(x) => current_count = x,
-                                            None => {
-                                                tracing::debug!(%peer, %start, "Too many deployed contracts");
-                                                // TODO punish the peer
-
-                                                // We can only get here in case of the last block, which means that the stream should be terminated
-                                                debug_assert!(start == stop);
-                                                break 'outer;
-                                            }
-                                        }
-
-                                        update.class =
-                                            Some(ContractClassUpdate::Deploy(class_hash));
-                                    }
-                                }
-                            }
-                            StateDiffsResponse::DeclaredClass(DeclaredClass {
-                                class_hash,
-                                compiled_class_hash,
-                            }) => {
-                                if let Some(compiled_class_hash) = compiled_class_hash {
-                                    state_diff.declared_sierra_classes.insert(
-                                        SierraHash(class_hash.0),
-                                        CasmHash(compiled_class_hash.0),
-                                    );
-                                } else {
-                                    state_diff
-                                        .declared_cairo_classes
-                                        .insert(ClassHash(class_hash.0));
-                                }
-
-                                match current_count.checked_sub(1) {
-                                    Some(x) => current_count = x,
-                                    None => {
-                                        tracing::debug!(%peer, %start, "Too many declared classes");
-                                        // TODO punish the peer
-
-                                        // We can only get here in case of the last block, which means that the stream should be terminated
-                                        debug_assert!(start == stop);
-                                        break 'outer;
-                                    }
-                                }
-                            }
-                            StateDiffsResponse::Fin => {
-                                if current_count == 0 {
-                                    if start == stop {
-                                        // We're done, terminate the stream
-                                        break 'outer;
-                                    }
-                                } else {
-                                    tracing::debug!(%peer, "Premature state diff stream Fin");
-                                    // TODO punish the peer
-                                    continue 'next_peer;
-                                }
-                            }
-                        };
-
-                        if current_count == 0 {
-                            // All the counters for this block have been exhausted which means
-                            // that the state update for this block is complete.
-                            tracing::trace!(block_number=%start, "State diff received for block");
-
-                            yield PeerData::new(
-                                peer,
-                                (
-                                    UnverifiedStateUpdateData {
-                                        expected_commitment: std::mem::take(&mut current_commitment),
-                                        state_diff: std::mem::take(&mut state_diff),
-                                    },
-                                    start
-                                )
-                            );
-
-                            if start < stop {
-                                // Move to the next block
-                                start += 1;
-                                tracing::trace!(next_block=%start, "Moving to next block");
-                                let (count, commitment) = state_diff_length_and_commitment_stream.next().await
-                                    .ok_or_else(|| anyhow::anyhow!("Contract update counts stream terminated prematurely at block {start}"))
-                                    .map_err(peer_err)?
-                                    .map_err(peer_err)?;
-                                current_count = count;
-                                current_count_outer = Some(current_count);
-                                current_commitment = commitment;
-
-                                tracing::trace!(number=%current_count, "Expecting state diff responses");
-                            }
+                        if yield_block(
+                            peer,
+                            &mut progress,
+                            &mut count_stream,
+                            state_diff,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
+                            return;
                         }
                     }
 
-                    // TODO punish the peer
-                    // If we reach here, the peer did not send a Fin, so the counter for the current block should be reset
-                    // and we should start from the current block again but from the next peer.
-                    tracing::debug!(%peer, "Fin missing");
+                    return;
+                }
+            }
+        });
 
-                    // The above situation can also happen when we've received all the data we need
-                    // but the last peer has not sent a Fin.
-                    if current_count == 0 && start == stop {
-                        // We're done, terminate the stream
-                        break 'outer;
+        ReceiverStream::new(rx)
+    }
+
+    /// ### Important
+    ///
+    /// Returns None if the caller should move to the next peer
+    fn handle_response(
+        peer: PeerId,
+        response: StateDiffsResponse,
+        state_diff: &mut StateUpdateData,
+        progress: &mut StateDiffStreamProgress,
+    ) -> Option<()> {
+        match response {
+            StateDiffsResponse::ContractDiff(ContractDiff {
+                address,
+                nonce,
+                class_hash,
+                values,
+                domain: _,
+            }) => {
+                let address = ContractAddress(address.0);
+
+                progress.checked_sub_assign(values.len())?;
+
+                if address == ContractAddress::ONE {
+                    let storage = &mut state_diff
+                        .system_contract_updates
+                        .entry(address)
+                        .or_default()
+                        .storage;
+                    values
+                        .into_iter()
+                        .for_each(|ContractStoredValue { key, value }| {
+                            storage.insert(StorageAddress(key), StorageValue(value));
+                        });
+                } else {
+                    let update = &mut state_diff.contract_updates.entry(address).or_default();
+                    values
+                        .into_iter()
+                        .for_each(|ContractStoredValue { key, value }| {
+                            update
+                                .storage
+                                .insert(StorageAddress(key), StorageValue(value));
+                        });
+
+                    if let Some(nonce) = nonce {
+                        progress.checked_sub_assign(1)?;
+                        update.nonce = Some(ContractNonce(nonce));
+                    }
+
+                    if let Some(class_hash) = class_hash.map(|x| ClassHash(x.0)) {
+                        progress.checked_sub_assign(1)?;
+                        update.class = Some(ContractClassUpdate::Deploy(class_hash));
                     }
                 }
             }
+            StateDiffsResponse::DeclaredClass(DeclaredClass {
+                class_hash,
+                compiled_class_hash,
+            }) => {
+                progress.checked_sub_assign(1)?;
+
+                if let Some(compiled_class_hash) = compiled_class_hash {
+                    state_diff
+                        .declared_sierra_classes
+                        .insert(SierraHash(class_hash.0), CasmHash(compiled_class_hash.0));
+                } else {
+                    state_diff
+                        .declared_cairo_classes
+                        .insert(ClassHash(class_hash.0));
+                }
+            }
+            StateDiffsResponse::Fin => {
+                tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                return None;
+            }
+        }
+
+        Some(())
+    }
+
+    fn make_request(start: BlockNumber, stop: BlockNumber) -> StateDiffsRequest {
+        StateDiffsRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop.get() - start.get() + 1,
+                step: 1.into(),
+            },
+        }
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn yield_block(
+        peer: PeerId,
+        progress: &mut StateDiffStreamProgress,
+        len_and_commitment_stream: &mut (impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
+                  + Unpin
+                  + Send
+                  + 'static),
+        state_diff: StateUpdateData,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>,
+    ) -> bool {
+        tracing::trace!(block_number=%start, "State diff received for block");
+
+        _ = tx
+            .send(Ok(PeerData::new(
+                peer,
+                (
+                    UnverifiedStateUpdateData {
+                        expected_commitment: progress.commitment(),
+                        state_diff,
+                    },
+                    *start,
+                ),
+            )))
+            .await;
+
+        if *start == stop {
+            return true;
+        }
+
+        *start += 1;
+
+        let cnt = match try_next(len_and_commitment_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
+        };
+
+        *progress = StateDiffStreamProgress::new(cnt);
+
+        tracing::trace!(block_number=%start, num_responses=%progress.count(), "Expecting");
+
+        false
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    struct StateDiffStreamProgress {
+        count: usize,
+        commitment: StateDiffCommitment,
+        count_backup: usize,
+    }
+
+    impl StateDiffStreamProgress {
+        fn new((count, commitment): (usize, StateDiffCommitment)) -> Self {
+            Self {
+                count,
+                commitment,
+                count_backup: count,
+            }
+        }
+
+        fn count(&self) -> usize {
+            self.count
+        }
+
+        fn commitment(&self) -> StateDiffCommitment {
+            self.commitment
+        }
+
+        fn rollback(&mut self) -> Self {
+            self.count = self.count_backup;
+            *self
+        }
+
+        fn checked_sub_assign(&mut self, rhs: usize) -> Option<()> {
+            self.count.checked_sub(rhs).map(|x| self.count = x)
         }
     }
 }
 
-pub fn make_class_definition_stream<PF, RF>(
-    mut start: BlockNumber,
-    stop: BlockNumber,
-    declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, ClassesRequest) -> RF,
-) -> impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
-where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<ClassesResponse>>,
-    >,
-{
-    tracing::trace!(?start, ?stop, "Streaming classes");
+mod class_definition_stream {
+    use super::*;
 
-    async_stream::try_stream! {
-        pin_mut!(declared_class_counts_stream);
+    pub fn make<PF, RF>(
+        mut start: BlockNumber,
+        stop: BlockNumber,
+        counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        get_peers: impl Fn() -> PF + Send + 'static,
+        send_request: impl Fn(PeerId, ClassesRequest) -> RF + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>>
+    where
+        PF: Future<Output = Vec<PeerId>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<ClassesResponse>>> + Send,
+    {
+        tracing::trace!(?start, ?stop, "Streaming classes");
 
-        let mut current_count_outer = None;
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            let mut declared_class_counts_stream = Box::pin(counts_stream);
 
-        if start <= stop {
+            let cnt = match try_next(&mut declared_class_counts_stream).await {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e)).await;
+                    return;
+                }
+            };
+
+            let mut progress = BlockProgress::new(cnt);
+
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = get_peers().await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                    let limit = stop.get() - start.get() + 1;
-
-                    let request = ClassesRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit,
-                            step: 1.into(),
-                        },
-                    };
-
-                    let mut responses =
-                        match send_request(peer, request).await {
-                            Ok(x) => x,
-                            Err(error) => {
-                                // Failed to establish connection, try next peer.
-                                tracing::debug!(%peer, reason=%error, "Classes request failed");
-                                continue 'next_peer;
-                            }
-                        };
-
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let x = declared_class_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-                            current_count_outer = Some(x);
-                            x
+            loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // Failed to establish connection, try next peer.
+                            tracing::debug!(%peer, reason=%error, "Classes request failed");
+                            continue 'next_peer;
                         }
                     };
+                    // If the previous peer failed to provide the entire block we need to start over
+                    progress.rollback();
 
                     while start <= stop {
-                        tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
-
+                        tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
                         let mut class_definitions = Vec::new();
 
-                        while current_count > 0 {
-                            if let Some(class_definition) = responses.next().await {
-                                match class_definition {
-                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
-                                        class,
-                                        domain: _,
-                                    }) => {
-                                        let CairoDefinition(definition) =
-                                            CairoDefinition::try_from_dto(class).map_err(peer_err)?;
-                                        class_definitions.push(ClassDefinition::Cairo {
-                                            block_number: start,
-                                            definition,
-                                        });
-                                    }
-                                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
-                                        class,
-                                        domain: _,
-                                    }) => {
-                                        let definition = SierraDefinition::try_from_dto(class).map_err(peer_err)?;
-                                        class_definitions.push(ClassDefinition::Sierra {
-                                            block_number: start,
-                                            sierra_definition: definition.0,
-                                        });
-                                    }
-                                    ClassesResponse::Fin => {
-                                        tracing::debug!(%peer, "Received FIN, continuing with next peer");
-                                        continue 'next_peer;
-                                    }
+                        while progress.get() > 0 {
+                            if let Some(response) = responses.next().await {
+                                match handle_response(peer, response, start) {
+                                    Some(x) => class_definitions.push(x),
+                                    None => continue 'next_peer,
                                 }
-
-                                current_count -= 1;
+                                *progress.as_mut() -= 1;
                             } else {
-                                // Stream closed before receiving all expected classes
                                 tracing::debug!(%peer, "Premature class definition stream termination");
                                 // TODO punish the peer
                                 continue 'next_peer;
                             }
                         }
 
-                        tracing::trace!(block_number=%start, "All classes received for block");
-
-                        for class_definition in class_definitions {
-                            yield PeerData::new(
-                                peer,
-                                class_definition,
-                            );
+                        if yield_block(
+                            peer,
+                            &mut progress,
+                            &mut declared_class_counts_stream,
+                            class_definitions,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
+                            return;
                         }
-
-                        if start == stop {
-                            break 'outer;
-                        }
-
-                        start += 1;
-                        current_count = declared_class_counts_stream.next().await
-                            .ok_or_else(|| anyhow::anyhow!("Declared class counts stream terminated prematurely at block {start}"))
-                            .map_err(peer_err)?
-                            .map_err(peer_err)?;
-                        current_count_outer = Some(current_count);
-
-                        tracing::trace!(block_number=%start, expected_classes=%current_count, "Expecting class definition responses");
                     }
 
-                    break 'outer;
+                    return;
                 }
+            }
+        });
+
+        ReceiverStream::new(rx)
+    }
+
+    fn make_request(start: BlockNumber, stop: BlockNumber) -> ClassesRequest {
+        ClassesRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop.get() - start.get() + 1,
+                step: 1.into(),
+            },
+        }
+    }
+
+    /// ### Important
+    ///
+    /// Returns `None` if the caller should move to the next peer
+    fn handle_response(
+        peer: PeerId,
+        response: ClassesResponse,
+        block_number: BlockNumber,
+    ) -> Option<ClassDefinition> {
+        match response {
+            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ }) => {
+                let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Cairo definition failed to parse");
+                    return None;
+                };
+
+                Some(ClassDefinition::Cairo {
+                    block_number,
+                    definition,
+                })
+            }
+            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _ }) => {
+                let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Sierra definition failed to parse");
+                    return None;
+                };
+
+                Some(ClassDefinition::Sierra {
+                    block_number,
+                    sierra_definition: definition,
+                })
+            }
+            ClassesResponse::Fin => {
+                tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                None
             }
         }
     }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn yield_block(
+        peer: PeerId,
+        progress: &mut BlockProgress,
+        counts_stream: &mut (impl Stream<Item = anyhow::Result<usize>> + Unpin + Send + 'static),
+        class_definitions: Vec<ClassDefinition>,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<StreamItem<ClassDefinition>>,
+    ) -> bool {
+        tracing::trace!(block_number=%start, "All classes received for block");
+
+        for class_definition in class_definitions {
+            _ = tx.send(Ok(PeerData::new(peer, class_definition))).await;
+        }
+
+        if *start == stop {
+            return true;
+        }
+
+        *start += 1;
+
+        let cnt = match try_next(counts_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
+        };
+        *progress = BlockProgress::new(cnt);
+
+        tracing::trace!(block_number=%start, expected_classes=%progress.get(), "Expecting class definition responses");
+
+        false
+    }
 }
 
-pub fn make_event_stream<PF, RF>(
-    mut start: BlockNumber,
-    stop: BlockNumber,
-    event_counts_stream: impl Stream<Item = anyhow::Result<usize>>,
-    get_peers: impl Fn() -> PF,
-    send_request: impl Fn(PeerId, EventsRequest) -> RF,
-) -> impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>
-where
-    PF: std::future::Future<Output = Vec<PeerId>>,
-    RF: std::future::Future<
-        Output = anyhow::Result<futures::channel::mpsc::Receiver<EventsResponse>>,
-    >,
-{
-    tracing::trace!(?start, ?stop, "Streaming events");
+mod event_stream {
+    use super::*;
 
-    async_stream::try_stream! {
-        pin_mut!(event_counts_stream);
+    pub fn make<PF, RF>(
+        mut start: BlockNumber,
+        stop: BlockNumber,
+        counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        get_peers: impl Fn() -> PF + Send + 'static,
+        send_request: impl Fn(PeerId, EventsRequest) -> RF + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>
+    where
+        PF: Future<Output = Vec<PeerId>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<EventsResponse>>> + Send,
+    {
+        tracing::trace!(?start, ?stop, "Streaming events");
 
-        let mut current_count_outer = None;
+        let (tx, rx) = mpsc::channel(1);
+        tokio::spawn(async move {
+            let mut counts_stream = Box::pin(counts_stream);
 
-        if start <= stop {
+            let Some(Ok(cnt)) = counts_stream.next().await else {
+                tracing::debug!("Event counts stream terminated prematurely");
+                return;
+            };
+
+            let mut progress = BlockProgress::new(cnt);
+
             // Loop which refreshes peer set once we exhaust it.
-            'outer: loop {
-                let peers = get_peers().await;
-
-                // Attempt each peer.
-                'next_peer: for peer in peers {
-                    let peer_err = |e: anyhow::Error| PeerData::new(peer, e);
-                    let limit = stop.get() - start.get() + 1;
-
-                    let request = EventsRequest {
-                        iteration: Iteration {
-                            start: start.get().into(),
-                            direction: Direction::Forward,
-                            limit,
-                            step: 1.into(),
-                        },
+            loop {
+                'next_peer: for peer in get_peers().await {
+                    let mut responses = match send_request(peer, make_request(start, stop)).await {
+                        Ok(x) => x,
+                        Err(error) => {
+                            // TODO punish the peer
+                            tracing::debug!(%peer, reason=%error, "Events request failed");
+                            continue 'next_peer;
+                        }
                     };
-
-                    let mut responses =
-                        match send_request(peer, request).await {
-                            Ok(x) => x,
-                            Err(error) => {
-                                // Failed to establish connection, try next peer.
-                                tracing::debug!(%peer, reason=%error, "Events request failed");
-                                continue 'next_peer;
-                            }
-                        };
 
                     // Maintain the current transaction hash to group events by transaction
                     // This grouping is TRUSTED for pre 0.13.2 Starknet blocks.
-                    let mut current_txn_hash = None;
-                    let mut current_count = match current_count_outer {
-                        // Still the same block
-                        Some(backup) => backup,
-                        // Move to the next block
-                        None => {
-                            let x = event_counts_stream.next().await
-                                .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
-                                .map_err(peer_err)?
-                                .map_err(peer_err)?;
-                            current_count_outer = Some(x);
-                            x
-                        }
-                    };
+                    let mut txn = None;
+                    // If the previous peer failed to provide the entire block we need to start
+                    // over
+                    progress.rollback();
 
                     while start <= stop {
-                        tracing::trace!(block_number=%start, expected_responses=%current_count, "Expecting event responses");
-
+                        tracing::trace!(block_number=%start, expected_responses=%progress.get(), "Expecting event responses");
                         let mut events: Vec<(TransactionHash, Vec<Event>)> = Vec::new();
 
-                        while current_count > 0 {
+                        while progress.get() > 0 {
                             if let Some(response) = responses.next().await {
-                                match response {
-                                    EventsResponse::Event(event) => {
-                                        let txn_hash = TransactionHash(event.transaction_hash.0);
-                                        let event = Event::try_from_dto(event).map_err(peer_err)?;
+                                if handle_response(peer, response, &mut txn, &mut events) {
+                                    continue 'next_peer;
+                                }
 
-                                        match current_txn_hash {
-                                            Some(x) if x == txn_hash => {
-                                                // Same transaction
-                                                events.last_mut().expect("not empty").1.push(event);
-                                            }
-                                            None | Some(_) => {
-                                                // New transaction
-                                                events.push((txn_hash, vec![event]));
-                                                current_txn_hash = Some(txn_hash);
-                                            }
-                                        }
-                                    }
-                                    EventsResponse::Fin => {
-                                        tracing::debug!(%peer, "Received FIN, continuing with next peer");
-                                        continue 'next_peer;
-                                    }
-                                };
-
-                                current_count -= 1;
+                                *progress.as_mut() -= 1;
                             } else {
-                                // Stream closed before receiving all expected events for this block
-                                tracing::debug!(%peer, block_number=%start, "Premature event stream termination");
                                 // TODO punish the peer
+                                tracing::debug!(%peer, block_number=%start, "Premature event stream termination");
                                 continue 'next_peer;
                             }
                         }
 
-                        tracing::trace!(block_number=%start, "All events received for block");
-
-                        yield PeerData::new(
+                        if yield_block(
                             peer,
-                            (start, std::mem::take(&mut events)),
-                        );
-
-                        if start == stop {
-                            break 'outer;
+                            &mut progress,
+                            &mut counts_stream,
+                            events,
+                            &mut start,
+                            stop,
+                            tx.clone(),
+                        )
+                        .await
+                        {
+                            return;
                         }
-
-                        start += 1;
-                        current_count = event_counts_stream.next().await
-                            .ok_or_else(|| anyhow::anyhow!("Event counts stream terminated prematurely at block {start}"))
-                            .map_err(peer_err)?
-                            .map_err(peer_err)?;
-                        current_count_outer = Some(current_count);
-
-                        tracing::trace!(next_block=%start, expected_responses=%current_count, "Moving to next block");
                     }
 
-                    break 'outer;
+                    return;
                 }
             }
+        });
+
+        ReceiverStream::new(rx)
+    }
+
+    fn make_request(start: BlockNumber, stop: BlockNumber) -> EventsRequest {
+        EventsRequest {
+            iteration: Iteration {
+                start: start.get().into(),
+                direction: Direction::Forward,
+                limit: stop.get() - start.get() + 1,
+                step: 1.into(),
+            },
         }
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the caller should move to the next peer
+    fn handle_response(
+        peer: PeerId,
+        response: EventsResponse,
+        current_txn: &mut Option<TransactionHash>,
+        events: &mut Vec<(TransactionHash, Vec<Event>)>,
+    ) -> bool {
+        match response {
+            EventsResponse::Event(event) => {
+                let txn_hash = TransactionHash(event.transaction_hash.0);
+                let Ok(event) = Event::try_from_dto(event) else {
+                    // TODO punish the peer
+                    tracing::debug!(%peer, "Event failed to parse");
+                    return true;
+                };
+
+                match current_txn {
+                    Some(x) if *x == txn_hash => {
+                        // Same transaction
+                        events.last_mut().expect("not empty").1.push(event);
+                    }
+                    None | Some(_) => {
+                        // New transaction
+                        events.push((txn_hash, vec![event]));
+                        *current_txn = Some(txn_hash);
+                    }
+                }
+
+                false
+            }
+            EventsResponse::Fin => {
+                tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                true
+            }
+        }
+    }
+
+    /// ### Important
+    ///
+    /// Returns true if the stream should be terminated
+    async fn yield_block(
+        peer: PeerId,
+        progress: &mut BlockProgress,
+        counts_stream: &mut (impl Stream<Item = anyhow::Result<usize>> + Unpin + Send + 'static),
+        events: Vec<(TransactionHash, Vec<Event>)>,
+        start: &mut BlockNumber,
+        stop: BlockNumber,
+        tx: mpsc::Sender<StreamItem<EventsForBlockByTransaction>>,
+    ) -> bool {
+        tracing::trace!(block_number=%start, "All events received for block");
+
+        _ = tx.send(Ok(PeerData::new(peer, (*start, events)))).await;
+
+        if *start == stop {
+            return true;
+        }
+
+        *start += 1;
+
+        let cnt = match try_next(counts_stream).await {
+            Ok(x) => x,
+            Err(e) => {
+                _ = tx.send(Err(e)).await;
+                return true;
+            }
+        };
+        *progress = BlockProgress::new(cnt);
+
+        tracing::trace!(next_block=%start, expected_responses=%cnt, "Moving to next block");
+
+        false
+    }
+}
+
+async fn try_next<T>(
+    count_stream: &mut (impl Stream<Item = anyhow::Result<T>> + Unpin + Send + 'static),
+) -> Result<T, PeerData<anyhow::Error>> {
+    match count_stream.next().await {
+        Some(Ok(cnt)) => Ok(cnt),
+        Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
+        None => Err(PeerData::new(
+            PeerId::random(),
+            anyhow::anyhow!("Count stream terminated prematurely"),
+        )),
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BlockProgress {
+    count: usize,
+    count_backup: usize,
+}
+
+impl BlockProgress {
+    fn new(count: usize) -> Self {
+        Self {
+            count,
+            count_backup: count,
+        }
+    }
+
+    fn get(&self) -> usize {
+        self.count
+    }
+
+    fn rollback(&mut self) -> Self {
+        self.count = self.count_backup;
+        *self
+    }
+}
+
+impl AsMut<usize> for BlockProgress {
+    fn as_mut(&mut self) -> &mut usize {
+        &mut self.count
     }
 }
 

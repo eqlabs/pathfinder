@@ -10,6 +10,7 @@ use p2p::client::peer_agnostic::traits::{
     EventStream,
     HeaderStream,
     StateDiffStream,
+    StreamItem,
     TransactionStream,
 };
 use p2p::client::peer_agnostic::Client as P2PClient;
@@ -292,13 +293,7 @@ async fn handle_header_stream(
 }
 
 async fn handle_transaction_stream(
-    stream: impl Stream<
-            Item = Result<
-                PeerData<(UnverifiedTransactionData, BlockNumber)>,
-                PeerData<anyhow::Error>,
-            >,
-        > + Send
-        + 'static,
+    stream: impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>> + Send + 'static,
     storage: Storage,
     chain_id: ChainId,
     start: BlockNumber,
@@ -318,13 +313,7 @@ async fn handle_transaction_stream(
 }
 
 async fn handle_state_diff_stream(
-    stream: impl Stream<
-            Item = Result<
-                PeerData<(UnverifiedStateUpdateData, BlockNumber)>,
-                PeerData<anyhow::Error>,
-            >,
-        > + Send
-        + 'static,
+    stream: impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>> + Send + 'static,
     storage: Storage,
     start: BlockNumber,
     verify_tree_hashes: bool,
@@ -351,9 +340,7 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
-    stream: impl Stream<Item = Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>
-        + Send
-        + 'static,
+    stream: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
     storage: Storage,
     fgw: SequencerClient,
     start: BlockNumber,
@@ -386,7 +373,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 }
 
 async fn handle_event_stream(
-    stream: impl Stream<Item = Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+    stream: impl Stream<Item = StreamItem<EventsForBlockByTransaction>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
