@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
+use futures::StreamExt;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::{
     BlockCommitmentSignature,
@@ -441,12 +442,17 @@ pub async fn download_new_classes(
     .context("Joining database task")?
     .context("Querying database for missing classes")?;
 
-    for class_hash in require_downloading {
-        let class = download_class(sequencer, class_hash)
-            .await
-            .with_context(|| format!("Downloading class {}", class_hash.0))?;
+    let futures = require_downloading.into_iter().map(|class_hash| async move {
+        (class_hash, download_class(sequencer, class_hash).await.with_context(|| format!("Downloading class {}", class_hash.0)))
+    });
 
-        match class {
+    let mut stream = futures::stream::iter(futures).buffer_unordered(8);
+
+    while let Some(result) = stream.next().await {
+        let (class_hash, downloaded_class_result) = result;
+        let downloaded_class = downloaded_class_result?;
+
+        match downloaded_class {
             DownloadedClass::Cairo { definition, hash } => tx_event
                 .send(SyncEvent::CairoClass { definition, hash })
                 .await
@@ -489,7 +495,7 @@ pub async fn download_new_classes(
                         )
                     })?
             }
-        }
+        } 
     }
 
     Ok(())
