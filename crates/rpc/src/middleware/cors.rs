@@ -35,7 +35,7 @@ mod tests {
             (None, None, line!()),
         ] {
             let context = RpcContext::for_tests();
-            let server = RpcServer::new("127.0.0.1:0".parse().unwrap(), context, RpcVersion::V05);
+            let server = RpcServer::new("127.0.0.1:0".parse().unwrap(), context, RpcVersion::V06);
             let server = match allowed {
                 Some(allowed) => server.with_cors(allowed.into()),
                 None => server,

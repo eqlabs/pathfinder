@@ -2,7 +2,6 @@ pub mod dto;
 pub mod method;
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
-use crate::v05::method as v05_method;
 use crate::v06::method as v06_method;
 
 #[rustfmt::skip]
@@ -23,8 +22,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionReceipt",               crate::method::get_transaction_receipt)
         .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
 
-        .register("starknet_call",                                v05_method::call)
-
+        .register("starknet_call",                                v06_method::call)
         .register("starknet_addDeclareTransaction",               v06_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction",         v06_method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction",                v06_method::add_invoke_transaction)

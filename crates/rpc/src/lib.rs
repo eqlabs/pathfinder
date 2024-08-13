@@ -13,8 +13,6 @@ mod pending;
 mod test_setup;
 pub mod v02;
 pub mod v03;
-pub mod v04;
-pub mod v05;
 pub mod v06;
 pub mod v07;
 
@@ -44,8 +42,6 @@ const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub enum RpcVersion {
-    V04,
-    V05,
     V06,
     #[default]
     V07,
@@ -55,8 +51,6 @@ pub enum RpcVersion {
 impl RpcVersion {
     fn to_str(self) -> &'static str {
         match self {
-            RpcVersion::V04 => "v0.4",
-            RpcVersion::V05 => "v0.5",
             RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
             RpcVersion::PathfinderV01 => "v0.1",
@@ -166,15 +160,11 @@ impl RpcServer {
             }
         }
 
-        let v04_routes = v04::register_routes().build(self.context.clone());
-        let v05_routes = v05::register_routes().build(self.context.clone());
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
-            RpcVersion::V04 => v04_routes.clone(),
-            RpcVersion::V05 => v05_routes.clone(),
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
             RpcVersion::PathfinderV01 => {
@@ -187,12 +177,6 @@ impl RpcServer {
             // used by monitoring bots to check service health.
             .route("/", get(empty_body).post(rpc_handler))
             .with_state(default_router.clone())
-            .route("/rpc/v0.4", post(rpc_handler))
-            .route("/rpc/v0_4", post(rpc_handler))
-            .with_state(v04_routes)
-            .route("/rpc/v0.5", post(rpc_handler))
-            .route("/rpc/v0_5", post(rpc_handler))
-            .with_state(v05_routes)
             .route("/rpc/v0_6", post(rpc_handler))
             .with_state(v06_routes.clone())
             .route("/rpc/v0_7", post(rpc_handler))
@@ -826,7 +810,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
             .spawn()
             .await
             .unwrap();
@@ -859,10 +843,11 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api  ("/", "v04/starknet_api_openrpc.json",       &[])]
-    #[case::root_trace("/", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::root_write("/", "v04/starknet_write_api.json",         &[])]
-    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"])]
+    #[case::root_api  ("/", "v06/starknet_api_openrpc.json",       &[])]
+    #[case::root_trace("/", "v06/starknet_trace_api_openrpc.json", &[])]
+    #[case::root_write("/", "v06/starknet_write_api.json",         &[])]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
     #[case::v0_7_api  ("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[])]
     #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[])]
@@ -876,27 +861,8 @@ mod tests {
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
-    #[case::v05_api  ("/rpc/v0.5", "v05/starknet_api_openrpc.json", &[])]
-    #[case::v05_trace("/rpc/v0.5", "v05/starknet_trace_api_openrpc.json", &[])]
-    #[case::v05_write("/rpc/v0.5", "v05/starknet_write_api.json",         &[])]
-    #[case::v05_pathfinder("/rpc/v0.5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    #[case::v0_5_api  ("/rpc/v0_5", "v05/starknet_api_openrpc.json", &[])]
-    #[case::v0_5_trace("/rpc/v0_5", "v05/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_5_write("/rpc/v0_5", "v05/starknet_write_api.json",         &[])]
-    #[case::v0_5_pathfinder("/rpc/v0_5", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-
-    #[case::v04_api  ("/rpc/v0.4", "v04/starknet_api_openrpc.json",       &[])]
-    #[case::v04_trace("/rpc/v0.4", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::v04_write("/rpc/v0.4", "v04/starknet_write_api.json",         &[])]
-    #[case::v04_pathfinder("/rpc/v0.4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    #[case::v0_4_api  ("/rpc/v0_4", "v04/starknet_api_openrpc.json", &[])]
-    #[case::v0_4_trace("/rpc/v0_4", "v04/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_4_write("/rpc/v0_4", "v04/starknet_write_api.json",         &[])]
-    #[case::v0_4_pathfinder("/rpc/v0_4", "pathfinder_rpc_api.json", &["pathfinder_version"])]
-    
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
     #[case::pathfinder("/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[])]
-
 
     #[tokio::test]
     async fn rpc_routing(
@@ -926,12 +892,12 @@ mod tests {
                 "Excluded method {excluded} was not found in the specification"
             );
         }
-        
+
         methods.retain(|x| !exclude.contains(x));
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V04)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
             .spawn()
             .await
             .unwrap();
