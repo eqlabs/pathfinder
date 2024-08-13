@@ -58,7 +58,7 @@ pub(super) fn get_counts(
     start: BlockNumber,
     batch_size: NonZeroUsize,
 ) -> anyhow::Result<VecDeque<usize>> {
-    db.transaction_counts(start.into(), batch_size)
+    db.transaction_counts(start, batch_size)
         .context("Querying transaction counts")
 }
 
