@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_variables)]
 use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
@@ -181,7 +182,12 @@ impl Sync {
         let transaction_stream = self.p2p.clone().transaction_stream(
             start,
             stop,
-            transactions::counts_and_commitments_stream(self.storage.clone(), start, stop),
+            transactions::counts_and_commitments_stream(
+                self.storage.clone(),
+                start,
+                stop,
+                NonZeroUsize::new(100).expect("100>0"),
+            ),
         );
 
         handle_transaction_stream(transaction_stream, self.storage.clone(), chain_id, start)
@@ -206,7 +212,12 @@ impl Sync {
         let stream = self.p2p.clone().state_diff_stream(
             start,
             stop,
-            state_updates::length_and_commitment_stream(self.storage.clone(), start, stop),
+            state_updates::length_and_commitment_stream(
+                self.storage.clone(),
+                start,
+                stop,
+                NonZeroUsize::new(100).expect("100>0"),
+            ),
         );
 
         handle_state_diff_stream(stream, self.storage.clone(), start, verify_tree_hashes).await?;
@@ -226,7 +237,12 @@ impl Sync {
         let class_stream = self.p2p.clone().class_stream(
             start,
             stop,
-            class_definitions::declared_class_counts_stream(self.storage.clone(), start, stop),
+            class_definitions::declared_class_counts_stream(
+                self.storage.clone(),
+                start,
+                stop,
+                NonZeroUsize::new(100).expect("100>0"),
+            ),
         );
 
         handle_class_stream(
@@ -253,7 +269,12 @@ impl Sync {
         let event_stream = self.p2p.clone().event_stream(
             start,
             stop,
-            events::counts_stream(self.storage.clone(), start, stop),
+            events::counts_stream(
+                self.storage.clone(),
+                start,
+                stop,
+                NonZeroUsize::new(100).expect("100>0"),
+            ),
         );
 
         handle_event_stream(event_stream, self.storage.clone()).await?;
