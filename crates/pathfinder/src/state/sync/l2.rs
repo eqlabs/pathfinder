@@ -111,7 +111,14 @@ where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     // Phase 1: catch up to the latest block
-    bulk_sync(tx_event.clone(), context.clone(), &mut head, &mut blocks, latest.clone()).await?;
+    bulk_sync(
+        tx_event.clone(),
+        context.clone(),
+        &mut head,
+        &mut blocks,
+        latest.clone(),
+    )
+    .await?;
 
     let L2SyncContext {
         sequencer,
@@ -704,6 +711,35 @@ where
 
             let span = tracing::Span::current();
 
+            let (tx, rx) = tokio::sync::oneshot::channel();
+
+            rayon::spawn(move || {
+                let _span = span.entered();
+
+                let t_verification = std::time::Instant::now();
+
+                let result = verify_block_and_state_update(
+                    &block,
+                    &state_update,
+                    chain,
+                    chain_id,
+                    block_validation_mode,
+                ).and_then(|(transaction_commitment, event_commitment, receipt_commitment, state_diff_commitment)| {
+                    verify_signature(
+                        block.block_hash,
+                        state_diff_commitment,
+                        &signature,
+                        sequencer_public_key,
+                        block_validation_mode,
+                    ).map_err(|err| err.into()).and_then(|_| Ok((block, state_update, signature, transaction_commitment, event_commitment, receipt_commitment, state_diff_commitment)))
+                });
+
+                let t_verification = t_verification.elapsed();
+                tracing::trace!(elapsed=?t_verification, "Block verification done");
+
+                let _ = tx.send(result);
+            });
+
             let (
                 block,
                 state_update,
@@ -712,42 +748,7 @@ where
                 event_commitment,
                 receipt_commitment,
                 state_diff_commitment,
-            ) = tokio::task::spawn_blocking(move || {
-                let _span = span.entered();
-
-                let (
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                ) = verify_block_and_state_update(
-                    &block,
-                    &state_update,
-                    chain,
-                    chain_id,
-                    block_validation_mode,
-                )?;
-                verify_signature(
-                    block.block_hash,
-                    state_diff_commitment,
-                    &signature,
-                    sequencer_public_key,
-                    block_validation_mode,
-                )?;
-
-                Ok::<_, anyhow::Error>((
-                    block,
-                    state_update,
-                    signature,
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                ))
-            })
-            .await
-            .context("Joining block verification task")?
-            .context("Verifying block")?;
+            ) = rx.await.expect("Panic on rayon thread while verifying block").context("Verifying block")?;
 
             let t_declare = std::time::Instant::now();
             download_new_classes(&state_update, &sequencer, &tx_event, storage)
