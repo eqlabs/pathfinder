@@ -199,8 +199,7 @@ where
         .connection()
         .context("Creating database connection")?;
 
-    // TODO: consider increasing the capacity.
-    let (event_sender, event_receiver) = mpsc::channel(2);
+    let (event_sender, event_receiver) = mpsc::channel(32);
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
