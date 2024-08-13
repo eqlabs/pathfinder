@@ -464,7 +464,7 @@ pub async fn download_new_classes(
                     .await
                     .with_context(|| format!("Downloading class {}", class_hash.0)),
             )
-        });
+        }.in_current_span());
 
     let mut stream = futures::stream::iter(futures).buffer_unordered(8);
 
