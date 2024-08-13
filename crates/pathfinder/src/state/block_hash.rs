@@ -78,6 +78,7 @@ pub fn verify_gateway_block_commitments_and_hash(
         // possible.
         bhd.transaction_commitment = computed_transaction_commitment;
     } else if computed_transaction_commitment != bhd.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
@@ -93,6 +94,7 @@ pub fn verify_gateway_block_commitments_and_hash(
     // Older blocks on mainnet don't carry a precalculated receipt commitment.
     if let Some(receipt_commitment) = block.receipt_commitment {
         if computed_receipt_commitment != receipt_commitment {
+            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
             return Ok(VerifyResult::Mismatch);
         }
     } else {
@@ -117,6 +119,7 @@ pub fn verify_gateway_block_commitments_and_hash(
         // possible.
         bhd.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
+        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
