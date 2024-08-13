@@ -110,6 +110,9 @@ pub async fn sync<GatewayClient>(
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
+    // Phase 1: catch up to the latest block
+    bulk_sync(tx_event.clone(), context.clone(), &mut head, &mut blocks, latest.clone()).await?;
+
     let L2SyncContext {
         sequencer,
         chain,
@@ -118,144 +121,6 @@ where
         storage,
         sequencer_public_key,
     } = context;
-
-    // Phase 1: catch up to the latest block
-    let start = match &head {
-        Some(head) => head.0.get() + 1,
-        None => BlockNumber::GENESIS.get(),
-    };
-    let latest_number = latest.borrow().0.get();
-    tracing::trace!(%start, %latest_number, "Catching up to the latest block");
-
-    let futures = (start..=latest_number).map(|block_number| {
-        let block_number = BlockNumber::new_or_panic(block_number);
-
-        let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
-        tracing::trace!("Downloading block");
-
-        let sequencer = sequencer.clone();
-        let tx_event = tx_event.clone();
-        let storage = storage.clone();
-
-        async move {
-            let t_block = std::time::Instant::now();
-            let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
-            let t_block = t_block.elapsed();
-
-            let t_signature = std::time::Instant::now();
-            let signature = sequencer.signature(block_number.into()).await?;
-            let t_signature = t_signature.elapsed();
-
-            let (
-                block,
-                state_update,
-                signature,
-                transaction_commitment,
-                event_commitment,
-                receipt_commitment,
-                state_diff_commitment,
-            ) = tokio::task::spawn_blocking(move || {
-                let (
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                ) = verify_block_and_state_update(
-                    &block,
-                    &state_update,
-                    chain,
-                    chain_id,
-                    block_validation_mode,
-                )?;
-                verify_signature(
-                    block.block_hash,
-                    state_diff_commitment,
-                    &signature,
-                    sequencer_public_key,
-                    block_validation_mode,
-                )?;
-
-                Ok::<_, anyhow::Error>((
-                    block,
-                    state_update,
-                    signature,
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                ))
-            })
-            .await
-            .context("Joining block verification task")?
-            .context("Verifying block")?;
-
-            let t_declare = std::time::Instant::now();
-            download_new_classes(&state_update, &sequencer, &tx_event, storage)
-                .await
-                .with_context(|| {
-                    format!("Handling newly declared classes for block {block_number:?}")
-                })?;
-            let t_declare = t_declare.elapsed();
-
-            let timings = Timings {
-                block_download: t_block,
-                class_declaration: t_declare,
-                signature_download: t_signature,
-            };
-
-            Ok::<_, anyhow::Error>((
-                block,
-                state_update,
-                signature,
-                transaction_commitment,
-                event_commitment,
-                receipt_commitment,
-                state_diff_commitment,
-                timings,
-            ))
-        }
-        .in_current_span()
-    });
-    let mut stream = futures::stream::iter(futures).buffered(8);
-    while let Some(result) = stream.next().await {
-        let (
-            block,
-            state_update,
-            signature,
-            transaction_commitment,
-            event_commitment,
-            receipt_commitment,
-            state_diff_commitment,
-            timings,
-        ) = result?;
-
-        tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
-
-        head = Some((
-            block.block_number,
-            block.block_hash,
-            state_update.state_commitment,
-        ));
-        blocks.push(
-            block.block_number,
-            block.block_hash,
-            state_update.state_commitment,
-        );
-
-        tx_event
-            .send(SyncEvent::Block(
-                (
-                    Box::new(block),
-                    (transaction_commitment, event_commitment, receipt_commitment),
-                ),
-                Box::new(state_update),
-                Box::new(signature.signature()),
-                Box::new(state_diff_commitment),
-                timings,
-            ))
-            .await
-            .context("Event channel closed")?;
-    }
 
     // Start polling head of chain
     'outer: loop {
@@ -796,9 +661,10 @@ async fn bulk_sync<GatewayClient>(
     context: L2SyncContext<GatewayClient>,
     head: &mut Option<(BlockNumber, BlockHash, StateCommitment)>,
     blocks: &mut BlockChain,
-    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
-) -> anyhow::Result<()> where
-GatewayClient: GatewayApi + Clone + Send + 'static,
+    latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+) -> anyhow::Result<()>
+where
+    GatewayClient: GatewayApi + Clone + Send + 'static,
 {
     let L2SyncContext {
         sequencer,
@@ -809,105 +675,33 @@ GatewayClient: GatewayApi + Clone + Send + 'static,
         sequencer_public_key,
     } = context;
 
-        // Phase 1: catch up to the latest block
-        let start = match head {
-            Some(head) => head.0.get() + 1,
-            None => BlockNumber::GENESIS.get(),
-        };
-        let latest_number = latest.borrow().0.get();
-        tracing::trace!(%start, %latest_number, "Catching up to the latest block");
-    
-        let futures = (start..=latest_number).map(|block_number| {
-            let block_number = BlockNumber::new_or_panic(block_number);
-    
-            let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
-            tracing::trace!("Downloading block");
-    
-            let sequencer = sequencer.clone();
-            let tx_event = tx_event.clone();
-            let storage = storage.clone();
-    
-            async move {
-                let t_block = std::time::Instant::now();
-                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
-                let t_block = t_block.elapsed();
-    
-                let t_signature = std::time::Instant::now();
-                let signature = sequencer.signature(block_number.into()).await?;
-                let t_signature = t_signature.elapsed();
-    
-                let (
-                    block,
-                    state_update,
-                    signature,
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                ) = tokio::task::spawn_blocking(move || {
-                    let (
-                        transaction_commitment,
-                        event_commitment,
-                        receipt_commitment,
-                        state_diff_commitment,
-                    ) = verify_block_and_state_update(
-                        &block,
-                        &state_update,
-                        chain,
-                        chain_id,
-                        block_validation_mode,
-                    )?;
-                    verify_signature(
-                        block.block_hash,
-                        state_diff_commitment,
-                        &signature,
-                        sequencer_public_key,
-                        block_validation_mode,
-                    )?;
-    
-                    Ok::<_, anyhow::Error>((
-                        block,
-                        state_update,
-                        signature,
-                        transaction_commitment,
-                        event_commitment,
-                        receipt_commitment,
-                        state_diff_commitment,
-                    ))
-                })
-                .await
-                .context("Joining block verification task")?
-                .context("Verifying block")?;
-    
-                let t_declare = std::time::Instant::now();
-                download_new_classes(&state_update, &sequencer, &tx_event, storage)
-                    .await
-                    .with_context(|| {
-                        format!("Handling newly declared classes for block {block_number:?}")
-                    })?;
-                let t_declare = t_declare.elapsed();
-    
-                let timings = Timings {
-                    block_download: t_block,
-                    class_declaration: t_declare,
-                    signature_download: t_signature,
-                };
-    
-                Ok::<_, anyhow::Error>((
-                    block,
-                    state_update,
-                    signature,
-                    transaction_commitment,
-                    event_commitment,
-                    receipt_commitment,
-                    state_diff_commitment,
-                    timings,
-                ))
-            }
-            .in_current_span()
-        });
-        let mut stream = futures::stream::iter(futures).buffered(8);
-        while let Some(result) = stream.next().await {
+    // Phase 1: catch up to the latest block
+    let start = match head {
+        Some(head) => head.0.get() + 1,
+        None => BlockNumber::GENESIS.get(),
+    };
+    let latest_number = latest.borrow().0.get();
+    tracing::trace!(%start, %latest_number, "Catching up to the latest block");
+
+    let futures = (start..=latest_number).map(|block_number| {
+        let block_number = BlockNumber::new_or_panic(block_number);
+
+        let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
+        tracing::trace!("Downloading block");
+
+        let sequencer = sequencer.clone();
+        let tx_event = tx_event.clone();
+        let storage = storage.clone();
+
+        async move {
+            let t_block = std::time::Instant::now();
+            let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+            let t_block = t_block.elapsed();
+
+            let t_signature = std::time::Instant::now();
+            let signature = sequencer.signature(block_number.into()).await?;
+            let t_signature = t_signature.elapsed();
+
             let (
                 block,
                 state_update,
@@ -916,37 +710,109 @@ GatewayClient: GatewayApi + Clone + Send + 'static,
                 event_commitment,
                 receipt_commitment,
                 state_diff_commitment,
-                timings,
-            ) = result?;
-    
-            tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
-    
-            *head = Some((
-                block.block_number,
-                block.block_hash,
-                state_update.state_commitment,
-            ));
-            blocks.push(
-                block.block_number,
-                block.block_hash,
-                state_update.state_commitment,
-            );
-    
-            tx_event
-                .send(SyncEvent::Block(
-                    (
-                        Box::new(block),
-                        (transaction_commitment, event_commitment, receipt_commitment),
-                    ),
-                    Box::new(state_update),
-                    Box::new(signature.signature()),
-                    Box::new(state_diff_commitment),
-                    timings,
+            ) = tokio::task::spawn_blocking(move || {
+                let (
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ) = verify_block_and_state_update(
+                    &block,
+                    &state_update,
+                    chain,
+                    chain_id,
+                    block_validation_mode,
+                )?;
+                verify_signature(
+                    block.block_hash,
+                    state_diff_commitment,
+                    &signature,
+                    sequencer_public_key,
+                    block_validation_mode,
+                )?;
+
+                Ok::<_, anyhow::Error>((
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
                 ))
+            })
+            .await
+            .context("Joining block verification task")?
+            .context("Verifying block")?;
+
+            let t_declare = std::time::Instant::now();
+            download_new_classes(&state_update, &sequencer, &tx_event, storage)
                 .await
-                .context("Event channel closed")?;
+                .with_context(|| {
+                    format!("Handling newly declared classes for block {block_number:?}")
+                })?;
+            let t_declare = t_declare.elapsed();
+
+            let timings = Timings {
+                block_download: t_block,
+                class_declaration: t_declare,
+                signature_download: t_signature,
+            };
+
+            Ok::<_, anyhow::Error>((
+                block,
+                state_update,
+                signature,
+                transaction_commitment,
+                event_commitment,
+                receipt_commitment,
+                state_diff_commitment,
+                timings,
+            ))
         }
-    
+        .in_current_span()
+    });
+    let mut stream = futures::stream::iter(futures).buffered(8);
+    while let Some(result) = stream.next().await {
+        let (
+            block,
+            state_update,
+            signature,
+            transaction_commitment,
+            event_commitment,
+            receipt_commitment,
+            state_diff_commitment,
+            timings,
+        ) = result?;
+
+        tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
+
+        *head = Some((
+            block.block_number,
+            block.block_hash,
+            state_update.state_commitment,
+        ));
+        blocks.push(
+            block.block_number,
+            block.block_hash,
+            state_update.state_commitment,
+        );
+
+        tx_event
+            .send(SyncEvent::Block(
+                (
+                    Box::new(block),
+                    (transaction_commitment, event_commitment, receipt_commitment),
+                ),
+                Box::new(state_update),
+                Box::new(signature.signature()),
+                Box::new(state_diff_commitment),
+                timings,
+            ))
+            .await
+            .context("Event channel closed")?;
+    }
+
     Ok(())
 }
 
