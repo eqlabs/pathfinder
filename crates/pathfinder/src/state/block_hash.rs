@@ -29,7 +29,6 @@ use pathfinder_common::{
 use pathfinder_crypto::hash::{pedersen_hash, poseidon_hash_many, HashChain, PoseidonHasher};
 use pathfinder_crypto::{Felt, MontFelt};
 use pathfinder_merkle_tree::TransactionOrEventTree;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sha3::Digest;
 use starknet_gateway_types::reply::Block;
 
@@ -79,6 +78,7 @@ pub fn verify_gateway_block_commitments_and_hash(
         // possible.
         bhd.transaction_commitment = computed_transaction_commitment;
     } else if computed_transaction_commitment != bhd.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
@@ -94,6 +94,7 @@ pub fn verify_gateway_block_commitments_and_hash(
     // Older blocks on mainnet don't carry a precalculated receipt commitment.
     if let Some(receipt_commitment) = block.receipt_commitment {
         if computed_receipt_commitment != receipt_commitment {
+            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
             return Ok(VerifyResult::Mismatch);
         }
     } else {
@@ -118,6 +119,7 @@ pub fn verify_gateway_block_commitments_and_hash(
         // possible.
         bhd.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
+        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
@@ -462,23 +464,18 @@ pub fn calculate_transaction_commitment(
 ) -> Result<TransactionCommitment> {
     use rayon::prelude::*;
 
-    let mut final_hashes = Vec::new();
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            final_hashes = transactions
-                .par_iter()
-                .map(|tx| {
-                    if version < V_0_11_1 {
-                        calculate_transaction_hash_with_signature_pre_0_11_1(tx)
-                    } else if version < V_0_13_2 {
-                        calculate_transaction_hash_with_signature_pre_0_13_2(tx)
-                    } else {
-                        calculate_transaction_hash_with_signature(tx)
-                    }
-                })
-                .collect();
+    let final_hashes = transactions
+        .par_iter()
+        .map(|tx| {
+            if version < V_0_11_1 {
+                calculate_transaction_hash_with_signature_pre_0_11_1(tx)
+            } else if version < V_0_13_2 {
+                calculate_transaction_hash_with_signature_pre_0_13_2(tx)
+            } else {
+                calculate_transaction_hash_with_signature(tx)
+            }
         })
-    });
+        .collect();
 
     if version < V_0_13_2 {
         calculate_commitment_root::<PedersenHash>(final_hashes).map(TransactionCommitment)
@@ -488,57 +485,55 @@ pub fn calculate_transaction_commitment(
 }
 
 pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommitment> {
-    let mut hashes = Vec::new();
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            hashes = receipts
-                .par_iter()
-                .map(|receipt| {
-                    poseidon_hash_many(&[
-                        receipt.transaction_hash.0.into(),
-                        receipt.actual_fee.0.into(),
-                        // Calculate hash of messages sent.
-                        {
-                            let mut hasher = PoseidonHasher::new();
-                            hasher.write((receipt.l2_to_l1_messages.len() as u64).into());
-                            for msg in &receipt.l2_to_l1_messages {
-                                hasher.write(msg.from_address.0.into());
-                                hasher.write(msg.to_address.0.into());
-                                hasher.write((msg.payload.len() as u64).into());
-                                for payload in &msg.payload {
-                                    hasher.write(payload.0.into());
-                                }
-                            }
-                            hasher.finish()
-                        },
-                        // Revert reason.
-                        match &receipt.execution_status {
-                            ExecutionStatus::Succeeded => MontFelt::ZERO,
-                            ExecutionStatus::Reverted { reason } => {
-                                let mut keccak = sha3::Keccak256::default();
-                                keccak.update(reason.as_bytes());
-                                let mut hashed_bytes: [u8; 32] = keccak.finalize().into();
-                                hashed_bytes[0] &= 0b00000011_u8; // Discard the six MSBs.
-                                MontFelt::from_be_bytes(hashed_bytes)
-                            }
-                        },
-                        // Execution resources:
-                        // L2 gas
-                        MontFelt::ZERO,
-                        // L1 gas consumed
-                        receipt.execution_resources.total_gas_consumed.l1_gas.into(),
-                        // L1 data gas consumed
-                        receipt
-                            .execution_resources
-                            .total_gas_consumed
-                            .l1_data_gas
-                            .into(),
-                    ])
-                    .into()
-                })
-                .collect();
+    use rayon::prelude::*;
+
+    let hashes = receipts
+        .par_iter()
+        .map(|receipt| {
+            poseidon_hash_many(&[
+                receipt.transaction_hash.0.into(),
+                receipt.actual_fee.0.into(),
+                // Calculate hash of messages sent.
+                {
+                    let mut hasher = PoseidonHasher::new();
+                    hasher.write((receipt.l2_to_l1_messages.len() as u64).into());
+                    for msg in &receipt.l2_to_l1_messages {
+                        hasher.write(msg.from_address.0.into());
+                        hasher.write(msg.to_address.0.into());
+                        hasher.write((msg.payload.len() as u64).into());
+                        for payload in &msg.payload {
+                            hasher.write(payload.0.into());
+                        }
+                    }
+                    hasher.finish()
+                },
+                // Revert reason.
+                match &receipt.execution_status {
+                    ExecutionStatus::Succeeded => MontFelt::ZERO,
+                    ExecutionStatus::Reverted { reason } => {
+                        let mut keccak = sha3::Keccak256::default();
+                        keccak.update(reason.as_bytes());
+                        let mut hashed_bytes: [u8; 32] = keccak.finalize().into();
+                        hashed_bytes[0] &= 0b00000011_u8; // Discard the six MSBs.
+                        MontFelt::from_be_bytes(hashed_bytes)
+                    }
+                },
+                // Execution resources:
+                // L2 gas
+                MontFelt::ZERO,
+                // L1 gas consumed
+                receipt.execution_resources.total_gas_consumed.l1_gas.into(),
+                // L1 data gas consumed
+                receipt
+                    .execution_resources
+                    .total_gas_consumed
+                    .l1_data_gas
+                    .into(),
+            ])
+            .into()
         })
-    });
+        .collect();
+
     calculate_commitment_root::<PoseidonHash>(hashes).map(ReceiptCommitment)
 }
 
@@ -666,22 +661,17 @@ pub fn calculate_event_commitment(
 ) -> Result<EventCommitment> {
     use rayon::prelude::*;
 
-    let mut event_hashes = Vec::new();
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            event_hashes = transaction_events
-                .par_iter()
-                .flat_map(|(tx_hash, events)| events.par_iter().map(|e| (*tx_hash, e)))
-                .map(|(tx_hash, e)| {
-                    if version < V_0_13_2 {
-                        calculate_event_hash_pre_0_13_2(e)
-                    } else {
-                        calculate_event_hash(e, tx_hash)
-                    }
-                })
-                .collect();
+    let event_hashes = transaction_events
+        .par_iter()
+        .flat_map(|(tx_hash, events)| events.par_iter().map(|e| (*tx_hash, e)))
+        .map(|(tx_hash, e)| {
+            if version < V_0_13_2 {
+                calculate_event_hash_pre_0_13_2(e)
+            } else {
+                calculate_event_hash(e, tx_hash)
+            }
         })
-    });
+        .collect();
 
     if version < V_0_13_2 {
         calculate_commitment_root::<PedersenHash>(event_hashes).map(EventCommitment)
