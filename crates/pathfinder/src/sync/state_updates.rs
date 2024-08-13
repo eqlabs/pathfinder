@@ -22,6 +22,7 @@ use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
+use super::storage_adapters;
 use crate::state::{update_starknet_state, StarknetStateUpdate};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
@@ -53,66 +54,22 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
+pub(super) fn get_state_diff_lengths(
+    db: pathfinder_storage::Transaction<'_>,
+    start: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> anyhow::Result<VecDeque<usize>> {
+    db.state_diff_lengths(start, batch_size)
+        .context("Querying state diff lengths")
+}
+
 pub(super) fn state_diff_length_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
     batch_size: NonZeroUsize,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    let (tx, rx) = mpsc::channel(1);
-    std::thread::spawn(move || {
-        let mut batch = VecDeque::new();
-
-        while start <= stop {
-            if let Some(counts) = batch.pop_front() {
-                _ = tx.blocking_send(Ok(counts));
-                continue;
-            }
-
-            let batch_size = batch_size.min(
-                NonZeroUsize::new(
-                    (stop.get() - start.get() + 1)
-                        .try_into()
-                        .expect("ptr size is 64bits"),
-                )
-                .expect(">0"),
-            );
-            let storage = storage.clone();
-
-            let get = move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let batch = db
-                    .state_diff_lengths(start, batch_size)
-                    .context("Querying state update counts")?;
-
-                anyhow::ensure!(
-                    !batch.is_empty(),
-                    "No state update counts found: start {start}, batch_size {batch_size}"
-                );
-
-                Ok(batch)
-            };
-
-            batch = match get() {
-                Ok(x) => x,
-                Err(e) => {
-                    _ = tx.blocking_send(Err(e));
-                    return;
-                }
-            };
-
-            start += batch.len().try_into().expect("ptr size is 64bits");
-        }
-
-        while let Some(counts) = batch.pop_front() {
-            _ = tx.blocking_send(Ok(counts));
-        }
-    });
-
-    ReceiverStream::new(rx)
+    storage_adapters::counts_stream(storage, start, stop, batch_size, get_state_diff_lengths)
 }
 
 pub struct FetchCommitmentFromDb<T> {
@@ -223,65 +180,5 @@ impl ProcessStage for UpdateStarknetState {
         self.current_block += 1;
 
         Ok(tail)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use futures::StreamExt;
-    use pathfinder_common::{SignedBlockHeader, StateUpdate};
-    use pathfinder_storage::fake::Block;
-
-    use super::*;
-
-    #[rstest::rstest]
-    #[case::request_shorter_than_batch_size(1)]
-    #[case::request_equal_to_batch_size(2)]
-    #[case::request_longer_than_batch_size(3)]
-    #[case::request_equal_to_db_size(5)]
-    #[case::request_longer_than_db_size(6)]
-    #[tokio::test]
-    async fn state_diff_length_stream(#[case] len: usize) {
-        const DB_LEN: usize = 5;
-        let ok_len = len.min(DB_LEN);
-        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
-            .into_iter()
-            .map(|b| {
-                let Block {
-                    header:
-                        SignedBlockHeader {
-                            header:
-                                BlockHeader {
-                                    state_diff_length, ..
-                                },
-                            ..
-                        },
-                    ..
-                } = b;
-                state_diff_length as usize
-            })
-            .collect::<Vec<_>>();
-        let stream = super::state_diff_length_stream(
-            storage.clone(),
-            BlockNumber::GENESIS,
-            BlockNumber::GENESIS + len as u64 - 1,
-            NonZeroUsize::new(2).unwrap(),
-        );
-
-        let mut remainder = stream.collect::<Vec<_>>().await;
-
-        let actual = remainder
-            .drain(..ok_len)
-            .map(|x| x.unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(expected[..ok_len], actual);
-
-        if len > DB_LEN {
-            assert!(remainder.pop().unwrap().is_err());
-        } else {
-            assert!(remainder.is_empty());
-        }
     }
 }

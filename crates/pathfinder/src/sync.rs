@@ -30,6 +30,7 @@ mod error;
 mod events;
 mod headers;
 mod state_updates;
+mod storage_adapters;
 mod stream;
 mod track;
 mod transactions;

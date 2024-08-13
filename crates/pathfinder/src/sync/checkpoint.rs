@@ -177,7 +177,7 @@ impl Sync {
         let transaction_stream = self.p2p.clone().transaction_stream(
             start,
             stop,
-            transactions::counts_and_commitments_stream(
+            transactions::counts_stream(
                 self.storage.clone(),
                 start,
                 stop,
