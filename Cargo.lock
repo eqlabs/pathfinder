@@ -597,28 +597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-stream"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd56dd203fef61ac097dd65721a419ddccb106b2d2b70ba60a6b529f03961a51"
-dependencies = [
- "async-stream-impl",
- "futures-core",
- "pin-project-lite",
-]
-
-[[package]]
-name = "async-stream-impl"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.72",
-]
-
-[[package]]
 name = "async-task"
 version = "4.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6302,7 +6280,6 @@ name = "p2p"
 version = "0.14.1"
 dependencies = [
  "anyhow",
- "async-stream",
  "async-trait",
  "base64 0.13.1",
  "clap",
@@ -6503,7 +6480,6 @@ version = "0.14.1"
 dependencies = [
  "anyhow",
  "assert_matches",
- "async-stream",
  "async-trait",
  "axum 0.7.5",
  "base64 0.13.1",

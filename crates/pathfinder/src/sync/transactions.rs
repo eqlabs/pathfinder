@@ -15,6 +15,8 @@ use pathfinder_common::{
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::{SyncError, SyncError2};
 use super::stream::ProcessStage;
@@ -54,53 +56,62 @@ pub(super) fn counts_and_commitments_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
+    batch_size: NonZeroUsize,
 ) -> impl futures::Stream<Item = anyhow::Result<(usize, TransactionCommitment)>> {
-    const BATCH_SIZE: usize = 1000;
-
-    async_stream::try_stream! {
+    let (tx, rx) = mpsc::channel(1);
+    std::thread::spawn(move || {
         let mut batch = VecDeque::new();
 
         while start <= stop {
             if let Some(counts) = batch.pop_front() {
-                yield counts;
+                _ = tx.blocking_send(Ok(counts));
                 continue;
             }
 
-            let batch_size = NonZeroUsize::new(
-                BATCH_SIZE.min(
+            let batch_size = batch_size.min(
+                NonZeroUsize::new(
                     (stop.get() - start.get() + 1)
                         .try_into()
                         .expect("ptr size is 64bits"),
-                ),
-            )
-            .expect(">0");
+                )
+                .expect(">0"),
+            );
             let storage = storage.clone();
 
-            batch = tokio::task::spawn_blocking(move || {
+            let get = move || {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.transaction_counts_and_commitments(start.into(), batch_size)
-                    .context("Querying transaction counts")
-            })
-            .await
-            .context("Joining blocking task")??;
+                batch = db
+                    .transaction_counts_and_commitments(start.into(), batch_size)
+                    .context("Querying transaction counts")?;
 
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No transaction counts found for range: start {start}, batch_size: {batch_size}"
-                ))?;
-                break;
-            }
+                anyhow::ensure!(
+                    !batch.is_empty(),
+                    "No transaction counts found: start {start}, batch_size {batch_size}"
+                );
+
+                Ok(batch)
+            };
+
+            batch = match get() {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.blocking_send(Err(e));
+                    return;
+                }
+            };
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
 
         while let Some(counts) = batch.pop_front() {
-            yield counts;
+            _ = tx.blocking_send(Ok(counts));
         }
-    }
+    });
+
+    ReceiverStream::new(rx)
 }
 
 pub struct CalculateHashes(pub ChainId);
@@ -203,5 +214,67 @@ impl ProcessStage for Store {
         self.current_block += 1;
 
         Ok(tail)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use futures::StreamExt;
+    use pathfinder_common::{SignedBlockHeader, StateUpdate};
+    use pathfinder_storage::fake::Block;
+
+    use super::*;
+
+    #[rstest::rstest]
+    #[case::request_shorter_than_batch_size(1)]
+    #[case::request_equal_to_batch_size(2)]
+    #[case::request_longer_than_batch_size(3)]
+    #[case::request_equal_to_db_size(5)]
+    #[case::request_longer_than_db_size(6)]
+    #[tokio::test]
+    async fn length_and_commitment_stream(#[case] len: usize) {
+        const DB_LEN: usize = 5;
+        let ok_len = len.min(DB_LEN);
+        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
+        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
+            .into_iter()
+            .map(|b| {
+                let Block {
+                    header:
+                        SignedBlockHeader {
+                            header:
+                                BlockHeader {
+                                    transaction_commitment,
+                                    transaction_count,
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } = b;
+                (transaction_count, transaction_commitment)
+            })
+            .collect::<Vec<_>>();
+        let stream = super::counts_and_commitments_stream(
+            storage.clone(),
+            BlockNumber::GENESIS,
+            BlockNumber::GENESIS + len as u64 - 1,
+            NonZeroUsize::new(2).unwrap(),
+        );
+
+        let mut remainder = stream.collect::<Vec<_>>().await;
+
+        let actual = remainder
+            .drain(..ok_len)
+            .map(|x| x.unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(expected[..ok_len], actual);
+
+        if len > DB_LEN {
+            assert!(remainder.pop().unwrap().is_err());
+        } else {
+            assert!(remainder.is_empty());
+        }
     }
 }

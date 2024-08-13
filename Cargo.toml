@@ -48,7 +48,6 @@ authors = ["Equilibrium Labs <info@equilibrium.co>"]
 anyhow = "1.0.75"
 ark-ff = "0.4.2"
 assert_matches = "1.5.0"
-async-stream = "0.3.5"
 async-trait = "0.1.73"
 axum = "0.7.5"
 base64 = "0.13.1"

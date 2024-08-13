@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::thread;
 
 use anyhow::Context;
 use futures::pin_mut;
@@ -19,9 +19,10 @@ use starknet_gateway_types::class_hash::from_parts::{
     compute_sierra_class_hash,
 };
 use starknet_gateway_types::reply::call;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
@@ -88,57 +89,70 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
+/// ### Important
+///
+/// Caller must ensure that `start <= stop`.
 pub(super) fn declared_class_counts_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
+    batch_size: NonZeroUsize,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    const BATCH_SIZE: usize = 1000;
-
-    async_stream::try_stream! {
+    let (tx, rx) = mpsc::channel(1);
+    thread::spawn(move || {
         let mut batch = Vec::<usize>::new();
 
         while start <= stop {
             if let Some(counts) = batch.pop() {
-                yield counts;
+                _ = tx.blocking_send(Ok(counts));
                 continue;
             }
 
-            let batch_size = NonZeroUsize::new(
-                BATCH_SIZE.min(
+            let batch_size = batch_size.min(
+                NonZeroUsize::new(
                     (stop.get() - start.get() + 1)
                         .try_into()
                         .expect("ptr size is 64bits"),
-                ),
-            )
-            .expect(">0");
+                )
+                .expect(">0"),
+            );
+
             let storage = storage.clone();
 
-            batch = tokio::task::spawn_blocking(move || {
+            let get = move || {
                 let mut db = storage
                     .connection()
                     .context("Creating database connection")?;
                 let db = db.transaction().context("Creating database transaction")?;
-                db.declared_classes_counts(start, batch_size)
-                    .context("Querying declared classes counts")
-            })
-            .await
-            .context("Joining blocking task")??;
+                let batch = db
+                    .declared_classes_counts(start, batch_size)
+                    .context("Querying declared classes counts")?;
 
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No declared classes counts found for range: start {start}, batch_size {batch_size}"
-                ))?;
-                break;
-            }
+                anyhow::ensure!(
+                    !batch.is_empty(),
+                    "No class counts found: start {start}, batch_size {batch_size}"
+                );
+
+                Ok(batch)
+            };
+
+            batch = match get() {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.blocking_send(Err(e));
+                    return;
+                }
+            };
 
             start += batch.len().try_into().expect("ptr size is 64bits");
         }
 
         while let Some(counts) = batch.pop() {
-            yield counts;
+            _ = tx.blocking_send(Ok(counts));
         }
-    }
+    });
+
+    ReceiverStream::new(rx)
 }
 
 pub struct VerifyLayout;
@@ -297,7 +311,7 @@ impl ExpectedDeclarationsSource {
     }
 
     pub fn spawn(self) -> anyhow::Result<Receiver<ExpectedDeclarations>> {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = mpsc::channel(1);
         let Self {
             mut db_connection,
             mut start,
@@ -476,6 +490,63 @@ impl ProcessStage for VerifyClassHashes {
             Ok(input)
         } else {
             Err(SyncError2::ClassDefinitionsDeclarationsMismatch)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::StateUpdate;
+    use pathfinder_storage::fake::Block;
+
+    use super::*;
+
+    #[rstest::rstest]
+    #[case::request_shorter_than_batch_size(1)]
+    #[case::request_equal_to_batch_size(2)]
+    #[case::request_longer_than_batch_size(3)]
+    #[case::request_equal_to_db_size(5)]
+    #[case::request_longer_than_db_size(6)]
+    #[tokio::test]
+    async fn declared_class_counts_stream(#[case] len: usize) {
+        const DB_LEN: usize = 5;
+        let ok_len = len.min(DB_LEN);
+        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
+        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
+            .into_iter()
+            .map(|b| {
+                let Block {
+                    state_update:
+                        StateUpdate {
+                            declared_cairo_classes,
+                            declared_sierra_classes,
+                            ..
+                        },
+                    ..
+                } = b;
+                declared_cairo_classes.len() + declared_sierra_classes.len()
+            })
+            .collect::<Vec<_>>();
+        let stream = super::declared_class_counts_stream(
+            storage.clone(),
+            BlockNumber::GENESIS,
+            BlockNumber::GENESIS + len as u64 - 1,
+            NonZeroUsize::new(2).unwrap(),
+        );
+
+        let mut remainder = stream.collect::<Vec<_>>().await;
+
+        let actual = remainder
+            .drain(..ok_len)
+            .map(|x| x.unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(expected[..ok_len], actual);
+
+        if len > DB_LEN {
+            assert!(remainder.pop().unwrap().is_err());
+        } else {
+            assert!(remainder.is_empty());
         }
     }
 }
