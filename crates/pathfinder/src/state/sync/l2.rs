@@ -442,9 +442,16 @@ pub async fn download_new_classes(
     .context("Joining database task")?
     .context("Querying database for missing classes")?;
 
-    let futures = require_downloading.into_iter().map(|class_hash| async move {
-        (class_hash, download_class(sequencer, class_hash).await.with_context(|| format!("Downloading class {}", class_hash.0)))
-    });
+    let futures = require_downloading
+        .into_iter()
+        .map(|class_hash| async move {
+            (
+                class_hash,
+                download_class(sequencer, class_hash)
+                    .await
+                    .with_context(|| format!("Downloading class {}", class_hash.0)),
+            )
+        });
 
     let mut stream = futures::stream::iter(futures).buffer_unordered(8);
 
@@ -495,7 +502,7 @@ pub async fn download_new_classes(
                         )
                     })?
             }
-        } 
+        }
     }
 
     Ok(())
