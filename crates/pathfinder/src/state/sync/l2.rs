@@ -702,6 +702,8 @@ where
             let signature = sequencer.signature(block_number.into()).await?;
             let t_signature = t_signature.elapsed();
 
+            let span = tracing::Span::current();
+
             let (
                 block,
                 state_update,
@@ -711,6 +713,8 @@ where
                 receipt_commitment,
                 state_diff_commitment,
             ) = tokio::task::spawn_blocking(move || {
+                let _span = span.entered();
+
                 let (
                     transaction_commitment,
                     event_commitment,
@@ -784,8 +788,6 @@ where
             state_diff_commitment,
             timings,
         ) = result?;
-
-        tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
 
         *head = Some((
             block.block_number,
