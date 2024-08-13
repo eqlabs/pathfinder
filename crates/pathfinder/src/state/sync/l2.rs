@@ -15,14 +15,16 @@ use pathfinder_common::{
     PublicKey,
     ReceiptCommitment,
     StateCommitment,
+    StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{Block, Status};
+use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
@@ -117,6 +119,145 @@ where
         sequencer_public_key,
     } = context;
 
+    // Phase 1: catch up to the latest block
+    let start = match &head {
+        Some(head) => head.0.get() + 1,
+        None => BlockNumber::GENESIS.get(),
+    };
+    let latest_number = latest.borrow().0.get();
+    tracing::trace!(%start, %latest_number, "Catching up to the latest block");
+
+    let futures = (start..=latest_number).map(|block_number| {
+        let block_number = BlockNumber::new_or_panic(block_number);
+
+        let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
+        tracing::trace!("Downloading block");
+
+        let sequencer = sequencer.clone();
+        let tx_event = tx_event.clone();
+        let storage = storage.clone();
+
+        async move {
+            let t_block = std::time::Instant::now();
+            let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+            let t_block = t_block.elapsed();
+
+            let t_signature = std::time::Instant::now();
+            let signature = sequencer.signature(block_number.into()).await?;
+            let t_signature = t_signature.elapsed();
+
+            let (
+                block,
+                state_update,
+                signature,
+                transaction_commitment,
+                event_commitment,
+                receipt_commitment,
+                state_diff_commitment,
+            ) = tokio::task::spawn_blocking(move || {
+                let (
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ) = verify_block_and_state_update(
+                    &block,
+                    &state_update,
+                    chain,
+                    chain_id,
+                    block_validation_mode,
+                )?;
+                verify_signature(
+                    block.block_hash,
+                    state_diff_commitment,
+                    &signature,
+                    sequencer_public_key,
+                    block_validation_mode,
+                )?;
+
+                Ok::<_, anyhow::Error>((
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ))
+            })
+            .await
+            .context("Joining block verification task")?
+            .context("Verifying block")?;
+
+            let t_declare = std::time::Instant::now();
+            download_new_classes(&state_update, &sequencer, &tx_event, storage)
+                .await
+                .with_context(|| {
+                    format!("Handling newly declared classes for block {block_number:?}")
+                })?;
+            let t_declare = t_declare.elapsed();
+
+            let timings = Timings {
+                block_download: t_block,
+                class_declaration: t_declare,
+                signature_download: t_signature,
+            };
+
+            Ok::<_, anyhow::Error>((
+                block,
+                state_update,
+                signature,
+                transaction_commitment,
+                event_commitment,
+                receipt_commitment,
+                state_diff_commitment,
+                timings,
+            ))
+        }
+        .in_current_span()
+    });
+    let mut stream = futures::stream::iter(futures).buffered(8);
+    while let Some(result) = stream.next().await {
+        let (
+            block,
+            state_update,
+            signature,
+            transaction_commitment,
+            event_commitment,
+            receipt_commitment,
+            state_diff_commitment,
+            timings,
+        ) = result?;
+
+        tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
+
+        head = Some((
+            block.block_number,
+            block.block_hash,
+            state_update.state_commitment,
+        ));
+        blocks.push(
+            block.block_number,
+            block.block_hash,
+            state_update.state_commitment,
+        );
+
+        tx_event
+            .send(SyncEvent::Block(
+                (
+                    Box::new(block),
+                    (transaction_commitment, event_commitment, receipt_commitment),
+                ),
+                Box::new(state_update),
+                Box::new(signature.signature()),
+                Box::new(state_diff_commitment),
+                timings,
+            ))
+            .await
+            .context("Event channel closed")?;
+    }
+
+    // Start polling head of chain
     'outer: loop {
         // Get the next block from L2.
         let (next, head_meta) = match &head {
@@ -647,6 +788,275 @@ async fn download_block(
             Ok(DownloadBlock::Block(block, commitments, state_update))
         }
         Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
+    }
+}
+
+async fn bulk_sync<GatewayClient>(
+    tx_event: mpsc::Sender<SyncEvent>,
+    context: L2SyncContext<GatewayClient>,
+    head: &mut Option<(BlockNumber, BlockHash, StateCommitment)>,
+    blocks: &mut BlockChain,
+    mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
+) -> anyhow::Result<()> where
+GatewayClient: GatewayApi + Clone + Send + 'static,
+{
+    let L2SyncContext {
+        sequencer,
+        chain,
+        chain_id,
+        block_validation_mode,
+        storage,
+        sequencer_public_key,
+    } = context;
+
+        // Phase 1: catch up to the latest block
+        let start = match head {
+            Some(head) => head.0.get() + 1,
+            None => BlockNumber::GENESIS.get(),
+        };
+        let latest_number = latest.borrow().0.get();
+        tracing::trace!(%start, %latest_number, "Catching up to the latest block");
+    
+        let futures = (start..=latest_number).map(|block_number| {
+            let block_number = BlockNumber::new_or_panic(block_number);
+    
+            let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
+            tracing::trace!("Downloading block");
+    
+            let sequencer = sequencer.clone();
+            let tx_event = tx_event.clone();
+            let storage = storage.clone();
+    
+            async move {
+                let t_block = std::time::Instant::now();
+                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+                let t_block = t_block.elapsed();
+    
+                let t_signature = std::time::Instant::now();
+                let signature = sequencer.signature(block_number.into()).await?;
+                let t_signature = t_signature.elapsed();
+    
+                let (
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ) = tokio::task::spawn_blocking(move || {
+                    let (
+                        transaction_commitment,
+                        event_commitment,
+                        receipt_commitment,
+                        state_diff_commitment,
+                    ) = verify_block_and_state_update(
+                        &block,
+                        &state_update,
+                        chain,
+                        chain_id,
+                        block_validation_mode,
+                    )?;
+                    verify_signature(
+                        block.block_hash,
+                        state_diff_commitment,
+                        &signature,
+                        sequencer_public_key,
+                        block_validation_mode,
+                    )?;
+    
+                    Ok::<_, anyhow::Error>((
+                        block,
+                        state_update,
+                        signature,
+                        transaction_commitment,
+                        event_commitment,
+                        receipt_commitment,
+                        state_diff_commitment,
+                    ))
+                })
+                .await
+                .context("Joining block verification task")?
+                .context("Verifying block")?;
+    
+                let t_declare = std::time::Instant::now();
+                download_new_classes(&state_update, &sequencer, &tx_event, storage)
+                    .await
+                    .with_context(|| {
+                        format!("Handling newly declared classes for block {block_number:?}")
+                    })?;
+                let t_declare = t_declare.elapsed();
+    
+                let timings = Timings {
+                    block_download: t_block,
+                    class_declaration: t_declare,
+                    signature_download: t_signature,
+                };
+    
+                Ok::<_, anyhow::Error>((
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                    timings,
+                ))
+            }
+            .in_current_span()
+        });
+        let mut stream = futures::stream::iter(futures).buffered(8);
+        while let Some(result) = stream.next().await {
+            let (
+                block,
+                state_update,
+                signature,
+                transaction_commitment,
+                event_commitment,
+                receipt_commitment,
+                state_diff_commitment,
+                timings,
+            ) = result?;
+    
+            tracing::trace!(block_number=%block.block_number, block_hash=%block.block_hash, "Downloaded and verified block");
+    
+            *head = Some((
+                block.block_number,
+                block.block_hash,
+                state_update.state_commitment,
+            ));
+            blocks.push(
+                block.block_number,
+                block.block_hash,
+                state_update.state_commitment,
+            );
+    
+            tx_event
+                .send(SyncEvent::Block(
+                    (
+                        Box::new(block),
+                        (transaction_commitment, event_commitment, receipt_commitment),
+                    ),
+                    Box::new(state_update),
+                    Box::new(signature.signature()),
+                    Box::new(state_diff_commitment),
+                    timings,
+                ))
+                .await
+                .context("Event channel closed")?;
+        }
+    
+    Ok(())
+}
+
+fn verify_block_and_state_update(
+    block: &Block,
+    state_update: &StateUpdate,
+    chain: Chain,
+    chain_id: ChainId,
+    mode: BlockValidationMode,
+) -> anyhow::Result<(
+    TransactionCommitment,
+    EventCommitment,
+    ReceiptCommitment,
+    StateDiffCommitment,
+)> {
+    // Check if commitments and block hash are correct
+    let state_diff_commitment = StateUpdateData::from(state_update.clone())
+        .compute_state_diff_commitment(block.starknet_version);
+    let state_diff_length = state_update.state_diff_length();
+
+    let verify_result = verify_gateway_block_commitments_and_hash(
+        block,
+        state_diff_commitment,
+        state_diff_length,
+        chain,
+        chain_id,
+    )
+    .context("Verify block hash")?;
+
+    let (transaction_commitment, event_commitment, receipt_commitment) =
+        match (block.status, verify_result, mode) {
+            (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Match(commitments), _) => {
+                Ok(commitments)
+            }
+            (
+                Status::AcceptedOnL1 | Status::AcceptedOnL2,
+                VerifyResult::Mismatch,
+                BlockValidationMode::AllowMismatch,
+            ) => Ok(Default::default()),
+            (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
+                Err(anyhow!("Block hash mismatch"))
+            }
+            _ => Err(anyhow!(
+                "Rejecting block as its status is {}, and only accepted blocks are allowed",
+                block.status
+            )),
+        }?;
+
+    // Check if transaction hashes are valid
+    verify_transaction_hashes(block.block_number, &block.transactions, chain_id)
+        .context("Verify transaction hashes")?;
+
+    // Always compute the state diff commitment from the state update.
+    // If any of the feeder gateway replies (block or signature) contain a state
+    // diff commitment, check if the value matches. If it doesn't, just log the
+    // fact.
+    let version = block.starknet_version;
+    let computed_state_diff_commitment = state_update.compute_state_diff_commitment(version);
+
+    if let Some(x) = block.state_diff_commitment {
+        if x != computed_state_diff_commitment {
+            tracing::warn!(
+                "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
+                computed_state_diff_commitment.0,
+                x.0
+            );
+        }
+    }
+
+    Ok((
+        transaction_commitment,
+        event_commitment,
+        receipt_commitment,
+        computed_state_diff_commitment,
+    ))
+}
+
+/// Check that transaction hashes match the actual contents.
+fn verify_transaction_hashes(
+    block_number: BlockNumber,
+    transactions: &[pathfinder_common::transaction::Transaction],
+    chain_id: ChainId,
+) -> anyhow::Result<()> {
+    use rayon::prelude::*;
+
+    transactions
+        .par_iter()
+        .enumerate()
+        .try_for_each(|(i, txn)| {
+            if !txn.verify_hash(chain_id) {
+                anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
+            };
+            Ok(())
+        })
+}
+
+/// Check block commitment signature.
+fn verify_signature(
+    block_hash: BlockHash,
+    state_diff_commitment: StateDiffCommitment,
+    signature: &BlockSignature,
+    sequencer_public_key: PublicKey,
+    mode: BlockValidationMode,
+) -> Result<(), pathfinder_crypto::signature::SignatureError> {
+    let signature = signature.signature();
+    match mode {
+        BlockValidationMode::Strict => {
+            signature.verify(sequencer_public_key, block_hash, state_diff_commitment)
+        }
+        BlockValidationMode::AllowMismatch => Ok(()),
     }
 }
 
