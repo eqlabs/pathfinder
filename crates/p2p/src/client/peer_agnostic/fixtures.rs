@@ -29,7 +29,7 @@ use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
 
-use super::{ClassDefinition, UnverifiedStateUpdateData};
+use super::ClassDefinition;
 use crate::client::conv::{CairoDefinition, SierraDefinition, ToDto, TryFromDto};
 use crate::client::peer_agnostic::Receipt;
 
@@ -143,7 +143,7 @@ pub fn txn(tag: i32, transaction_index: u64) -> TestTxn {
 }
 
 pub fn contract_diff(tag: i32) -> StateDiffsResponse {
-    let sd = state_diff(tag).state_diff;
+    let sd = state_diff(tag);
     let (a, u) = sd
         .contract_updates
         .into_iter()
@@ -179,7 +179,7 @@ pub fn contract_diff(tag: i32) -> StateDiffsResponse {
 }
 
 pub fn declared_class(tag: i32) -> StateDiffsResponse {
-    let sd = state_diff(tag).state_diff;
+    let sd = state_diff(tag);
     let (class_hash, compiled_class_hash) = sd
         .declared_sierra_classes
         .into_iter()
@@ -202,7 +202,7 @@ pub fn declared_class(tag: i32) -> StateDiffsResponse {
     )
 }
 
-pub fn state_diff(tag: i32) -> UnverifiedStateUpdateData {
+pub fn state_diff(tag: i32) -> StateUpdateData {
     let (declared_cairo_classes, declared_sierra_classes) = match Faker.fake::<Option<CasmHash>>() {
         Some(x) => ([].into(), [(SierraHash(Faker.fake()), x)].into()),
         None => ([ClassHash(Faker.fake())].into(), [].into()),
@@ -223,21 +223,18 @@ pub fn state_diff(tag: i32) -> UnverifiedStateUpdateData {
     } else {
         ([].into(), [(ContractAddress::ONE, Faker.fake())].into())
     };
-    Tagged::get(format!("state diff {tag}"), || UnverifiedStateUpdateData {
-        expected_commitment: Default::default(),
-        state_diff: StateUpdateData {
-            contract_updates,
-            system_contract_updates,
-            declared_cairo_classes,
-            declared_sierra_classes,
-        },
+    Tagged::get(format!("state diff {tag}"), || StateUpdateData {
+        contract_updates,
+        system_contract_updates,
+        declared_cairo_classes,
+        declared_sierra_classes,
     })
     .unwrap()
     .data
 }
 
 pub fn len(tag: i32) -> usize {
-    state_diff(tag).state_diff.state_diff_length()
+    state_diff(tag).state_diff_length()
 }
 
 pub fn surplus_storage() -> StateDiffsResponse {

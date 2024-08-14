@@ -312,23 +312,14 @@ async fn make_transaction_stream(
     let actual = super::transaction_stream::make(
         start,
         stop,
-        stream::iter(
-            num_txns_per_block
-                .into_iter()
-                .map(|x| Ok((x, Default::default()))),
-        ),
+        stream::iter(num_txns_per_block.into_iter().map(Ok)),
         get_peers,
         send_request,
     )
     .map_ok(|x| {
         (
             TestPeer(x.peer),
-            x.data
-                .0
-                .transactions
-                .into_iter()
-                .map(TestTxn::new)
-                .collect(),
+            x.data.0.into_iter().map(TestTxn::new).collect(),
         )
     })
     .map_err(|_| ())
@@ -521,7 +512,7 @@ async fn make_state_diff_stream(
     #[case] num_blocks: usize,
     #[case] responses: Vec<Result<(TestPeer, Vec<StateDiffsResponse>), TestPeer>>,
     #[case] state_diff_len_per_block: Vec<usize>,
-    #[case] expected_stream: Vec<Result<(TestPeer, UnverifiedStateUpdateData), ()>>,
+    #[case] expected_stream: Vec<Result<(TestPeer, StateUpdateData), ()>>,
 ) {
     let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
@@ -540,11 +531,7 @@ async fn make_state_diff_stream(
     let actual = super::state_diff_stream::make(
         start,
         stop,
-        stream::iter(
-            state_diff_len_per_block
-                .into_iter()
-                .map(|x| Ok((x, Default::default()))),
-        ),
+        stream::iter(state_diff_len_per_block.into_iter().map(Ok)),
         get_peers,
         send_request,
     )

@@ -18,7 +18,6 @@ use pathfinder_common::{
     ContractNonce,
     SierraHash,
     StateCommitment,
-    StateDiffCommitment,
     StateUpdate,
     StorageAddress,
     StorageCommitment,
@@ -447,25 +446,21 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    pub fn state_diff_lengths_and_commitments(
+    pub fn state_diff_lengths(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<VecDeque<(usize, StateDiffCommitment)>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                r"SELECT state_diff_length, state_diff_commitment FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+                r"SELECT state_diff_length FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
             )
             .context("Preparing statement")?;
 
         let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
-            .query_map(params![&start, &max_len], |row| {
-                let length = row.get(0)?;
-                let commitment = row.get_state_diff_commitment(1)?;
-                Ok((length, commitment))
-            })
+            .query_map(params![&start, &max_len], |row| row.get(0))
             .context("Querying state diff lengths")?;
 
         let mut ret = VecDeque::new();
@@ -477,12 +472,11 @@ impl Transaction<'_> {
         Ok(ret)
     }
 
-    /// Items are sorted in descending order.
     pub fn declared_classes_counts(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<Vec<usize>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
@@ -502,13 +496,11 @@ impl Transaction<'_> {
             .query_map(params![&start, &max_len], |row| row.get(0))
             .context("Querying declared classes counts")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
         while let Some(stat) = counts.next().transpose().context("Iterating over rows")? {
-            ret.push(stat);
+            ret.push_back(stat);
         }
-
-        ret.reverse();
 
         Ok(ret)
     }

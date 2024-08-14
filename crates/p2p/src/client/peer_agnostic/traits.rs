@@ -3,13 +3,7 @@ use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::{
-    BlockNumber,
-    SignedBlockHeader,
-    StateDiffCommitment,
-    TransactionCommitment,
-    TransactionHash,
-};
+use pathfinder_common::{BlockNumber, SignedBlockHeader, TransactionHash};
 
 use crate::client::types::{
     ClassDefinition,
@@ -17,8 +11,7 @@ use crate::client::types::{
     EventsForBlockByTransaction,
     IncorrectStateDiffCount,
     Receipt,
-    UnverifiedStateUpdateData,
-    UnverifiedTransactionData,
+    TransactionData,
 };
 use crate::PeerData;
 
@@ -38,10 +31,8 @@ pub trait TransactionStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        transaction_counts_and_commitments_stream: impl Stream<Item = anyhow::Result<(usize, TransactionCommitment)>>
-            + Send
-            + 'static,
-    ) -> impl Stream<Item = StreamItem<(UnverifiedTransactionData, BlockNumber)>>;
+        transaction_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>>;
 }
 
 pub trait StateDiffStream {
@@ -54,10 +45,8 @@ pub trait StateDiffStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        state_diff_length_and_commitment_stream: impl Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>>
-            + Send
-            + 'static,
-    ) -> impl Stream<Item = StreamItem<(UnverifiedStateUpdateData, BlockNumber)>>;
+        state_diff_length_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+    ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>>;
 }
 
 pub trait ClassStream {
@@ -65,7 +54,7 @@ pub trait ClassStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        declared_class_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        declared_class_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
     ) -> impl Stream<Item = StreamItem<ClassDefinition>>;
 }
 
@@ -81,7 +70,7 @@ pub trait EventStream {
         self,
         start: BlockNumber,
         stop: BlockNumber,
-        event_counts_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        event_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
     ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>;
 }
 

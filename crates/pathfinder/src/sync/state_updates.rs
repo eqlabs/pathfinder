@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::types::UnverifiedStateUpdateData;
 use p2p::PeerData;
 use pathfinder_common::state_update::{self, ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::{
@@ -23,6 +22,7 @@ use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
+use super::storage_adapters;
 use crate::state::{update_starknet_state, StarknetStateUpdate};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
@@ -54,83 +54,69 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-pub(super) fn length_and_commitment_stream(
+pub(super) fn get_state_diff_lengths(
+    db: pathfinder_storage::Transaction<'_>,
+    start: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> anyhow::Result<VecDeque<usize>> {
+    db.state_diff_lengths(start, batch_size)
+        .context("Querying state diff lengths")
+}
+
+pub(super) fn state_diff_length_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
     batch_size: NonZeroUsize,
-) -> impl futures::Stream<Item = anyhow::Result<(usize, StateDiffCommitment)>> {
-    let (tx, rx) = mpsc::channel(1);
-    std::thread::spawn(move || {
-        let mut batch = VecDeque::new();
+) -> impl futures::Stream<Item = anyhow::Result<usize>> {
+    storage_adapters::counts_stream(storage, start, stop, batch_size, get_state_diff_lengths)
+}
 
-        while start <= stop {
-            if let Some(counts) = batch.pop_front() {
-                _ = tx.blocking_send(Ok(counts));
-                continue;
-            }
+pub struct FetchCommitmentFromDb<T> {
+    db: pathfinder_storage::Connection,
+    _marker: std::marker::PhantomData<T>,
+}
 
-            let batch_size = batch_size.min(
-                NonZeroUsize::new(
-                    (stop.get() - start.get() + 1)
-                        .try_into()
-                        .expect("ptr size is 64bits"),
-                )
-                .expect(">0"),
-            );
-            let storage = storage.clone();
-
-            let get = move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let batch = db
-                    .state_diff_lengths_and_commitments(start, batch_size)
-                    .context("Querying state update counts")?;
-
-                anyhow::ensure!(
-                    !batch.is_empty(),
-                    "No state update counts found: start {start}, batch_size {batch_size}"
-                );
-
-                Ok(batch)
-            };
-
-            batch = match get() {
-                Ok(x) => x,
-                Err(e) => {
-                    _ = tx.blocking_send(Err(e));
-                    return;
-                }
-            };
-
-            start += batch.len().try_into().expect("ptr size is 64bits");
+impl<T> FetchCommitmentFromDb<T> {
+    pub fn new(db: pathfinder_storage::Connection) -> Self {
+        Self {
+            db,
+            _marker: std::marker::PhantomData,
         }
+    }
+}
 
-        while let Some(counts) = batch.pop_front() {
-            _ = tx.blocking_send(Ok(counts));
-        }
-    });
+impl<T> ProcessStage for FetchCommitmentFromDb<T> {
+    const NAME: &'static str = "StateDiff::FetchCommitmentFromDb";
+    type Input = (T, BlockNumber);
+    type Output = (T, StarknetVersion, StateDiffCommitment);
 
-    ReceiverStream::new(rx)
+    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+        let mut db = self
+            .db
+            .transaction()
+            .context("Creating database transaction")?;
+        let version = db
+            .block_version(block_number)
+            .context("Fetching starknet version")?
+            .ok_or(SyncError2::StarknetVersionNotFound)?;
+        let commitment = db
+            .state_diff_commitment(block_number)
+            .context("Fetching state diff commitment")?
+            .ok_or(SyncError2::StateDiffCommitmentNotFound)?;
+        Ok((data, version, commitment))
+    }
 }
 
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "StateDiff::Verify";
-    type Input = (UnverifiedStateUpdateData, StarknetVersion);
+    type Input = (StateUpdateData, StarknetVersion, StateDiffCommitment);
     type Output = StateUpdateData;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let (
-            UnverifiedStateUpdateData {
-                expected_commitment,
-                state_diff,
-            },
-            version,
-        ) = input;
+        let (state_diff, version, expected_commitment) = input;
         let actual = state_diff.compute_state_diff_commitment(version);
 
         if actual != expected_commitment {
@@ -194,67 +180,5 @@ impl ProcessStage for UpdateStarknetState {
         self.current_block += 1;
 
         Ok(tail)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use futures::StreamExt;
-    use pathfinder_common::{SignedBlockHeader, StateUpdate};
-    use pathfinder_storage::fake::Block;
-
-    use super::*;
-
-    #[rstest::rstest]
-    #[case::request_shorter_than_batch_size(1)]
-    #[case::request_equal_to_batch_size(2)]
-    #[case::request_longer_than_batch_size(3)]
-    #[case::request_equal_to_db_size(5)]
-    #[case::request_longer_than_db_size(6)]
-    #[tokio::test]
-    async fn length_and_commitment_stream(#[case] len: usize) {
-        const DB_LEN: usize = 5;
-        let ok_len = len.min(DB_LEN);
-        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
-            .into_iter()
-            .map(|b| {
-                let Block {
-                    header:
-                        SignedBlockHeader {
-                            header:
-                                BlockHeader {
-                                    state_diff_commitment,
-                                    state_diff_length,
-                                    ..
-                                },
-                            ..
-                        },
-                    ..
-                } = b;
-                (state_diff_length as usize, state_diff_commitment)
-            })
-            .collect::<Vec<_>>();
-        let stream = super::length_and_commitment_stream(
-            storage.clone(),
-            BlockNumber::GENESIS,
-            BlockNumber::GENESIS + len as u64 - 1,
-            NonZeroUsize::new(2).unwrap(),
-        );
-
-        let mut remainder = stream.collect::<Vec<_>>().await;
-
-        let actual = remainder
-            .drain(..ok_len)
-            .map(|x| x.unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(expected[..ok_len], actual);
-
-        if len > DB_LEN {
-            assert!(remainder.pop().unwrap().is_err());
-        } else {
-            assert!(remainder.is_empty());
-        }
     }
 }

@@ -477,13 +477,9 @@ impl Transaction<'_> {
 
     pub fn event_counts(
         &self,
-        block: BlockId,
+        block_number: BlockNumber,
         max_len: NonZeroUsize,
     ) -> anyhow::Result<VecDeque<usize>> {
-        let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
-            return Ok(Default::default());
-        };
-
         let mut stmt = self
             .inner()
             .prepare_cached(
@@ -510,46 +506,73 @@ impl Transaction<'_> {
         Ok(ret)
     }
 
-    /// Items are sorted in descending order.
-    pub fn transaction_counts_and_commitments(
+    pub fn transaction_counts(
         &self,
-        block: BlockId,
+        block_number: BlockNumber,
         max_len: NonZeroUsize,
-    ) -> anyhow::Result<VecDeque<(usize, TransactionCommitment)>> {
-        let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
-            return Ok(Default::default());
-        };
-
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                "SELECT transaction_count, transaction_commitment FROM block_headers WHERE number \
-                 >= ? ORDER BY number ASC LIMIT ?",
+                "SELECT transaction_count FROM block_headers WHERE number >= ? ORDER BY number \
+                 ASC LIMIT ?",
             )
             .context("Preparing get transaction counts statement")?;
 
         let max_len = u64::try_from(max_len.get()).expect("ptr size is 64 bits");
         let mut rows = stmt
-            .query_map(params![&block_number, &max_len], |row| {
-                let count: usize = row.get(0)?;
-                let commitment: TransactionCommitment = row.get_transaction_commitment(1)?;
-                Ok((count, commitment))
-            })
-            .context("Querying event counts")?;
+            .query_map(params![&block_number, &max_len], |row| row.get(0))
+            .context("Querying transaction counts")?;
 
         let mut ret = VecDeque::new();
 
         while let Some(cc) = rows
             .next()
             .transpose()
-            .context("Iterating over rows of transaction counts & commitments")?
+            .context("Iterating over rows of transaction counts")?
         {
             ret.push_back(cc);
         }
 
-        tracing::trace!(?ret, "Transaction counts and commitments");
-
         Ok(ret)
+    }
+
+    pub fn state_diff_commitment(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<StateDiffCommitment>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT state_diff_commitment FROM block_headers WHERE number = ?")
+            .context("Preparing state diff commitment query")?;
+
+        let state_diff_commitment = stmt
+            .query_row(params![&block_number], |row| {
+                row.get_state_diff_commitment("state_diff_commitment")
+            })
+            .optional()
+            .context("Querying for state diff commitment")?;
+
+        Ok(state_diff_commitment)
+    }
+
+    pub fn transaction_commitment(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<TransactionCommitment>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT transaction_commitment FROM block_headers WHERE number = ?")
+            .context("Preparing transaction commitment query")?;
+
+        let transaction_commitment = stmt
+            .query_row(params![&block_number], |row| {
+                row.get_transaction_commitment("transaction_commitment")
+            })
+            .optional()
+            .context("Querying for transaction commitment")?;
+
+        Ok(transaction_commitment)
     }
 }
 
@@ -982,7 +1005,7 @@ mod tests {
         }
 
         let result = tx
-            .event_counts(BlockNumber::GENESIS.into(), NonZeroUsize::new(10).unwrap())
+            .event_counts(BlockNumber::GENESIS, NonZeroUsize::new(10).unwrap())
             .unwrap();
 
         assert_eq!(

@@ -3,7 +3,6 @@ use fake::Dummy;
 use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
-use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
     BlockCommitmentSignature,
@@ -76,23 +75,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-/// For a single block
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnverifiedTransactionData {
-    pub expected_commitment: TransactionCommitment,
-    pub transactions: Vec<(TransactionVariant, Receipt)>,
-}
-
-pub type UnverifiedTransactionDataWithBlockNumber = (UnverifiedTransactionData, BlockNumber);
-
-/// For a single block
-#[derive(Clone, PartialEq, Dummy, TaggedDebug)]
-pub struct UnverifiedStateUpdateData {
-    pub expected_commitment: StateDiffCommitment,
-    pub state_diff: StateUpdateData,
-}
-
-pub type UnverifiedStateUpdateWithBlockNumber = (UnverifiedStateUpdateData, BlockNumber);
+pub type TransactionData = Vec<(TransactionVariant, Receipt)>;
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 

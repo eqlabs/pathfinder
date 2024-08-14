@@ -20,6 +20,7 @@ use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::SyncError;
+use super::storage_adapters;
 use crate::state::block_hash::calculate_event_commitment;
 use crate::sync::error::SyncError2;
 use crate::sync::stream::ProcessStage;
@@ -49,66 +50,22 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
+pub(super) fn get_counts(
+    db: pathfinder_storage::Transaction<'_>,
+    start: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> anyhow::Result<VecDeque<usize>> {
+    db.event_counts(start, batch_size)
+        .context("Querying event counts")
+}
+
 pub(super) fn counts_stream(
     storage: Storage,
     mut start: BlockNumber,
     stop: BlockNumber,
     batch_size: NonZeroUsize,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    let (tx, rx) = mpsc::channel(1);
-    std::thread::spawn(move || {
-        let mut batch = VecDeque::new();
-
-        while start <= stop {
-            if let Some(counts) = batch.pop_front() {
-                _ = tx.blocking_send(Ok(counts));
-                continue;
-            }
-
-            let batch_size = batch_size.min(
-                NonZeroUsize::new(
-                    (stop.get() - start.get() + 1)
-                        .try_into()
-                        .expect("ptr size is 64bits"),
-                )
-                .expect(">0"),
-            );
-            let storage = storage.clone();
-
-            let get = move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                let batch = db
-                    .event_counts(start.into(), batch_size)
-                    .context("Querying event counts")?;
-
-                anyhow::ensure!(
-                    !batch.is_empty(),
-                    "No event counts found: start {start}, batch_size {batch_size}"
-                );
-
-                Ok(batch)
-            };
-
-            batch = match get() {
-                Ok(x) => x,
-                Err(e) => {
-                    _ = tx.blocking_send(Err(e));
-                    return;
-                }
-            };
-
-            start += batch.len().try_into().expect("ptr size is 64bits");
-        }
-
-        while let Some(counts) = batch.pop_front() {
-            _ = tx.blocking_send(Ok(counts));
-        }
-    });
-
-    ReceiverStream::new(rx)
+    storage_adapters::counts_stream(storage, start, stop, batch_size, get_counts)
 }
 
 pub(super) async fn verify_commitment(
@@ -216,59 +173,5 @@ impl ProcessStage for VerifyCommitment {
             return Err(SyncError2::EventCommitmentMismatch);
         }
         Ok(events)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use futures::StreamExt;
-    use pathfinder_common::StateUpdate;
-    use pathfinder_storage::fake::Block;
-
-    use super::*;
-
-    #[rstest::rstest]
-    #[case::request_shorter_than_batch_size(1)]
-    #[case::request_equal_to_batch_size(2)]
-    #[case::request_longer_than_batch_size(3)]
-    #[case::request_equal_to_db_size(5)]
-    #[case::request_longer_than_db_size(6)]
-    #[tokio::test]
-    async fn counts_stream(#[case] len: usize) {
-        const DB_LEN: usize = 5;
-        let ok_len = len.min(DB_LEN);
-        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
-            .into_iter()
-            .map(|b| {
-                let Block {
-                    transaction_data, ..
-                } = b;
-                transaction_data
-                    .iter()
-                    .fold(0, |acc, (_, _, evs)| acc + evs.len())
-            })
-            .collect::<Vec<_>>();
-        let stream = super::counts_stream(
-            storage.clone(),
-            BlockNumber::GENESIS,
-            BlockNumber::GENESIS + len as u64 - 1,
-            NonZeroUsize::new(2).unwrap(),
-        );
-
-        let mut remainder = stream.collect::<Vec<_>>().await;
-
-        let actual = remainder
-            .drain(..ok_len)
-            .map(|x| x.unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(expected[..ok_len], actual);
-
-        if len > DB_LEN {
-            assert!(remainder.pop().unwrap().is_err());
-        } else {
-            assert!(remainder.is_empty());
-        }
     }
 }

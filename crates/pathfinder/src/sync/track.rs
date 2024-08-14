@@ -10,8 +10,7 @@ use p2p::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     IncorrectStateDiffCount,
-    UnverifiedStateUpdateData,
-    UnverifiedTransactionData,
+    TransactionData,
 };
 use p2p::PeerData;
 use pathfinder_common::class_definition::ClassDefinition;
@@ -344,7 +343,7 @@ struct TransactionSource<P> {
 }
 
 impl<P> TransactionSource<P> {
-    fn spawn(self) -> SyncReceiver<(UnverifiedTransactionData, StarknetVersion)>
+    fn spawn(self) -> SyncReceiver<(TransactionData, StarknetVersion, TransactionCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -394,11 +393,9 @@ impl<P> TransactionSource<P> {
                     .send(Ok(PeerData::new(
                         peer,
                         (
-                            UnverifiedTransactionData {
-                                expected_commitment: header.transaction_commitment,
-                                transactions: transactions_vec,
-                            },
+                            transactions_vec,
                             header.starknet_version,
+                            header.transaction_commitment,
                         ),
                     )))
                     .await;
@@ -500,7 +497,7 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(self) -> SyncReceiver<(UnverifiedStateUpdateData, StarknetVersion)>
+    fn spawn(self) -> SyncReceiver<(StateUpdateData, StarknetVersion, StateDiffCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -529,11 +526,9 @@ impl<P> StateDiffSource<P> {
                     .send(Ok(PeerData::new(
                         peer,
                         (
-                            UnverifiedStateUpdateData {
-                                expected_commitment: header.header.state_diff_commitment,
-                                state_diff,
-                            },
+                            state_diff,
                             header.header.starknet_version,
+                            header.header.state_diff_commitment,
                         ),
                     )))
                     .await
