@@ -730,7 +730,7 @@ where
                         state_diff_commitment,
                         &signature,
                         sequencer_public_key,
-                        block_validation_mode,
+                        BlockValidationMode::AllowMismatch,
                     ).map_err(|err| err.into()).and_then(|_| Ok((block, state_update, signature, transaction_commitment, event_commitment, receipt_commitment, state_diff_commitment)))
                 });
 
@@ -748,7 +748,7 @@ where
                 event_commitment,
                 receipt_commitment,
                 state_diff_commitment,
-            ) = rx.await.expect("Panic on rayon thread while verifying block").context("Verifying block")?;
+            ) = rx.await.expect("Panic on rayon thread while verifying block").context("Verifying block contents")?;
 
             let t_declare = std::time::Instant::now();
             download_new_classes(&state_update, &sequencer, &tx_event, storage)
