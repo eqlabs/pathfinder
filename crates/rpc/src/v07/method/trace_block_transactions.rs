@@ -27,7 +27,7 @@ pub(crate) mod tests {
 
     use super::v06::{Trace, TraceBlockTransactionsInput, TraceBlockTransactionsOutput};
     use super::{trace_block_transactions, RpcContext};
-    use crate::v04::method::simulate_transactions::tests::setup_storage_with_starknet_version;
+    use crate::v06::method::simulate_transactions::tests::setup_storage_with_starknet_version;
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {

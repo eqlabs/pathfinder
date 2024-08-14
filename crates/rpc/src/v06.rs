@@ -5,8 +5,6 @@ pub(crate) mod types;
 
 use crate::v02::method as v02_method;
 use crate::v03::method as v03_method;
-use crate::v04::method as v04_method;
-use crate::v05::method as v05_method;
 
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
@@ -20,15 +18,13 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getClassHashAt"                  , v02_method::get_class_hash_at)
         .register("starknet_getNonce"                        , v02_method::get_nonce)
         .register("starknet_getStorageAt"                    , v02_method::get_storage_at)
-        
+
         .register("starknet_getEvents"                       , v03_method::get_events)
         .register("starknet_getStateUpdate"                  , v03_method::get_state_update)
 
-        .register("starknet_syncing"                         , v04_method::syncing)
-
-        .register("starknet_call"                            , v05_method::call)
-        .register("starknet_getTransactionStatus"            , v05_method::get_transaction_status)
-
+        .register("starknet_syncing"                         , method::syncing)
+        .register("starknet_getTransactionStatus"            , method::get_transaction_status)
+        .register("starknet_call"                            , method::call)
         .register("starknet_addDeclareTransaction"           , method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction"     , method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction"            , method::add_invoke_transaction)

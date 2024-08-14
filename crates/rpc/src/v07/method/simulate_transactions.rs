@@ -42,8 +42,8 @@ pub(crate) mod tests {
     };
     use crate::v02::types::ContractClass;
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
-    use crate::v04::method::simulate_transactions::tests::setup_storage_with_starknet_version;
-    use crate::v05::method::call::FunctionCall;
+    use crate::v06::method::call::FunctionCall;
+    use crate::v06::method::simulate_transactions::tests::setup_storage_with_starknet_version;
     use crate::v06::method::simulate_transactions::{
         dto,
         SimulateTransactionInput,
@@ -326,7 +326,7 @@ pub(crate) mod tests {
 
     pub(crate) mod fixtures {
         use super::*;
-        pub use crate::v04::method::simulate_transactions::tests::fixtures::{
+        pub use crate::v06::method::simulate_transactions::tests::fixtures::{
             CASM_DEFINITION,
             CASM_HASH,
             DEPLOYED_CONTRACT_ADDRESS,
@@ -335,9 +335,9 @@ pub(crate) mod tests {
             UNIVERSAL_DEPLOYER_CLASS_HASH,
         };
 
-        // The input transactions are the same as in v04.
+        // The input transactions are the same as in v06.
         pub mod input {
-            pub use crate::v04::method::simulate_transactions::tests::fixtures::input::*;
+            pub use crate::v06::method::simulate_transactions::tests::fixtures::input::*;
         }
 
         pub mod expected_output_0_13_1_1 {

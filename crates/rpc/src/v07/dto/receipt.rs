@@ -228,11 +228,11 @@ impl PendingTxnReceipt {
 }
 
 #[derive(Serialize)]
-pub struct ComputationResources(v06::ExecutionResourcesPropertiesV06);
+pub struct ComputationResources(v06::ExecutionResourcesProperties);
 
 impl From<pathfinder_common::receipt::ExecutionResources> for ComputationResources {
     fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
-        Self(v06::ExecutionResourcesPropertiesV06 {
+        Self(v06::ExecutionResourcesProperties {
             steps: value.n_steps,
             memory_holes: value.n_memory_holes,
             range_check_builtin_applications: value.builtins.range_check,
@@ -411,7 +411,7 @@ mod tests {
                 revert_reason: None,
                 execution_resources: ExecutionResources {
                     computation_resources: ComputationResources(
-                        v06::ExecutionResourcesPropertiesV06 {
+                        v06::ExecutionResourcesProperties {
                             steps: 10,
                             memory_holes: 0,
                             range_check_builtin_applications: 0,
@@ -472,7 +472,7 @@ mod tests {
                 revert_reason: None,
                 execution_resources: ExecutionResources {
                     computation_resources: ComputationResources(
-                        v06::ExecutionResourcesPropertiesV06 {
+                        v06::ExecutionResourcesProperties {
                             steps: 10,
                             memory_holes: 0,
                             range_check_builtin_applications: 0,
