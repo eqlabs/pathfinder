@@ -174,7 +174,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     });
     let execution_storage = storage_manager
         .create_read_only_pool(execution_storage_pool_size)
-        .context(r"")?;
+        .context(
+            r"Creating database connection pool for execution
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
 
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
