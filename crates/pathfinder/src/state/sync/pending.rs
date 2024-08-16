@@ -56,23 +56,32 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         // fail when querying a desync'd feeder gateway which isn't aware of the
         // new pending classes. In this case, ignore the new pending data as it
         // is incomplete.
-        if let Err(e) =
-            super::l2::download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
+        match super::l2::download_new_classes(&state_update, &sequencer, storage.clone()).await {
+            Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
+            Ok(downloaded_classes) => {
+                if let Err(e) = super::l2::emit_events_for_downloaded_classes(
+                    &tx_event,
+                    downloaded_classes,
+                    &state_update.declared_sierra_classes,
+                )
                 .await
-        {
-            tracing::debug!(reason=?e, "Failed to download pending classes");
-        } else {
-            prev_tx_count = block.transactions.len();
-            prev_hash = block.parent_hash;
-            tracing::trace!("Emitting a pending update");
-            let block = Arc::new(block);
-            let state_update = Arc::new(state_update);
-            if let Err(e) = tx_event
-                .send(SyncEvent::Pending((block, state_update)))
-                .await
-            {
-                tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
-                break;
+                {
+                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
+                    break;
+                }
+
+                prev_tx_count = block.transactions.len();
+                prev_hash = block.parent_hash;
+                tracing::trace!("Emitting a pending update");
+                let block = Arc::new(block);
+                let state_update = Arc::new(state_update);
+                if let Err(e) = tx_event
+                    .send(SyncEvent::Pending((block, state_update)))
+                    .await
+                {
+                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
+                    break;
+                }
             }
         }
 

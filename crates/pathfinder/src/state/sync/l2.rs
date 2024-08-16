@@ -2,18 +2,20 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::{
     BlockCommitmentSignature,
     BlockHash,
     BlockNumber,
+    CasmHash,
     Chain,
     ChainId,
     ClassHash,
     EventCommitment,
     PublicKey,
     ReceiptCommitment,
+    SierraHash,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
@@ -231,9 +233,15 @@ where
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
+        let downloaded_classes = download_new_classes(&state_update, &sequencer, storage.clone())
             .await
             .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        emit_events_for_downloaded_classes(
+            &tx_event,
+            downloaded_classes,
+            &state_update.declared_sierra_classes,
+        )
+        .await?;
         let t_declare = t_declare.elapsed();
 
         // Download signature
@@ -403,9 +411,8 @@ pub async fn poll_latest(
 pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
-    tx_event: &mpsc::Sender<SyncEvent>,
     storage: Storage,
-) -> Result<(), anyhow::Error> {
+) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
         .contract_updates
         .iter()
@@ -429,7 +436,7 @@ pub async fn download_new_classes(
         .collect::<Vec<_>>();
 
     if new_classes.is_empty() {
-        return Ok(());
+        return Ok(vec![]);
     }
 
     let require_downloading = tokio::task::spawn_blocking(move || {
@@ -458,69 +465,18 @@ pub async fn download_new_classes(
 
     let futures = require_downloading.into_iter().map(|class_hash| {
         async move {
-            (
-                class_hash,
-                download_class(sequencer, class_hash)
-                    .await
-                    .with_context(|| format!("Downloading class {}", class_hash.0)),
-            )
+            download_class(sequencer, class_hash)
+                .await
+                .with_context(|| format!("Downloading class {}", class_hash.0))
         }
         .in_current_span()
     });
 
-    let mut stream = futures::stream::iter(futures).buffer_unordered(8);
+    let stream = futures::stream::iter(futures).buffer_unordered(8);
 
-    while let Some(result) = stream.next().await {
-        let (class_hash, downloaded_class_result) = result;
-        let downloaded_class = downloaded_class_result?;
+    let downloaded_classes = stream.try_collect().await?;
 
-        match downloaded_class {
-            DownloadedClass::Cairo { definition, hash } => tx_event
-                .send(SyncEvent::CairoClass { definition, hash })
-                .await
-                .with_context(|| {
-                    format!(
-                        "Sending Event::NewCairoContract for declared class {}",
-                        class_hash.0
-                    )
-                })?,
-            DownloadedClass::Sierra {
-                sierra_definition,
-                sierra_hash,
-                casm_definition,
-            } => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
-                // feeder gateway, since that's what has been added to the class
-                // commitment tree.
-                let Some(casm_hash) = state_update
-                    .declared_sierra_classes
-                    .iter()
-                    .find_map(|(sierra, casm)| (sierra.0 == class_hash.0).then_some(*casm))
-                else {
-                    // This can occur if the sierra was in here as a deploy contract, if the class
-                    // was declared in a previous block but not yet persisted by
-                    // the database.
-                    continue;
-                };
-                tx_event
-                    .send(SyncEvent::SierraClass {
-                        sierra_definition,
-                        sierra_hash,
-                        casm_definition,
-                        casm_hash,
-                    })
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Sending Event::NewSierraContract for declared class {}",
-                            class_hash.0
-                        )
-                    })?
-            }
-        }
-    }
-
-    Ok(())
+    Ok(downloaded_classes)
 }
 
 enum DownloadBlock {
@@ -703,7 +659,6 @@ where
         tracing::trace!("Downloading block");
 
         let sequencer = sequencer.clone();
-        let tx_event = tx_event.clone();
         let storage = storage.clone();
 
         async move {
@@ -780,7 +735,7 @@ where
                 .context("Verifying block contents")?;
 
             let t_declare = std::time::Instant::now();
-            download_new_classes(&state_update, &sequencer, &tx_event, storage)
+            let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
                 .await
                 .with_context(|| {
                     format!("Handling newly declared classes for block {block_number:?}")
@@ -801,12 +756,13 @@ where
                 event_commitment,
                 receipt_commitment,
                 state_diff_commitment,
+                downloaded_classes,
                 timings,
             ))
         }
         .in_current_span()
     });
-    let mut stream = futures::stream::iter(futures).buffered(8);
+    let mut stream = futures::stream::iter(futures).buffered(12);
     while let Some(result) = stream.next().await {
         let Ok((
             block,
@@ -816,6 +772,7 @@ where
             event_commitment,
             receipt_commitment,
             state_diff_commitment,
+            downloaded_classes,
             timings,
         )) = result
         else {
@@ -840,6 +797,13 @@ where
             state_update.state_commitment,
         );
 
+        emit_events_for_downloaded_classes(
+            &tx_event,
+            downloaded_classes,
+            &state_update.declared_sierra_classes,
+        )
+        .await?;
+
         tx_event
             .send(SyncEvent::Block(
                 (
@@ -853,6 +817,64 @@ where
             ))
             .await
             .context("Event channel closed")?;
+    }
+
+    Ok(())
+}
+
+pub(super) async fn emit_events_for_downloaded_classes(
+    tx_event: &mpsc::Sender<SyncEvent>,
+    downloaded_classes: Vec<DownloadedClass>,
+    declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+) -> anyhow::Result<()> {
+    for downloaded_class in downloaded_classes {
+        match downloaded_class {
+            DownloadedClass::Cairo { definition, hash } => {
+                tracing::trace!(class_hash=%hash, "Sending Cairo class event");
+                tx_event
+                    .send(SyncEvent::CairoClass { definition, hash })
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Sending Event::NewCairoContract for declared class {}",
+                            hash.0
+                        )
+                    })?
+            }
+            DownloadedClass::Sierra {
+                sierra_definition,
+                sierra_hash,
+                casm_definition,
+            } => {
+                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
+                // feeder gateway, since that's what has been added to the class
+                // commitment tree.
+                let Some(casm_hash) = declared_sierra_classes
+                    .iter()
+                    .find_map(|(sierra, casm)| (sierra.0 == sierra_hash.0).then_some(*casm))
+                else {
+                    // This can occur if the sierra was in here as a deploy contract, if the class
+                    // was declared in a previous block but not yet persisted by
+                    // the database.
+                    continue;
+                };
+                tracing::trace!(class_hash=%sierra_hash, "Sending Sierra class event");
+                tx_event
+                    .send(SyncEvent::SierraClass {
+                        sierra_definition,
+                        sierra_hash,
+                        casm_definition,
+                        casm_hash,
+                    })
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Sending Event::NewSierraContract for declared class {}",
+                            sierra_hash.0
+                        )
+                    })?
+            }
+        }
     }
 
     Ok(())

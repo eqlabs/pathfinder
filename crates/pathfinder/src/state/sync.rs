@@ -479,6 +479,7 @@ async fn consumer(
         use SyncEvent::*;
         match event {
             L1Update(update) => {
+                tracing::trace!("Updating L1 sync to block {}", update.block_number);
                 l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
@@ -489,6 +490,7 @@ async fn consumer(
                 state_diff_commitment,
                 timings,
             ) => {
+                tracing::trace!("Updating L2 state to block {}", block.block_number);
                 if block.block_number < next_number {
                     tracing::debug!("Ignoring duplicate block {}", block.block_number);
                     continue;
@@ -589,6 +591,7 @@ async fn consumer(
                 }
             }
             Reorg(reorg_tail) => {
+                tracing::trace!("Reorg L2 state to block {}", reorg_tail);
                 l2_reorg(&mut db_conn, reorg_tail)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
@@ -607,9 +610,10 @@ async fn consumer(
                 }
             }
             CairoClass { definition, hash } => {
+                tracing::trace!("Inserting new Cairo class with hash: {hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_cairo_class(hash, &definition)
                         .context("Inserting new cairo class")?;
@@ -625,9 +629,10 @@ async fn consumer(
                 casm_definition,
                 casm_hash,
             } => {
+                tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_sierra_class(
                         &sierra_hash,
@@ -645,6 +650,7 @@ async fn consumer(
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(pending) => {
+                tracing::trace!("Updating pending data");
                 let (number, hash) = tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
