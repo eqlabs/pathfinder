@@ -36,6 +36,6 @@ The generated constants are placed in:
 - `src/hash/pedersen/consts.rs`: Constants for Pedersen hash generator points.
 - `src/hash/poseidon/consts.rs`: Constants for Poseidon hash.
 
-The space-time trade-off for elliptic curves are set to use chunks of four bits per lookup, which can be configured by running the generator scripts in the `examples` folder.
+The space-time trade-off for elliptic curves are set to use chunks of eight bits per lookup, which can be configured by running the generator scripts in the `examples` folder.
 
 

@@ -13,7 +13,7 @@ use pathfinder_crypto::hash::pedersen::*;
 fn main() {
     let out_dir = env::var_os("CARGO_MANIFEST_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("consts.rs");
-    let bits = 4;
+    let bits = 8;
 
     let consts = generate_consts(bits).expect("should had been able to format the curve constants");
     fs::write(&dest_path, consts)
@@ -62,7 +62,7 @@ fn push_points(
 
     writeln!(
         buf,
-        "#[rustfmt::skip]\npub const CURVE_CONSTS_{name}: [AffinePoint; {len}] = ["
+        "#[rustfmt::skip]\npub static CURVE_CONSTS_{name}: [AffinePoint; {len}] = ["
     )?;
 
     let mut bits_left = max_bits;
