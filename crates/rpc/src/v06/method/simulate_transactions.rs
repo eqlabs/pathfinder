@@ -944,6 +944,39 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn test_simulate_transaction_with_invalid_nonce_will_fail() {
+        let (context, _, _, _) = crate::test_setup::test_context().await;
+
+        // create transaction with invalid nonce
+        let input_json = serde_json::json!({
+            "block_id": {"block_number": 1},
+            "transactions": [
+                {
+                    "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
+                    "max_fee": "0x0",
+                    "signature": [],
+                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
+                    "nonce": "0x1337",
+                    "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
+                    "constructor_calldata": [],
+                    "type": "DEPLOY_ACCOUNT"
+                }
+            ],
+            "simulation_flags": ["SKIP_FEE_CHARGE"]
+        });
+
+        // assert that the simulation returns an error due to invalid nonce
+        let input = SimulateTransactionInput::deserialize(&input_json).unwrap();
+        let err = simulate_transactions(context, input).await.unwrap_err();
+
+        if let SimulateTransactionError::TransactionExecutionError { error, .. } = err {
+            assert!(error.contains("Invalid transaction nonce"))
+        } else {
+            panic!("Unexpected error")
+        }
+    }
+
+    #[tokio::test]
     async fn declare_cairo_v0_class() {
         pub const CAIRO0_DEFINITION: &[u8] =
             include_bytes!("../../../fixtures/contracts/cairo0_test.json");

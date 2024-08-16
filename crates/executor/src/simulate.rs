@@ -108,6 +108,7 @@ pub fn simulate(
             &block_context,
             !skip_fee_charge,
             !skip_validate,
+            true,
         );
         let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
         tx_state.commit();
@@ -185,7 +186,7 @@ pub fn trace(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx
-            .execute(&mut tx_state, &block_context, true, true)
+            .execute(&mut tx_state, &block_context, true, true, true)
             .map_err(|e| {
                 // Update the cache with the error. Lock the cache before sending to avoid
                 // race conditions between senders and receivers.

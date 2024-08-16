@@ -9,6 +9,7 @@ pub fn estimate(
     execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     skip_validate: bool,
+    skip_nonce_check: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
@@ -32,7 +33,13 @@ pub fn estimate(
         let tx_info: Result<
             blockifier::transaction::objects::TransactionExecutionInfo,
             blockifier::transaction::errors::TransactionExecutionError,
-        > = transaction.execute(&mut state, &block_context, false, !skip_validate);
+        > = transaction.execute(
+            &mut state,
+            &block_context,
+            false,
+            !skip_validate,
+            !skip_nonce_check,
+        );
 
         match tx_info {
             Ok(tx_info) => {

@@ -154,7 +154,13 @@ pub(crate) async fn estimate_message_fee_impl(
 
         let transaction = create_executor_transaction(input, context.chain_id)?;
 
-        let result = pathfinder_executor::estimate(state, vec![transaction], false)?;
+        let result = pathfinder_executor::estimate(
+            state,
+            vec![transaction],
+            false,
+            // skip nonce check because it is not necessary for fee estimation
+            true,
+        )?;
 
         Ok::<_, EstimateMessageFeeError>(result)
     })

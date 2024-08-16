@@ -192,7 +192,13 @@ pub async fn estimate_fee_impl(
             .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(state, transactions, skip_validate)?;
+        let result = pathfinder_executor::estimate(
+            state,
+            transactions,
+            skip_validate,
+            // skip nonce check because it is not necessary for fee estimation
+            true,
+        )?;
 
         Ok::<_, EstimateFeeError>(result)
     })

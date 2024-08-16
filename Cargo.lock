@@ -930,7 +930,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.8.0-rc.3"
-source = "git+https://github.com/cartridge-gg/sequencer?branch=skip-nonce-check#2dd9ec63b6924b6bce902e4dd058b5a4601879f7"
+source = "git+https://github.com/cartridge-gg/sequencer?branch=pathfinder-patch#f323bcc34e3d381515f0f59c632112f6d3050d6e"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -960,7 +960,7 @@ dependencies = [
  "sha2",
  "sha3",
  "starknet-types-core",
- "starknet_api 0.13.0-rc.1 (git+https://github.com/cartridge-gg/sequencer?branch=skip-nonce-check)",
+ "starknet_api",
  "strum 0.25.0",
  "strum_macros 0.25.3",
  "thiserror",
@@ -6442,7 +6442,7 @@ dependencies = [
  "starknet-gateway-client",
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
- "starknet_api 0.13.0-rc.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "starknet_api",
  "tempfile",
  "thiserror",
  "time",
@@ -6553,7 +6553,7 @@ dependencies = [
  "serde_json",
  "starknet-gateway-types",
  "starknet-types-core",
- "starknet_api 0.13.0-rc.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "starknet_api",
  "tokio",
  "tracing",
 ]
@@ -6620,7 +6620,7 @@ dependencies = [
  "starknet-gateway-test-fixtures",
  "starknet-gateway-types",
  "starknet-types-core",
- "starknet_api 0.13.0-rc.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "starknet_api",
  "tempfile",
  "test-log",
  "thiserror",
@@ -8420,31 +8420,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.13.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b505c9c076d9fce854304bd743c93ea540ebea6b16ec96819b07343a3aa2c7c"
-dependencies = [
- "bitvec",
- "cairo-lang-starknet-classes",
- "derive_more",
- "hex",
- "indexmap 2.2.6",
- "itertools 0.12.1",
- "once_cell",
- "primitive-types",
- "serde",
- "serde_json",
- "sha3",
- "starknet-crypto 0.5.2",
- "starknet-types-core",
- "strum 0.24.1",
- "strum_macros 0.24.3",
- "thiserror",
-]
-
-[[package]]
-name = "starknet_api"
-version = "0.13.0-rc.1"
-source = "git+https://github.com/cartridge-gg/sequencer?branch=skip-nonce-check#2dd9ec63b6924b6bce902e4dd058b5a4601879f7"
+source = "git+https://github.com/cartridge-gg/sequencer?branch=pathfinder-patch#f323bcc34e3d381515f0f59c632112f6d3050d6e"
 dependencies = [
  "bitvec",
  "cairo-lang-starknet-classes",
