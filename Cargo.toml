@@ -1,4 +1,9 @@
 [workspace]
+exclude = [
+    "crates/load-test",
+    "crates/stark_hash_python",
+    "utils/pathfinder-probe",
+]
 members = [
     "crates/block-hashes",
     "crates/class-hash",
@@ -23,13 +28,6 @@ members = [
     "crates/storage",
     "crates/tagged",
     "crates/tagged-debug-derive",
-    "crates/util",
-    "crates/version",
-]
-exclude = [
-    "crates/load-test",
-    "crates/stark_hash_python",
-    "utils/pathfinder-probe",
 ]
 resolver = "2"
 
@@ -37,8 +35,8 @@ resolver = "2"
 overflow-checks = true
 
 [profile.release-lto]
-inherits = "release"
 codegen-units = 1
+inherits = "release"
 lto = true
 
 [profile.dev.package.flate2]
@@ -60,7 +58,7 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = { version = "0.14.0-rc.1", features = ["node_api"] }
+blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch" }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
@@ -114,11 +112,7 @@ r2d2_sqlite = "0.25.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rayon = "1.8.0"
-reqwest = { version = "0.12.5", default-features = false, features = [
-    "http2",
-    "rustls-tls-native-roots",
-    "charset",
-] }
+reqwest = { version = "0.12.5", default-features = false, features = [ "http2", "rustls-tls-native-roots", "charset" ] }
 rstest = "0.18.2"
 rusqlite = "0.32.1"
 semver = "1.0.18"
@@ -128,7 +122,8 @@ serde_with = "3.7.0"
 sha2 = "0.10.7"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-starknet_api = "0.14.0-rc.1"
+# starknet_api = "0.14.0-rc.1"
+starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch" }
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.1.7"
 syn = "1.0"
