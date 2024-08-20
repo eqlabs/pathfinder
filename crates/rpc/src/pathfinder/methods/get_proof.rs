@@ -338,7 +338,7 @@ pub async fn get_proof_class(
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
         let class_proof = ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash)
-            .context("Creating contract proof")?
+            .context("Creating class proof")?
             .ok_or(GetProofError::ProofMissing)?;
         let class_proof = ProofNodes(class_proof);
 

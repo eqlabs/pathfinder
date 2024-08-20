@@ -98,15 +98,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
             block: Some(block),
         };
 
-        let casm = tx
-            .casm_hash_at(block.into(), class_hash)
-            .context("Querying CASM hash")?;
-
-        let Some(casm) = casm else {
-            return Ok(None);
-        };
-
-        MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, casm.view_bits())
+        MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
     }
 }
 
