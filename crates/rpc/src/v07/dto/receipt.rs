@@ -27,36 +27,6 @@ type CommonTransaction = pathfinder_common::transaction::Transaction;
 type CommonReceipt = pathfinder_common::receipt::Receipt;
 type CommonEvent = pathfinder_common::event::Event;
 
-impl BlockWithReceipts {
-    pub fn from_common(
-        header: pathfinder_common::BlockHeader,
-        body: Vec<(CommonTransaction, CommonReceipt, Vec<CommonEvent>)>,
-        is_l1_accepted: bool,
-    ) -> Self {
-        let status = if is_l1_accepted {
-            BlockStatus::AcceptedOnL1
-        } else {
-            BlockStatus::AcceptedOnL2
-        };
-
-        // This is redundant with the above data, but the spec distinguishes
-        // between BlockStatus and transaction finality status still.
-        let finality_status = if is_l1_accepted {
-            v06::FinalityStatus::AcceptedOnL1
-        } else {
-            v06::FinalityStatus::AcceptedOnL2
-        };
-
-        let body = BlockBodyWithReceipts::from_common(body, finality_status);
-
-        Self {
-            status,
-            header: header.into(),
-            body,
-        }
-    }
-}
-
 impl From<PendingData> for PendingBlockWithReceipts {
     fn from(value: PendingData) -> Self {
         let body = value
