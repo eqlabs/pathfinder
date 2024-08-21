@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pathfinder JSON-RPC extension methods are now also exposed on the `/rpc/pathfinder/v0_1` endpoint.
 - `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
+- Added the `pathfinder_getClassProof` endpoint to retrieve the Merkle proof of any class hash in the class trie.
 
 ## [0.14.1] - 2024-07-29
 
