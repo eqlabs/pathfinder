@@ -342,17 +342,6 @@ pub async fn get_proof_class(
             .ok_or(GetProofError::ProofMissing)?;
         let class_proof = ProofNodes(class_proof);
 
-        let class_root_exists = tx
-            .class_root_exists(header.number)
-            .context("Fetching class root existence")?;
-
-        if !class_root_exists {
-            return Ok(GetClassProofOutput {
-                class_commitment,
-                class_proof,
-            });
-        };
-
         Ok(GetClassProofOutput {
             class_commitment,
             class_proof,
