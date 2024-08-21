@@ -85,6 +85,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    /// ### Important
+    ///
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
@@ -97,6 +102,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    /// ### Important
+    ///
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn get_capability_providers(
         &self,
         capability: &str,
@@ -123,7 +133,9 @@ impl Client {
 
     /// ### Important
     ///
-    /// Triggers kademlia queries to other peers.
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn get_closest_peers(&self, peer: PeerId) -> anyhow::Result<HashSet<PeerId>> {
         let (sender, mut receiver) = mpsc::channel(1);
         self.sender

@@ -81,8 +81,6 @@ impl Sync {
     async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await?;
 
-        tracing::error!(?checkpoint, ">>>> CHECKPOINT");
-
         loop {
             let result = checkpoint::Sync {
                 storage: self.storage.clone(),

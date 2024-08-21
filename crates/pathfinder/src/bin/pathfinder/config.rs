@@ -467,7 +467,6 @@ Example:
         long = "p2p.experimental.kad-names",
         long_help = "Comma separated list of custom Kademlia protocol names.",
         value_name = "LIST",
-        default_value = "/starknet/kad/<STARKNET_CHAIN_ID>/1.0.0",
         value_delimiter = ',',
         env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAMES"
     )]
@@ -841,11 +840,11 @@ impl P2PConfig {
                 .exit()
         }
 
-        if args.kad_names.is_empty() || args.kad_names.iter().any(|x| x.is_empty()) {
+        if args.kad_names.iter().any(|x| !x.starts_with('/')) {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
-                    "p2p.experimental.kad-names must contain at least one non-empty string",
+                    "each item in p2p.experimental.kad-names must start with '/'",
                 )
                 .exit()
         }
