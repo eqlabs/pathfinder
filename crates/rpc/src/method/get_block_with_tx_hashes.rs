@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::{BlockHeader, BlockId, TransactionHash};
 
@@ -14,11 +16,11 @@ pub struct Input {
 #[derive(Debug)]
 pub enum Output {
     Pending {
-        header: BlockHeader,
+        header: Arc<starknet_gateway_types::reply::PendingBlock>,
         transactions: Vec<TransactionHash>,
     },
     Full {
-        header: BlockHeader,
+        header: Box<BlockHeader>,
         transactions: Vec<TransactionHash>,
         l1_accepted: bool,
     },
@@ -49,7 +51,7 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
                 let transactions = pending.block.transactions.iter().map(|t| t.hash).collect();
 
                 return Ok(Output::Pending {
-                    header: pending.header(),
+                    header: pending.block,
                     transactions,
                 });
             }
@@ -69,7 +71,7 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
             .context("Transaction hashes missing")?;
 
         Ok(Output::Full {
-            header,
+            header: Box::new(header),
             transactions,
             l1_accepted,
         })
@@ -89,7 +91,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(&crate::dto::PendingBlockHeader(header))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),

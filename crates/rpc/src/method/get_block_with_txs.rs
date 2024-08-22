@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockId};
@@ -15,11 +17,11 @@ pub struct Input {
 #[derive(Debug)]
 pub enum Output {
     Pending {
-        header: BlockHeader,
+        header: Arc<starknet_gateway_types::reply::PendingBlock>,
         transactions: Vec<Transaction>,
     },
     Full {
-        header: BlockHeader,
+        header: Box<BlockHeader>,
         transactions: Vec<Transaction>,
         l1_accepted: bool,
     },
@@ -56,7 +58,7 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
                     .collect();
 
                 return Ok(Output::Pending {
-                    header: pending.header(),
+                    header: pending.block,
                     transactions,
                 });
             }
@@ -79,7 +81,7 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
             .collect();
 
         Ok(Output::Full {
-            header,
+            header: Box::new(header),
             l1_accepted,
             transactions,
         })
@@ -99,7 +101,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(&crate::dto::PendingBlockHeader(header))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
