@@ -8,7 +8,7 @@ mod prelude;
 mod bloom;
 mod connection;
 pub mod fake;
-mod params;
+pub mod params;
 mod schema;
 pub mod test_utils;
 
