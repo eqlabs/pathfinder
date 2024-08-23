@@ -56,7 +56,6 @@ pub async fn estimate_message_fee(
             context.chain_id,
             header,
             pending,
-            // TODO Disabled for v06
             L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
         );

@@ -337,6 +337,55 @@ mod sealed {
     }
 
     /// ```
+    /// async fn example(RpcContext, impl Deserialize, RpcVersion) -> Result<Output, Into<RpcError>>
+    /// ```
+    impl<'a, F, Input, Output, Error, Fut>
+        Sealed<((), (), Input), ((), (), Output), ((), (), RpcContext)> for F
+    where
+        F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send + 'static,
+        Input: DeserializeOwned + Send + Sync + 'static,
+        Output: SerializeForVersion + Send + Sync + 'static,
+        Error: Into<RpcError> + Send + Sync + 'static,
+        Fut: Future<Output = Result<Output, Error>> + Send,
+    {
+        fn into_method(self) -> Box<dyn RpcMethod> {
+            struct Helper<F, Input, Output, Error> {
+                f: F,
+                _marker: PhantomData<(Input, Output, Error)>,
+            }
+
+            #[axum::async_trait]
+            impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
+            where
+                F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send,
+                Input: DeserializeOwned + Send + Sync,
+                Output: SerializeForVersion + Send + Sync,
+                Error: Into<RpcError> + Send + Sync,
+                Fut: Future<Output = Result<Output, Error>> + Send,
+            {
+                async fn invoke<'a>(
+                    &self,
+                    state: RpcContext,
+                    input: RawParams<'a>,
+                    version: RpcVersion,
+                ) -> RpcResult {
+                    let input = input.deserialize()?;
+                    (self.f)(state, input, version)
+                        .await
+                        .map_err(Into::into)?
+                        .serialize(Serializer::new(version))
+                        .map_err(|e| RpcError::InternalError(e.into()))
+                }
+            }
+
+            Box::new(Helper {
+                f: self,
+                _marker: Default::default(),
+            })
+        }
+    }
+
+    /// ```
     /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
     /// ```
     impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F

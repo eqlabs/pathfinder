@@ -60,7 +60,6 @@ pub async fn simulate_transactions(
             context.chain_id,
             header,
             pending,
-            // TODO This is disabled for v06
             pathfinder_executor::L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
         );

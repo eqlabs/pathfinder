@@ -54,7 +54,6 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             context.chain_id,
             header,
             pending,
-            // TODO Disabled for v06
             L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
         );

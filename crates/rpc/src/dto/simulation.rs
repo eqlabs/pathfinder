@@ -1,6 +1,3 @@
-// TODO In v06 some stuff is different, see with_v06_format in
-// simulate_transactions
-
 use anyhow::anyhow;
 use pathfinder_common::{ContractAddress, ContractNonce};
 use serde::ser::Error;
