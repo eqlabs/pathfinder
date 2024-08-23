@@ -15,10 +15,13 @@ fn main() -> anyhow::Result<()> {
         .context("Opening database connection")?;
     let tx = db.transaction().unwrap();
 
-    let mut stmt = tx.inner().prepare(
-        "SELECT MAX(block_number), root_index, contract_address FROM contract_roots GROUP BY \
-         contract_address",
-    )?;
+    // let mut stmt = tx.inner().prepare(
+    //     "SELECT MAX(block_number), root_index, contract_address FROM
+    // contract_roots GROUP BY \      contract_address",
+    // )?;
+    let mut stmt = tx
+        .inner()
+        .prepare("SELECT block_number, root_index, contract_address FROM contract_roots")?;
 
     let mut rows = stmt.query([])?;
 
