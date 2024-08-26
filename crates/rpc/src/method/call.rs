@@ -74,6 +74,25 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
+// TODO: Not used yet, just an example for now.
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                request: value.deserialize_map("request", |value| {
+                    Ok(FunctionCall {
+                        contract_address: value.deserialize_serde("contract_address")?,
+                        entry_point_selector: value.deserialize_serde("entry_point_selector")?,
+                        calldata: value
+                            .deserialize_array("calldata", crate::dto::Value::deserialize_serde)?,
+                    })
+                })?,
+                block_id: value.deserialize_serde("block_id")?,
+            })
+        })
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output(pub Vec<CallResultValue>);
 
