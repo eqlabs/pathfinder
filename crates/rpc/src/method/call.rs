@@ -4,7 +4,6 @@ use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
-use crate::felt::RpcFelt;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -12,7 +11,7 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError { revert_error: Option<String> },
 }
 
 impl From<anyhow::Error> for CallError {
@@ -28,7 +27,7 @@ impl From<pathfinder_executor::CallError> for CallError {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
             ContractError(error) => Self::ContractError {
-                revert_error: format!("Execution error: {}", error),
+                revert_error: Some(format!("Execution error: {}", error)),
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -51,9 +50,9 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
-            CallError::ContractError { revert_error } => ApplicationError::ContractError {
-                revert_error: Some(revert_error),
-            },
+            CallError::ContractError { revert_error } => {
+                ApplicationError::ContractError { revert_error }
+            }
             CallError::Internal(e) => ApplicationError::Internal(e),
             CallError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -62,12 +61,12 @@ impl From<CallError> for ApplicationError {
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct CallInput {
+pub struct Input {
     pub request: FunctionCall,
     pub block_id: BlockId,
 }
 
-#[derive(Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
+#[derive(serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
@@ -75,11 +74,10 @@ pub struct FunctionCall {
     pub calldata: Vec<CallParam>,
 }
 
-#[serde_with::serde_as]
-#[derive(serde::Serialize, Debug, PartialEq, Eq)]
-pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<CallResultValue>);
+#[derive(Debug, PartialEq, Eq)]
+pub struct Output(pub Vec<CallResultValue>);
 
-pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
+pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
     let span = tracing::Span::current();
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
@@ -131,7 +129,19 @@ pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, C
     .await
     .context("Executing call")?;
 
-    result.map(CallOutput)
+    result.map(Output)
+}
+
+impl crate::dto::serialize::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(|v| crate::dto::Felt(&v.0)),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -152,8 +162,8 @@ mod tests {
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<CallInput>(positional).unwrap();
-            let expected = CallInput {
+            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
                     entry_point_selector: entry_point!("0xee"),
@@ -171,8 +181,8 @@ mod tests {
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<CallInput>(named).unwrap();
-            let expected = CallInput {
+            let input = serde_json::from_value::<Input>(named).unwrap();
+            let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
                     entry_point_selector: entry_point!("0xee"),
@@ -275,7 +285,7 @@ mod tests {
             let (context, _last_block_header, contract_address, test_key, test_value) =
                 test_context().await;
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
@@ -284,7 +294,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
             let result = call(context, input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(test_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(test_value.0)]));
         }
 
         #[tokio::test]
@@ -302,7 +312,7 @@ mod tests {
             let context = context.with_pending_data(rx);
 
             // unchanged on latest block
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
@@ -311,10 +321,10 @@ mod tests {
                 block_id: BlockId::Latest,
             };
             let result = call(context.clone(), input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(test_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(test_value.0)]));
 
             // updated on pending
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
@@ -323,7 +333,7 @@ mod tests {
                 block_id: BlockId::Pending,
             };
             let result = call(context, input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(new_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
         }
 
         #[tokio::test]
@@ -342,7 +352,7 @@ mod tests {
             let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address: new_contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_value"),
@@ -351,7 +361,7 @@ mod tests {
                 block_id: BlockId::Pending,
             };
             let result = call(context.clone(), input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(new_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
         }
 
         #[test_log::test(tokio::test)]
@@ -359,11 +369,10 @@ mod tests {
             let (context, last_block_header, _contract_address, _test_key, _test_value) =
                 test_context().await;
 
-            let sierra_definition =
-                include_bytes!("../../../fixtures/contracts/storage_access.json");
+            let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
             let sierra_hash =
                 sierra_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
-            let casm_definition = include_bytes!("../../../fixtures/contracts/storage_access.casm");
+            let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
 
@@ -388,7 +397,7 @@ mod tests {
             let (_tx, rx) = tokio::sync::watch::channel(pending_data);
             let context = context.with_pending_data(rx);
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address: new_contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_data"),
@@ -397,7 +406,7 @@ mod tests {
                 block_id: BlockId::Pending,
             };
             let result = call(context.clone(), input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(storage_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
         }
 
         fn pending_data_with_update(
@@ -431,11 +440,10 @@ mod tests {
             let (context, last_block_header, _contract_address, _test_key, _test_value) =
                 test_context().await;
 
-            let sierra_definition =
-                include_bytes!("../../../fixtures/contracts/storage_access.json");
+            let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
             let sierra_hash =
                 sierra_hash!("0x03f6241e01a5afcb81f181518d74a1d3c8fc49c2aa583f805b67732e494ba9a8");
-            let casm_definition = include_bytes!("../../../fixtures/contracts/storage_access.casm");
+            let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
             let casm_hash =
                 casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
 
@@ -463,7 +471,7 @@ mod tests {
 
             tx.commit().unwrap();
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address,
                     entry_point_selector: EntryPoint::hashed(b"get_data"),
@@ -472,7 +480,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
             let result = call(context, input).await.unwrap();
-            assert_eq!(result, CallOutput(vec![CallResultValue(storage_value.0)]));
+            assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
         }
     }
 
@@ -530,7 +538,7 @@ mod tests {
         async fn no_such_block() {
             let (_temp_dir, context) = test_context().await;
 
-            let input = CallInput {
+            let input = Input {
                 request: valid_mainnet_call(),
                 block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
@@ -542,7 +550,7 @@ mod tests {
         async fn no_such_contract() {
             let (_temp_dir, context) = test_context().await;
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xdeadbeef"),
                     ..valid_mainnet_call()
@@ -557,7 +565,7 @@ mod tests {
         async fn invalid_message_selector() {
             let (_temp_dir, context) = test_context().await;
 
-            let input = CallInput {
+            let input = Input {
                 request: FunctionCall {
                     entry_point_selector: EntryPoint(Default::default()),
                     ..valid_mainnet_call()
@@ -572,7 +580,7 @@ mod tests {
         async fn successful_call() {
             let (_temp_dir, context) = test_context().await;
 
-            let input = CallInput {
+            let input = Input {
                 request: valid_mainnet_call(),
                 block_id: BLOCK_5,
             };

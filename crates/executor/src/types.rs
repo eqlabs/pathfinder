@@ -16,7 +16,7 @@ use pathfinder_crypto::Felt;
 
 use super::felt::IntoFelt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FeeEstimate {
     pub gas_consumed: primitive_types::U256,
     pub gas_price: primitive_types::U256,
@@ -211,7 +211,7 @@ pub struct MsgToL1 {
     pub from_address: Felt,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct StateDiff {
     pub storage_diffs: BTreeMap<ContractAddress, Vec<StorageDiff>>,
     pub deployed_contracts: Vec<DeployedContract>,

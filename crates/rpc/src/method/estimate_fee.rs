@@ -1,16 +1,157 @@
-use crate::context::RpcContext;
-use crate::v06::method::estimate_fee as v06;
+use anyhow::Context;
+use pathfinder_common::BlockId;
+use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
-pub async fn estimate_fee(
-    context: RpcContext,
-    input: v06::EstimateFeeInput,
-) -> Result<Vec<v06::FeeEstimate>, v06::EstimateFeeError> {
-    v06::estimate_fee_impl(
-        context,
-        input,
-        pathfinder_executor::L1BlobDataAvailability::Enabled,
-    )
+use crate::context::RpcContext;
+use crate::error::ApplicationError;
+use crate::v02::types::request::BroadcastedTransaction;
+use crate::v06::method::estimate_fee::{SimulationFlag, SimulationFlags};
+
+#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Input {
+    pub request: Vec<BroadcastedTransaction>,
+    pub simulation_flags: SimulationFlags,
+    pub block_id: BlockId,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Output(Vec<pathfinder_executor::types::FeeEstimate>);
+
+pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, EstimateFeeError> {
+    let span = tracing::Span::current();
+
+    let result = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut db = context
+            .execution_storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending cast should fail");
+                let header = db
+                    .block_header(block_id)
+                    .context("Querying block header")?
+                    .ok_or(EstimateFeeError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state = ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            // TODO Disabled for v06
+            L1BlobDataAvailability::Enabled,
+            context.config.custom_versioned_constants,
+        );
+
+        let skip_validate = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &SimulationFlag::SkipValidate);
+
+        let transactions = input
+            .request
+            .into_iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let result = pathfinder_executor::estimate(state, transactions, skip_validate)?;
+
+        Ok::<_, EstimateFeeError>(result)
+    })
     .await
+    .context("Executing transaction")??;
+
+    Ok(Output(result.into_iter().map(Into::into).collect()))
+}
+
+#[derive(Debug)]
+pub enum EstimateFeeError {
+    Internal(anyhow::Error),
+    Custom(anyhow::Error),
+    BlockNotFound,
+    TransactionExecutionError {
+        transaction_index: usize,
+        error: String,
+    },
+}
+
+impl From<anyhow::Error> for EstimateFeeError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+
+impl From<pathfinder_executor::TransactionExecutionError> for EstimateFeeError {
+    fn from(value: pathfinder_executor::TransactionExecutionError) -> Self {
+        use pathfinder_executor::TransactionExecutionError::*;
+        match value {
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
+            Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
+        }
+    }
+}
+
+impl From<crate::executor::ExecutionStateError> for EstimateFeeError {
+    fn from(error: crate::executor::ExecutionStateError) -> Self {
+        use crate::executor::ExecutionStateError::*;
+        match error {
+            BlockNotFound => Self::BlockNotFound,
+            Internal(e) => Self::Internal(e),
+        }
+    }
+}
+
+impl From<EstimateFeeError> for ApplicationError {
+    fn from(value: EstimateFeeError) -> Self {
+        match value {
+            EstimateFeeError::BlockNotFound => ApplicationError::BlockNotFound,
+            EstimateFeeError::TransactionExecutionError {
+                transaction_index,
+                error,
+            } => ApplicationError::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
+            EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
+            EstimateFeeError::Custom(e) => ApplicationError::Custom(e),
+        }
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(crate::dto::FeeEstimate),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -18,8 +159,10 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::{felt, BlockId, Tip};
+    use pathfinder_executor::types::PriceUnit;
     use pretty_assertions_sorted::assert_eq;
 
+    use super::*;
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
@@ -35,11 +178,9 @@ mod tests {
         ResourceBounds,
         SierraContractClass,
     };
-    use crate::v06::method::estimate_fee::*;
-    use crate::v06::types::PriceUnit;
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
-        let sierra_definition = include_bytes!("../../../fixtures/contracts/storage_access.json");
+        let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
         let sierra_hash =
             class_hash!("0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
         let casm_hash =
@@ -196,7 +337,7 @@ mod tests {
         // do the same invoke with a v3 transaction
         let invoke_v3_transaction = invoke_v3_transaction(account_contract_address);
 
-        let input = EstimateFeeInput {
+        let input = Input {
             request: vec![
                 declare_transaction,
                 deploy_transaction,
@@ -207,57 +348,57 @@ mod tests {
             simulation_flags: SimulationFlags(vec![]),
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
+        let result = estimate_fee(context, input).await.unwrap();
+        let declare_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 23817.into(),
             gas_price: 1.into(),
             overall_fee: 24201.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(192.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 192.into(),
+            data_gas_price: 2.into(),
         };
-        let deploy_expected = FeeEstimate {
+        let deploy_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 16.into(),
             gas_price: 1.into(),
             overall_fee: 464.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(224.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 224.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_expected = FeeEstimate {
+        let invoke_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 12.into(),
             gas_price: 1.into(),
             overall_fee: 268.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_v0_expected = FeeEstimate {
+        let invoke_v0_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 10.into(),
             gas_price: 1.into(),
             overall_fee: 266.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_v3_expected = FeeEstimate {
+        let invoke_v3_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 12.into(),
             // STRK gas price is 2
             gas_price: 2.into(),
             overall_fee: 280.into(),
             unit: PriceUnit::Fri,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
         assert_eq!(
             result,
-            vec![
+            Output(vec![
                 declare_expected,
                 deploy_expected,
                 invoke_expected,
                 invoke_v0_expected,
                 invoke_v3_expected,
-            ]
+            ])
         );
     }
 
@@ -281,7 +422,7 @@ mod tests {
         // do the same invoke with a v3 transaction
         let invoke_v3_transaction = invoke_v3_transaction(account_contract_address);
 
-        let input = EstimateFeeInput {
+        let input = Input {
             request: vec![
                 declare_transaction,
                 deploy_transaction,
@@ -292,57 +433,57 @@ mod tests {
             simulation_flags: SimulationFlags(vec![]),
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
+        let result = estimate_fee(context, input).await.unwrap();
+        let declare_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 878.into(),
             gas_price: 1.into(),
             overall_fee: 1262.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(192.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 192.into(),
+            data_gas_price: 2.into(),
         };
-        let deploy_expected = FeeEstimate {
+        let deploy_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 16.into(),
             gas_price: 1.into(),
             overall_fee: 464.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(224.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 224.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_expected = FeeEstimate {
+        let invoke_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 12.into(),
             gas_price: 1.into(),
             overall_fee: 268.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_v0_expected = FeeEstimate {
+        let invoke_v0_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 10.into(),
             gas_price: 1.into(),
             overall_fee: 266.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
-        let invoke_v3_expected = FeeEstimate {
+        let invoke_v3_expected = pathfinder_executor::types::FeeEstimate {
             gas_consumed: 12.into(),
             // STRK gas price is 2
             gas_price: 2.into(),
             overall_fee: 280.into(),
             unit: PriceUnit::Fri,
-            data_gas_consumed: Some(128.into()),
-            data_gas_price: Some(2.into()),
+            data_gas_consumed: 128.into(),
+            data_gas_price: 2.into(),
         };
         assert_eq!(
             result,
-            vec![
+            Output(vec![
                 declare_expected,
                 deploy_expected,
                 invoke_expected,
                 invoke_v0_expected,
                 invoke_v3_expected,
-            ]
+            ])
         );
     }
 }

@@ -11,7 +11,9 @@ pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
 pub enum NumAsHex<'a> {
     U64(u64),
+    U128(u128),
     H256(&'a primitive_types::H256),
+    U256(&'a primitive_types::U256),
 }
 pub struct Address<'a>(pub &'a ContractAddress);
 pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
@@ -115,7 +117,9 @@ impl SerializeForVersion for NumAsHex<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let hex_str = match self {
             NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
+            NumAsHex::U128(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
             NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
+            NumAsHex::U256(&x) => hex_str::bytes_to_hex_str_stripped(&<[u8; 32]>::from(x)),
         };
         serializer.serialize_str(&hex_str)
     }

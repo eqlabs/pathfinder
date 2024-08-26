@@ -44,9 +44,7 @@ pub enum ApplicationError {
     #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Contract error")]
-    ContractError,
-    #[error("Contract error")]
-    ContractErrorV05 { revert_error: String },
+    ContractError { revert_error: Option<String> },
     #[error("Invalid contract class")]
     InvalidContractClass,
     #[error("Class already declared")]
@@ -125,8 +123,7 @@ impl ApplicationError {
             ApplicationError::NoBlocks => 32,
             ApplicationError::InvalidContinuationToken => 33,
             ApplicationError::TooManyKeysInFilter { .. } => 34,
-            ApplicationError::ContractError => 40,
-            ApplicationError::ContractErrorV05 { .. } => 40,
+            ApplicationError::ContractError { .. } => 40,
             ApplicationError::TransactionExecutionError { .. } => 41,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
@@ -170,7 +167,6 @@ impl ApplicationError {
             ApplicationError::PageSizeTooBig => None,
             ApplicationError::NoBlocks => None,
             ApplicationError::InvalidContinuationToken => None,
-            ApplicationError::ContractError => None,
             ApplicationError::InvalidContractClass => None,
             ApplicationError::ClassAlreadyDeclared => None,
             ApplicationError::InvalidTransactionNonce => None,
@@ -208,7 +204,7 @@ impl ApplicationError {
             ApplicationError::NoTraceAvailable(error) => Some(json!({
                 "error": error,
             })),
-            ApplicationError::ContractErrorV05 { revert_error } => Some(json!({
+            ApplicationError::ContractError { revert_error } => Some(json!({
                 "revert_error": revert_error
             })),
             ApplicationError::TooManyKeysInFilter { limit, requested } => Some(json!({
@@ -423,15 +419,13 @@ mod tests {
 
         #[test]
         fn multi_variant() {
-            generate_rpc_error_subset!(Multi: ContractNotFound, NoBlocks, ContractError);
+            generate_rpc_error_subset!(Multi: ContractNotFound, NoBlocks);
 
             let contract_not_found = ApplicationError::from(Multi::ContractNotFound);
             let no_blocks = ApplicationError::from(Multi::NoBlocks);
-            let contract_error = ApplicationError::from(Multi::ContractError);
 
             assert_matches!(contract_not_found, ApplicationError::ContractNotFound);
             assert_matches!(no_blocks, ApplicationError::NoBlocks);
-            assert_matches!(contract_error, ApplicationError::ContractError);
         }
     }
 }

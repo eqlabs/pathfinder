@@ -227,7 +227,7 @@ pub mod transaction_status {
 }
 
 /// Types used when deserializing L2 transaction related data.
-pub(crate) mod transaction {
+pub mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
         AccountDeploymentDataElem,
