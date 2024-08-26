@@ -322,7 +322,7 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.expect("result");
         let result = result
             .serialize(Serializer {
-                version: RpcVersion::V06,
+                version: RpcVersion::V07,
             })
             .unwrap();
         pretty_assertions_sorted::assert_eq!(result, expected);
@@ -373,7 +373,7 @@ pub(crate) mod tests {
 
         pretty_assertions_sorted::assert_eq!(
             result.serialize(Serializer {
-                version: RpcVersion::V06,
+                version: RpcVersion::V07,
             }).unwrap(),
             serde_json::to_value(
                 vec![SimulatedTransaction {
@@ -1604,7 +1604,7 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V06
+                    version: RpcVersion::V07
                 })
                 .unwrap(),
             serde_json::to_value(vec![
@@ -1661,7 +1661,7 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V06
+                    version: RpcVersion::V07
                 })
                 .unwrap(),
             serde_json::to_value(vec![
@@ -1714,7 +1714,7 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V06
+                    version: RpcVersion::V07
                 })
                 .unwrap(),
             serde_json::to_value(vec![
