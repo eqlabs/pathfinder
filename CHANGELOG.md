@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pathfinder JSON-RPC extension methods are now also exposed on the `/rpc/pathfinder/v0_1` endpoint.
 - `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
+- Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
 
 ## [0.14.1] - 2024-07-29
 
