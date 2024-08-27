@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Pathfinder sometimes returns an INVALID_CONTINUATION_TOKEN error when requesting events from the pending block and providing a continuation token.
+
 ### Added
 
 - Pathfinder JSON-RPC extension methods are now also exposed on the `/rpc/pathfinder/v0_1` endpoint.
