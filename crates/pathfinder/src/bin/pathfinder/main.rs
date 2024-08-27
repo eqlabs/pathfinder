@@ -586,6 +586,7 @@ fn start_feeder_gateway_sync(
         verify_tree_hashes: config.verify_tree_hashes,
         gossiper,
         sequencer_public_key: gateway_public_key,
+        fetch_concurrency: config.feeder_gateway_fetch_concurrency,
     };
 
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))

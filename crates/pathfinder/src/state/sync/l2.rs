@@ -100,6 +100,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
+    pub fetch_concurrency: std::num::NonZeroUsize,
 }
 
 pub async fn sync<GatewayClient>(
@@ -130,6 +131,7 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        fetch_concurrency: _,
     } = context;
 
     // Start polling head of chain
@@ -638,9 +640,9 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        fetch_concurrency,
     } = context;
 
-    // Phase 1: catch up to the tail block
     let start = match head {
         Some(head) => head.0.get() + 1,
         None => BlockNumber::GENESIS.get(),
@@ -762,7 +764,7 @@ where
         }
         .in_current_span()
     });
-    let mut stream = futures::stream::iter(futures).buffered(12);
+    let mut stream = futures::stream::iter(futures).buffered(fetch_concurrency.get());
     while let Some(result) = stream.next().await {
         let Ok((
             block,
@@ -1267,6 +1269,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
+                fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -1662,6 +1665,7 @@ mod tests {
                     block_validation_mode: MODE,
                     storage: StorageBuilder::in_memory().unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
+                    fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 

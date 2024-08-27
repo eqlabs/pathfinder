@@ -87,6 +87,7 @@ pub struct SyncContext<G, E> {
     pub verify_tree_hashes: bool,
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
+    pub fetch_concurrency: std::num::NonZeroUsize,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -115,6 +116,7 @@ where
             block_validation_mode: value.block_validation_mode,
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
+            fetch_concurrency: value.fetch_concurrency,
         }
     }
 }
@@ -193,6 +195,7 @@ where
         verify_tree_hashes: _,
         gossiper,
         sequencer_public_key: _,
+        fetch_concurrency: _,
     } = context;
 
     let mut db_conn = storage
