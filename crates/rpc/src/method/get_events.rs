@@ -155,6 +155,39 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
+        // Handle cases (3) and (4) where `from_block` is non-pending.
+
+        // early return when to_block is pending and from_block is block_number
+        if let (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) =
+            (request.from_block, request.to_block)
+        {
+            let latest_block_number = &transaction
+                .block_id(pathfinder_storage::BlockId::Latest)
+                .context("Querying latest block number")?
+                .ok_or(GetEventsError::BlockNotFound)?
+                .0;
+
+            let pending_block_number = *latest_block_number + 1;
+
+            // `from_block` is larger than pending block's number
+            if from_block > pending_block_number {
+                return Ok(types::GetEventsResult {
+                    events: Vec::new(),
+                    continuation_token: None,
+                });
+            }
+
+            let pending = context
+                .pending_data
+                .get(&transaction)
+                .context("Querying pending data")?;
+
+            // `from_block` is the pending block's number
+            if from_block == pending_block_number {
+                return get_pending_events(&request, &pending, continuation_token);
+            }
+        }
+
         let (from_block, requested_offset) = match continuation_token {
             Some(token) => token.start_block_and_offset(from_block)?,
             None => (from_block, 0),
