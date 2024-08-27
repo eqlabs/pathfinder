@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- Pathfinder sometimes returns an INVALID_CONTINUATION_TOKEN error when requesting events from the pending block and providing a continuation token.
+
 ### Added
 
 - `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
