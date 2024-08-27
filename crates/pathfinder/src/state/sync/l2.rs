@@ -1087,7 +1087,7 @@ mod tests {
         use tokio::sync::mpsc;
         use tokio::task::JoinHandle;
 
-        use super::super::{sync, BlockValidationMode, SyncEvent};
+        use super::super::{bulk_sync, sync, BlockValidationMode, SyncEvent};
         use crate::state::l2::{BlockChain, L2SyncContext};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
@@ -1283,6 +1283,38 @@ mod tests {
             ))
         }
 
+        fn spawn_bulk_sync(
+            tx_event: mpsc::Sender<SyncEvent>,
+            sequencer: MockGatewayApi,
+        ) -> JoinHandle<anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>>> {
+            let storage = StorageBuilder::in_memory().unwrap();
+            let sequencer = std::sync::Arc::new(sequencer);
+            let context = L2SyncContext {
+                sequencer,
+                chain: Chain::SepoliaTestnet,
+                chain_id: ChainId::SEPOLIA_TESTNET,
+                block_validation_mode: MODE,
+                storage,
+                sequencer_public_key: PublicKey::ZERO,
+                fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+            };
+
+            tokio::spawn(async move {
+                let mut blocks = BlockChain::with_capacity(100, vec![]);
+                let mut head = None;
+                bulk_sync(
+                    tx_event,
+                    context,
+                    &mut blocks,
+                    &mut head,
+                    BlockNumber::new_or_panic(1),
+                )
+                .await?;
+
+                Ok(head)
+            })
+        }
+
         static CONTRACT0_DEF: LazyLock<bytes::Bytes> =
             LazyLock::new(|| format!("{DEF0}0{DEF1}").into());
         static CONTRACT0_DEF_V2: LazyLock<bytes::Bytes> =
@@ -1461,6 +1493,20 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_state_update_with_block_no_sequence(
+            mock: &mut MockGatewayApi,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_state_update_with_block()
+                .with(eq(block))
+                .times(1)
+                .return_once(move |_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_block_header(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -1493,6 +1539,20 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_signature_no_sequence(
+            mock: &mut MockGatewayApi,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(1)
+                .return_once(|_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_class_by_hash(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -1503,6 +1563,18 @@ mod tests {
                 .withf(move |x| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
+                .return_once(|_| returned_result);
+        }
+
+        /// Convenience wrapper
+        fn expect_class_by_hash_no_sequence(
+            mock: &mut MockGatewayApi,
+            class_hash: ClassHash,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_pending_class_by_hash()
+                .withf(move |x| x == &class_hash)
+                .times(1)
                 .return_once(|_| returned_result);
         }
 
@@ -2849,6 +2921,122 @@ mod tests {
                     .unwrap()
                     .unwrap()
                     .unwrap_err();
+            }
+        }
+
+        mod bulk {
+            use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+
+            use super::*;
+
+            #[tokio::test]
+            async fn happy_path() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
+
+                // Download the genesis block with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Download block #1 with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT1_HASH,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
+                );
+
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
+
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                        assert_eq!(hash, CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
+                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                    assert_eq!(hash, CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK1);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE1);
+                    assert_eq!(*signature, BLOCK1_SIGNATURE.signature());
+                });
+
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(Some((BLOCK1_NUMBER, BLOCK1_HASH, _))));
+            }
+
+            #[tokio::test]
+            async fn no_such_block() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
+
+                // Download the genesis block with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Downloading block 1 fails with block not found
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Err(block_not_found()),
+                );
+
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
+
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                        assert_eq!(hash, CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
+                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
+                });
+
+                // Bulk sync should _not_ fail if the block is not found
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(Some((BLOCK0_NUMBER, BLOCK0_HASH, _))));
             }
         }
     }
