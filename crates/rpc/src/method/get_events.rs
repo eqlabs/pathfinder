@@ -87,11 +87,12 @@ pub async fn get_events(
     // The database query for 3 and 4 is combined into one step.
     //
     // 4 requires some additional logic to handle some edge cases:
-    //  a) Query database
-    //  b) if full page -> return page
+    //  a) if from_block_number > pending_block_number -> return empty result
+    //  b) Query database
+    //  c) if full page -> return page
     //      check if there are matching events in the pending block
     //      and return a continuation token for the pending block
-    //  c) else if empty / partially full -> append events from start of pending
+    //  d) else if empty / partially full -> append events from start of pending
     //      if there are more pending events return a continuation token
     //      with the appropriate offset within the pending block
 
