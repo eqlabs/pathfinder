@@ -176,16 +176,6 @@ pub async fn get_events(
                     continuation_token: None,
                 });
             }
-
-            let pending = context
-                .pending_data
-                .get(&transaction)
-                .context("Querying pending data")?;
-
-            // `from_block` is the pending block's number
-            if from_block == pending_block_number {
-                return get_pending_events(&request, &pending, continuation_token);
-            }
         }
 
         let (from_block, requested_offset) = match continuation_token {
