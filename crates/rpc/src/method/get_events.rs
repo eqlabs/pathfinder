@@ -460,10 +460,11 @@ impl std::fmt::Display for ContinuationToken {
 
 impl ContinuationToken {
     fn offset_in_block(&self, block_number: BlockNumber) -> Result<usize, GetEventsError> {
-        if self.block_number == block_number {
-            Ok(self.offset)
-        } else {
-            Err(GetEventsError::InvalidContinuationToken)
+        use std::cmp::Ordering;
+        match Ord::cmp(&self.block_number, &block_number) {
+            Ordering::Equal => Ok(self.offset),
+            Ordering::Less => Ok(0),
+            Ordering::Greater => Err(GetEventsError::InvalidContinuationToken),
         }
     }
 
@@ -957,6 +958,14 @@ mod tests {
             input.filter.continuation_token = result.continuation_token;
             let result = get_events(context.clone(), input.clone()).await.unwrap();
             assert_eq!(result.events, &all[3..4]);
+            assert_eq!(result.continuation_token, None);
+
+            // continuing from a page that does exist, should return all events (even from
+            // pending)
+            input.filter.chunk_size = 123;
+            input.filter.continuation_token = Some("0-0".to_string());
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, all);
             assert_eq!(result.continuation_token, None);
 
             // nonexistent page: offset too large
