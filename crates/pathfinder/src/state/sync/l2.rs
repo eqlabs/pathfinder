@@ -474,7 +474,7 @@ pub async fn download_new_classes(
         .in_current_span()
     });
 
-    let stream = futures::stream::iter(futures).buffer_unordered(8);
+    let stream = futures::stream::iter(futures).buffer_unordered(4);
 
     let downloaded_classes = stream.try_collect().await?;
 
