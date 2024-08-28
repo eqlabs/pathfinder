@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
@@ -764,20 +764,13 @@ where
         }
         .in_current_span()
     });
-    let mut stream = futures::stream::iter(futures).buffered(fetch_concurrency.get());
+    let mut stream = futures::stream::iter(futures).buffer_unordered(fetch_concurrency.get());
+
+    let mut current_lowest = start;
+    let mut ordered_blocks = BTreeMap::new();
+
     while let Some(result) = stream.next().await {
-        let Ok((
-            block,
-            state_update,
-            signature,
-            transaction_commitment,
-            event_commitment,
-            receipt_commitment,
-            state_diff_commitment,
-            downloaded_classes,
-            timings,
-        )) = result
-        else {
+        let Ok(ok) = result else {
             // We've hit an error, so we stop the loop and return. `head` has been updated
             // to the last synced block so our "tracking" sync will just
             // continue from there.
@@ -788,37 +781,68 @@ where
             break;
         };
 
-        *head = Some((
-            block.block_number,
-            block.block_hash,
-            state_update.state_commitment,
-        ));
-        blocks.push(
-            block.block_number,
-            block.block_hash,
-            state_update.state_commitment,
-        );
+        ordered_blocks.insert(ok.0.block_number.get(), ok);
+        // Find number of elems till the first gap that we can emit right now
+        let num_to_emit = ordered_blocks
+            .keys()
+            .take_while(|block_number| {
+                if **block_number == current_lowest {
+                    current_lowest += 1;
+                    true
+                } else {
+                    false
+                }
+            })
+            .count();
 
-        emit_events_for_downloaded_classes(
-            &tx_event,
-            downloaded_classes,
-            &state_update.declared_sierra_classes,
-        )
-        .await?;
-
-        tx_event
-            .send(SyncEvent::Block(
+        for _ in 0..num_to_emit {
+            let (
+                _,
                 (
-                    Box::new(block),
-                    (transaction_commitment, event_commitment, receipt_commitment),
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                    downloaded_classes,
+                    timings,
                 ),
-                Box::new(state_update),
-                Box::new(signature.signature()),
-                Box::new(state_diff_commitment),
-                timings,
-            ))
-            .await
-            .context("Event channel closed")?;
+            ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
+
+            *head = Some((
+                block.block_number,
+                block.block_hash,
+                state_update.state_commitment,
+            ));
+            blocks.push(
+                block.block_number,
+                block.block_hash,
+                state_update.state_commitment,
+            );
+
+            emit_events_for_downloaded_classes(
+                &tx_event,
+                downloaded_classes,
+                &state_update.declared_sierra_classes,
+            )
+            .await?;
+
+            tx_event
+                .send(SyncEvent::Block(
+                    (
+                        Box::new(block),
+                        (transaction_commitment, event_commitment, receipt_commitment),
+                    ),
+                    Box::new(state_update),
+                    Box::new(signature.signature()),
+                    Box::new(state_diff_commitment),
+                    timings,
+                ))
+                .await
+                .context("Event channel closed")?;
+        }
     }
 
     Ok(())
