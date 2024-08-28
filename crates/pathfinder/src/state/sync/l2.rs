@@ -643,7 +643,7 @@ where
         fetch_concurrency,
     } = context;
 
-    let start = match head {
+    let mut start = match head {
         Some(head) => head.0.get() + 1,
         None => BlockNumber::GENESIS.get(),
     };
@@ -654,151 +654,105 @@ where
 
     tracing::trace!(%start, %end, "Catching up to the latest block");
 
-    let futures = (start..=end).map(|block_number| {
-        let block_number = BlockNumber::new_or_panic(block_number);
+    let mut futures = (start..=end)
+        .map(|block_number| {
+            let block_number = BlockNumber::new_or_panic(block_number);
 
-        let _span = tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
-        tracing::trace!("Downloading block");
+            let _span =
+                tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
+            tracing::trace!("Downloading block");
 
-        let sequencer = sequencer.clone();
-        let storage = storage.clone();
+            let sequencer = sequencer.clone();
+            let storage = storage.clone();
 
-        async move {
-            let t_block = std::time::Instant::now();
-            let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
-            let t_block = t_block.elapsed();
+            async move {
+                let t_block = std::time::Instant::now();
+                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+                let t_block = t_block.elapsed();
 
-            let t_signature = std::time::Instant::now();
-            let signature = sequencer.signature(block_number.into()).await?;
-            let t_signature = t_signature.elapsed();
+                let t_signature = std::time::Instant::now();
+                let signature = sequencer.signature(block_number.into()).await?;
+                let t_signature = t_signature.elapsed();
 
-            let span = tracing::Span::current();
+                let span = tracing::Span::current();
 
-            let (tx, rx) = tokio::sync::oneshot::channel();
+                let (tx, rx) = tokio::sync::oneshot::channel();
 
-            rayon::spawn(move || {
-                let _span = span.entered();
+                rayon::spawn(move || {
+                    let _span = span.entered();
 
-                let t_verification = std::time::Instant::now();
+                    let t_verification = std::time::Instant::now();
 
-                let result = verify_block_and_state_update(
-                    &block,
-                    &state_update,
-                    chain,
-                    chain_id,
-                    block_validation_mode,
-                )
-                .and_then(
-                    |(
-                        transaction_commitment,
-                        event_commitment,
-                        receipt_commitment,
-                        state_diff_commitment,
-                    )| {
-                        verify_signature(
-                            block.block_hash,
+                    let result = verify_block_and_state_update(
+                        &block,
+                        &state_update,
+                        chain,
+                        chain_id,
+                        block_validation_mode,
+                    )
+                    .and_then(
+                        |(
+                            transaction_commitment,
+                            event_commitment,
+                            receipt_commitment,
                             state_diff_commitment,
-                            &signature,
-                            sequencer_public_key,
-                            BlockValidationMode::AllowMismatch,
-                        )
-                        .map_err(|err| err.into())
-                        .map(|_| {
-                            (
-                                block,
-                                state_update,
-                                signature,
-                                transaction_commitment,
-                                event_commitment,
-                                receipt_commitment,
+                        )| {
+                            verify_signature(
+                                block.block_hash,
                                 state_diff_commitment,
+                                &signature,
+                                sequencer_public_key,
+                                BlockValidationMode::AllowMismatch,
                             )
-                        })
-                    },
-                );
+                            .map_err(|err| err.into())
+                            .map(|_| {
+                                (
+                                    block,
+                                    state_update,
+                                    signature,
+                                    transaction_commitment,
+                                    event_commitment,
+                                    receipt_commitment,
+                                    state_diff_commitment,
+                                )
+                            })
+                        },
+                    );
 
-                let t_verification = t_verification.elapsed();
-                tracing::trace!(elapsed=?t_verification, "Block verification done");
+                    let t_verification = t_verification.elapsed();
+                    tracing::trace!(elapsed=?t_verification, "Block verification done");
 
-                let _ = tx.send(result);
-            });
+                    let _ = tx.send(result);
+                });
 
-            let (
-                block,
-                state_update,
-                signature,
-                transaction_commitment,
-                event_commitment,
-                receipt_commitment,
-                state_diff_commitment,
-            ) = rx
-                .await
-                .expect("Panic on rayon thread while verifying block")
-                .context("Verifying block contents")?;
+                let (
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ) = rx
+                    .await
+                    .expect("Panic on rayon thread while verifying block")
+                    .context("Verifying block contents")?;
 
-            let t_declare = std::time::Instant::now();
-            let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
-                .await
-                .with_context(|| {
-                    format!("Handling newly declared classes for block {block_number:?}")
-                })?;
-            let t_declare = t_declare.elapsed();
+                let t_declare = std::time::Instant::now();
+                let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
+                    .await
+                    .with_context(|| {
+                        format!("Handling newly declared classes for block {block_number:?}")
+                    })?;
+                let t_declare = t_declare.elapsed();
 
-            let timings = Timings {
-                block_download: t_block,
-                class_declaration: t_declare,
-                signature_download: t_signature,
-            };
+                let timings = Timings {
+                    block_download: t_block,
+                    class_declaration: t_declare,
+                    signature_download: t_signature,
+                };
 
-            Ok::<_, anyhow::Error>((
-                block,
-                state_update,
-                signature,
-                transaction_commitment,
-                event_commitment,
-                receipt_commitment,
-                state_diff_commitment,
-                downloaded_classes,
-                timings,
-            ))
-        }
-        .in_current_span()
-    });
-    let mut stream = futures::stream::iter(futures).buffer_unordered(fetch_concurrency.get());
-
-    let mut current_lowest = start;
-    let mut ordered_blocks = BTreeMap::new();
-
-    while let Some(result) = stream.next().await {
-        let Ok(ok) = result else {
-            // We've hit an error, so we stop the loop and return. `head` has been updated
-            // to the last synced block so our "tracking" sync will just
-            // continue from there.
-            tracing::info!(
-                "Error during bulk syncing blocks, falling back to normal sync: {}",
-                result.err().unwrap()
-            );
-            break;
-        };
-
-        ordered_blocks.insert(ok.0.block_number.get(), ok);
-        // Find number of elems till the first gap that we can emit right now
-        let num_to_emit = ordered_blocks
-            .keys()
-            .take_while(|block_number| {
-                if **block_number == current_lowest {
-                    current_lowest += 1;
-                    true
-                } else {
-                    false
-                }
-            })
-            .count();
-
-        for _ in 0..num_to_emit {
-            let (
-                _,
-                (
+                Ok::<_, anyhow::Error>((
                     block,
                     state_update,
                     signature,
@@ -808,40 +762,111 @@ where
                     state_diff_commitment,
                     downloaded_classes,
                     timings,
-                ),
-            ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
-
-            *head = Some((
-                block.block_number,
-                block.block_hash,
-                state_update.state_commitment,
-            ));
-            blocks.push(
-                block.block_number,
-                block.block_hash,
-                state_update.state_commitment,
-            );
-
-            emit_events_for_downloaded_classes(
-                &tx_event,
-                downloaded_classes,
-                &state_update.declared_sierra_classes,
-            )
-            .await?;
-
-            tx_event
-                .send(SyncEvent::Block(
-                    (
-                        Box::new(block),
-                        (transaction_commitment, event_commitment, receipt_commitment),
-                    ),
-                    Box::new(state_update),
-                    Box::new(signature.signature()),
-                    Box::new(state_diff_commitment),
-                    timings,
                 ))
-                .await
-                .context("Event channel closed")?;
+            }
+            .in_current_span()
+        })
+        .peekable();
+
+    // We want to download blocks in an unordered fashion, but still have a limit on
+    // the size of the cache that is used to then sort the downloaded blocks before
+    // emitting them. (Tries need to be updated in order, hence the sorting.)
+    //
+    // The limit is needed because if we encounter problems downloading a block, at
+    // some point we need to wait for it, otherwise the cache would balloon being
+    // filled with endless newer and newer blocks that we cannot emit and this would
+    // lead to oom.
+    const UNORDERED_CACHE_CAPACITY_FACTOR: usize = 32;
+
+    while futures.peek().is_some() {
+        let futures_chunk = futures
+            .by_ref()
+            .take(fetch_concurrency.get() * UNORDERED_CACHE_CAPACITY_FACTOR);
+
+        let mut stream =
+            futures::stream::iter(futures_chunk).buffer_unordered(fetch_concurrency.get());
+
+        let mut ordered_blocks = BTreeMap::new();
+
+        while let Some(result) = stream.next().await {
+            let Ok(ok) = result else {
+                // We've hit an error, so we stop the loop and return. `head` has been updated
+                // to the last synced block so our "tracking" sync will just
+                // continue from there.
+                tracing::info!(
+                    "Error during bulk syncing blocks, falling back to normal sync: {}",
+                    result.err().unwrap()
+                );
+                return Ok(());
+            };
+
+            ordered_blocks.insert(ok.0.block_number.get(), ok);
+
+            let keys = ordered_blocks.keys().copied().collect::<Vec<_>>();
+
+            tracing::trace!(start, len = ordered_blocks.len(), ?keys, "Cached blocks");
+
+            // Find number of elems till the first gap that we can emit right now
+            let num_to_emit = ordered_blocks
+                .keys()
+                .take_while(|block_number| {
+                    if **block_number == start {
+                        start += 1;
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .count();
+
+            for _ in 0..num_to_emit {
+                let (
+                    _,
+                    (
+                        block,
+                        state_update,
+                        signature,
+                        transaction_commitment,
+                        event_commitment,
+                        receipt_commitment,
+                        state_diff_commitment,
+                        downloaded_classes,
+                        timings,
+                    ),
+                ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
+
+                *head = Some((
+                    block.block_number,
+                    block.block_hash,
+                    state_update.state_commitment,
+                ));
+                blocks.push(
+                    block.block_number,
+                    block.block_hash,
+                    state_update.state_commitment,
+                );
+
+                emit_events_for_downloaded_classes(
+                    &tx_event,
+                    downloaded_classes,
+                    &state_update.declared_sierra_classes,
+                )
+                .await?;
+
+                tx_event
+                    .send(SyncEvent::Block(
+                        (
+                            Box::new(block),
+                            (transaction_commitment, event_commitment, receipt_commitment),
+                        ),
+                        Box::new(state_update),
+                        Box::new(signature.signature()),
+                        Box::new(state_diff_commitment),
+                        timings,
+                    ))
+                    .await
+                    .context("Event channel closed")?;
+            }
         }
     }
 
