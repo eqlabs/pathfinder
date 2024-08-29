@@ -135,7 +135,7 @@ pub async fn get_events(
             .transaction()
             .context("Creating database transaction")?;
 
-        // Handle the trivial (1) and (2) cases.
+        // Handle the trivial (1), (2) and (4a) cases.
         match (&request.from_block, &request.to_block) {
             (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
                 return Ok(types::GetEventsResult {
@@ -150,6 +150,20 @@ pub async fn get_events(
                     .context("Querying pending data")?;
                 return get_pending_events(&request, &pending, continuation_token);
             }
+            (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) => {
+                let pending = context
+                    .pending_data
+                    .get(&transaction)
+                    .context("Querying pending data")?;
+
+                // `from_block` is larger than or equal to pending block's number
+                if from_block >= &pending.number {
+                    return Ok(types::GetEventsResult {
+                        events: Vec::new(),
+                        continuation_token: None,
+                    });
+                }
+            }
             _ => {}
         }
 
@@ -157,27 +171,6 @@ pub async fn get_events(
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
         // Handle cases (3) and (4) where `from_block` is non-pending.
-
-        // early return when to_block is pending and from_block is block_number
-        if let (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) =
-            (request.from_block, request.to_block)
-        {
-            let latest_block_number = &transaction
-                .block_id(pathfinder_storage::BlockId::Latest)
-                .context("Querying latest block number")?
-                .ok_or(GetEventsError::BlockNotFound)?
-                .0;
-
-            let pending_block_number = *latest_block_number + 1;
-
-            // `from_block` is larger than pending block's number
-            if from_block > pending_block_number {
-                return Ok(types::GetEventsResult {
-                    events: Vec::new(),
-                    continuation_token: None,
-                });
-            }
-        }
 
         let (from_block, requested_offset) = match continuation_token {
             Some(token) => token.start_block_and_offset(from_block)?,
@@ -1062,6 +1055,22 @@ mod tests {
                 .unwrap()
                 .events;
             assert_eq!(events, &all[1..2]);
+        }
+
+        #[tokio::test]
+        async fn from_block_past_pending() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Number(BlockNumber::new_or_panic(4))),
+                    to_block: Some(BlockId::Pending),
+                    chunk_size: 100,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(result.events.is_empty());
         }
     }
 }
