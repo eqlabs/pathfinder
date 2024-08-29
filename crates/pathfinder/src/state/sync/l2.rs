@@ -667,11 +667,17 @@ where
 
             async move {
                 let t_block = std::time::Instant::now();
-                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+                let (block, state_update) = sequencer
+                    .state_update_with_block(block_number)
+                    .await
+                    .map_err(|e| (block_number, e.into()))?;
                 let t_block = t_block.elapsed();
 
                 let t_signature = std::time::Instant::now();
-                let signature = sequencer.signature(block_number.into()).await?;
+                let signature = sequencer
+                    .signature(block_number.into())
+                    .await
+                    .map_err(|e| (block_number, e.into()))?;
                 let t_signature = t_signature.elapsed();
 
                 let span = tracing::Span::current();
@@ -736,14 +742,16 @@ where
                 ) = rx
                     .await
                     .expect("Panic on rayon thread while verifying block")
-                    .context("Verifying block contents")?;
+                    .context("Verifying block contents")
+                    .map_err(|e| (block_number, e.into()))?;
 
                 let t_declare = std::time::Instant::now();
                 let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
                     .await
                     .with_context(|| {
                         format!("Handling newly declared classes for block {block_number:?}")
-                    })?;
+                    })
+                    .map_err(|e| (block_number, e.into()))?;
                 let t_declare = t_declare.elapsed();
 
                 let timings = Timings {
@@ -752,7 +760,7 @@ where
                     signature_download: t_signature,
                 };
 
-                Ok::<_, anyhow::Error>((
+                Ok::<_, (BlockNumber, anyhow::Error)>((
                     block,
                     state_update,
                     signature,
@@ -787,17 +795,28 @@ where
             futures::stream::iter(futures_chunk).buffer_unordered(fetch_concurrency.get());
 
         let mut ordered_blocks = BTreeMap::new();
+        let mut failed_block = None;
 
         while let Some(result) = stream.next().await {
-            let Ok(ok) = result else {
-                // We've hit an error, so we stop the loop and return. `head` has been updated
-                // to the last synced block so our "tracking" sync will just
-                // continue from there.
-                tracing::info!(
-                    "Error during bulk syncing blocks, falling back to normal sync: {}",
-                    result.err().unwrap()
-                );
-                return Ok(());
+            let ok = match result {
+                Ok(x) => x,
+                Err((block, error)) => {
+                    // We've hit an error, so we stop the loop and return. `head` has been updated
+                    // to the last synced block so our "tracking" sync will just
+                    // continue from there.
+                    tracing::info!(
+                        %block, %error,
+                        "Error during bulk syncing blocks, falling back to normal sync",
+                    );
+
+                    if block == start {
+                        return Ok(());
+                    } else {
+                        // We can still emit up to the failed block
+                        failed_block = Some(block);
+                        continue;
+                    }
+                }
             };
 
             ordered_blocks.insert(ok.0.block_number.get(), ok);
@@ -866,6 +885,11 @@ where
                     ))
                     .await
                     .context("Event channel closed")?;
+            }
+
+            match failed_block {
+                Some(x) if start == x.get() => return Ok(()),
+                _ => {}
             }
         }
     }
