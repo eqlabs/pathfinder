@@ -84,7 +84,7 @@ hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
 keccak-hash = "0.10.0"
-libp2p = { version = "0.53.0", default-features = false }
+libp2p = { version = "0.54.1", default-features = false }
 libp2p-identity = "0.2.2"
 libp2p-plaintext = "0.41.0"
 libp2p-swarm-test = "0.3.0"

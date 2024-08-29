@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
+use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::store::MemoryStore;
@@ -121,6 +122,7 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         // Disconnect peers without an IP address.
         Self::get_ip(addr)?;
@@ -128,8 +130,13 @@ impl NetworkBehaviour for Behaviour {
         self.check_duplicate_connection(peer)?;
         self.prevent_evicted_peer_reconnections(peer)?;
 
-        self.inner
-            .handle_established_outbound_connection(connection_id, peer, addr, role_override)
+        self.inner.handle_established_outbound_connection(
+            connection_id,
+            peer,
+            addr,
+            role_override,
+            port_use,
+        )
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
