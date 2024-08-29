@@ -287,6 +287,7 @@ impl MainLoop {
                             observed_addr,
                             ..
                         },
+                    ..
                 } = *e
                 {
                     // Important change in libp2p-v0.52 compared to v0.51:
@@ -434,7 +435,9 @@ impl MainLoop {
                                 use libp2p::kad::GetClosestPeersOk;
 
                                 let result = match result {
-                                    Ok(GetClosestPeersOk { peers, .. }) => Ok(peers),
+                                    Ok(GetClosestPeersOk { peers, .. }) => {
+                                        Ok(peers.into_iter().map(|p| p.peer_id).collect())
+                                    }
                                     Err(e) => Err(e.into()),
                                 };
 
