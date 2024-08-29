@@ -183,7 +183,7 @@ This produces uncompressed database file `testnet-sepolia.sqlite` that can then 
 | Sepolia testnet | 121057 | >= 0.14.0                   | pruned  | `sepolia-testnet_0.14.0_121057_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_121057_pruned.sqlite.zst)  | 4.05 GB         | `f38c486a76699250c21a3fd7e7bcb695a7bc094387903b4137094a68d9371065` |
 | Mainnet         | 649680 | >= 0.13.0                   | archive | `mainnet_0.13.0_649680_archive.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_archive.sqlite.zst)         | 400.08 GB       | `d01766380fff47f3c08199d0e5c7039ea6fc412081bac026ca99d24f52e6a923` |
 | Mainnet         | 649680 | >= 0.13.0                   | pruned  | `mainnet_0.13.0_649680_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_pruned.sqlite.zst)          | 64.85 GB        | `fd68a09672abcc37068ecf892ecd028e08456744a6e636027878f65bd801b991` |
-| Mainnet         | 700000 | >= 0.14.0                   | pruned  | `mainnet_0.14.0_700000_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_700000_pruned.sqlite.zst)          | 68.58 GB        | `b859ae1a7c6a996b3cf1666f7a13bec2fc0450829cdda5d3198e1ef2af4bc8e1` |
+| Mainnet         | 670000 | >= 0.14.0                   | pruned  | `mainnet_0.14.0_670000_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_670000_pruned.sqlite.zst)          | 68.58 GB        | `b859ae1a7c6a996b3cf1666f7a13bec2fc0450829cdda5d3198e1ef2af4bc8e1` |
 
 ## Configuration
 
