@@ -463,10 +463,11 @@ impl Behaviour {
                 .swap_remove(0)
         };
 
-        let mut kademlia_config = kad::Config::new(protocol_name);
-        kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
-        kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
-        kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
+        let mut kademlia_config = kad::Config::new(protocol_name)
+            .set_record_ttl(Some(Duration::from_secs(0)))
+            .set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3))
+            .set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL))
+            .set_periodic_bootstrap_interval(Some(cfg.bootstrap.period));
 
         let peer_id = identity.public().to_peer_id();
 
