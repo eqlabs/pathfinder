@@ -826,7 +826,8 @@ async fn evicted_peer_reconnection() {
         // Don't open connections automatically.
         low_watermark: 0,
         bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
+            // period: Duration::from_millis(500),
+            period: Duration::from_secs(15 * 60),
             start_offset: Duration::from_secs(10),
         },
         eviction_timeout: Duration::from_secs(15 * 60),
@@ -850,6 +851,10 @@ async fn evicted_peer_reconnection() {
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
 
+    tracing::error!("---- 0");
+    tracing::error!("---- 0");
+    tracing::error!("---- 0");
+
     // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
     // is 1, peer2 will be evicted when peer1 connects to peer3.
     peer1
@@ -869,6 +874,10 @@ async fn evicted_peer_reconnection() {
     })
     .await;
 
+    tracing::error!("---- 1");
+    tracing::error!("---- 1");
+    tracing::error!("---- 1");
+
     // Mark peer3 as not useful, and hence a candidate for eviction.
     peer1.client.not_useful(peer3.peer_id).await;
 
@@ -877,6 +886,10 @@ async fn evicted_peer_reconnection() {
     assert!(result.is_err());
 
     exhaust_events(&mut peer2.event_receiver).await;
+
+    tracing::error!("---- 2");
+    tracing::error!("---- 2");
+    tracing::error!("---- 2");
 
     // In this case there is no peer ID when connecting, so the connection gets
     // closed after being established.
@@ -893,9 +906,57 @@ async fn evicted_peer_reconnection() {
     })
     .await;
 
+    tracing::error!("---- 3");
+    tracing::error!("---- 3");
+    tracing::error!("---- 3");
+
+    let c1 = peer1.client.for_test();
+    let c2 = peer2.client.for_test();
+    let c3 = peer3.client.for_test();
+
+    let dht1 = c1.get_peers_from_dht().await;
+    let con1 = c1
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht2 = c2.get_peers_from_dht().await;
+    let con2 = c2
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht3 = c3.get_peers_from_dht().await;
+    let con3 = c3
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+
+    let me1 = peer1.peer_id;
+    let me2 = peer2.peer_id;
+    let me3 = peer3.peer_id;
+
+    tracing::error!(%me1, ?dht1, ?con1, "---- PEER 1");
+    tracing::error!(%me2, ?dht2, ?con2, "---- PEER 2");
+    tracing::error!(%me3, ?dht3, ?con3, "---- PEER 3");
+
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_millis(3000)).await;
+
+    tracing::error!("---- 4");
+    tracing::error!("---- 4");
+    tracing::error!("---- 4");
+
+    tracing::error!(%me1, ?dht1, ?con1, "---- PEER 1");
+    tracing::error!(%me2, ?dht2, ?con2, "---- PEER 2");
+    tracing::error!(%me3, ?dht3, ?con3, "---- PEER 3");
+
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    tracing::error!("---- 5");
+    tracing::error!("---- 5");
+    tracing::error!("---- 5");
 
     // peer3 gets evicted.
     wait_for_event(&mut peer1.event_receiver, |event| match event {

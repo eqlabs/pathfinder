@@ -765,7 +765,7 @@ impl Behaviour {
     /// Prevent evicted peers from reconnecting too quickly.
     fn prevent_evicted_peer_reconnections(&self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         let timeout = if cfg!(test) {
-            Duration::from_secs(1)
+            Duration::from_millis(500)
         } else {
             Duration::from_secs(30)
         };

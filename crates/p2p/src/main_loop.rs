@@ -796,7 +796,7 @@ impl MainLoop {
                             .build(),
                     ) {
                         Ok(_) => {
-                            tracing::debug!(%addr, "Dialed peer");
+                            tracing::debug!(%peer_id, %addr, "Dialed");
                             e.insert(sender);
                         }
                         Err(e) => {
