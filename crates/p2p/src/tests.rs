@@ -894,7 +894,7 @@ async fn evicted_peer_reconnection() {
     .await;
 
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
     // peer3 gets evicted.
