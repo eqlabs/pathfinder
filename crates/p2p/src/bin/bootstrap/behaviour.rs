@@ -3,7 +3,7 @@ use std::time::Duration;
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::{autonat, dcutr, identify, identity, ping, relay, StreamProtocol};
+use libp2p::{autonat, dcutr, identify, identity, ping, relay};
 use p2p::kademlia_protocol_name;
 use pathfinder_common::ChainId;
 
@@ -22,16 +22,10 @@ impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey, chain_id: ChainId) -> Self {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
-        let mut kademlia_config = kad::Config::default();
+        let mut kademlia_config = kad::Config::new(kademlia_protocol_name(chain_id));
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        // FIXME: this make sure that the DHT we're implementing is incompatible with
-        // the "default" IPFS DHT from libp2p.
-        kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
-            kademlia_protocol_name(chain_id),
-        )
-        .unwrap()]);
 
         let kademlia = kad::Behaviour::with_config(
             pub_key.to_peer_id(),
