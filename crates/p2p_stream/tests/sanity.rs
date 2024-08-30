@@ -94,10 +94,6 @@ async fn sanity(
         mut responder,
     } = scenario.await;
 
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let responder_task = async move {
         let (peer, req_id, action, mut resp_tx) =
             wait_inbound_request(&mut responder.swarm).await.unwrap();

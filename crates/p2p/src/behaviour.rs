@@ -37,8 +37,9 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
-pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
-    format!("/starknet/kad/{}/1.0.0", chain_id.as_str())
+pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
+    StreamProtocol::try_from_owned(format!("/starknet/kad/{}/1.0.0", chain_id.as_str()))
+        .expect("Starts with /")
 }
 
 pub struct Behaviour {
@@ -447,27 +448,25 @@ impl Behaviour {
     ) -> (Self, relay::client::Transport) {
         const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
 
-        let mut kademlia_config = kad::Config::default();
+        // This makes sure that the DHT we're implementing is incompatible with the
+        // "default" IPFS DHT from libp2p.
+        let protocol_name = if cfg.kad_names.is_empty() {
+            kademlia_protocol_name(chain_id)
+        } else {
+            // TODO change config to use 1 protocol name
+            cfg.kad_names
+                .iter()
+                .cloned()
+                .map(StreamProtocol::try_from_owned)
+                .collect::<Result<Vec<_>, _>>()
+                .expect("valid protocol names")
+                .swap_remove(0)
+        };
+
+        let mut kademlia_config = kad::Config::new(protocol_name);
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        // This makes sure that the DHT we're implementing is incompatible with the
-        // "default" IPFS DHT from libp2p.
-        if cfg.kad_names.is_empty() {
-            kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
-                kademlia_protocol_name(chain_id),
-            )
-            .unwrap()]);
-        } else {
-            kademlia_config.set_protocol_names(
-                cfg.kad_names
-                    .iter()
-                    .cloned()
-                    .map(StreamProtocol::try_from_owned)
-                    .collect::<Result<Vec<_>, _>>()
-                    .expect("valid protocol names"),
-            );
-        }
 
         let peer_id = identity.public().to_peer_id();
 
