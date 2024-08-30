@@ -22,7 +22,7 @@ use libp2p::swarm::{
     THandlerOutEvent,
     ToSwarm,
 };
-use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId};
+use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId, StreamProtocol};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -39,8 +39,9 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
-pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
-    format!("/starknet/kad/{}/1.0.0", chain_id.as_str())
+pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
+    StreamProtocol::try_from_owned(format!("/starknet/kad/{}/1.0.0", chain_id.as_str()))
+        .expect("Starts with /")
 }
 
 pub type BehaviourWithRelayTransport = (Behaviour, relay::client::Transport);
