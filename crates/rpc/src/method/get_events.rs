@@ -137,13 +137,13 @@ pub async fn get_events(
 
         // Handle the trivial (1), (2) and (4a) cases.
         match (&request.from_block, &request.to_block) {
-            (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
+            (Some(Pending), id) if !matches!(id, Some(Pending) | None) => {
                 return Ok(types::GetEventsResult {
                     events: Vec::new(),
                     continuation_token: None,
                 });
             }
-            (Some(Pending), Some(Pending)) => {
+            (Some(Pending), Some(Pending) | None) => {
                 let pending = context
                     .pending_data
                     .get(&transaction)
@@ -1080,6 +1080,22 @@ mod tests {
             };
             let result = get_events(context, input).await.unwrap();
             assert!(result.events.is_empty());
+        }
+
+        #[tokio::test]
+        async fn from_block_pending_to_block_none() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: None,
+                    chunk_size: 100,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(!result.events.is_empty());
         }
     }
 }
