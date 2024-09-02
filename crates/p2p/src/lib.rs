@@ -146,6 +146,10 @@ enum Command {
         peer: PeerId,
         sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
     },
+    GetClosestLocalPeers {
+        peer: PeerId,
+        sender: oneshot::Sender<HashSet<PeerId>>,
+    },
     SubscribeTopic {
         topic: IdentTopic,
         sender: EmptyResultSender,

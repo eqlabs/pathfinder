@@ -154,6 +154,15 @@ impl Client {
         Ok(peers)
     }
 
+    pub async fn get_closest_local_peers(&self, peer: PeerId) -> HashSet<PeerId> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::GetClosestLocalPeers { peer, sender })
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
     pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         let topic = IdentTopic::new(topic);

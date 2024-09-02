@@ -116,14 +116,22 @@ impl Client {
                 return peers.iter().copied().collect::<Vec<_>>();
             }
 
-            let mut peers = self
-                .inner
-                .get_closest_peers(PeerId::random())
-                .await
-                .unwrap_or_default();
+            let peers = loop {
+                let mut peers = self.inner.get_closest_local_peers(PeerId::random()).await;
+                // We could be on the list
+                peers.remove(self.inner.peer_id());
 
-            // We could be on the list
-            peers.remove(self.inner.peer_id());
+                if peers.is_empty() {
+                    // TODO known peers abstraction should not poll
+                    // Workaround: even with explicit peers configured, local kad DHT takes some
+                    // time to populate. Otherwise we just wait for the periodic bootstrap to do the
+                    // same. We wait a bit and retry.
+                    tracing::info!("No peers found in local DHT, retrying");
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                } else {
+                    break peers;
+                }
+            };
 
             let peers_vec = peers.iter().copied().collect::<Vec<_>>();
 
@@ -131,6 +139,7 @@ impl Client {
             peers_vec
         };
         peers.shuffle(&mut rand::thread_rng());
+
         peers
     }
 }
@@ -1489,10 +1498,14 @@ struct Decaying<T> {
 }
 
 impl<T: Default> Decaying<T> {
+    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
     pub fn new(timeout: Duration) -> Self {
         Self {
             data: Default::default(),
-            last_update: Instant::now(),
+            last_update: Instant::now()
+                .checked_sub(Self::DEFAULT_TIMEOUT * 2)
+                .expect("Still valid Instant"),
             timeout,
         }
     }
@@ -1515,6 +1528,6 @@ impl<T: Default> Decaying<T> {
 
 impl<T: Default> Default for Decaying<T> {
     fn default() -> Self {
-        Self::new(Duration::from_secs(60))
+        Self::new(Self::DEFAULT_TIMEOUT)
     }
 }

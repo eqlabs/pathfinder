@@ -1,5 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -539,6 +539,15 @@ impl Behaviour {
 
     pub fn get_closest_peers(&mut self, peer: PeerId) -> kad::QueryId {
         self.inner.kademlia.get_closest_peers(peer)
+    }
+
+    pub fn get_closest_local_peers(&mut self, peer: PeerId) -> HashSet<PeerId> {
+        let key = peer.into();
+        self.inner
+            .kademlia
+            .get_closest_local_peers(&key)
+            .map(|k| *k.preimage())
+            .collect()
     }
 
     pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {

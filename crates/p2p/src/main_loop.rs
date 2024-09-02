@@ -827,6 +827,10 @@ impl MainLoop {
                     .get_closest_peers
                     .insert(query_id, sender);
             }
+            Command::GetClosestLocalPeers { peer, sender } => {
+                let peers = self.swarm.behaviour_mut().get_closest_local_peers(peer);
+                let _ = sender.send(peers);
+            }
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
                     Ok(_) => {
