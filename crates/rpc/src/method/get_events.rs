@@ -87,11 +87,12 @@ pub async fn get_events(
     // The database query for 3 and 4 is combined into one step.
     //
     // 4 requires some additional logic to handle some edge cases:
-    //  a) Query database
-    //  b) if full page -> return page
+    //  a) if from_block_number > pending_block_number -> return empty result
+    //  b) Query database
+    //  c) if full page -> return page
     //      check if there are matching events in the pending block
     //      and return a continuation token for the pending block
-    //  c) else if empty / partially full -> append events from start of pending
+    //  d) else if empty / partially full -> append events from start of pending
     //      if there are more pending events return a continuation token
     //      with the appropriate offset within the pending block
 
@@ -134,7 +135,7 @@ pub async fn get_events(
             .transaction()
             .context("Creating database transaction")?;
 
-        // Handle the trivial (1) and (2) cases.
+        // Handle the trivial (1), (2) and (4a) cases.
         match (&request.from_block, &request.to_block) {
             (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
                 return Ok(types::GetEventsResult {
@@ -149,11 +150,27 @@ pub async fn get_events(
                     .context("Querying pending data")?;
                 return get_pending_events(&request, &pending, continuation_token);
             }
+            (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) => {
+                let pending = context
+                    .pending_data
+                    .get(&transaction)
+                    .context("Querying pending data")?;
+
+                // `from_block` is larger than or equal to pending block's number
+                if from_block >= &pending.number {
+                    return Ok(types::GetEventsResult {
+                        events: Vec::new(),
+                        continuation_token: None,
+                    });
+                }
+            }
             _ => {}
         }
 
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
+
+        // Handle cases (3) and (4) where `from_block` is non-pending.
 
         let (from_block, requested_offset) = match continuation_token {
             Some(token) => token.start_block_and_offset(from_block)?,
@@ -1047,6 +1064,22 @@ mod tests {
                 .unwrap()
                 .events;
             assert_eq!(events, &all[1..2]);
+        }
+
+        #[tokio::test]
+        async fn from_block_past_pending() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Number(BlockNumber::new_or_panic(4))),
+                    to_block: Some(BlockId::Pending),
+                    chunk_size: 100,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(result.events.is_empty());
         }
     }
 }
