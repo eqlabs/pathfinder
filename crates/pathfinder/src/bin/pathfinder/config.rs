@@ -229,6 +229,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     gateway_timeout: std::num::NonZeroU64,
 
     #[arg(
+        long = "gateway.fetch-concurrency",
+        long_help = "How many concurrent requests to send to the feeder gateway when fetching \
+                     block data",
+        env = "PATHFINDER_GATEWAY_FETCH_CONCURRENCY",
+        default_value = "8"
+    )]
+    feeder_gateway_fetch_concurrency: std::num::NonZeroUsize,
+
+    #[arg(
         long = "storage.event-bloom-filter-cache-size",
         long_help = "The number of blocks whose event bloom filters are cached in memory. This \
                      cache speeds up event related RPC queries at the cost of using extra memory. \
@@ -689,6 +698,7 @@ pub struct Config {
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
+    pub feeder_gateway_fetch_concurrency: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -973,6 +983,7 @@ impl Config {
             get_events_max_uncached_bloom_filters_to_load: cli
                 .get_events_max_uncached_bloom_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
+            feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,
             custom_versioned_constants: cli
                 .custom_versioned_constants_path

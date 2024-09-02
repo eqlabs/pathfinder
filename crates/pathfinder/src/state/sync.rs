@@ -87,6 +87,7 @@ pub struct SyncContext<G, E> {
     pub verify_tree_hashes: bool,
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
+    pub fetch_concurrency: std::num::NonZeroUsize,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -115,6 +116,7 @@ where
             block_validation_mode: value.block_validation_mode,
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
+            fetch_concurrency: value.fetch_concurrency,
         }
     }
 }
@@ -193,14 +195,14 @@ where
         verify_tree_hashes: _,
         gossiper,
         sequencer_public_key: _,
+        fetch_concurrency: _,
     } = context;
 
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
 
-    // TODO: consider increasing the capacity.
-    let (event_sender, event_receiver) = mpsc::channel(2);
+    let (event_sender, event_receiver) = mpsc::channel(8);
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
@@ -479,6 +481,7 @@ async fn consumer(
         use SyncEvent::*;
         match event {
             L1Update(update) => {
+                tracing::trace!("Updating L1 sync to block {}", update.block_number);
                 l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
@@ -489,6 +492,7 @@ async fn consumer(
                 state_diff_commitment,
                 timings,
             ) => {
+                tracing::trace!("Updating L2 state to block {}", block.block_number);
                 if block.block_number < next_number {
                     tracing::debug!("Ignoring duplicate block {}", block.block_number);
                     continue;
@@ -589,6 +593,7 @@ async fn consumer(
                 }
             }
             Reorg(reorg_tail) => {
+                tracing::trace!("Reorg L2 state to block {}", reorg_tail);
                 l2_reorg(&mut db_conn, reorg_tail)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
@@ -607,9 +612,10 @@ async fn consumer(
                 }
             }
             CairoClass { definition, hash } => {
+                tracing::trace!("Inserting new Cairo class with hash: {hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_cairo_class(hash, &definition)
                         .context("Inserting new cairo class")?;
@@ -625,9 +631,10 @@ async fn consumer(
                 casm_definition,
                 casm_hash,
             } => {
+                tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_sierra_class(
                         &sierra_hash,
@@ -645,6 +652,7 @@ async fn consumer(
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(pending) => {
+                tracing::trace!("Updating pending data");
                 let (number, hash) = tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()

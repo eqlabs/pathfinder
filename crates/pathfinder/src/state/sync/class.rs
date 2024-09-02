@@ -59,15 +59,16 @@ pub async fn download_class<SequencerClient: GatewayApi>(
             //
             // The work-around ignores compilation errors on integration, and instead
             // replaces the casm definition with empty bytes.
-            let (casm_definition, sierra_definition) =
-                tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-                    (
-                        pathfinder_compiler::compile_to_casm(&definition)
-                            .context("Compiling Sierra class"),
-                        definition,
-                    )
-                })
-                .await?;
+            let span = tracing::Span::current();
+            let (send, recv) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
+                let _span = span.entered();
+                let compile_result = pathfinder_compiler::compile_to_casm(&definition)
+                    .context("Compiling Sierra class");
+
+                let _ = send.send((compile_result, definition));
+            });
+            let (casm_definition, sierra_definition) = recv.await.expect("Panic on rayon thread");
 
             let casm_definition = match casm_definition {
                 Ok(casm_definition) => casm_definition,
