@@ -13,6 +13,12 @@ pub struct GetClassHashAtInput {
     contract_address: ContractAddress,
 }
 
+impl crate::dto::DeserializeForVersion for GetClassHashAtInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
 pub struct GetClassHashOutput(#[serde_as(as = "RpcFelt")] ClassHash);

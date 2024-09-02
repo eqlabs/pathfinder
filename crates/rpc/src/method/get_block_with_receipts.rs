@@ -25,6 +25,16 @@ pub struct Input {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize_serde("block_id")?,
+            })
+        })
+    }
+}
+
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
 pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Result<Output, Error> {

@@ -1,21 +1,41 @@
 use pathfinder_common::TransactionHash;
+use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 
 use crate::context::RpcContext;
 use crate::v02::types::request::BroadcastedInvokeTransaction;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Transaction {
-    #[serde(rename = "INVOKE")]
     Invoke(BroadcastedInvokeTransaction),
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+impl crate::dto::DeserializeForVersion for Transaction {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let tag: String = value.deserialize_serde("type")?;
+            if tag != "INVOKE" {
+                return Err(serde_json::Error::custom("Invalid transaction type"));
+            }
+            BroadcastedInvokeTransaction::deserialize(value).map(Self::Invoke)
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     invoke_transaction: Transaction,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                invoke_transaction: value.deserialize("invoke_transaction")?,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -232,6 +252,7 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         #[test]
         fn positional_args() {
@@ -259,7 +280,9 @@ mod tests {
                 }
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let input =
+                Input::deserialize(crate::dto::Value::new(positional, crate::RpcVersion::V07))
+                    .unwrap();
             let expected = Input {
                 invoke_transaction: test_invoke_txn(),
             };
@@ -292,7 +315,8 @@ mod tests {
                 }
             });
 
-            let input = serde_json::from_value::<Input>(named).unwrap();
+            let input =
+                Input::deserialize(crate::dto::Value::new(named, crate::RpcVersion::V07)).unwrap();
             let expected = Input {
                 invoke_transaction: test_invoke_txn(),
             };

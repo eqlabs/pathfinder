@@ -9,6 +9,12 @@ pub struct GetTransactionReceiptInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionReceiptInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
 
 pub async fn get_transaction_receipt(

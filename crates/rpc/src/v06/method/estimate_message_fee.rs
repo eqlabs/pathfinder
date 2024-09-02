@@ -79,6 +79,12 @@ pub struct EstimateMessageFeeInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for EstimateMessageFeeInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 pub struct MsgFromL1 {
     pub from_address: EthereumAddress,

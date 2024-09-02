@@ -5,10 +5,19 @@ use pathfinder_common::{BlockId, StateUpdate};
 
 use crate::{dto, RpcContext};
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+            })
+        })
+    }
 }
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
@@ -71,12 +80,14 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
 
 #[cfg(test)]
 mod tests {
+    use dto::DeserializeForVersion;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
     use pathfinder_storage::fake::Block;
     use serde_json::json;
 
     use super::*;
+    use crate::RpcVersion;
 
     impl Output {
         fn unwrap_full(self) -> Box<StateUpdate> {
@@ -104,7 +115,7 @@ mod tests {
     #[case::hash_by_position(json!([{"block_hash": "0xbeef"}]), block_hash!("0xbeef").into())]
     #[case::hash_by_name(json!({"block_id": {"block_hash": "0xbeef"}}), block_hash!("0xbeef").into())]
     fn input_parsing(#[case] input: serde_json::Value, #[case] block_id: BlockId) {
-        let input = serde_json::from_value::<Input>(input).unwrap();
+        let input = Input::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
 
         let expected = Input { block_id };
 

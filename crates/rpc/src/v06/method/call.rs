@@ -67,6 +67,12 @@ pub struct CallInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for CallInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionCall {
@@ -144,6 +150,8 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
+        use crate::RpcVersion;
 
         #[test]
         fn positional_args() {
@@ -152,7 +160,8 @@ mod tests {
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<CallInput>(positional).unwrap();
+            let input = CallInput::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                .unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -171,7 +180,8 @@ mod tests {
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<CallInput>(named).unwrap();
+            let input =
+                CallInput::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),

@@ -4,9 +4,19 @@ use pathfinder_common::TransactionHash;
 use crate::context::RpcContext;
 use crate::dto::TxnExecutionStatus;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     transaction_hash: TransactionHash,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: value.deserialize("transaction_hash").map(TransactionHash)?,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]

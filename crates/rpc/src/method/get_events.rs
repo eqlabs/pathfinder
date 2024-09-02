@@ -3,7 +3,6 @@ use std::str::FromStr;
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::EventFilterError;
-use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
@@ -41,33 +40,50 @@ impl From<GetEventsError> for crate::error::ApplicationError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(Clone))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEventsInput {
     filter: EventFilter,
 }
 
-/// Contains event filter parameters passed to `starknet_getEvents`.
-#[serde_with::skip_serializing_none]
-#[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EventFilter {
-    #[serde(default)]
-    pub from_block: Option<BlockId>,
-    #[serde(default)]
-    pub to_block: Option<BlockId>,
-    #[serde(default)]
-    pub address: Option<ContractAddress>,
-    #[serde(default)]
-    pub keys: Vec<Vec<EventKey>>,
+impl crate::dto::DeserializeForVersion for GetEventsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                filter: value.deserialize("filter")?,
+            })
+        })
+    }
+}
 
-    // These are inlined here because serde flatten and deny_unknown_fields
-    // don't work together.
+/// Contains event filter parameters passed to `starknet_getEvents`.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct EventFilter {
+    pub from_block: Option<BlockId>,
+    pub to_block: Option<BlockId>,
+    pub address: Option<ContractAddress>,
+    pub keys: Vec<Vec<EventKey>>,
     pub chunk_size: usize,
     /// Offset, measured in events, which points to the requested chunk
-    #[serde(default)]
     pub continuation_token: Option<String>,
+}
+
+impl crate::dto::DeserializeForVersion for EventFilter {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                from_block: value.deserialize_optional("from_block")?,
+                to_block: value.deserialize_optional("to_block")?,
+                address: value.deserialize_optional("address")?.map(ContractAddress),
+                keys: value
+                    .deserialize_optional_array("keys", |value| {
+                        value.deserialize_array(|value| value.deserialize().map(EventKey))
+                    })?
+                    .unwrap_or_default(),
+                chunk_size: value.deserialize_serde("chunk_size")?,
+                continuation_token: value.deserialize_optional_serde("continuation_token")?,
+            })
+        })
+    }
 }
 
 /// Returns events matching the specified filter
@@ -567,6 +583,8 @@ mod tests {
 
     use super::types::{EmittedEvent, GetEventsResult};
     use super::*;
+    use crate::dto::DeserializeForVersion;
+    use crate::RpcVersion;
 
     #[rstest::rstest]
     #[case::positional_with_optionals(json!([{
@@ -604,7 +622,8 @@ mod tests {
         };
         let expected = GetEventsInput { filter };
 
-        let input = serde_json::from_value::<GetEventsInput>(input).unwrap();
+        let input =
+            GetEventsInput::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
         assert_eq!(input, expected);
     }
 

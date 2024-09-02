@@ -11,6 +11,12 @@ pub struct GetNonceInput {
     contract_address: ContractAddress,
 }
 
+impl crate::dto::DeserializeForVersion for GetNonceInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq)]
 pub struct GetNonceOutput(#[serde_as(as = "RpcFelt")] ContractNonce);

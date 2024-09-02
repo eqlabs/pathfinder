@@ -1,4 +1,5 @@
 use pathfinder_common::{GasPrice, L1DataAvailabilityMode};
+use serde::de::Error;
 
 use super::serialize::SerializeStruct;
 
@@ -7,6 +8,36 @@ pub struct BlockHeader<'a>(pub &'a pathfinder_common::BlockHeader);
 
 #[derive(Debug)]
 pub struct PendingBlockHeader<'a>(pub &'a starknet_gateway_types::reply::PendingBlock);
+
+impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
+    fn deserialize(value: super::Value) -> Result<Self, serde_json::Error> {
+        if value.is_string() {
+            let value: String = value.deserialize_serde()?;
+            match value.as_str() {
+                "latest" => Ok(Self::Latest),
+                "pending" => Ok(Self::Pending),
+                _ => Err(serde_json::Error::custom("Invalid block id")),
+            }
+        } else {
+            value.deserialize_map(|value| {
+                if value.contains_key("block_number") {
+                    Ok(Self::Number(
+                        pathfinder_common::BlockNumber::new(
+                            value.deserialize_serde("block_number")?,
+                        )
+                        .ok_or_else(|| serde_json::Error::custom("Invalid block number"))?,
+                    ))
+                } else if value.contains_key("block_hash") {
+                    Ok(Self::Hash(pathfinder_common::BlockHash(
+                        value.deserialize("block_hash")?,
+                    )))
+                } else {
+                    Err(serde_json::Error::custom("Invalid block id"))
+                }
+            })
+        }
+    }
+}
 
 impl crate::dto::serialize::SerializeForVersion for BlockHeader<'_> {
     fn serialize(
@@ -99,14 +130,8 @@ impl crate::dto::serialize::SerializeForVersion for ResourcePrice {
         serializer: super::serialize::Serializer,
     ) -> Result<super::serialize::Ok, super::serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "price_in_wei",
-            &crate::dto::NumAsHex::U128(self.price_in_wei.0),
-        )?;
-        serializer.serialize_field(
-            "price_in_fri",
-            &crate::dto::NumAsHex::U128(self.price_in_fri.0),
-        )?;
+        serializer.serialize_field("price_in_wei", &crate::dto::U128Hex(self.price_in_wei.0))?;
+        serializer.serialize_field("price_in_fri", &crate::dto::U128Hex(self.price_in_fri.0))?;
         serializer.end()
     }
 }

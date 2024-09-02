@@ -7,7 +7,6 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
-use serde::de::DeserializeOwned;
 use serde_json::value::RawValue;
 use tracing::Instrument;
 
@@ -315,6 +314,7 @@ mod sealed {
 
     use super::*;
     use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::DeserializeForVersion;
     use crate::jsonrpc::error::RpcError;
     use crate::RpcVersion;
 
@@ -343,7 +343,7 @@ mod sealed {
         Sealed<((), (), Input), ((), (), Output), ((), (), RpcContext)> for F
     where
         F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send + 'static,
-        Input: DeserializeOwned + Send + Sync + 'static,
+        Input: DeserializeForVersion + Send + Sync + 'static,
         Output: SerializeForVersion + Send + Sync + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
@@ -358,7 +358,7 @@ mod sealed {
             impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
             where
                 F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send,
-                Input: DeserializeOwned + Send + Sync,
+                Input: DeserializeForVersion + Send + Sync,
                 Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
@@ -369,7 +369,7 @@ mod sealed {
                     input: RawParams<'a>,
                     version: RpcVersion,
                 ) -> RpcResult {
-                    let input = input.deserialize()?;
+                    let input = input.deserialize_for_version(version)?;
                     (self.f)(state, input, version)
                         .await
                         .map_err(Into::into)?
@@ -391,7 +391,7 @@ mod sealed {
     impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F
     where
         F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
-        Input: DeserializeOwned + Send + Sync + 'static,
+        Input: DeserializeForVersion + Send + Sync + 'static,
         Output: SerializeForVersion + Send + Sync + 'static,
         Error: Into<RpcError> + Send + Sync + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
@@ -406,7 +406,7 @@ mod sealed {
             impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
             where
                 F: Fn(RpcContext, Input) -> Fut + Sync + Send,
-                Input: DeserializeOwned + Send + Sync,
+                Input: DeserializeForVersion + Send + Sync,
                 Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
@@ -417,7 +417,7 @@ mod sealed {
                     input: RawParams<'a>,
                     version: RpcVersion,
                 ) -> RpcResult {
-                    let input = input.deserialize()?;
+                    let input = input.deserialize_for_version(version)?;
                     (self.f)(state, input)
                         .await
                         .map_err(Into::into)?
@@ -440,7 +440,7 @@ mod sealed {
     impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ()> for F
     where
         F: Fn(Input) -> Fut + Sync + Send + 'static,
-        Input: DeserializeOwned + Sync + Send + 'static,
+        Input: DeserializeForVersion + Sync + Send + 'static,
         Output: SerializeForVersion + Sync + Send + 'static,
         Error: Into<RpcError> + Sync + Send + 'static,
         Fut: Future<Output = Result<Output, Error>> + Send,
@@ -455,7 +455,7 @@ mod sealed {
             impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
             where
                 F: Fn(Input) -> Fut + Sync + Send,
-                Input: DeserializeOwned + Send + Sync,
+                Input: DeserializeForVersion + Send + Sync,
                 Output: SerializeForVersion + Send + Sync,
                 Error: Into<RpcError> + Send + Sync,
                 Fut: Future<Output = Result<Output, Error>> + Send,
@@ -466,7 +466,7 @@ mod sealed {
                     input: RawParams<'a>,
                     version: RpcVersion,
                 ) -> RpcResult {
-                    let input = input.deserialize()?;
+                    let input = input.deserialize_for_version(version)?;
                     (self.f)(input)
                         .await
                         .map_err(Into::into)?
@@ -736,21 +736,43 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
 
-            #[derive(Debug, Deserialize, Serialize)]
+            #[derive(Debug, Serialize)]
             struct SubtractInput {
                 minuend: i32,
                 subtrahend: i32,
             }
+
+            impl DeserializeForVersion for SubtractInput {
+                fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                    value.deserialize_map(|value| {
+                        Ok(Self {
+                            minuend: value.deserialize_serde("minuend")?,
+                            subtrahend: value.deserialize_serde("subtrahend")?,
+                        })
+                    })
+                }
+            }
+
             async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
                 Ok(Value::Number((input.minuend - input.subtrahend).into()))
             }
 
-            #[derive(Debug, Deserialize, Serialize)]
+            #[derive(Debug, Serialize)]
             struct SumInput(Vec<i32>);
+
+            impl DeserializeForVersion for SumInput {
+                fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                    Ok(Self(
+                        value.deserialize_array(|value| value.deserialize_serde())?,
+                    ))
+                }
+            }
+
             async fn sum(input: SumInput) -> Result<Value, ExampleError> {
                 Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
             }
