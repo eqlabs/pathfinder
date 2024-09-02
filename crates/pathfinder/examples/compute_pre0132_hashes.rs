@@ -8,12 +8,12 @@ use pathfinder_common::{
     ReceiptCommitment,
     StarknetVersion,
     StateCommitment,
-    StateDiffCommitment,
     StorageCommitment,
-    TransactionCommitment,
 };
 use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment,
     calculate_receipt_commitment,
+    calculate_transaction_commitment,
     compute_final_hash,
     BlockHeaderData,
 };
@@ -68,12 +68,12 @@ fn main() -> anyhow::Result<()> {
         let txn_data_for_block = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
-        drop(tx);
 
         // Compute receipt commitment if it's not there
         if header.receipt_commitment == ReceiptCommitment::ZERO {
             header.receipt_commitment = calculate_receipt_commitment(
                 txn_data_for_block
+                    .clone()
                     .into_iter()
                     .flat_map(|(_, r, _)| Some(r))
                     .collect::<Vec<_>>()
@@ -81,11 +81,33 @@ fn main() -> anyhow::Result<()> {
             )?;
         }
 
-        // Ensure for non-zero values for all other commitments
-        // Note: Zero values are allowed for:
-        // - `class_commitment` - Will be zero until the first Sierra class has been
-        //   declared on chain
-        // - `event_commitment` - Will be zero when no events are sent in the block
+        // Recalculate transaction commitment
+        header.transaction_commitment = calculate_transaction_commitment(
+            &txn_data_for_block
+                .iter()
+                .map(|(tx, _, _)| tx.clone())
+                .collect::<Vec<_>>(),
+            VERSION_CUTOFF,
+        )?;
+
+        // Recalculate event commitment
+        header.event_commitment = calculate_event_commitment(
+            &txn_data_for_block
+                .iter()
+                .map(|(tx, _, events)| (tx.hash, events.as_slice()))
+                .collect::<Vec<_>>(),
+            VERSION_CUTOFF,
+        )?;
+
+        // Recalculate state diff commitment
+        let state_update = tx
+            .state_update(block_id)?
+            .context("Fetching state update")?;
+        header.state_diff_commitment = state_update.compute_state_diff_commitment(VERSION_CUTOFF);
+
+        drop(tx);
+
+        // Ensure non-zero values for other commitments
         ensure!(
             header.state_commitment != StateCommitment::ZERO,
             "state_commitment missing"
@@ -93,18 +115,6 @@ fn main() -> anyhow::Result<()> {
         ensure!(
             header.storage_commitment != StorageCommitment::ZERO,
             "storage_commitment missing"
-        );
-        ensure!(
-            header.transaction_commitment != TransactionCommitment::ZERO,
-            "transaction_commitment missing"
-        );
-        ensure!(
-            header.receipt_commitment != ReceiptCommitment::ZERO,
-            "receipt_commitment missing"
-        );
-        ensure!(
-            header.state_diff_commitment != StateDiffCommitment::ZERO,
-            "state_diff_commitment missing"
         );
 
         // Compute the block hash in the 0.13.2 style
