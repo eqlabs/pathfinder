@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pathfinder sometimes returns an INVALID_CONTINUATION_TOKEN error when requesting events from the pending block and providing a continuation token.
+- `starknet_getEvents` incorrectly returns pending events if `from_block` is greater than latest_block_number + 1.
+- `starknet_getEvents` incorrectly does not return pending events if `from_block` is `pending` and `to_block` is missing.
 
 ### Added
 
