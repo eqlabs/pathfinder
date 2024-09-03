@@ -7,7 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.14.2] - 2024-09-03
 
 ### Fixed
 
@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
+- Support for Starknet 0.13.2.1.
 
 ## [0.14.1] - 2024-07-29
 
