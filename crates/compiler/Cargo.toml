@@ -13,7 +13,7 @@ cairo-lang-starknet-classes = { workspace = true }
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
-casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.7.0-rc.3" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.7.0" }
 num-bigint = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
