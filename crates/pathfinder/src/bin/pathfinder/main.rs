@@ -174,7 +174,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     });
     let execution_storage = storage_manager
         .create_read_only_pool(execution_storage_pool_size)
-        .context(r"")?;
+        .context(
+            r"Creating database connection pool for execution
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
 
     let p2p_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
@@ -534,6 +539,7 @@ fn start_sync(
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
         storage,
@@ -569,6 +575,7 @@ fn start_feeder_gateway_sync(
         sequencer: pathfinder_context.gateway,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
+        l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,

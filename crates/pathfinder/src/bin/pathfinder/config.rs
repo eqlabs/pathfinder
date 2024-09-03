@@ -133,6 +133,14 @@ Examples:
     poll_interval: std::num::NonZeroU64,
 
     #[arg(
+        long = "sync.l1-poll-interval",
+        long_help = "L1 state poll interval in seconds",
+        default_value = "30",
+        env = "PATHFINDER_L1_POLL_INTERVAL_SECONDS"
+    )]
+    l1_poll_interval: std::num::NonZeroU64,
+
+    #[arg(
         long = "color",
         long_help = "This flag controls when to use colors in the output logs.",
         default_value = "auto",
@@ -669,6 +677,7 @@ pub struct Config {
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroUsize,
     pub poll_interval: std::time::Duration,
+    pub l1_poll_interval: std::time::Duration,
     pub color: Color,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
@@ -953,6 +962,7 @@ impl Config {
             },
             max_rpc_connections: cli.max_rpc_connections,
             poll_interval: Duration::from_secs(cli.poll_interval.get()),
+            l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),

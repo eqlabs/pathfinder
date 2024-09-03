@@ -38,6 +38,7 @@ httpmock = { workspace = true }
 lazy_static = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tracing-subscriber = { workspace = true }
