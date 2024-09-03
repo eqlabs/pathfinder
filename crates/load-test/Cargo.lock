@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-crypto"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "bitvec",
  "fake",
