@@ -9,15 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
+
+## [0.14.2] - 2024-09-03
+
 ### Fixed
 
 - Pathfinder sometimes returns an INVALID_CONTINUATION_TOKEN error when requesting events from the pending block and providing a continuation token.
+- `starknet_getEvents` incorrectly returns pending events if `from_block` is greater than latest_block_number + 1.
+- `starknet_getEvents` incorrectly does not return pending events if `from_block` is `pending` and `to_block` is missing.
 
 ### Added
 
-- Pathfinder JSON-RPC extension methods are now also exposed on the `/rpc/pathfinder/v0_1` endpoint.
 - `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
-- Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
+- Support for Starknet 0.13.2.1.
 
 ## [0.14.1] - 2024-07-29
 
