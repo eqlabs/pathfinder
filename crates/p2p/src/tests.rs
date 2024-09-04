@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use fake::{Fake, Faker};
-use futures::{SinkExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
@@ -19,7 +19,8 @@ use rstest::rstest;
 use tokio::task::JoinHandle;
 
 use crate::peers::Peer;
-use crate::{BootstrapConfig, Config, Event, EventReceiver, RateLimit, TestEvent};
+use crate::sync::codec;
+use crate::{BootstrapConfig, Builder, Config, Event, EventReceiver, RateLimit, TestEvent};
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -31,12 +32,67 @@ struct TestPeer {
     pub main_loop_jh: JoinHandle<()>,
 }
 
-impl TestPeer {
-    #[must_use]
-    pub fn new(cfg: Config, keypair: Keypair) -> Self {
+#[derive(Default)]
+struct TestPeerBuilder {
+    // cfg: Option<Config>,
+    // keypair: Option<Keypair>,
+    p2p_builder: Option<Builder>,
+}
+
+impl Config {
+    pub fn for_test() -> Self {
+        Self {
+            direct_connection_timeout: Duration::from_secs(0),
+            relay_connection_timeout: Duration::from_secs(0),
+            max_inbound_direct_peers: 10,
+            max_inbound_relayed_peers: 10,
+            max_outbound_peers: 10,
+            low_watermark: 10,
+            ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+            bootstrap: Default::default(),
+            eviction_timeout: Duration::from_secs(15 * 60),
+            inbound_connections_rate_limit: RateLimit {
+                max: 1000,
+                interval: Duration::from_secs(1),
+            },
+            kad_names: Default::default(),
+            stream_timeout: Duration::from_secs(10),
+            max_concurrent_streams: 100,
+        }
+    }
+}
+
+impl TestPeerBuilder {
+    // pub fn config(mut self, cfg: Config) -> Self {
+    //     self.cfg = Some(cfg);
+    //     self
+    // }
+
+    // pub fn keypair(mut self, keypair: Keypair) -> Self {
+    //     self.keypair = Some(keypair);
+    //     self
+    // }
+
+    pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
+        self.p2p_builder = Some(p2p_builder);
+        self
+    }
+
+    pub fn build(self, keypair: Keypair, cfg: Config) -> TestPeer {
+        let Self {
+            // cfg,
+            // keypair,
+            p2p_builder,
+        } = self;
+
+        // let keypair = keypair.unwrap_or_else(Keypair::generate_ed25519);
+        // let cfg = cfg.unwrap_or_else(Config::for_test);
+
         let peer_id = keypair.public().to_peer_id();
-        let (client, mut event_receiver, main_loop) =
-            crate::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET);
+
+        let (client, mut event_receiver, main_loop) = p2p_builder
+            .unwrap_or_else(|| crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET))
+            .build();
 
         // Ensure that the channel keeps being polled to move the main loop forward.
         // Store the polled events into a buffered channel instead.
@@ -48,13 +104,30 @@ impl TestPeer {
         });
 
         let main_loop_jh = tokio::spawn(main_loop.run());
-        Self {
+        TestPeer {
             keypair,
             peer_id,
             client,
             event_receiver: buf_receiver,
             main_loop_jh,
         }
+    }
+}
+
+impl TestPeer {
+    pub fn builder() -> TestPeerBuilder {
+        Default::default()
+    }
+
+    /// Create a new peer with a random keypair
+    #[must_use]
+    pub fn new(cfg: Config) -> Self {
+        Self::builder().build(Keypair::generate_ed25519(), cfg)
+    }
+
+    #[must_use]
+    pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
+        Self::builder().build(keypair, cfg)
     }
 
     /// Start listening on a specified address
@@ -89,28 +162,9 @@ impl TestPeer {
 }
 
 impl Default for TestPeer {
+    /// Create a new peer with a random keypair and default test config
     fn default() -> Self {
-        Self::new(
-            Config {
-                direct_connection_timeout: Duration::from_secs(0),
-                relay_connection_timeout: Duration::from_secs(0),
-                max_inbound_direct_peers: 10,
-                max_inbound_relayed_peers: 10,
-                max_outbound_peers: 10,
-                low_watermark: 10,
-                ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-                bootstrap: Default::default(),
-                eviction_timeout: Duration::from_secs(15 * 60),
-                inbound_connections_rate_limit: RateLimit {
-                    max: 1000,
-                    interval: Duration::from_secs(1),
-                },
-                kad_names: Default::default(),
-                stream_timeout: Duration::from_secs(10),
-                max_concurrent_streams: 100,
-            },
-            Keypair::generate_ed25519(),
-        )
+        Self::builder().build(Keypair::generate_ed25519(), Config::for_test())
     }
 }
 
@@ -272,9 +326,9 @@ async fn periodic_bootstrap() {
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
-    let mut boot = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut boot = TestPeer::new(cfg.clone());
+    let mut peer1 = TestPeer::new(cfg.clone());
+    let mut peer2 = TestPeer::new(cfg.clone());
 
     let mut boot_addr = boot.start_listening().await.unwrap();
     boot_addr.push(Protocol::P2p(boot.peer_id));
@@ -364,7 +418,7 @@ async fn periodic_bootstrap() {
 
     // Start a new peer and connect to the other peers, immediately reaching the low
     // watermark.
-    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer3 = TestPeer::new(cfg);
 
     peer3
         .client
@@ -425,8 +479,8 @@ async fn reconnect_too_quickly() {
         max_concurrent_streams: 100,
     };
 
-    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone());
+    let mut peer2 = TestPeer::new(cfg);
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -530,9 +584,9 @@ async fn duplicate_connection() {
         max_concurrent_streams: 100,
     };
     let keypair = Keypair::generate_ed25519();
-    let mut peer1 = TestPeer::new(cfg.clone(), keypair.clone());
-    let mut peer1_copy = TestPeer::new(cfg.clone(), keypair);
-    let mut peer2 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::with_keypair(keypair.clone(), cfg.clone());
+    let mut peer1_copy = TestPeer::with_keypair(keypair.clone(), cfg.clone());
+    let mut peer2 = TestPeer::new(cfg);
 
     let addr2 = peer2.start_listening().await.unwrap();
     tracing::info!(%peer2.peer_id, %addr2);
@@ -619,13 +673,13 @@ async fn outbound_peer_eviction() {
         max_concurrent_streams: 100,
     };
 
-    let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut outbound1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut outbound2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut outbound3 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut outbound4 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let inbound1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let inbound2 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer = TestPeer::new(cfg.clone());
+    let mut outbound1 = TestPeer::new(cfg.clone());
+    let mut outbound2 = TestPeer::new(cfg.clone());
+    let mut outbound3 = TestPeer::new(cfg.clone());
+    let mut outbound4 = TestPeer::new(cfg.clone());
+    let inbound1 = TestPeer::new(cfg.clone());
+    let inbound2 = TestPeer::new(cfg);
 
     let peer_addr = peer.start_listening().await.unwrap();
     tracing::info!(%peer.peer_id, %peer_addr);
@@ -751,11 +805,11 @@ async fn inbound_peer_eviction() {
         max_concurrent_streams: 100,
     };
 
-    let mut peer = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer = TestPeer::new(cfg.clone());
     let inbound_peers = (0..26)
-        .map(|_| TestPeer::new(cfg.clone(), Keypair::generate_ed25519()))
+        .map(|_| TestPeer::new(cfg.clone()))
         .collect::<Vec<_>>();
-    let mut outbound1 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut outbound1 = TestPeer::new(cfg);
 
     let peer_addr = peer.start_listening().await.unwrap();
     tracing::info!(%peer.peer_id, %peer_addr);
@@ -839,9 +893,9 @@ async fn evicted_peer_reconnection() {
         max_concurrent_streams: 100,
     };
 
-    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone());
+    let mut peer2 = TestPeer::new(cfg.clone());
+    let mut peer3 = TestPeer::new(cfg);
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
@@ -932,8 +986,8 @@ async fn ip_whitelist() {
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
-    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone());
+    let peer2 = TestPeer::new(cfg.clone());
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
@@ -968,7 +1022,7 @@ async fn ip_whitelist() {
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
-    let mut peer3 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer3 = TestPeer::new(cfg);
 
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
@@ -1006,10 +1060,10 @@ async fn rate_limit() {
         max_concurrent_streams: 100,
     };
 
-    let mut peer1 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let peer2 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let peer3 = TestPeer::new(cfg.clone(), Keypair::generate_ed25519());
-    let peer4 = TestPeer::new(cfg, Keypair::generate_ed25519());
+    let mut peer1 = TestPeer::new(cfg.clone());
+    let peer2 = TestPeer::new(cfg.clone());
+    let peer3 = TestPeer::new(cfg.clone());
+    let peer4 = TestPeer::new(cfg);
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);

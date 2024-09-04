@@ -252,14 +252,14 @@ impl Default for Config {
 
 impl Config {
     /// Sets the timeout for inbound and outbound requests.
-    pub fn with_request_timeout(mut self, v: Duration) -> Self {
+    pub fn request_timeout(mut self, v: Duration) -> Self {
         self.request_timeout = v;
         self
     }
 
     /// Sets the upper bound for the number of concurrent inbound + outbound
     /// streams.
-    pub fn with_max_concurrent_streams(mut self, num_streams: usize) -> Self {
+    pub fn max_concurrent_streams(mut self, num_streams: usize) -> Self {
         self.max_concurrent_streams = num_streams;
         self
     }
@@ -296,13 +296,17 @@ impl<TCodec> Behaviour<TCodec>
 where
     TCodec: Codec + Default + Clone + Send + 'static,
 {
-    /// Creates a new `Behaviour` for the given protocols and configuration,
-    /// using [`Default`] to construct the codec.
-    pub fn new<I>(protocols: I, cfg: Config) -> Self
+    /// Creates a new `Behaviour` for the given configuration,
+    /// using [`Default`] to construct the codec and the protocol.
+    pub fn new(cfg: Config) -> Self
     where
-        I: IntoIterator<Item = TCodec::Protocol>,
+        TCodec::Protocol: Default,
     {
-        Self::with_codec(TCodec::default(), protocols, cfg)
+        Self::with_codec_and_protocols(
+            TCodec::default(),
+            std::iter::once(TCodec::Protocol::default()),
+            cfg,
+        )
     }
 }
 
@@ -310,9 +314,18 @@ impl<TCodec> Behaviour<TCodec>
 where
     TCodec: Codec + Clone + Send + 'static,
 {
+    /// Creates a new `Behaviour` with a default protocol name for the given
+    /// codec and configuration.
+    pub fn with_codec(codec: TCodec, cfg: Config) -> Self
+    where
+        TCodec::Protocol: Default,
+    {
+        Self::with_codec_and_protocols(codec, std::iter::once(TCodec::Protocol::default()), cfg)
+    }
+
     /// Creates a new `Behaviour` for the given
     /// protocols, codec and configuration.
-    pub fn with_codec<I>(codec: TCodec, protocols: I, cfg: Config) -> Self
+    pub fn with_codec_and_protocols<I>(codec: TCodec, protocols: I, cfg: Config) -> Self
     where
         I: IntoIterator<Item = TCodec::Protocol>,
     {
