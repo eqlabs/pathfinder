@@ -79,7 +79,7 @@ mod tests {
         let tx = connection.transaction().unwrap();
 
         let genesis = BlockHeader::builder()
-            .with_number(BlockNumber::new_or_panic(0))
+            .number(BlockNumber::new_or_panic(0))
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         let genesis_signature = BlockCommitmentSignature {
             r: block_commitment_signature_elem_bytes!(b"genesis r"),

@@ -356,10 +356,10 @@ pub mod test_utils {
             .insert_storage_root(BlockNumber::GENESIS, storage_root_idx)
             .unwrap();
         let header0 = BlockHeader::builder()
-            .with_number(BlockNumber::GENESIS)
-            .with_storage_commitment(storage_commitment0)
-            .with_class_commitment(class_commitment0)
-            .with_calculated_state_commitment()
+            .number(BlockNumber::GENESIS)
+            .storage_commitment(storage_commitment0)
+            .class_commitment(class_commitment0)
+            .calculated_state_commitment()
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -398,12 +398,12 @@ pub mod test_utils {
             .unwrap();
         let header1 = header0
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(1))
-            .with_storage_commitment(storage_commitment1)
-            .with_class_commitment(class_commitment1)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(1))
-            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .timestamp(BlockTimestamp::new_or_panic(1))
+            .storage_commitment(storage_commitment1)
+            .class_commitment(class_commitment1)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(1))
+            .sequencer_address(sequencer_address_bytes!(&[1u8]))
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
         db_txn
@@ -457,12 +457,12 @@ pub mod test_utils {
             .unwrap();
         let header2 = header1
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(2))
-            .with_storage_commitment(storage_commitment2)
-            .with_class_commitment(class_commitment2)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(2))
-            .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
+            .timestamp(BlockTimestamp::new_or_panic(2))
+            .storage_commitment(storage_commitment2)
+            .class_commitment(class_commitment2)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(2))
+            .sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header2).unwrap();

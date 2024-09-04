@@ -57,8 +57,8 @@ impl BlockHeader {
     /// and parent hash set to this block's hash.
     pub fn child_builder(&self) -> BlockHeaderBuilder {
         BlockHeaderBuilder(BlockHeader::default())
-            .with_number(self.number + 1)
-            .with_parent_hash(self.hash)
+            .number(self.number + 1)
+            .parent_hash(self.hash)
     }
 
     /// Creates a [StateUpdate] with the block hash and state commitment fields
@@ -71,103 +71,100 @@ impl BlockHeader {
 }
 
 impl BlockHeaderBuilder {
-    pub fn with_number(mut self, number: BlockNumber) -> Self {
+    pub fn number(mut self, number: BlockNumber) -> Self {
         self.0.number = number;
         self
     }
 
-    pub fn with_parent_hash(mut self, parent_hash: BlockHash) -> Self {
+    pub fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
         self.0.parent_hash = parent_hash;
         self
     }
 
-    pub fn with_state_commitment(mut self, state_commmitment: StateCommitment) -> Self {
+    pub fn state_commitment(mut self, state_commmitment: StateCommitment) -> Self {
         self.0.state_commitment = state_commmitment;
         self
     }
 
     /// Sets the [StateCommitment] by calculating its value from the current
     /// [StorageCommitment] and [ClassCommitment].
-    pub fn with_calculated_state_commitment(mut self) -> Self {
+    pub fn calculated_state_commitment(mut self) -> Self {
         self.0.state_commitment =
             StateCommitment::calculate(self.0.storage_commitment, self.0.class_commitment);
         self
     }
 
-    pub fn with_timestamp(mut self, timestamp: BlockTimestamp) -> Self {
+    pub fn timestamp(mut self, timestamp: BlockTimestamp) -> Self {
         self.0.timestamp = timestamp;
         self
     }
 
-    pub fn with_eth_l1_gas_price(mut self, eth_l1_gas_price: GasPrice) -> Self {
+    pub fn eth_l1_gas_price(mut self, eth_l1_gas_price: GasPrice) -> Self {
         self.0.eth_l1_gas_price = eth_l1_gas_price;
         self
     }
 
-    pub fn with_strk_l1_gas_price(mut self, strk_l1_gas_price: GasPrice) -> Self {
+    pub fn strk_l1_gas_price(mut self, strk_l1_gas_price: GasPrice) -> Self {
         self.0.strk_l1_gas_price = strk_l1_gas_price;
         self
     }
 
-    pub fn with_eth_l1_data_gas_price(mut self, eth_l1_data_gas_price: GasPrice) -> Self {
+    pub fn eth_l1_data_gas_price(mut self, eth_l1_data_gas_price: GasPrice) -> Self {
         self.0.eth_l1_data_gas_price = eth_l1_data_gas_price;
         self
     }
 
-    pub fn with_strk_l1_data_gas_price(mut self, strk_l1_data_gas_price: GasPrice) -> Self {
+    pub fn strk_l1_data_gas_price(mut self, strk_l1_data_gas_price: GasPrice) -> Self {
         self.0.strk_l1_data_gas_price = strk_l1_data_gas_price;
         self
     }
 
-    pub fn with_sequencer_address(mut self, sequencer_address: SequencerAddress) -> Self {
+    pub fn sequencer_address(mut self, sequencer_address: SequencerAddress) -> Self {
         self.0.sequencer_address = sequencer_address;
         self
     }
 
-    pub fn with_transaction_commitment(
-        mut self,
-        transaction_commitment: TransactionCommitment,
-    ) -> Self {
+    pub fn transaction_commitment(mut self, transaction_commitment: TransactionCommitment) -> Self {
         self.0.transaction_commitment = transaction_commitment;
         self
     }
 
-    pub fn with_event_commitment(mut self, event_commitment: EventCommitment) -> Self {
+    pub fn event_commitment(mut self, event_commitment: EventCommitment) -> Self {
         self.0.event_commitment = event_commitment;
         self
     }
 
-    pub fn with_storage_commitment(mut self, storage_commitment: StorageCommitment) -> Self {
+    pub fn storage_commitment(mut self, storage_commitment: StorageCommitment) -> Self {
         self.0.storage_commitment = storage_commitment;
         self
     }
 
-    pub fn with_class_commitment(mut self, class_commitment: ClassCommitment) -> Self {
+    pub fn class_commitment(mut self, class_commitment: ClassCommitment) -> Self {
         self.0.class_commitment = class_commitment;
         self
     }
 
-    pub fn with_starknet_version(mut self, starknet_version: StarknetVersion) -> Self {
+    pub fn starknet_version(mut self, starknet_version: StarknetVersion) -> Self {
         self.0.starknet_version = starknet_version;
         self
     }
 
-    pub fn with_transaction_count(mut self, transaction_count: usize) -> Self {
+    pub fn transaction_count(mut self, transaction_count: usize) -> Self {
         self.0.transaction_count = transaction_count;
         self
     }
 
-    pub fn with_event_count(mut self, event_count: usize) -> Self {
+    pub fn event_count(mut self, event_count: usize) -> Self {
         self.0.event_count = event_count;
         self
     }
 
-    pub fn with_l1_da_mode(mut self, l1_da_mode: L1DataAvailabilityMode) -> Self {
+    pub fn l1_da_mode(mut self, l1_da_mode: L1DataAvailabilityMode) -> Self {
         self.0.l1_da_mode = l1_da_mode;
         self
     }
 
-    pub fn with_receipt_commitment(mut self, receipt_commitment: ReceiptCommitment) -> Self {
+    pub fn receipt_commitment(mut self, receipt_commitment: ReceiptCommitment) -> Self {
         self.0.receipt_commitment = receipt_commitment;
         self
     }

@@ -249,21 +249,21 @@ mod tests {
 
             if !matches!(mode, Setup::_SkipBlock) {
                 let header = BlockHeader::builder()
-                    .with_number(BlockNumber::GENESIS)
-                    .with_timestamp(BlockTimestamp::new_or_panic(0))
-                    .with_l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
-                    .with_strk_l1_data_gas_price(GasPrice(0x10))
-                    .with_eth_l1_data_gas_price(GasPrice(0x12))
+                    .number(BlockNumber::GENESIS)
+                    .timestamp(BlockTimestamp::new_or_panic(0))
+                    .l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
+                    .strk_l1_data_gas_price(GasPrice(0x10))
+                    .eth_l1_data_gas_price(GasPrice(0x12))
                     .finalize_with_hash(BlockHash(felt!("0xb00")));
                 tx.insert_block_header(&header).unwrap();
 
                 let header = BlockHeader::builder()
-                    .with_number(block1_number)
-                    .with_timestamp(BlockTimestamp::new_or_panic(1))
-                    .with_eth_l1_gas_price(GasPrice(2))
-                    .with_eth_l1_data_gas_price(GasPrice(1))
-                    .with_starknet_version(StarknetVersion::new(0, 13, 1, 0))
-                    .with_l1_da_mode(L1DataAvailabilityMode::Blob)
+                    .number(block1_number)
+                    .timestamp(BlockTimestamp::new_or_panic(1))
+                    .eth_l1_gas_price(GasPrice(2))
+                    .eth_l1_data_gas_price(GasPrice(1))
+                    .starknet_version(StarknetVersion::new(0, 13, 1, 0))
+                    .l1_da_mode(L1DataAvailabilityMode::Blob)
                     .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
             }
