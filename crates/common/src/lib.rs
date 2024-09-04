@@ -20,6 +20,7 @@ pub mod event;
 pub mod hash;
 mod header;
 mod macros;
+pub mod message;
 pub mod prelude;
 pub mod receipt;
 pub mod signature;
@@ -29,6 +30,7 @@ pub mod transaction;
 pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
+pub use message::L1ToL2MessageHash;
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 
