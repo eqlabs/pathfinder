@@ -53,7 +53,7 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = "=0.8.0-rc.3"
+blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "skip-nonce-check" }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
