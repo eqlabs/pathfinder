@@ -103,7 +103,6 @@ where
             ethereum: value.ethereum.clone(),
             chain: value.chain,
             core_address: value.core_address,
-            poll_interval: value.l1_poll_interval,
         }
     }
 }
