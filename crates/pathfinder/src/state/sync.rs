@@ -15,7 +15,7 @@ use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
-    L1ToL2MessageHash,
+    L1ToL2MessageLog,
     PublicKey,
     ReceiptCommitment,
     StateDiffCommitment,
@@ -69,7 +69,7 @@ pub enum SyncEvent {
     /// A new L2 pending update was polled.
     Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
     /// A new L1 to L2 message was finalized.
-    L1ToL2Message(L1ToL2MessageHash),
+    L1ToL2Message(L1ToL2MessageLog),
 }
 
 pub struct SyncContext<G, E> {
@@ -679,7 +679,18 @@ async fn consumer(
                     tracing::debug!("Updated pending data");
                 }
             }
-            L1ToL2Message(_) => todo!(),
+            L1ToL2Message(msg) => {
+                tracing::trace!("Inserting new L1 to L2 message log: {:?}", msg);
+                tokio::task::block_in_place(|| {
+                    let tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    tx.insert_l1_to_l2_message_log(&msg)
+                        .context("Inserting L1 to L2 message log")?;
+                    tx.commit().context("Committing database transaction")
+                })
+                .with_context(|| format!("Insert L1 to L2 message log: {:?}", msg))?;
+            }
         }
     }
 

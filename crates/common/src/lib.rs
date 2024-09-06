@@ -30,7 +30,7 @@ pub mod transaction;
 pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
-pub use message::L1ToL2MessageHash;
+pub use message::L1ToL2MessageLog;
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 

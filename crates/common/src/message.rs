@@ -1,12 +1,8 @@
 use primitive_types::H256;
 
-use crate::BlockNumber;
-
-/// An L1 -> L2 message hash with the block and tx where it was sent
+/// An L1 -> L2 message hash with the L1 tx hash where it was sent
 #[derive(Debug, Clone)]
-pub struct L1ToL2MessageHash {
+pub struct L1ToL2MessageLog {
     pub message_hash: H256,
     pub l1_tx_hash: H256,
-    pub l1_block_number: BlockNumber,
-    pub is_finalized: bool,
 }

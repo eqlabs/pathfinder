@@ -47,9 +47,9 @@ where
                         info!("State update: {:?}", state_update);
                         let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
                     }
-                    EthereumEvent::MessageUpdate(msg_update) => {
-                        info!("Message update: {:?}", msg_update);
-                        //todo!()
+                    EthereumEvent::MessageLog(log) => {
+                        info!("Message log: {:?}", log);
+                        let _ = tx_event.send(SyncEvent::L1ToL2Message(log)).await;
                     }
                 }
             }

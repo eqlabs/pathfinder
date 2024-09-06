@@ -6,13 +6,7 @@ use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::types::Log;
 use anyhow::Context;
 use futures::StreamExt;
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    EthereumChain,
-    L1ToL2MessageHash,
-    StateCommitment,
-};
+use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, L1ToL2MessageLog, StateCommitment};
 use primitive_types::{H160, H256, U256};
 use reqwest::{IntoUrl, Url};
 use starknet::StarknetCoreContract;
@@ -44,15 +38,7 @@ pub mod core_addr {
 #[derive(Debug)]
 pub enum EthereumEvent {
     StateUpdate(EthereumStateUpdate),
-    MessageUpdate(MessageUpdate),
-}
-
-/// Message update from Ethereum
-#[derive(Debug)]
-pub enum MessageUpdate {
-    Sent(L1ToL2MessageHash),
-    Finalized(L1ToL2MessageHash),
-    Reverted(L1ToL2MessageHash),
+    MessageLog(L1ToL2MessageLog),
 }
 
 /// State update from Ethereum
@@ -112,7 +98,6 @@ impl EthereumClient {
             })
             .context("Failed to fetch finalized block hash")
     }
-
 }
 
 #[async_trait::async_trait]
@@ -164,18 +149,15 @@ impl EthereumApi for EthereumClient {
 
                     // Decode the message
                     let log: Log<StarknetCoreContract::LogMessageToL2> = log.log_decode()?;
-                    let l1_block_number = log.block_number.context("Block number not found")?;
 
                     // Create L1ToL2MessageHash from the log data
-                    let msg = L1ToL2MessageHash {
+                    let msg = L1ToL2MessageLog {
                         message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
                         l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)).unwrap_or_default(),
-                        l1_block_number: BlockNumber::new_or_panic(l1_block_number),
-                        is_finalized: false,
                     };
 
-                    // TODO: All actions need to be done accordingly (e.g. reorgs and finalizations)
-                    callback(EthereumEvent::MessageUpdate(MessageUpdate::Sent(msg))).await;
+                    // Emit the message log
+                    callback(EthereumEvent::MessageLog(msg)).await;
 
                 }
             }
