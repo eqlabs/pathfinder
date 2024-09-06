@@ -21,6 +21,12 @@ pub struct TraceTransactionInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for TraceTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TraceTransactionOutput(pub TransactionTrace);
 

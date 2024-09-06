@@ -10,6 +10,12 @@ pub struct GetTransactionByHashInput {
     transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionByHashInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 pub async fn get_transaction_by_hash_impl(
     context: RpcContext,
     input: GetTransactionByHashInput,

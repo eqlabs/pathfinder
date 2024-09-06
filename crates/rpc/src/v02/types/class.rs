@@ -198,12 +198,20 @@ impl TryFrom<SierraContractClass>
 }
 
 /// A Cairo 0.x class.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct CairoContractClass {
     pub program: String,
     pub entry_points_by_type: ContractEntryPoints,
     pub abi: Option<Vec<ContractAbiEntry>>,
+}
+
+/// [`CairoContractClass`] is sometimes deserialized as JSON from raw bytes, so
+/// the serde derives are necessary.
+impl crate::dto::DeserializeForVersion for CairoContractClass {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
 }
 
 impl CairoContractClass {
@@ -429,6 +437,14 @@ pub struct SierraContractClass {
     pub abi: String,
 }
 
+/// [`SierraContractClass`] is sometimes deserialized as JSON from raw bytes, so
+/// the serde derives are necessary.
+impl crate::dto::DeserializeForVersion for SierraContractClass {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 impl SierraContractClass {
     pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
         let json = serde_json::to_vec(self)?;
@@ -542,21 +558,26 @@ mod tests {
 
         use pathfinder_executor::parse_deprecated_class_definition;
 
+        use crate::dto::DeserializeForVersion;
         use crate::v02::types::CairoContractClass;
 
         #[test]
         fn convert_deprecated_class_definition_without_debug_info_into_starknet_api_type() {
-            let definition = br#"{
-                "program": "H4sIAAAAAAAC/5WPzQqDMBCE32XPIklPxVcpJURd2wWzCZu1FCTv3qiF9urcZphvf1bwqkL9opihu90b6BealfjrhhgSzSjuhZIpMnRgWntpLTQwevVH60msFVhLAzQiK01U60cQPLHLQ0xYWed26yqdhMIWmffV/Mlac07bJYITCvKAdTz7B0pd/Qv3V0r5AMLJpd3rAAAA",
-                "entry_points_by_type": {
-                  "CONSTRUCTOR":[],
-                  "EXTERNAL":[],
-                  "L1_HANDLER":[]
-                },
-                "abi": []
-              }"#;
+            let definition = serde_json::json!({
+              "program": "H4sIAAAAAAAC/5WPzQqDMBCE32XPIklPxVcpJURd2wWzCZu1FCTv3qiF9urcZphvf1bwqkL9opihu90b6BealfjrhhgSzSjuhZIpMnRgWntpLTQwevVH60msFVhLAzQiK01U60cQPLHLQ0xYWed26yqdhMIWmffV/Mlac07bJYITCvKAdTz7B0pd/Qv3V0r5AMLJpd3rAAAA",
+              "entry_points_by_type": {
+                "CONSTRUCTOR":[],
+                "EXTERNAL":[],
+                "L1_HANDLER":[]
+              },
+              "abi": []
+            });
 
-            let contract_class: CairoContractClass = serde_json::from_slice(definition).unwrap();
+            let contract_class = CairoContractClass::deserialize(crate::dto::Value::new(
+                definition,
+                crate::RpcVersion::V07,
+            ))
+            .unwrap();
 
             let serialized_definition = contract_class.serialize_to_json().unwrap();
 

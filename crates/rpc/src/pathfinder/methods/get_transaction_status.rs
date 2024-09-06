@@ -11,6 +11,16 @@ pub struct GetGatewayTransactionInput {
 
 crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
 
+impl crate::dto::DeserializeForVersion for GetGatewayTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: TransactionHash(value.deserialize("transaction_hash")?),
+            })
+        })
+    }
+}
+
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,

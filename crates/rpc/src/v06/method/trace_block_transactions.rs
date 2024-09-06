@@ -29,6 +29,12 @@ pub struct TraceBlockTransactionsInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq, Clone)]
 pub struct Trace {
     pub transaction_hash: TransactionHash,

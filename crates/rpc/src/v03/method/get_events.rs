@@ -48,6 +48,12 @@ pub struct GetEventsInput {
     filter: EventFilter,
 }
 
+impl crate::dto::DeserializeForVersion for GetEventsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 /// Contains event filter parameters passed to `starknet_getEvents`.
 #[serde_with::skip_serializing_none]
 #[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq)]

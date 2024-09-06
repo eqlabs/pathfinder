@@ -1,15 +1,25 @@
 use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
-use serde::Deserialize;
 
 use crate::context::RpcContext;
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     pub contract_address: ContractAddress,
     pub key: StorageAddress,
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                contract_address: value.deserialize("contract_address").map(ContractAddress)?,
+                key: value.deserialize("key").map(StorageAddress)?,
+                block_id: value.deserialize("block_id")?,
+            })
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -88,6 +98,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::dto::DeserializeForVersion;
+    use crate::RpcVersion;
 
     /// # Important
     ///
@@ -104,7 +116,7 @@ mod tests {
             block_id: BlockId::Latest,
         };
 
-        let input = serde_json::from_value::<Input>(input).unwrap();
+        let input = Input::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
 
         assert_eq!(input, expected);
     }

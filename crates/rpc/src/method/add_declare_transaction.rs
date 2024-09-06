@@ -125,21 +125,44 @@ impl From<SequencerError> for AddDeclareTransactionError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Transaction {
-    #[serde(rename = "DECLARE")]
     Declare(BroadcastedDeclareTransaction),
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+impl crate::dto::DeserializeForVersion for Transaction {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let tag: String = value.deserialize_serde("type")?;
+            if tag != "DECLARE" {
+                return Err(serde::de::Error::custom("Invalid transaction type"));
+            }
+            Ok(Self::Declare(BroadcastedDeclareTransaction::deserialize(
+                value,
+            )?))
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     declare_transaction: Transaction,
     // An undocumented parameter that we forward to the sequencer API
     // A deploy token is required to deploy contracts on Starknet mainnet only.
-    #[serde(default)]
     token: Option<String>,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let declare_transaction = value.deserialize("declare_transaction")?;
+            let token = value.deserialize_optional_serde("token")?;
+            Ok(Self {
+                declare_transaction,
+                token,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -356,7 +379,9 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
+            use crate::dto::DeserializeForVersion;
             use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+            use crate::RpcVersion;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -382,7 +407,8 @@ mod tests {
                     "contract_class": CONTRACT_CLASS.clone(),
                     "sender_address": "0x1"
                 }]);
-                let input = serde_json::from_value::<Input>(positional).unwrap();
+                let input = Input::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                    .unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -404,7 +430,8 @@ mod tests {
                     },
                     "token": "token"
                 });
-                let input = serde_json::from_value::<Input>(named).unwrap();
+                let input =
+                    Input::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),
@@ -447,7 +474,9 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
+            use crate::dto::DeserializeForVersion;
             use crate::v02::types::request::BroadcastedDeclareTransactionV2;
+            use crate::RpcVersion;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -476,7 +505,8 @@ mod tests {
                     "compiled_class_hash": "0x1"
                 }]);
 
-                let input = serde_json::from_value::<Input>(positional).unwrap();
+                let input = Input::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                    .unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -500,7 +530,8 @@ mod tests {
                     "token": "token"
                 });
 
-                let input = serde_json::from_value::<Input>(named).unwrap();
+                let input =
+                    Input::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),

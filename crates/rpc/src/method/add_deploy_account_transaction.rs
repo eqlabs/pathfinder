@@ -1,4 +1,5 @@
 use pathfinder_common::{ContractAddress, TransactionHash};
+use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
@@ -8,17 +9,36 @@ use crate::v02::types::request::{
     BroadcastedDeployAccountTransactionV1,
 };
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Transaction {
-    #[serde(rename = "DEPLOY_ACCOUNT")]
     DeployAccount(BroadcastedDeployAccountTransaction),
 }
 
-#[derive(Debug, serde::Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+impl crate::dto::DeserializeForVersion for Transaction {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let tag: String = value.deserialize_serde("type")?;
+            if tag != "DEPLOY_ACCOUNT" {
+                return Err(serde_json::Error::custom("Invalid transaction type"));
+            }
+            BroadcastedDeployAccountTransaction::deserialize(value).map(Self::DeployAccount)
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     deploy_account_transaction: Transaction,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                deploy_account_transaction: value.deserialize("deploy_account_transaction")?,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -246,16 +266,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_input_named() {
-        let json = format!("{{\"deploy_account_transaction\":{INPUT_JSON}}}");
-        let input: Input = serde_json::from_str(&json).expect("parse named input");
+        let json: serde_json::Value =
+            serde_json::from_str(&format!("{{\"deploy_account_transaction\":{INPUT_JSON}}}"))
+                .unwrap();
+        let input: Input = crate::dto::Value::new(json, crate::RpcVersion::V07)
+            .deserialize()
+            .unwrap();
 
         assert_eq!(input, get_input());
     }
 
     #[tokio::test]
     async fn test_parse_input_positional() {
-        let json = format!("[{INPUT_JSON}]");
-        let input: Input = serde_json::from_str(&json).expect("parse positional input");
+        let json: serde_json::Value = serde_json::from_str(&format!("[{INPUT_JSON}]")).unwrap();
+        let input: Input = crate::dto::Value::new(json, crate::RpcVersion::V07)
+            .deserialize()
+            .unwrap();
 
         assert_eq!(input, get_input());
     }

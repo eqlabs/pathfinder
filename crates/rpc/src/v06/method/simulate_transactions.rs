@@ -18,6 +18,12 @@ pub struct SimulateTransactionInput {
     pub simulation_flags: dto::SimulationFlags,
 }
 
+impl crate::dto::DeserializeForVersion for SimulateTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct SimulateTransactionOutput(pub Vec<dto::SimulatedTransaction>);
 

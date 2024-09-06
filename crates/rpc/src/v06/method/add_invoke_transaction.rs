@@ -19,6 +19,12 @@ pub struct AddInvokeTransactionInput {
     invoke_transaction: Transaction,
 }
 
+impl crate::dto::DeserializeForVersion for AddInvokeTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddInvokeTransactionOutput {

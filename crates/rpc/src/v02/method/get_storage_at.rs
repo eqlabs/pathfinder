@@ -13,6 +13,12 @@ pub struct GetStorageAtInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for GetStorageAtInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug)]
 pub struct GetStorageOutput(#[serde_as(as = "RpcFelt")] StorageValue);

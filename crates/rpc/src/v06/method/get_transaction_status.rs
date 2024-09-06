@@ -9,6 +9,12 @@ pub struct GetTransactionStatusInput {
     transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionStatusInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 #[skip_serializing_none]
 pub enum GetTransactionStatusOutput {

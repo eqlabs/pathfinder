@@ -4,7 +4,7 @@ use pathfinder_common::transaction::{Transaction, TransactionKind, TransactionVa
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
 use serde::ser::Error;
 
-use super::serialize;
+use super::{serialize, H256Hex};
 use crate::dto::serialize::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
 
@@ -277,7 +277,7 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"L1_HANDLER")?;
-        serializer.serialize_field("message_hash", &dto::NumAsHex::H256(&message_hash))?;
+        serializer.serialize_field("message_hash", &H256Hex(message_hash))?;
 
         serializer.end()
     }
