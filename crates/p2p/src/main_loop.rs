@@ -203,6 +203,8 @@ impl MainLoop {
     }
 
     async fn handle_event(&mut self, event: SwarmEvent<behaviour::Event>) {
+        tracing::trace!(?event, "Handling swarm event");
+
         match event {
             // ===========================
             // Connection management
