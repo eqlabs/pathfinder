@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
+use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
@@ -947,6 +948,17 @@ async fn l2_update(
         transaction
             .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .context("Insert transaction data into database")?;
+
+        // Associate L1 handler transactions with L2 transactions
+        for tx in &block.transactions {
+            if let TransactionVariant::L1Handler(l1_handler_tx) = &tx.variant {
+                if let Some(l1_tx_hash) = transaction.fetch_and_remove_l1_to_l2_message_log(
+                    &l1_handler_tx.calculate_message_hash(),
+                )? {
+                    transaction.insert_l1_handler_tx(&l1_tx_hash, &tx.hash)?;
+                }
+            }
+        }
 
         // Insert state updates
         transaction

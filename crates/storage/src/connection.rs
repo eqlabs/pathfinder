@@ -4,6 +4,7 @@ mod block;
 mod class;
 mod ethereum;
 mod event;
+mod l1_handler;
 mod message;
 mod reference;
 mod reorg_counter;

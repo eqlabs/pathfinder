@@ -189,7 +189,7 @@ impl EthereumApi for EthereumClient {
         // Return the state update
         Ok(EthereumStateUpdate {
             state_root: get_state_root(state_root._0),
-            block_hash: get_block_hash(block_hash._0.into()),
+            block_hash: get_block_hash(block_hash._0),
             block_number: get_block_number(block_number._0),
         })
     }
