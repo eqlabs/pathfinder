@@ -540,7 +540,7 @@ mod tests {
                 invoke_v0_transaction,
                 invoke_v3_transaction,
             ],
-            simulation_flags: SimulationFlags(vec![]),
+            simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = super::estimate_fee(context, input).await.unwrap();
@@ -625,7 +625,7 @@ mod tests {
                 invoke_v0_transaction,
                 invoke_v3_transaction,
             ],
-            simulation_flags: SimulationFlags(vec![]),
+            simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = super::estimate_fee(context, input).await.unwrap();
