@@ -116,14 +116,32 @@ impl Client {
                 return peers.iter().copied().collect::<Vec<_>>();
             }
 
-            let mut peers = self
-                .inner
-                .get_closest_peers(PeerId::random())
-                .await
-                .unwrap_or_default();
+            // TODO known peers abstraction should not poll
+            //
+            // Loop until we find at least a single peer.
+            // 1. After the process is spawned the first outgoing query may start earlier
+            //    than the `kad` protocol is pushed in from `identify/push` resulting in a
+            //    `kind: ConnectionRefused, error: "protocol not supported"` error.
+            // 2. Initially there may be no other peers but maybe we're running a local test
+            //    and the other peer pops up in a few seconds.
+            // Either way we don't want to wait for the bootstrap timeout or the
+            // `Decaying::DEFAULT_TIMEOUT`, whichever kicks in first.
+            let peers = loop {
+                let mut peers = self
+                    .inner
+                    .get_closest_peers(PeerId::random())
+                    .await
+                    .unwrap_or_default();
+                // We could be on the list
+                peers.remove(self.inner.peer_id());
 
-            // We could be on the list
-            peers.remove(self.inner.peer_id());
+                if peers.is_empty() {
+                    tracing::info!("No peers found in DHT, retrying");
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                } else {
+                    break peers;
+                }
+            };
 
             let peers_vec = peers.iter().copied().collect::<Vec<_>>();
 
@@ -131,6 +149,7 @@ impl Client {
             peers_vec
         };
         peers.shuffle(&mut rand::thread_rng());
+
         peers
     }
 }
