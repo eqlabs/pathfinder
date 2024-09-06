@@ -161,10 +161,8 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::debug!(
-                            "Stage: {}, queue: {}, {elements_per_sec:.0} items/s",
-                            S::NAME,
-                            input_queue
+                        tracing::trace!(stage=%S::NAME, %input_queue, %elements_per_sec,
+                            "Stage metrics"
                         );
 
                         output
