@@ -1489,10 +1489,14 @@ struct Decaying<T> {
 }
 
 impl<T: Default> Decaying<T> {
+    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
     pub fn new(timeout: Duration) -> Self {
         Self {
             data: Default::default(),
-            last_update: Instant::now(),
+            last_update: Instant::now()
+                .checked_sub(Self::DEFAULT_TIMEOUT * 2)
+                .expect("Still valid Instant"),
             timeout,
         }
     }
@@ -1515,6 +1519,6 @@ impl<T: Default> Decaying<T> {
 
 impl<T: Default> Default for Decaying<T> {
     fn default() -> Self {
-        Self::new(Duration::from_secs(60))
+        Self::new(Self::DEFAULT_TIMEOUT)
     }
 }
