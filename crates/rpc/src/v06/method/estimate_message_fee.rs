@@ -341,15 +341,15 @@ mod tests {
 
             if !matches!(mode, Setup::SkipBlock) {
                 let header = BlockHeader::builder()
-                    .with_number(BlockNumber::GENESIS)
-                    .with_timestamp(BlockTimestamp::new_or_panic(0))
+                    .number(BlockNumber::GENESIS)
+                    .timestamp(BlockTimestamp::new_or_panic(0))
                     .finalize_with_hash(BlockHash(felt!("0xb00")));
                 tx.insert_block_header(&header).unwrap();
 
                 let header = BlockHeader::builder()
-                    .with_number(block1_number)
-                    .with_timestamp(BlockTimestamp::new_or_panic(1))
-                    .with_eth_l1_gas_price(GasPrice(1))
+                    .number(block1_number)
+                    .timestamp(BlockTimestamp::new_or_panic(1))
+                    .eth_l1_gas_price(GasPrice(1))
                     .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
             }

@@ -445,9 +445,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         let header = BlockHeader::builder()
-            .with_sequencer_address(sequencer_address!("0x1234"))
-            .with_timestamp(BlockTimestamp::new_or_panic(0))
-            .with_state_commitment(state_commitment!("0x1234"))
+            .sequencer_address(sequencer_address!("0x1234"))
+            .timestamp(BlockTimestamp::new_or_panic(0))
+            .state_commitment(state_commitment!("0x1234"))
             .finalize_with_hash(block_hash!("0x1234"));
 
         // Note: hashes are reverse ordered to trigger the sorting bug.

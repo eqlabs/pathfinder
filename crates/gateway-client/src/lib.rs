@@ -325,9 +325,9 @@ impl GatewayApi for Client {
         let result: Dto = self
             .feeder_gateway_request()
             .get_state_update()
-            .with_block(BlockId::Pending)
-            .add_param("includeBlock", "true")
-            .with_retry(self.retry)
+            .block(BlockId::Pending)
+            .param("includeBlock", "true")
+            .retry(self.retry)
             .get()
             .await?;
 
@@ -348,9 +348,9 @@ impl GatewayApi for Client {
         let header: BlockHeader = self
             .feeder_gateway_request()
             .get_block()
-            .with_block(block)
-            .add_param("headerOnly", "true")
-            .with_retry(self.retry)
+            .block(block)
+            .param("headerOnly", "true")
+            .retry(self.retry)
             .get()
             .await?;
 
@@ -365,9 +365,9 @@ impl GatewayApi for Client {
     ) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_class_by_hash()
-            .with_class_hash(class_hash)
-            .with_block(BlockId::Pending)
-            .with_retry(self.retry)
+            .class_hash(class_hash)
+            .block(BlockId::Pending)
+            .retry(self.retry)
             .get_as_bytes()
             .await
     }
@@ -380,9 +380,9 @@ impl GatewayApi for Client {
     ) -> Result<bytes::Bytes, SequencerError> {
         self.feeder_gateway_request()
             .get_compiled_class_by_class_hash()
-            .with_class_hash(class_hash)
-            .with_block(BlockId::Pending)
-            .with_retry(self.retry)
+            .class_hash(class_hash)
+            .block(BlockId::Pending)
+            .retry(self.retry)
             .get_as_bytes()
             .await
     }
@@ -395,8 +395,8 @@ impl GatewayApi for Client {
     ) -> Result<reply::TransactionStatus, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction()
-            .with_transaction_hash(transaction_hash)
-            .with_retry(self.retry)
+            .transaction_hash(transaction_hash)
+            .retry(self.retry)
             .get()
             .await
     }
@@ -422,9 +422,9 @@ impl GatewayApi for Client {
         let result: Dto = self
             .feeder_gateway_request()
             .get_state_update()
-            .with_block(block)
-            .add_param("includeBlock", "true")
-            .with_retry(self.retry)
+            .block(block)
+            .param("includeBlock", "true")
+            .retry(self.retry)
             .get()
             .await?;
         Ok((result.block, result.state_update.into()))
@@ -435,7 +435,7 @@ impl GatewayApi for Client {
     async fn eth_contract_addresses(&self) -> Result<reply::EthContractAddresses, SequencerError> {
         self.feeder_gateway_request()
             .get_contract_addresses()
-            .with_retry(self.retry)
+            .retry(self.retry)
             .get()
             .await
     }
@@ -452,7 +452,7 @@ impl GatewayApi for Client {
         // client instead.
         self.gateway_request()
             .add_transaction()
-            .with_retry(false)
+            .retry(false)
             .post_with_json(
                 &request::add_transaction::AddTransaction::Invoke(invoke),
                 Some(Duration::MAX),
@@ -474,8 +474,8 @@ impl GatewayApi for Client {
         self.gateway_request()
             .add_transaction()
             // mainnet requires a token (but testnet does not so its optional).
-            .with_optional_token(token.as_deref())
-            .with_retry(false)
+            .optional_token(token.as_deref())
+            .retry(false)
             .post_with_json(
                 &request::add_transaction::AddTransaction::Declare(declare),
                 Some(Duration::MAX),
@@ -494,7 +494,7 @@ impl GatewayApi for Client {
         // client instead.
         self.gateway_request()
             .add_transaction()
-            .with_retry(false)
+            .retry(false)
             .post_with_json(
                 &request::add_transaction::AddTransaction::DeployAccount(deploy),
                 Some(Duration::MAX),
@@ -506,8 +506,8 @@ impl GatewayApi for Client {
     async fn block_traces(&self, block: BlockId) -> Result<BlockTrace, SequencerError> {
         self.feeder_gateway_request()
             .get_block_traces()
-            .with_block(block)
-            .with_retry(self.retry)
+            .block(block)
+            .retry(self.retry)
             .get()
             .await
     }
@@ -519,8 +519,8 @@ impl GatewayApi for Client {
     ) -> Result<TransactionTrace, SequencerError> {
         self.feeder_gateway_request()
             .get_transaction_trace()
-            .with_transaction_hash(transaction)
-            .with_retry(self.retry)
+            .transaction_hash(transaction)
+            .retry(self.retry)
             .get()
             .await
     }
@@ -529,8 +529,8 @@ impl GatewayApi for Client {
     async fn signature(&self, block: BlockId) -> Result<reply::BlockSignature, SequencerError> {
         self.feeder_gateway_request()
             .get_signature()
-            .with_block(block)
-            .with_retry(self.retry)
+            .block(block)
+            .retry(self.retry)
             .get()
             .await
     }
@@ -539,7 +539,7 @@ impl GatewayApi for Client {
     async fn public_key(&self) -> Result<PublicKey, SequencerError> {
         self.feeder_gateway_request()
             .get_public_key()
-            .with_retry(self.retry)
+            .retry(self.retry)
             .get()
             .await
     }

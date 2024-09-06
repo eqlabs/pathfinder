@@ -26,9 +26,9 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
 
     // Empty genesis block
     let header = BlockHeader::builder()
-        .with_number(BlockNumber::GENESIS)
-        .with_timestamp(BlockTimestamp::new_or_panic(0))
-        .with_starknet_version(version)
+        .number(BlockNumber::GENESIS)
+        .timestamp(BlockTimestamp::new_or_panic(0))
+        .starknet_version(version)
         .finalize_with_hash(BlockHash(felt!("0xb00")));
     tx.insert_block_header(&header).unwrap();
 
@@ -57,17 +57,17 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .unwrap();
 
     let header = BlockHeader::builder()
-        .with_number(block1_number)
-        .with_timestamp(BlockTimestamp::new_or_panic(1))
-        .with_eth_l1_gas_price(GasPrice(1))
-        .with_strk_l1_gas_price(GasPrice(2))
-        .with_eth_l1_data_gas_price(GasPrice(2))
-        .with_strk_l1_data_gas_price(GasPrice(2))
-        .with_l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
-        .with_sequencer_address(sequencer_address!(
+        .number(block1_number)
+        .timestamp(BlockTimestamp::new_or_panic(1))
+        .eth_l1_gas_price(GasPrice(1))
+        .strk_l1_gas_price(GasPrice(2))
+        .eth_l1_data_gas_price(GasPrice(2))
+        .strk_l1_data_gas_price(GasPrice(2))
+        .l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
+        .sequencer_address(sequencer_address!(
             "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8"
         ))
-        .with_starknet_version(version)
+        .starknet_version(version)
         .finalize_with_hash(block1_hash);
     tx.insert_block_header(&header).unwrap();
 
