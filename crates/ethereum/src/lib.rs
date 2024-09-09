@@ -132,7 +132,6 @@ impl EthereumApi for EthereumClient {
         loop {
             select! {
                 Some(state_update) = state_updates.next() => {
-
                     // Decode the state update
                     let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
                     let state_update = EthereumStateUpdate {
@@ -140,30 +139,22 @@ impl EthereumApi for EthereumClient {
                         block_hash: get_block_hash(state_update.inner.blockHash),
                         state_root: get_state_root(state_update.inner.globalRoot),
                     };
-
                     // Emit the state update
                     callback(EthereumEvent::StateUpdate(state_update)).await;
-
                 }
                 Some(log) = logs.next() => {
-
                     // Decode the message
                     let log: Log<StarknetCoreContract::LogMessageToL2> = log.log_decode()?;
-
                     // Create L1ToL2MessageHash from the log data
                     let msg = L1ToL2MessageLog {
                         message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
                         l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)).unwrap_or_default(),
                     };
-
                     // Emit the message log
                     callback(EthereumEvent::MessageLog(msg)).await;
-
                 }
             }
         }
-
-        //anyhow::bail!("Ethereum client stopped unexpectedly")
     }
 
     /// Get the Starknet state

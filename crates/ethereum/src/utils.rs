@@ -3,9 +3,8 @@ use pathfinder_crypto::Felt;
 
 /// Converts a `Signed<256, 4>` integer to a `BlockNumber`
 pub(crate) fn get_block_number(block_number: alloy::primitives::Signed<256, 4>) -> BlockNumber {
-    let block_number = block_number.as_i64();
-    debug_assert!(block_number >= 0, "Received negative block number");
-    BlockNumber::new_or_panic(block_number as u64)
+    let block_number = block_number.as_u64();
+    BlockNumber::new_or_panic(block_number)
 }
 
 /// Converts an `alloy` block hash to a `pathfinder` block hash
