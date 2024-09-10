@@ -169,13 +169,18 @@ impl EthereumApi for EthereumClient {
                     // Decode the state update
                     let eth_block = state_update.block_number.expect("missing eth block number");
                     let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
-                    let state_update = EthereumStateUpdate {
-                        block_number: get_block_number(state_update.inner.blockNumber),
-                        block_hash: get_block_hash(state_update.inner.blockHash),
-                        state_root: get_state_root(state_update.inner.globalRoot),
-                    };
-                    // Store state update
-                    let _ = self.pending_state_updates.insert(eth_block, state_update);
+                    let block_number = get_block_number(state_update.inner.blockNumber);
+                    // Add or remove to/from pending state updates accordingly
+                    if !state_update.removed {
+                        let state_update = EthereumStateUpdate {
+                            block_number,
+                            block_hash: get_block_hash(state_update.inner.blockHash),
+                            state_root: get_state_root(state_update.inner.globalRoot),
+                        };
+                        self.pending_state_updates.insert(eth_block, state_update);
+                    } else {
+                        self.pending_state_updates.remove(&eth_block);
+                    }
                 }
                 Some(log) = logs.next() => {
                     // Decode the message
