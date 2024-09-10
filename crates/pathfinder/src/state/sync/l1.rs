@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumEvent};
 use primitive_types::H160;
@@ -13,6 +15,8 @@ pub struct L1SyncContext<EthereumClient> {
     pub chain: Chain,
     /// The Starknet core contract address on Ethereum
     pub core_address: H160,
+    /// The interval at which to poll for updates on finalized blocks
+    pub poll_interval: Duration,
 }
 
 /// Syncs L1 state update logs. Emits [Ethereum state
@@ -26,15 +30,16 @@ where
     T: EthereumApi + Clone,
 {
     let L1SyncContext {
-        ethereum,
+        mut ethereum,
         chain: _,
         core_address,
+        poll_interval,
     } = context;
 
     // Listen for state updates and send them to the event channel
     let tx_event = std::sync::Arc::new(tx_event);
     ethereum
-        .listen(&core_address, move |event| {
+        .listen(&core_address, poll_interval, move |event| {
             let tx_event = tx_event.clone();
             async move {
                 match event {

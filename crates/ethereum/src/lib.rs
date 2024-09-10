@@ -1,4 +1,6 @@
+use std::collections::BTreeMap;
 use std::future::Future;
+use std::time::Duration;
 
 use alloy::eips::{BlockId, BlockNumberOrTag, RpcBlockHash};
 use alloy::primitives::{Address, B256};
@@ -54,7 +56,12 @@ pub struct EthereumStateUpdate {
 pub trait EthereumApi {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate>;
     async fn get_chain(&self) -> anyhow::Result<EthereumChain>;
-    async fn listen<F, Fut>(&self, address: &H160, callback: F) -> anyhow::Result<()>
+    async fn listen<F, Fut>(
+        &mut self,
+        address: &H160,
+        poll_interval: Duration,
+        callback: F,
+    ) -> anyhow::Result<()>
     where
         F: Fn(EthereumEvent) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static;
@@ -64,6 +71,7 @@ pub trait EthereumApi {
 #[derive(Clone, Debug)]
 pub struct EthereumClient {
     url: Url,
+    pending_state_updates: BTreeMap<u64, EthereumStateUpdate>,
 }
 
 impl EthereumClient {
@@ -71,6 +79,7 @@ impl EthereumClient {
     pub fn new<U: IntoUrl>(url: U) -> anyhow::Result<Self> {
         Ok(Self {
             url: url.into_url()?,
+            pending_state_updates: BTreeMap::new(),
         })
     }
 
@@ -103,8 +112,14 @@ impl EthereumClient {
 #[async_trait::async_trait]
 impl EthereumApi for EthereumClient {
     /// Listens for Ethereum events and notifies the caller using the provided
-    /// callback
-    async fn listen<F, Fut>(&self, address: &H160, callback: F) -> anyhow::Result<()>
+    /// callback. State updates will only be emitted once they belong to a
+    /// finalized block.
+    async fn listen<F, Fut>(
+        &mut self,
+        address: &H160,
+        poll_interval: Duration,
+        callback: F,
+    ) -> anyhow::Result<()>
     where
         F: Fn(EthereumEvent) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
@@ -129,18 +144,38 @@ impl EthereumApi for EthereumClient {
             .await?
             .into_stream();
 
+        // Poll regularly for finalized block number
+        let provider_clone = provider.clone();
+        let (finalized_block_tx, mut finalized_block_rx) =
+            tokio::sync::mpsc::channel::<BlockNumber>(1);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(poll_interval);
+            loop {
+                interval.tick().await;
+                if let Ok(Some(finalized_block)) = provider_clone
+                    .get_block_by_number(BlockNumberOrTag::Finalized, false)
+                    .await
+                {
+                    let block_number = BlockNumber::new_or_panic(finalized_block.header.number);
+                    let _ = finalized_block_tx.send(block_number).await.unwrap();
+                }
+            }
+        });
+
+        // Add the finalized block stream to the select! macro
         loop {
             select! {
                 Some(state_update) = state_updates.next() => {
                     // Decode the state update
+                    let eth_block = state_update.block_number.expect("missing eth block number");
                     let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
                     let state_update = EthereumStateUpdate {
                         block_number: get_block_number(state_update.inner.blockNumber),
                         block_hash: get_block_hash(state_update.inner.blockHash),
                         state_root: get_state_root(state_update.inner.globalRoot),
                     };
-                    // Emit the state update
-                    callback(EthereumEvent::StateUpdate(state_update)).await;
+                    // Store state update
+                    let _ = self.pending_state_updates.insert(eth_block, state_update);
                 }
                 Some(log) = logs.next() => {
                     // Decode the message
@@ -152,6 +187,19 @@ impl EthereumApi for EthereumClient {
                     };
                     // Emit the message log
                     callback(EthereumEvent::MessageLog(msg)).await;
+                }
+                Some(block_number) = finalized_block_rx.recv() => {
+                    // Collect all state updates up to (and including) the finalized block
+                    let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
+                        .range(..=block_number.get())
+                        .map(|(_, &update)| update)
+                        .collect();
+                    // Remove emitted updates from the map
+                    self.pending_state_updates.retain(|&k, _| k > block_number.get());
+                    // Emit the state updates
+                    for state_update in pending_state_updates {
+                        callback(EthereumEvent::StateUpdate(state_update)).await;
+                    }
                 }
             }
         }

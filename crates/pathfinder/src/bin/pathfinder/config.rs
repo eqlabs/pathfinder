@@ -135,7 +135,7 @@ Examples:
     #[arg(
         long = "sync.l1-poll-interval",
         long_help = "L1 state poll interval in seconds",
-        default_value = "30",
+        default_value = "120",
         env = "PATHFINDER_L1_POLL_INTERVAL_SECONDS"
     )]
     l1_poll_interval: std::num::NonZeroU64,
