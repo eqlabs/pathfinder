@@ -3,7 +3,7 @@
 use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::{Transaction as StarknetTransaction, TransactionVariant};
+use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
@@ -117,13 +117,6 @@ impl Transaction<'_> {
                  :block_number, :idx)",
             )
             .context("Preparing insert transaction hash statement")?;
-        let mut insert_l1_handler_tx_stmt = self
-            .inner()
-            .prepare_cached(
-                "INSERT INTO l1_handler_txs (l1_tx_hash, l2_tx_hash) VALUES (:l1_tx_hash, \
-                 :l2_tx_hash)",
-            )
-            .context("Preparing insert L1 handler tx statement")?;
 
         for (idx, (transaction, ..)) in transactions.iter().enumerate() {
             let idx: i64 = idx.try_into()?;
@@ -177,20 +170,6 @@ impl Transaction<'_> {
             let events = events.iter().flatten();
             self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
-        }
-
-        // Associate L1 handler transactions with L2 transactions
-        for (transaction, _) in transactions.iter() {
-            if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
-                if let Some(l1_tx_hash) = self.fetch_and_remove_l1_to_l2_message_log(
-                    &l1_handler_tx.calculate_message_hash(),
-                )? {
-                    insert_l1_handler_tx_stmt.execute(named_params![
-                        ":l1_tx_hash": &l1_tx_hash.as_bytes(),
-                        ":l2_tx_hash": &transaction.hash,
-                    ])?;
-                }
-            }
         }
 
         Ok(())

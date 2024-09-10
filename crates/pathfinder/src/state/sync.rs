@@ -680,16 +680,8 @@ async fn consumer(
                 }
             }
             L1ToL2Message(msg) => {
-                tracing::trace!("Inserting new L1 to L2 message log: {:?}", msg);
-                tokio::task::block_in_place(|| {
-                    let tx = db_conn
-                        .transaction()
-                        .context("Creating database transaction")?;
-                    tx.insert_l1_to_l2_message_log(&msg)
-                        .context("Inserting L1 to L2 message log")?;
-                    tx.commit().context("Committing database transaction")
-                })
-                .with_context(|| format!("Insert L1 to L2 message log: {:?}", msg))?;
+                tracing::trace!("Got a new L1 to L2 message log: {:?}", msg);
+                // todo!()
             }
         }
     }
