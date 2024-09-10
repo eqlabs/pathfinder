@@ -590,6 +590,9 @@ impl BlockClient for Client {
     }
 }
 
+/// Maximum number of blocks to request in a single request
+const MAX_BLOCKS_COUNT: u64 = 500;
+
 mod header_stream {
     use super::*;
 
@@ -696,13 +699,14 @@ mod header_stream {
     }
 
     fn make_request(start: i64, stop: i64, dir: Direction) -> BlockHeadersRequest {
-        let limit = start.max(stop) - start.min(stop) + 1;
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
 
         BlockHeadersRequest {
             iteration: Iteration {
                 start: u64::try_from(start).expect("start >= 0").into(),
                 direction: dir,
-                limit: limit.try_into().expect("limit >= 0"),
+                limit,
                 step: 1.into(),
             },
         }
@@ -839,11 +843,16 @@ mod transaction_stream {
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> TransactionsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         TransactionsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1055,11 +1064,16 @@ mod state_diff_stream {
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> StateDiffsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         StateDiffsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1189,11 +1203,16 @@ mod class_definition_stream {
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> ClassesRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         ClassesRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1366,11 +1385,16 @@ mod event_stream {
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> EventsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         EventsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
