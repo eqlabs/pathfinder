@@ -4,7 +4,6 @@ use pathfinder_common::Chain;
 use pathfinder_ethereum::{EthereumApi, EthereumEvent};
 use primitive_types::H160;
 use tokio::sync::mpsc;
-use tracing::info;
 
 use crate::state::sync::SyncEvent;
 
