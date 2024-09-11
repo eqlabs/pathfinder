@@ -44,11 +44,9 @@ where
             async move {
                 match event {
                     EthereumEvent::StateUpdate(state_update) => {
-                        info!("State update: {:?}", state_update);
                         let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
                     }
                     EthereumEvent::MessageLog(log) => {
-                        info!("Message log: {:?}", log);
                         let _ = tx_event.send(SyncEvent::L1ToL2Message(log)).await;
                     }
                 }
