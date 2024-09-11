@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
 
+### Changed
+
+- Ethereum RPC API now requires Websocket endpoints (prev. HTTP). If an HTTP url is provided instead, Pathfinder will attempt to connect vía Websocket protocol at that same url.
+
+
 ## [0.14.2] - 2024-09-03
 
 ### Fixed
