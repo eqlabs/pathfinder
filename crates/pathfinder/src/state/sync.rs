@@ -15,6 +15,7 @@ use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
+    L1ToL2MessageLog,
     PublicKey,
     ReceiptCommitment,
     StateDiffCommitment,
@@ -67,6 +68,8 @@ pub enum SyncEvent {
     },
     /// A new L2 pending update was polled.
     Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
+    /// A new L1 to L2 message was finalized.
+    L1ToL2Message(L1ToL2MessageLog),
 }
 
 pub struct SyncContext<G, E> {
@@ -675,6 +678,10 @@ async fn consumer(
                     pending_data.send_replace(data);
                     tracing::debug!("Updated pending data");
                 }
+            }
+            L1ToL2Message(msg) => {
+                tracing::trace!("Got a new L1 to L2 message log: {:?}", msg);
+                // todo!()
             }
         }
     }

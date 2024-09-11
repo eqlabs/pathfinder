@@ -44,11 +44,11 @@ struct Cli {
 
     #[arg(
         long = "ethereum.url",
-        long_help = r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
+        long_help = r"This should point to the WS RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura, Alchemy or Cloudflare.
 
 Examples:
-    infura: https://mainnet.infura.io/v3/<PROJECT_ID>
-    geth:   https://localhost:8545",
+    alchemy: wss://eth-mainnet.g.alchemy.com/v2/<PROJECT_ID>
+    geth:    wss://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
         env = "PATHFINDER_ETHEREUM_API_URL", 
@@ -135,7 +135,7 @@ Examples:
     #[arg(
         long = "sync.l1-poll-interval",
         long_help = "L1 state poll interval in seconds",
-        default_value = "30",
+        default_value = "120",
         env = "PATHFINDER_L1_POLL_INTERVAL_SECONDS"
     )]
     l1_poll_interval: std::num::NonZeroU64,
