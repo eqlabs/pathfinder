@@ -25,7 +25,7 @@ use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
-use pathfinder_rpc::{PendingData, SyncState, TopicBroadcasters};
+use pathfinder_rpc::{Notifications, PendingData, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -85,6 +85,7 @@ pub struct SyncContext<G, E> {
     pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
@@ -193,6 +194,7 @@ where
         pending_data,
         block_validation_mode: _,
         websocket_txs,
+        notifications,
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
@@ -271,6 +273,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         websocket_txs,
+        notifications,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
 
@@ -443,6 +446,7 @@ struct ConsumerContext {
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
 }
 
 async fn consumer(
@@ -456,6 +460,7 @@ async fn consumer(
         pending_data,
         verify_tree_hashes,
         mut websocket_txs,
+        mut notifications,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -522,6 +527,7 @@ async fn consumer(
                     verify_tree_hashes,
                     storage.clone(),
                     &mut websocket_txs,
+                    &mut notifications,
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -851,6 +857,7 @@ async fn l2_update(
     // parallel contract state updates
     storage: Storage,
     websocket_txs: &mut Option<TopicBroadcasters>,
+    notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -974,7 +981,7 @@ async fn l2_update(
             .context("Commit database transaction")?;
 
         if let Some(sender) = websocket_txs {
-            if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
+            if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
                 tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
                 // Disable websocket entirely so that the closed channel doesn't spam this
                 // error. It is unlikely that any error here wouldn't simply repeat
@@ -990,6 +997,13 @@ async fn l2_update(
                 }
             }
         }
+
+        notifications
+            .block_headers
+            .send(header.into())
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
 
         Ok(())
     })?;
@@ -1366,6 +1380,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1415,6 +1430,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1478,6 +1494,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1526,6 +1543,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1563,6 +1581,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1603,6 +1622,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1646,6 +1666,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());

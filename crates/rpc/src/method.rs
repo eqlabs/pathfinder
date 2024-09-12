@@ -23,6 +23,7 @@ pub mod get_transaction_by_hash;
 pub mod get_transaction_receipt;
 pub mod get_transaction_status;
 pub mod simulate_transactions;
+pub mod subscribe_new_heads;
 pub mod syncing;
 pub mod trace_block_transactions;
 pub mod trace_transaction;

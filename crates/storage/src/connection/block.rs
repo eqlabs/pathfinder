@@ -358,6 +358,27 @@ impl Transaction<'_> {
         Ok(header)
     }
 
+    /// Return all block headers from a range, inclusive on both ends.
+    pub fn block_range(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> anyhow::Result<Vec<BlockHeader>> {
+        let sql =
+            "SELECT * FROM block_headers WHERE number >= $1 AND number <= $2 ORDER BY number ASC";
+        let mut stmt = self
+            .inner()
+            .prepare_cached(sql)
+            .context("Preparing block header query")?;
+        let mut headers = Vec::new();
+        let mut rows = stmt.query(params![&from, &to])?;
+        while let Some(row) = rows.next()? {
+            let header = parse_row_as_header(row)?;
+            headers.push(header);
+        }
+        Ok(headers)
+    }
+
     pub fn state_commitment(&self, block: BlockId) -> anyhow::Result<Option<StateCommitment>> {
         let sql = match block {
             BlockId::Latest => {
