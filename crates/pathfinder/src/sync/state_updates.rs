@@ -122,7 +122,7 @@ impl ProcessStage for VerifyCommitment {
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         let (state_diff, block_number, version, expected_commitment) = input;
-        let actual_commitment = state_diff.compute_state_diff_commitment(version);
+        let actual_commitment = state_diff.compute_state_diff_commitment(StarknetVersion::new(0, 13, 2, 0));
 
         if actual_commitment != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
