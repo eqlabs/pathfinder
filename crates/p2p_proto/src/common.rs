@@ -4,12 +4,22 @@ use std::num::NonZeroU64;
 use fake::Dummy;
 use libp2p_identity::PeerId;
 use pathfinder_crypto::Felt;
+use primitive_types::H256;
 use rand::Rng;
 
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]
 pub struct Hash(pub Felt);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, std::hash::Hash, Default)]
+pub struct Hash256(pub primitive_types::H256);
+
+impl<T> Dummy<T> for Hash256 {
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(H256::random_using(rng))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::Hashes")]
@@ -132,6 +142,33 @@ impl TryFromProtobuf<proto::common::Hash> for Hash {
             )
         })?;
         Ok(Hash(stark_hash))
+    }
+}
+
+impl ToProtobuf<proto::common::Hash256> for Hash256 {
+    fn to_protobuf(self) -> proto::common::Hash256 {
+        proto::common::Hash256 {
+            elements: self.0.as_fixed_bytes().into(),
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::common::Hash256> for Hash256 {
+    fn try_from_protobuf(
+        input: proto::common::Hash256,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        if input.elements.len() != H256::len_bytes() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Invalid field element {field_name}: expected to be {} bytes long",
+                    H256::len_bytes()
+                ),
+            ));
+        }
+        let hash = H256::from_slice(&input.elements);
+        Ok(Hash256(hash))
     }
 }
 

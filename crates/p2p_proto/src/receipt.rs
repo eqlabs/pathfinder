@@ -2,7 +2,7 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
 
-use crate::common::Hash;
+use crate::common::Hash256;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -76,7 +76,7 @@ pub struct InvokeTransactionReceipt {
 #[protobuf(name = "crate::proto::receipt::receipt::L1Handler")]
 pub struct L1HandlerTransactionReceipt {
     pub common: ReceiptCommon,
-    pub msg_hash: Hash,
+    pub msg_hash: Hash256,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

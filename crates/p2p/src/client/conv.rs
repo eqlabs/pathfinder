@@ -7,7 +7,7 @@ use std::io::Read;
 
 use anyhow::Context;
 use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, SierraEntryPoint};
-use p2p_proto::common::{Address, Hash};
+use p2p_proto::common::{Address, Hash, Hash256};
 use p2p_proto::receipt::execution_resources::BuiltinCounter;
 use p2p_proto::receipt::{
     DeclareTransactionReceipt,
@@ -364,9 +364,9 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
             TransactionVariant::InvokeV0(_)
             | TransactionVariant::InvokeV1(_)
             | TransactionVariant::InvokeV3(_) => Invoke(InvokeTransactionReceipt { common }),
-            TransactionVariant::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
+            TransactionVariant::L1Handler(tx) => L1Handler(L1HandlerTransactionReceipt {
                 common,
-                msg_hash: Hash(Felt::ZERO), // TODO what is this
+                msg_hash: Hash256(tx.calculate_message_hash()),
             }),
         }
     }
