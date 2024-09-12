@@ -123,8 +123,10 @@ impl ProcessStage for VerifyLayout {
                 definition,
             } => {
                 let layout = GwClassDefinition::Cairo(
-                    serde_json::from_slice::<Cairo<'_>>(&definition)
-                        .map_err(|_| SyncError2::BadClassLayout)?,
+                    serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
+                        tracing::debug!(%block_number, error=%e, "Bad class layout");
+                        SyncError2::BadClassLayout
+                    })?,
                 );
                 Ok(ClassWithLayout {
                     block_number,
@@ -137,8 +139,10 @@ impl ProcessStage for VerifyLayout {
                 sierra_definition,
             } => {
                 let layout = GwClassDefinition::Sierra(
-                    serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
-                        .map_err(|_| SyncError2::BadClassLayout)?,
+                    serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
+                        tracing::debug!(%block_number, error=%e, "Bad class layout");
+                        SyncError2::BadClassLayout
+                    })?,
                 );
                 Ok(ClassWithLayout {
                     block_number,
@@ -227,12 +231,14 @@ impl ProcessStage for VerifyDeclaredAt {
         }
 
         if self.current.block_number != input.block_number {
+            tracing::debug!(expected_block_number=%self.current.block_number, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
             return Err(SyncError2::UnexpectedClass);
         }
 
         if self.current.classes.remove(&input.hash) {
             Ok(input)
         } else {
+            tracing::debug!(block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
             Err(SyncError2::UnexpectedClass)
         }
     }
@@ -427,6 +433,7 @@ impl ProcessStage for VerifyClassHashes {
             match class.definition {
                 CompiledClassDefinition::Cairo(_) => {
                     if !declared_classes.cairo.remove(&class.hash) {
+                        tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
                         return Err(SyncError2::ClassDefinitionsDeclarationsMismatch);
                     }
                 }
@@ -435,13 +442,26 @@ impl ProcessStage for VerifyClassHashes {
                     declared_classes
                         .sierra
                         .remove(&hash)
-                        .ok_or(SyncError2::ClassDefinitionsDeclarationsMismatch)?;
+                        .ok_or_else(|| {
+                            tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
+                            SyncError2::ClassDefinitionsDeclarationsMismatch})?;
                 }
             }
         }
         if declared_classes.cairo.is_empty() && declared_classes.sierra.is_empty() {
             Ok(input)
         } else {
+            let missing: Vec<ClassHash> = declared_classes
+                .cairo
+                .into_iter()
+                .chain(
+                    declared_classes
+                        .sierra
+                        .into_values()
+                        .map(|casm_hash| ClassHash(casm_hash.0)),
+                )
+                .collect();
+            tracing::trace!(?missing, "Expected class definitions are missing");
             Err(SyncError2::ClassDefinitionsDeclarationsMismatch)
         }
     }
