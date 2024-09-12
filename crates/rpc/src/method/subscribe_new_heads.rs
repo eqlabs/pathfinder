@@ -78,11 +78,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
             match rx.recv().await {
                 Ok(header) => {
                     let block_number = header.number;
-                    if tx
-                        .send((Message(header.into()), block_number))
-                        .await
-                        .is_err()
-                    {
+                    if tx.send((Message(header), block_number)).await.is_err() {
                         break;
                     }
                 }
