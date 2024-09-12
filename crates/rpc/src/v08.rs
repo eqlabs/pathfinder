@@ -3,7 +3,7 @@ use crate::method::subscribe_new_heads::SubscribeNewHeads;
 
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
-    RpcRouter::builder(crate::RpcVersion::V07)
+    RpcRouter::builder(crate::RpcVersion::V08)
         .register("starknet_blockHashAndNumber",                  crate::method::block_hash_and_number)
         .register("starknet_blockNumber",                         crate::method::block_number)
         .register("starknet_chainId",                             crate::method::chain_id)

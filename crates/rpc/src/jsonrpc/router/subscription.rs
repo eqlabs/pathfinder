@@ -10,6 +10,7 @@ use super::RpcRouter;
 use crate::context::RpcContext;
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::DeserializeForVersion;
+use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
@@ -112,7 +113,7 @@ where
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             db.block_number(first_block)
                 .map_err(RpcError::InternalError)?
-                .ok_or_else(|| RpcError::InvalidParams("Block not found".to_string()))
+                .ok_or_else(|| ApplicationError::BlockNotFound.into())
         })
         .await
         .map_err(|e| RpcError::InternalError(e.into()))??;
@@ -216,7 +217,10 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
             let request = match ws_rx.next().await {
                 Some(Ok(Message::Text(msg))) => msg.into_bytes(),
                 Some(Ok(Message::Binary(bytes))) => bytes,
-                Some(Ok(Message::Pong(_) | Message::Ping(_))) => continue,
+                Some(Ok(Message::Pong(_) | Message::Ping(_))) => {
+                    // Ping and pong messages are handled automatically by axum.
+                    continue;
+                }
                 Some(Ok(Message::Close(_))) | None => {
                     // Websocket closed.
                     return;

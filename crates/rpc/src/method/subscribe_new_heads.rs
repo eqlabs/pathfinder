@@ -74,10 +74,26 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
 
     async fn subscribe(state: RpcContext, tx: mpsc::Sender<(Self::Notification, BlockNumber)>) {
         let mut rx = state.notifications.block_headers.subscribe();
-        while let Ok(header) = rx.recv().await {
-            let block_number = header.number;
-            if tx.send((Message(header), block_number)).await.is_err() {
-                break;
+        loop {
+            match rx.recv().await {
+                Ok(header) => {
+                    let block_number = header.number;
+                    if tx
+                        .send((Message(header.into()), block_number))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "Error receiving block header from notifications channel, node might be \
+                         lagging: {:?}",
+                        e
+                    );
+                    break;
+                }
             }
         }
     }

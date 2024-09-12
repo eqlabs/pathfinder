@@ -358,7 +358,7 @@ impl Transaction<'_> {
         Ok(header)
     }
 
-    /// Return all blocks from a range, inclusive on both ends.
+    /// Return all block headers from a range, inclusive on both ends.
     pub fn block_range(
         &self,
         from: BlockNumber,
