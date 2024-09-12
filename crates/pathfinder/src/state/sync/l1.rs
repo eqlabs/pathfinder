@@ -35,7 +35,11 @@ where
         poll_interval,
     } = context;
 
-    // Listen for state updates and send them to the event channel
+    // Fetch the current Starknet state from Ethereum
+    let state_update = ethereum.get_starknet_state(&core_address).await?;
+    let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
+
+    // Subscribe to subsequent state updates and message logs
     let tx_event = std::sync::Arc::new(tx_event);
     ethereum
         .listen(&core_address, poll_interval, move |event| {
