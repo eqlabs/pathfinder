@@ -6,6 +6,7 @@ use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
+use crate::jsonrpc::Notifications;
 use crate::pending::{PendingData, PendingWatcher};
 use crate::SyncState;
 
@@ -30,10 +31,12 @@ pub struct RpcContext {
     pub chain_id: ChainId,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
+    pub notifications: Notifications,
     pub config: RpcConfig,
 }
 
 impl RpcContext {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Storage,
         execution_storage: Storage,
@@ -41,6 +44,7 @@ impl RpcContext {
         chain_id: ChainId,
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<PendingData>,
+        notifications: Notifications,
         config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
@@ -53,6 +57,7 @@ impl RpcContext {
             pending_data,
             sequencer,
             websocket: None,
+            notifications,
             config,
         }
     }
@@ -111,6 +116,7 @@ impl RpcContext {
             chain_id,
             sequencer.disable_retry_for_tests(),
             rx,
+            Notifications::default(),
             config,
         )
     }

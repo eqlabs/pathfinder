@@ -15,9 +15,11 @@ pub mod v02;
 pub mod v03;
 pub mod v06;
 pub mod v07;
+pub mod v08;
 
 use std::net::SocketAddr;
 use std::result::Result;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
@@ -26,6 +28,7 @@ use axum::response::IntoResponse;
 use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
+pub use jsonrpc::Notifications;
 use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
 use tokio::sync::RwLock;
@@ -45,6 +48,7 @@ pub enum RpcVersion {
     V06,
     #[default]
     V07,
+    V08,
     PathfinderV01,
 }
 
@@ -53,6 +57,7 @@ impl RpcVersion {
         match self {
             RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
+            RpcVersion::V08 => "v0.8",
             RpcVersion::PathfinderV01 => "v0.1",
         }
     }
@@ -162,11 +167,13 @@ impl RpcServer {
 
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
+        let v08_routes = v08::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
+            RpcVersion::V08 => v08_routes.clone(),
             RpcVersion::PathfinderV01 => {
                 anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
             }
@@ -227,6 +234,16 @@ impl Default for SyncState {
         Self {
             status: RwLock::new(Syncing::False(false)),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct SubscriptionId(pub u32);
+
+impl SubscriptionId {
+    pub fn next() -> Self {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 

@@ -15,7 +15,7 @@ use pathfinder_lib::monitoring::{self};
 use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
 use pathfinder_rpc::context::WebsocketContext;
-use pathfinder_rpc::SyncState;
+use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -217,6 +217,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         custom_versioned_constants: config.custom_versioned_constants.take(),
     };
 
+    let notifications = Notifications::default();
+
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
@@ -224,6 +226,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.network_id,
         pathfinder_context.gateway.clone(),
         rx_pending.clone(),
+        notifications.clone(),
         rpc_config,
     );
 
@@ -264,6 +267,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             &config,
             tx_pending,
             rpc_server.get_topic_broadcasters().cloned(),
+            notifications,
             gossiper,
             gateway_public_key,
             p2p_client,
@@ -497,6 +501,7 @@ fn start_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<p2p::client::peer_agnostic::Client>,
@@ -511,6 +516,7 @@ fn start_sync(
             config,
             tx_pending,
             websocket_txs,
+            notifications,
             gossiper,
             gateway_public_key,
         )
@@ -538,6 +544,7 @@ fn start_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<p2p::client::peer_agnostic::Client>,
@@ -551,6 +558,7 @@ fn start_sync(
         config,
         tx_pending,
         websocket_txs,
+        notifications,
         gossiper,
         gateway_public_key,
     )
@@ -565,6 +573,7 @@ fn start_feeder_gateway_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -581,6 +590,7 @@ fn start_feeder_gateway_sync(
         pending_data: tx_pending,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,
+        notifications,
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
