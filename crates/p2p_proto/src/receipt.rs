@@ -29,10 +29,14 @@ pub struct ExecutionResources {
     pub builtins: execution_resources::BuiltinCounter,
     pub steps: u32,
     pub memory_holes: u32,
-    pub l1_gas: Felt,
-    pub l1_data_gas: Felt,
-    pub total_l1_gas: Felt,
-    pub total_l1_data_gas: Felt,
+    #[optional]
+    pub l1_gas: Option<Felt>,
+    #[optional]
+    pub l1_data_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_data_gas: Option<Felt>,
 }
 
 pub mod execution_resources {
