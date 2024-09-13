@@ -686,8 +686,29 @@ async fn consumer(
                 }
             }
             L1ToL2Message(msg) => {
-                tracing::trace!("Got a new L1 to L2 message log: {:?}", msg);
-                // todo!()
+                tracing::trace!("Inserting new L1 to L2 message log: {:?}", msg);
+                tokio::task::block_in_place(|| {
+                    let tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    // If we have an L2 tx hash for this message, we can associate the L1 handler tx
+                    // with the L2 tx
+                    // Note: There's always an L1 tx hash (hence the `expect`)
+                    tracing::trace!(target: "msgsync", "MSG [{:?}] Got an L1ToL2Message: {:?}", msg.l1_tx_hash, msg.message_hash);
+                    let l1_tx_hash = msg.l1_tx_hash.expect("missing l1 tx hash");
+                    if let (_, Some(l2_tx_hash)) =
+                        tx.fetch_and_remove_l1_to_l2_message_log(&msg.message_hash)?
+                    {
+                        tx.insert_l1_handler_tx(l1_tx_hash, l2_tx_hash)?;
+                    }
+                    // Otherwise, we insert the message log with an empty L2 tx hash
+                    else {
+                        tx.insert_l1_to_l2_message_log(&msg)?;
+                    }
+                    tx.commit()
+                        .context("Associating L1 and L2 transactions from message log")
+                })
+                .with_context(|| format!("Insert L1 to L2 message log: {:?}", msg))?;
             }
         }
     }
