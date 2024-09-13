@@ -959,13 +959,13 @@ impl MainLoop {
     /// No-op outside tests
     async fn handle_event_for_test(&mut self, _event: SwarmEvent<behaviour::Event>) {
         #[cfg(test)]
-        test_utils::handle_event(&self.event_sender, _event).await
+        test_utils::main_loop::handle_event(&self.event_sender, _event).await
     }
 
     /// No-op outside tests
     async fn handle_test_command(&mut self, _command: TestCommand) {
         #[cfg(test)]
-        test_utils::handle_command(
+        test_utils::main_loop::handle_command(
             self.swarm.behaviour_mut(),
             _command,
             &mut self._pending_test_queries.inner,
@@ -976,7 +976,7 @@ impl MainLoop {
     /// Handle the final stage of the query, no-op outside tests
     async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        test_utils::query_completed(
+        test_utils::main_loop::query_completed(
             &mut self._pending_test_queries.inner,
             &self.event_sender,
             _id,
@@ -988,18 +988,19 @@ impl MainLoop {
     /// Handle all stages except the final one, no-op outside tests
     async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
+        test_utils::main_loop::query_progressed(&self._pending_test_queries.inner, _id, _result)
+            .await
     }
 }
 
 /// No-op outside tests
 async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
     #[cfg(test)]
-    test_utils::send_event(_event_sender, _event).await
+    test_utils::main_loop::send_event(_event_sender, _event).await
 }
 
 #[derive(Debug, Default)]
 struct TestQueries {
     #[cfg(test)]
-    inner: test_utils::PendingQueries,
+    inner: test_utils::main_loop::PendingQueries,
 }
