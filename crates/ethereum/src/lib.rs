@@ -188,7 +188,8 @@ impl EthereumApi for EthereumClient {
                     // Create L1ToL2MessageHash from the log data
                     let msg = L1ToL2MessageLog {
                         message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
-                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)).unwrap_or_default(),
+                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)),
+                        l2_tx_hash: None,
                     };
                     // Emit the message log
                     callback(EthereumEvent::MessageLog(msg)).await;
