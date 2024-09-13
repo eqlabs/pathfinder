@@ -1,14 +1,10 @@
-use std::collections::HashMap;
 use std::fmt::Debug;
-use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use fake::{Fake, Faker};
 use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
-use libp2p::{Multiaddr, PeerId};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
@@ -16,140 +12,10 @@ use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 use rstest::rstest;
-use tokio::task::JoinHandle;
 
-use crate::peers::Peer;
 use crate::sync::codec;
-use crate::{BootstrapConfig, Builder, Config, Event, EventReceiver, RateLimit, TestEvent};
-
-#[allow(dead_code)]
-#[derive(Debug)]
-struct TestPeer {
-    pub keypair: Keypair,
-    pub peer_id: PeerId,
-    pub client: crate::Client,
-    pub event_receiver: crate::EventReceiver,
-    pub main_loop_jh: JoinHandle<()>,
-}
-
-#[derive(Default)]
-struct TestPeerBuilder {
-    // cfg: Option<Config>,
-    // keypair: Option<Keypair>,
-    p2p_builder: Option<Builder>,
-}
-
-impl Config {
-    pub fn for_test() -> Self {
-        Self {
-            direct_connection_timeout: Duration::from_secs(0),
-            relay_connection_timeout: Duration::from_secs(0),
-            max_inbound_direct_peers: 10,
-            max_inbound_relayed_peers: 10,
-            max_outbound_peers: 10,
-            low_watermark: 10,
-            ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-            bootstrap: Default::default(),
-            eviction_timeout: Duration::from_secs(15 * 60),
-            inbound_connections_rate_limit: RateLimit {
-                max: 1000,
-                interval: Duration::from_secs(1),
-            },
-            kad_names: Default::default(),
-            stream_timeout: Duration::from_secs(10),
-            max_concurrent_streams: 100,
-        }
-    }
-}
-
-impl TestPeerBuilder {
-    pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
-        self.p2p_builder = Some(p2p_builder);
-        self
-    }
-
-    pub fn build(self, keypair: Keypair, cfg: Config) -> TestPeer {
-        let Self { p2p_builder } = self;
-
-        let peer_id = keypair.public().to_peer_id();
-
-        let (client, mut event_receiver, main_loop) = p2p_builder
-            .unwrap_or_else(|| crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET))
-            .build();
-
-        // Ensure that the channel keeps being polled to move the main loop forward.
-        // Store the polled events into a buffered channel instead.
-        let (buf_sender, buf_receiver) = tokio::sync::mpsc::channel(1024);
-        tokio::spawn(async move {
-            while let Some(event) = event_receiver.recv().await {
-                buf_sender.send(event).await.unwrap();
-            }
-        });
-
-        let main_loop_jh = tokio::spawn(main_loop.run());
-        TestPeer {
-            keypair,
-            peer_id,
-            client,
-            event_receiver: buf_receiver,
-            main_loop_jh,
-        }
-    }
-}
-
-impl TestPeer {
-    pub fn builder() -> TestPeerBuilder {
-        Default::default()
-    }
-
-    /// Create a new peer with a random keypair
-    #[must_use]
-    pub fn new(cfg: Config) -> Self {
-        Self::builder().build(Keypair::generate_ed25519(), cfg)
-    }
-
-    #[must_use]
-    pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
-        Self::builder().build(keypair, cfg)
-    }
-
-    /// Start listening on a specified address
-    pub async fn start_listening_on(&mut self, addr: Multiaddr) -> Result<Multiaddr> {
-        self.client
-            .start_listening(addr)
-            .await
-            .context("Start listening failed")?;
-
-        let event = tokio::time::timeout(Duration::from_secs(1), self.event_receiver.recv())
-            .await
-            .context("Timedout while waiting for new listen address")?
-            .context("Event channel closed")?;
-
-        let addr = match event {
-            Event::Test(TestEvent::NewListenAddress(addr)) => addr,
-            _ => anyhow::bail!("Unexpected event: {event:?}"),
-        };
-        Ok(addr)
-    }
-
-    /// Start listening on localhost with port automatically assigned
-    pub async fn start_listening(&mut self) -> Result<Multiaddr> {
-        self.start_listening_on(Multiaddr::from_str("/ip4/127.0.0.1/tcp/0").unwrap())
-            .await
-    }
-
-    /// Get peer IDs of the connected peers
-    pub async fn connected(&self) -> HashMap<PeerId, Peer> {
-        self.client.for_test().get_connected_peers().await
-    }
-}
-
-impl Default for TestPeer {
-    /// Create a new peer with a random keypair and default test config
-    fn default() -> Self {
-        Self::builder().build(Keypair::generate_ed25519(), Config::for_test())
-    }
-}
+use crate::test_utils::peer::TestPeer;
+use crate::{BootstrapConfig, Config, Event, EventReceiver, RateLimit, TestEvent};
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall.
@@ -187,13 +53,19 @@ async fn wait_for_event<T: Debug + Send + 'static>(
     None
 }
 
-async fn exhaust_events(event_receiver: &mut EventReceiver) {
+/// Consume all events that have accumulated for the peer so far. You don't care
+/// about any of those events in the queue __right now__, but later you may do
+/// something that triggers new events for this peer, which you may care for.
+async fn consume_accumulated_events(event_receiver: &mut EventReceiver) {
     while event_receiver.try_recv().is_ok() {}
 }
 
+/// Consume all events from a peer to keep its main loop going. You don't care
+/// about any of those events.
+///
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
-fn consume_events(mut event_receiver: EventReceiver) {
+fn consume_all_events_forever(mut event_receiver: EventReceiver) {
     tokio::spawn(async move { while (event_receiver.recv().await).is_some() {} });
 }
 
@@ -236,7 +108,7 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    exhaust_events(&mut peer1.event_receiver).await;
+    consume_accumulated_events(&mut peer1.event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -257,7 +129,7 @@ async fn disconnect() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    exhaust_events(&mut peer1.event_receiver).await;
+    consume_accumulated_events(&mut peer1.event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -339,7 +211,7 @@ async fn periodic_bootstrap() {
         _ => None,
     };
 
-    consume_events(boot.event_receiver);
+    consume_all_events_forever(boot.event_receiver);
 
     let peer_id2 = peer2.peer_id;
 
@@ -362,7 +234,7 @@ async fn periodic_bootstrap() {
         .await;
     });
 
-    consume_events(peer1.event_receiver);
+    consume_all_events_forever(peer1.event_receiver);
 
     assert_eq!(
         boot.client.for_test().get_peers_from_dht().await,
@@ -419,7 +291,7 @@ async fn periodic_bootstrap() {
         .await
         .unwrap();
 
-    exhaust_events(&mut peer3.event_receiver).await;
+    consume_accumulated_events(&mut peer3.event_receiver).await;
 
     // The low watermark is reached for peer3, so no more bootstrap attempts are
     // made.
@@ -675,11 +547,11 @@ async fn outbound_peer_eviction() {
     let outbound_addr4 = outbound4.start_listening().await.unwrap();
     tracing::info!(%outbound4.peer_id, %outbound_addr4);
 
-    consume_events(outbound1.event_receiver);
-    consume_events(outbound2.event_receiver);
-    consume_events(outbound3.event_receiver);
-    consume_events(outbound4.event_receiver);
-    consume_events(inbound1.event_receiver);
+    consume_all_events_forever(outbound1.event_receiver);
+    consume_all_events_forever(outbound2.event_receiver);
+    consume_all_events_forever(outbound3.event_receiver);
+    consume_all_events_forever(outbound4.event_receiver);
+    consume_all_events_forever(inbound1.event_receiver);
 
     // Open one inbound connection. This connection is never touched.
     inbound1
@@ -698,7 +570,7 @@ async fn outbound_peer_eviction() {
         .await
         .unwrap();
 
-    exhaust_events(&mut peer.event_receiver).await;
+    consume_accumulated_events(&mut peer.event_receiver).await;
 
     // Trying to open another one fails, because no peers are marked as not useful,
     // and hence no peer can be evicted.
@@ -819,7 +691,7 @@ async fn inbound_peer_eviction() {
     assert_eq!(connected.len(), 26);
     assert!(connected.contains_key(&outbound1.peer_id));
 
-    exhaust_events(&mut peer.event_receiver).await;
+    consume_accumulated_events(&mut peer.event_receiver).await;
 
     // Trying to open another one causes an eviction.
     inbound_peers
@@ -913,7 +785,7 @@ async fn evicted_peer_reconnection() {
     let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
     assert!(result.is_err());
 
-    exhaust_events(&mut peer2.event_receiver).await;
+    consume_accumulated_events(&mut peer2.event_receiver).await;
 
     // In this case there is no peer ID when connecting, so the connection gets
     // closed after being established.
@@ -975,7 +847,7 @@ async fn ip_whitelist() {
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
 
-    consume_events(peer2.event_receiver);
+    consume_all_events_forever(peer2.event_receiver);
 
     // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only
     // allows 127.0.0.2.
@@ -1051,10 +923,10 @@ async fn rate_limit() {
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
 
-    consume_events(peer1.event_receiver);
-    consume_events(peer2.event_receiver);
-    consume_events(peer3.event_receiver);
-    consume_events(peer4.event_receiver);
+    consume_all_events_forever(peer1.event_receiver);
+    consume_all_events_forever(peer2.event_receiver);
+    consume_all_events_forever(peer3.event_receiver);
+    consume_all_events_forever(peer4.event_receiver);
 
     // Two connections can be opened, but the third one is rate limited.
 
@@ -1085,7 +957,7 @@ async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
         Event::Test(TestEvent::StartProvidingCompleted(_)) => Some(()),
         _ => None,
     });
-    consume_events(peer2.event_receiver);
+    consume_all_events_forever(peer2.event_receiver);
 
     peer1.client.provide_capability("blah").await.unwrap();
     peer1_started_providing.recv().await;
@@ -1169,7 +1041,7 @@ macro_rules! define_test {
             });
 
             // This is to keep peer2's event loop going
-            consume_events(peer2.event_receiver);
+            consume_all_events_forever(peer2.event_receiver);
 
             // Peer2 sends the request to peer1, and waits for the response receiver
             let mut rx = peer2
