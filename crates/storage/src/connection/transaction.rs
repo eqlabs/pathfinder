@@ -3,8 +3,9 @@
 use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+use pathfinder_common::transaction::{Transaction as StarknetTransaction, TransactionVariant};
+use pathfinder_common::{BlockHash, BlockNumber, L1ToL2MessageLog, TransactionHash};
+use primitive_types::H256;
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 use crate::prelude::*;
@@ -171,6 +172,50 @@ impl Transaction<'_> {
             self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
         }
+
+        // Associate L1 handler transactions with L2 transactions
+        for (transaction, _) in transactions.iter() {
+            if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
+                // If we have an L1 tx hash for this message, we can associate the
+                // L1 handler tx with the L2 tx
+                if let (Some(l1_tx_hash), _) = self.fetch_and_remove_l1_to_l2_message_log(
+                    &l1_handler_tx.calculate_message_hash(),
+                )? {
+                    self.insert_l1_handler_tx(l1_tx_hash, transaction.hash)?;
+                }
+                // Otherwise, we insert the message log with an empty L1 tx hash
+                else {
+                    let msg_log = L1ToL2MessageLog {
+                        message_hash: l1_handler_tx.calculate_message_hash(),
+                        l1_tx_hash: None,
+                        l2_tx_hash: Some(transaction.hash),
+                    };
+                    self.insert_l1_to_l2_message_log(&msg_log)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Inserts an L1 handler transaction with it's corresponding L2 tx hash
+    pub fn insert_l1_handler_tx(
+        &self,
+        l1_tx_hash: H256,
+        l2_tx_hash: TransactionHash,
+    ) -> anyhow::Result<()> {
+        let mut insert_l1_handler_tx_stmt = self
+            .inner()
+            .prepare_cached(
+                "INSERT INTO l1_handler_txs (l1_tx_hash, l2_tx_hash) VALUES (:l1_tx_hash, \
+                 :l2_tx_hash)",
+            )
+            .context("Preparing insert L1 handler tx statement")?;
+
+        insert_l1_handler_tx_stmt.execute(named_params![
+            ":l1_tx_hash": &l1_tx_hash.as_bytes(),
+            ":l2_tx_hash": &l2_tx_hash,
+        ])?;
 
         Ok(())
     }
