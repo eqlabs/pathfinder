@@ -63,30 +63,13 @@ impl Config {
 }
 
 impl TestPeerBuilder {
-    // pub fn config(mut self, cfg: Config) -> Self {
-    //     self.cfg = Some(cfg);
-    //     self
-    // }
-
-    // pub fn keypair(mut self, keypair: Keypair) -> Self {
-    //     self.keypair = Some(keypair);
-    //     self
-    // }
-
     pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
         self.p2p_builder = Some(p2p_builder);
         self
     }
 
     pub fn build(self, keypair: Keypair, cfg: Config) -> TestPeer {
-        let Self {
-            // cfg,
-            // keypair,
-            p2p_builder,
-        } = self;
-
-        // let keypair = keypair.unwrap_or_else(Keypair::generate_ed25519);
-        // let cfg = cfg.unwrap_or_else(Config::for_test);
+        let Self { p2p_builder } = self;
 
         let peer_id = keypair.public().to_peer_id();
 
