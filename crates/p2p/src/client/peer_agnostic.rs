@@ -605,7 +605,8 @@ mod header_stream {
     ) -> impl Stream<Item = PeerData<SignedBlockHeader>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<BlockHeadersResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<BlockHeadersResponse>>>>
+            + Send,
     {
         let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
         let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
@@ -655,14 +656,14 @@ mod header_stream {
 
     async fn handle_response(
         peer: PeerId,
-        signed_header: BlockHeadersResponse,
+        signed_header: std::io::Result<BlockHeadersResponse>,
         direction: Direction,
         start: &mut i64,
         stop: i64,
         tx: mpsc::Sender<PeerData<SignedBlockHeader>>,
     ) -> Action {
         match signed_header {
-            BlockHeadersResponse::Header(hdr) => match SignedBlockHeader::try_from_dto(*hdr) {
+            Ok(BlockHeadersResponse::Header(hdr)) => match SignedBlockHeader::try_from_dto(*hdr) {
                 Ok(hdr) => {
                     if done(direction, *start, stop) {
                         tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
@@ -687,8 +688,16 @@ mod header_stream {
                     Action::NextPeer
                 }
             },
-            BlockHeadersResponse::Fin => {
+            Ok(BlockHeadersResponse::Fin) => {
                 tracing::debug!(%peer, "Header stream Fin");
+                if done(direction, *start, stop) {
+                    return Action::TerminateStream;
+                }
+
+                Action::NextPeer
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "Header stream failed");
                 if done(direction, *start, stop) {
                     return Action::TerminateStream;
                 }

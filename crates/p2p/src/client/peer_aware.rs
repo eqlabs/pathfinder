@@ -30,7 +30,7 @@ macro_rules! impl_send {
             &self,
             peer_id: PeerId,
             request: $req_type,
-        ) -> anyhow::Result<ResponseReceiver<$res_type>> {
+        ) -> anyhow::Result<ResponseReceiver<std::io::Result<$res_type>>> {
             let (sender, receiver) = oneshot::channel();
             self.sender
                 .send(Command::$req_command {

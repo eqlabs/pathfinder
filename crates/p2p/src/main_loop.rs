@@ -57,23 +57,23 @@ pub struct MainLoop {
 struct PendingRequests {
     pub headers: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>>,
     >,
     pub classes: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
     >,
     pub state_diffs: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
     >,
     pub transactions: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<TransactionsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>>,
     >,
     pub events: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<EventsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
     >,
 }
 

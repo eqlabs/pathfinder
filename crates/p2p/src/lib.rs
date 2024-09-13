@@ -133,27 +133,32 @@ enum Command {
     SendHeadersSyncRequest {
         peer_id: PeerId,
         request: BlockHeadersRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
+        sender: oneshot::Sender<
+            anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>,
+        >,
     },
     SendClassesSyncRequest {
         peer_id: PeerId,
         request: ClassesRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
     },
     SendStateDiffsSyncRequest {
         peer_id: PeerId,
         request: StateDiffsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
+        sender:
+            oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
     },
     SendTransactionsSyncRequest {
         peer_id: PeerId,
         request: TransactionsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<TransactionsResponse>>>,
+        sender: oneshot::Sender<
+            anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>,
+        >,
     },
     SendEventsSyncRequest {
         peer_id: PeerId,
         request: EventsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<EventsResponse>>>,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
     },
     PublishPropagationMessage {
         topic: IdentTopic,
