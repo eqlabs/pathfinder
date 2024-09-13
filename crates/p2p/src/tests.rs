@@ -1123,3 +1123,88 @@ define_test!(
     InboundEventsSyncRequest,
     send_events_sync_request
 );
+
+#[test_log::test(tokio::test)]
+async fn always_propagate_stream_errors_to_caller() {
+    let mut peer1 = TestPeer::default();
+
+    let codec = codec::Headers::for_test().set_read_response_factory(Box::new(move || {
+        Box::new(|_| {
+            async {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "stream error",
+                ))
+            }
+            .boxed()
+        })
+    }));
+    let keypair = Keypair::generate_ed25519();
+    let cfg = Config::for_test();
+    let chain_id = ChainId::SEPOLIA_TESTNET;
+    let behaviour_builder = crate::behaviour::Builder::new(keypair.clone(), chain_id, cfg.clone())
+        .header_sync_behaviour(p2p_stream::Behaviour::with_codec(codec, Default::default()));
+    let p2p_builder = crate::Builder::new(keypair.clone(), cfg.clone(), chain_id)
+        .behaviour_builder(behaviour_builder);
+    let peer2 = TestPeer::builder()
+        .p2p_builder(p2p_builder)
+        .build(keypair, cfg);
+
+    let server_addr = peer1.start_listening().await.unwrap();
+
+    tracing::info!(%peer1.peer_id, %server_addr, "Server");
+    tracing::info!(%peer2.peer_id, "Client");
+
+    peer2.client.dial(peer1.peer_id, server_addr).await.unwrap();
+
+    // Fake some request for peer2 to send to peer1
+    let expected_request = Faker.fake::<BlockHeadersRequest>();
+
+    // Filter peer1's events to fish out the request from peer2 and the channel that
+    // peer1 will use to send the responses
+    // This is also to keep peer1's event loop going
+    let mut tx_ready = filter_events(peer1.event_receiver, move |event| match event {
+        Event::InboundHeadersSyncRequest {
+            from,
+            channel,
+            request: actual_request,
+        } => {
+            // Peer 1 should receive the request from peer2
+            assert_eq!(from, peer2.peer_id);
+            // Received request should match what peer2 sent
+            assert_eq!(expected_request, actual_request);
+            Some(channel)
+        }
+        _ => None,
+    });
+
+    // This is to keep peer2's event loop going
+    consume_all_events_forever(peer2.event_receiver);
+
+    // Peer2 sends the request to peer1, and waits for the response receiver
+    let mut rx = peer2
+        .client
+        .send_headers_sync_request(peer1.peer_id, expected_request)
+        .await
+        .expect(&format!(
+            "sending request using: {}, line: {}",
+            // std::stringify!($req_fn),
+            "TODO",
+            line!()
+        ));
+
+    // Peer1 waits for response channel to be ready
+    let mut tx = tx_ready.recv().await.expect(&format!(
+        "waiting for response channel to be ready, line: {}",
+        line!()
+    ));
+
+    let expected_response = Faker.fake::<BlockHeadersResponse>();
+    // Peer1 sends 1 response, but peer2's codec is mocked to fail upon reception
+    tx.send(expected_response.clone())
+        .await
+        .expect(&format!("sending expected response, line: {}", line!())); // Peer2 waits for the response
+
+    // TODO this should be an error
+    let _actual_response = rx.next().await.unwrap();
+}
