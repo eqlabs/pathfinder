@@ -103,7 +103,7 @@ pub enum Event<TRequest, TResponse, TChannelResponse = TResponse> {
         /// The ID of the outbound request.
         request_id: OutboundRequestId,
         /// The channel through which we can receive the responses.
-        channel: mpsc::Receiver<TResponse>,
+        channel: mpsc::Receiver<std::io::Result<TResponse>>,
     },
     /// An outbound request failed.
     OutboundFailure {

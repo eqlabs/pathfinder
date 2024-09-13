@@ -26,4 +26,4 @@ libp2p-plaintext = { workspace = true }
 libp2p-swarm-test = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "time"] }
-tracing-subscriber = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }

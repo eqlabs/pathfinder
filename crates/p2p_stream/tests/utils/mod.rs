@@ -252,7 +252,11 @@ pub async fn wait_inbound_request(
 
 pub async fn wait_outbound_request_sent_awaiting_responses(
     swarm: &mut Swarm<p2p_stream::Behaviour<TestCodec>>,
-) -> Result<(PeerId, OutboundRequestId, mpsc::Receiver<Action>)> {
+) -> Result<(
+    PeerId,
+    OutboundRequestId,
+    mpsc::Receiver<std::io::Result<Action>>,
+)> {
     loop {
         match swarm.select_next_some().await.try_into_behaviour_event() {
             Ok(p2p_stream::Event::OutboundRequestSentAwaitingResponses {
