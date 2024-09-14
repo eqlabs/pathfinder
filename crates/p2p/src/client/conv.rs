@@ -326,10 +326,10 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
-                    l1_gas: da.l1_gas.into(),
-                    l1_data_gas: da.l1_data_gas.into(),
-                    total_l1_gas: total.l1_gas.into(),
-                    total_l1_data_gas: total.l1_data_gas.into(),
+                    l1_gas: Some(da.l1_gas.into()),
+                    l1_data_gas: Some(da.l1_data_gas.into()),
+                    total_l1_gas: Some(total.l1_gas.into()),
+                    total_l1_data_gas: Some(total.l1_data_gas.into()),
                 }
             },
             revert_reason,
@@ -716,13 +716,25 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
                     data_availability: L1Gas {
-                        l1_gas: GasPrice::try_from(common.execution_resources.l1_gas)?.0,
-                        l1_data_gas: GasPrice::try_from(common.execution_resources.l1_data_gas)?.0,
+                        l1_gas: GasPrice::try_from(
+                            common.execution_resources.l1_gas.unwrap_or_default(),
+                        )?
+                        .0,
+                        l1_data_gas: GasPrice::try_from(
+                            common.execution_resources.l1_data_gas.unwrap_or_default(),
+                        )?
+                        .0,
                     },
                     total_gas_consumed: L1Gas {
-                        l1_gas: GasPrice::try_from(common.execution_resources.total_l1_gas)?.0,
+                        l1_gas: GasPrice::try_from(
+                            common.execution_resources.total_l1_gas.unwrap_or_default(),
+                        )?
+                        .0,
                         l1_data_gas: GasPrice::try_from(
-                            common.execution_resources.total_l1_data_gas,
+                            common
+                                .execution_resources
+                                .total_l1_data_gas
+                                .unwrap_or_default(),
                         )?
                         .0,
                     },
