@@ -1071,7 +1071,8 @@ macro_rules! define_test {
                 let actual_response = rx
                     .next()
                     .await
-                    .expect(&format!("receiving actual response, line: {}", line!()));
+                    .expect(&format!("receiving actual response, line: {}", line!()))
+                    .expect(&format!("response should be Ok(), line: {}", line!()));
                 // See if they match
                 assert_eq!(
                     expected_response,
