@@ -207,11 +207,7 @@ pub fn new_swarm_with_timeout(
 
     // SwarmExt::new_ephemeral uses async::std
     let swarm = new_ephemeral_with_tokio_executor(|_| {
-        p2p_stream::Behaviour::<TestCodec>::with_codec_and_protocols(
-            TestCodec::default(),
-            protocols,
-            cfg,
-        )
+        p2p_stream::Behaviour::<TestCodec>::with_codec_and_protocols(TestCodec, protocols, cfg)
     });
 
     let peed_id = *swarm.local_peer_id();

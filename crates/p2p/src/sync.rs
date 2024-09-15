@@ -105,8 +105,8 @@ pub(crate) mod codec {
     /// An enum to prevent _generic parameter explosion_ in the outer
     /// behaviour.
     ///
-    /// [`SyncCodec::ForTest`] falls back to [`SyncCodec::Prod`] unless the
-    /// caller explicitly sets a read/write factory.
+    /// `SyncCodec::ForTest` falls back to [`SyncCodec::Prod`] unless the caller
+    /// explicitly sets a read/write factory.
     #[derive(Clone)]
     pub enum SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> {
         Prod(ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>),

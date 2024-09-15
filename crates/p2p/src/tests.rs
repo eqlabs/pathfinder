@@ -1187,24 +1187,28 @@ async fn always_propagate_stream_errors_to_caller() {
         .client
         .send_headers_sync_request(peer1.peer_id, expected_request)
         .await
-        .expect(&format!(
-            "sending request using: {}, line: {}",
-            // std::stringify!($req_fn),
-            "TODO",
-            line!()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "sending request using: {}, line: {}",
+                // std::stringify!($req_fn),
+                "TODO",
+                line!()
+            )
+        });
 
     // Peer1 waits for response channel to be ready
-    let mut tx = tx_ready.recv().await.expect(&format!(
-        "waiting for response channel to be ready, line: {}",
-        line!()
-    ));
+    let mut tx = tx_ready.recv().await.unwrap_or_else(|| {
+        panic!(
+            "waiting for response channel to be ready, line: {}",
+            line!()
+        )
+    });
 
     let expected_response = Faker.fake::<BlockHeadersResponse>();
     // Peer1 sends 1 response, but peer2's codec is mocked to fail upon reception
     tx.send(expected_response.clone())
         .await
-        .expect(&format!("sending expected response, line: {}", line!())); // Peer2 waits for the response
+        .unwrap_or_else(|_| panic!("sending expected response, line: {}", line!())); // Peer2 waits for the response
 
     // TODO this should be an error
     let _actual_response = rx.next().await.unwrap();
