@@ -812,7 +812,7 @@ impl ProcessStage for StoreBlock {
             .context("Committing transaction")
             .map_err(Into::into);
 
-        tracing::info!(number=%block_number, "Block stored");
+        tracing::debug!(number=%block_number, "Block stored");
 
         result
     }
