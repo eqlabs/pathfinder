@@ -468,6 +468,7 @@ impl Behaviour {
         kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
         kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
         kademlia_config.set_periodic_bootstrap_interval(None);
+        kademlia_config.set_automatic_bootstrap_throttle(None);
 
         let peer_id = identity.public().to_peer_id();
 

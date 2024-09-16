@@ -793,7 +793,7 @@ impl MainLoop {
                         // and we haven't started dialing yet.
                         DialOpts::peer_id(peer_id)
                             .addresses(vec![addr.clone()])
-                            .condition(PeerCondition::Always)
+                            // .condition(PeerCondition::Always)
                             .build(),
                     ) {
                         Ok(_) => {
