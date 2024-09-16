@@ -166,10 +166,12 @@ impl ProcessStage for VerifyCommitment {
             }
         }
         if ordered_events.len() != events.len() {
+            tracing::debug!(expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
             return Err(SyncError2::EventsTransactionsMismatch);
         }
         let actual = calculate_event_commitment(&ordered_events, version)?;
         if actual != event_commitment {
+            tracing::debug!(expected=%event_commitment, actual=%actual, "Event commitment mismatch");
             return Err(SyncError2::EventCommitmentMismatch);
         }
         Ok(events)

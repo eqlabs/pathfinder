@@ -178,6 +178,7 @@ impl ProcessStage for ForwardContinuity {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
+            tracing::debug!(expected_block_number=%self.next, actual_block_number=%header.number, expected_parent_block_hash=%self.parent_hash, actual_parent_block_hash=%header.parent_hash, "Block chain discontinuity");
             return Err(SyncError2::Discontinuity);
         }
 
@@ -209,6 +210,7 @@ impl ProcessStage for BackwardContinuity {
         let number = self.number.ok_or(SyncError2::Discontinuity)?;
 
         if input.header.number != number || input.header.hash != self.hash {
+            tracing::debug!(expected_block_number=%number, actual_block_number=%input.header.number, expected_block_hash=%self.hash, actual_block_hash=%input.header.hash, "Block chain discontinuity");
             return Err(SyncError2::Discontinuity);
         }
 

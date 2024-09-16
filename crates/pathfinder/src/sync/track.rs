@@ -343,7 +343,14 @@ struct TransactionSource<P> {
 }
 
 impl<P> TransactionSource<P> {
-    fn spawn(self) -> SyncReceiver<(TransactionData, StarknetVersion, TransactionCommitment)>
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    )>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -394,6 +401,7 @@ impl<P> TransactionSource<P> {
                         peer,
                         (
                             transactions_vec,
+                            header.number,
                             header.starknet_version,
                             header.transaction_commitment,
                         ),
@@ -497,7 +505,14 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(self) -> SyncReceiver<(StateUpdateData, StarknetVersion, StateDiffCommitment)>
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        StateUpdateData,
+        BlockNumber,
+        StarknetVersion,
+        StateDiffCommitment,
+    )>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -527,6 +542,7 @@ impl<P> StateDiffSource<P> {
                         peer,
                         (
                             state_diff,
+                            header.header.number,
                             header.header.starknet_version,
                             header.header.state_diff_commitment,
                         ),
@@ -796,7 +812,7 @@ impl ProcessStage for StoreBlock {
             .context("Committing transaction")
             .map_err(Into::into);
 
-        tracing::info!(number=%block_number, "Block stored");
+        tracing::debug!(number=%block_number, "Block stored");
 
         result
     }
