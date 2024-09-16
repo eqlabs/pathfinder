@@ -6,7 +6,13 @@ message Felt252 {
     bytes elements = 1;
 }
 
+// A hash value represented as a Felt252
 message Hash {
+    bytes elements = 1;
+}
+
+// A 256 bit hash value (like Keccak256)
+message Hash256 {
     bytes elements = 1;
 }
 
