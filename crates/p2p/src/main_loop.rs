@@ -14,7 +14,7 @@ use libp2p::kad::{
     QueryResult,
 };
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::dial_opts::DialOpts;
+use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{identify, PeerId};
 use p2p_proto::class::ClassesResponse;
@@ -793,6 +793,7 @@ impl MainLoop {
                         // and we haven't started dialing yet.
                         DialOpts::peer_id(peer_id)
                             .addresses(vec![addr.clone()])
+                            .condition(PeerCondition::Always)
                             .build(),
                     ) {
                         Ok(_) => {

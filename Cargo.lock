@@ -354,7 +354,7 @@ dependencies = [
  "dashmap",
  "futures",
  "futures-utils-wasm",
- "lru 0.12.4",
+ "lru",
  "pin-project",
  "reqwest",
  "serde",
@@ -6328,7 +6328,7 @@ version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad964f312c59dcfcac840acd8c555de8403e295d39edf96f5240048b5fcaa314"
 dependencies = [
- "async-io 2.3.3",
+ "async-io 2.3.4",
  "futures",
  "futures-timer",
  "if-watch",

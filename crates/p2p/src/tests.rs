@@ -875,7 +875,7 @@ async fn evicted_peer_reconnection() {
     .await;
 
     tracing::error!("---- 1");
-    tracing::error!("---- 1");
+    tracing::error!("---- 1 PEER2 got evicted");
     tracing::error!("---- 1");
 
     // Mark peer3 as not useful, and hence a candidate for eviction.
@@ -907,7 +907,7 @@ async fn evicted_peer_reconnection() {
     .await;
 
     tracing::error!("---- 3");
-    tracing::error!("---- 3");
+    tracing::error!("---- 3 PEER2 still not connected");
     tracing::error!("---- 3");
 
     let c1 = peer1.client.for_test();
@@ -942,21 +942,64 @@ async fn evicted_peer_reconnection() {
     tracing::error!(%me3, ?dht3, ?con3, "---- PEER 3");
 
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_millis(3000)).await;
+    tokio::time::sleep(Duration::from_millis(5000)).await;
 
     tracing::error!("---- 4");
     tracing::error!("---- 4");
     tracing::error!("---- 4");
+
+    let dht1 = c1.get_peers_from_dht().await;
+    let con1 = c1
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht2 = c2.get_peers_from_dht().await;
+    let con2 = c2
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht3 = c3.get_peers_from_dht().await;
+    let con3 = c3
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
 
     tracing::error!(%me1, ?dht1, ?con1, "---- PEER 1");
     tracing::error!(%me2, ?dht2, ?con2, "---- PEER 2");
     tracing::error!(%me3, ?dht3, ?con3, "---- PEER 3");
 
-    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+    _ = peer1.client.dial(peer2.peer_id, addr2).await;
 
     tracing::error!("---- 5");
+    tracing::error!("---- 5 PEER2 should be connected by now");
+    tracing::error!("---- 5 PEER3 should be evicted by now");
     tracing::error!("---- 5");
-    tracing::error!("---- 5");
+
+    let dht1 = c1.get_peers_from_dht().await;
+    let con1 = c1
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht2 = c2.get_peers_from_dht().await;
+    let con2 = c2
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+    let dht3 = c3.get_peers_from_dht().await;
+    let con3 = c3
+        .get_connected_peers()
+        .await
+        .into_keys()
+        .collect::<Vec<_>>();
+
+    tracing::error!(%me1, ?dht1, ?con1, "---- PEER 1");
+    tracing::error!(%me2, ?dht2, ?con2, "---- PEER 2");
+    tracing::error!(%me3, ?dht3, ?con3, "---- PEER 3");
 
     // peer3 gets evicted.
     wait_for_event(&mut peer1.event_receiver, |event| match event {
