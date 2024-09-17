@@ -39,6 +39,7 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
+/// The default kademlia protocol name for a given Starknet chain.
 pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
     StreamProtocol::try_from_owned(format!("/starknet/kad/{}/1.0.0", chain_id.as_str()))
         .expect("Starts with /")
@@ -722,6 +723,10 @@ impl Behaviour {
         self.peers.update(peer_id, |peer| {
             peer.useful = false;
         });
+    }
+
+    pub fn kademlia(&self) -> &kad::Behaviour<MemoryStore> {
+        &self.inner.kademlia
     }
 
     pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<MemoryStore> {

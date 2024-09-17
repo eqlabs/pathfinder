@@ -43,7 +43,7 @@ impl Config {
                 max: 1000,
                 interval: Duration::from_secs(1),
             },
-            kad_names: Default::default(),
+            kad_name: Default::default(),
             stream_timeout: Duration::from_secs(10),
             max_concurrent_streams: 100,
         }

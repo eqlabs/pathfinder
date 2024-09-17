@@ -24,7 +24,6 @@ use p2p_proto::state::StateDiffsResponse;
 use p2p_proto::transaction::TransactionsResponse;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
-use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 
@@ -47,7 +46,6 @@ pub struct MainLoop {
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
-    chain_id: ChainId,
     /// Ongoing Kademlia bootstrap query.
     ongoing_bootstrap: Option<QueryId>,
     _pending_test_queries: TestQueries,
@@ -89,7 +87,6 @@ impl MainLoop {
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
         cfg: Config,
-        chain_id: ChainId,
     ) -> Self {
         Self {
             cfg,
@@ -99,7 +96,6 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
-            chain_id,
             ongoing_bootstrap: None,
             _pending_test_queries: Default::default(),
         }
@@ -313,10 +309,9 @@ impl MainLoop {
 
                     self.swarm.add_external_address(observed_addr);
 
-                    if protocols
-                        .iter()
-                        .any(|p| p.as_ref() == behaviour::kademlia_protocol_name(self.chain_id))
-                    {
+                    let my_kad_names = self.swarm.behaviour().kademlia().protocol_names();
+
+                    if protocols.iter().any(|p| my_kad_names.contains(p)) {
                         for addr in &listen_addrs {
                             self.swarm
                                 .behaviour_mut()

@@ -65,7 +65,7 @@ impl Builder {
         (
             client,
             event_receiver,
-            MainLoop::new(swarm, command_receiver, event_sender, cfg, chain_id),
+            MainLoop::new(swarm, command_receiver, event_sender, cfg),
         )
     }
 }
