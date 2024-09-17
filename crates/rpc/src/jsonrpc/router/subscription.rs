@@ -14,6 +14,7 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
+/// See [`RpcSubscriptionFlow`].
 #[axum::async_trait]
 pub(super) trait RpcSubscriptionEndpoint: Send + Sync {
     // Start the subscription.
@@ -62,7 +63,9 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// The value for the `method` field of the subscription notification.
     fn subscription_name() -> &'static str;
 
-    /// The block to start streaming from.
+    /// The block to start streaming from. If the subscription endpoint does not
+    /// support catching up, the value returned by this method is
+    /// irrelevant.
     fn starting_block(req: &Self::Request) -> BlockId;
 
     /// Fetch historical data from the `from` block to the `to` block. The
@@ -104,37 +107,55 @@ where
             _phantom: Default::default(),
         };
 
-        // Catch up to the latest block in batches of BATCH_SIZE.
-        let first_block = pathfinder_storage::BlockId::try_from(T::starting_block(&req))
-            .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
-        let storage = state.storage.clone();
-        let mut current_block = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
-            let mut conn = storage.connection().map_err(RpcError::InternalError)?;
-            let db = conn.transaction().map_err(RpcError::InternalError)?;
-            db.block_number(first_block)
-                .map_err(RpcError::InternalError)?
-                .ok_or_else(|| ApplicationError::BlockNotFound.into())
-        })
-        .await
-        .map_err(|e| RpcError::InternalError(e.into()))??;
-        const BATCH_SIZE: u64 = 64;
-        loop {
-            let messages =
-                T::catch_up(&state, &req, current_block, current_block + BATCH_SIZE).await?;
-            if messages.is_empty() {
-                // Caught up.
-                break;
+        let first_block = T::starting_block(&req);
+
+        let current_block = match &first_block {
+            BlockId::Pending => {
+                return Err(RpcError::InvalidParams(
+                    "Pending block is not supported for new heads subscription".to_string(),
+                ));
             }
-            for (message, block_number) in messages {
-                if tx.send(message).await.is_err() {
-                    // Subscription closing.
-                    return Ok(());
+            BlockId::Latest => {
+                // No need to catch up. The code below will subscribe to new blocks.
+                BlockNumber::MAX
+            }
+            BlockId::Number(_) | BlockId::Hash(_) => {
+                // Catch up to the latest block in batches of BATCH_SIZE.
+                let first_block = pathfinder_storage::BlockId::try_from(T::starting_block(&req))
+                    .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+                let storage = state.storage.clone();
+                let mut current_block =
+                    tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+                        let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+                        let db = conn.transaction().map_err(RpcError::InternalError)?;
+                        db.block_number(first_block)
+                            .map_err(RpcError::InternalError)?
+                            .ok_or_else(|| ApplicationError::BlockNotFound.into())
+                    })
+                    .await
+                    .map_err(|e| RpcError::InternalError(e.into()))??;
+                const BATCH_SIZE: u64 = 64;
+                loop {
+                    let messages =
+                        T::catch_up(&state, &req, current_block, current_block + BATCH_SIZE)
+                            .await?;
+                    if messages.is_empty() {
+                        // Caught up.
+                        break;
+                    }
+                    for (message, block_number) in messages {
+                        if tx.send(message).await.is_err() {
+                            // Subscription closing.
+                            return Ok(());
+                        }
+                        current_block = block_number;
+                    }
+                    // Increment the current block by 1 because the catch_up range is inclusive.
+                    current_block += 1;
                 }
-                current_block = block_number;
+                current_block
             }
-            // Increment the current block by 1 because the catch_up range is inclusive.
-            current_block += 1;
-        }
+        };
 
         // Subscribe to new blocks. Receive the first subscription message.
         let (tx1, mut rx1) = mpsc::channel::<(T::Notification, BlockNumber)>(1024);
@@ -185,22 +206,28 @@ where
     }
 }
 
-pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
-    let subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>> =
-        Default::default();
-    // Send messages to the websocket using an mpsc channel.
-    let (tx, mut rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
-    let (mut ws_tx, mut ws_rx) = ws.split();
+type WsSender = mpsc::Sender<Result<Message, RpcResponse>>;
+type WsReceiver = mpsc::Receiver<Result<Message, axum::Error>>;
+
+/// Split a websocket into an MPSC sender and receiver.
+/// These two are later passed to [`handle_json_rpc_socket`]. This separation
+/// serves to allow easier testing. The sender sends `Result<_, RpcResponse>`
+/// purely for convenience, and the [`RpcResponse`] will be encoded into a
+/// [`Message::Text`].
+pub fn split_ws(ws: WebSocket) -> (WsSender, WsReceiver) {
+    let (mut ws_sender, mut ws_receiver) = ws.split();
+    // Send messages to the websocket using an MPSC channel.
+    let (sender_tx, mut sender_rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
     tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
+        while let Some(msg) = sender_rx.recv().await {
             match msg {
                 Ok(msg) => {
-                    if ws_tx.send(msg).await.is_err() {
+                    if ws_sender.send(msg).await.is_err() {
                         break;
                     }
                 }
                 Err(e) => {
-                    if ws_tx
+                    if ws_sender
                         .send(Message::Text(serde_json::to_string(&e).unwrap()))
                         .await
                         .is_err()
@@ -211,10 +238,29 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
             }
         }
     });
+    // Receive messages from the websocket using an MPSC channel.
+    let (receiver_tx, receiver_rx) = mpsc::channel::<Result<Message, axum::Error>>(1024);
+    tokio::spawn(async move {
+        while let Some(msg) = ws_receiver.next().await {
+            if receiver_tx.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+    (sender_tx, receiver_rx)
+}
+
+pub fn handle_json_rpc_socket(
+    state: RpcRouter,
+    ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
+    mut ws_rx: mpsc::Receiver<Result<Message, axum::Error>>,
+) {
+    let subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>> =
+        Default::default();
     // Read and handle messages from the websocket.
     tokio::spawn(async move {
         loop {
-            let request = match ws_rx.next().await {
+            let request = match ws_rx.recv().await {
                 Some(Ok(Message::Text(msg))) => msg.into_bytes(),
                 Some(Ok(Message::Binary(bytes))) => bytes,
                 Some(Ok(Message::Pong(_) | Message::Ping(_))) => {
@@ -234,7 +280,7 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
             let rpc_request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
                 Ok(request) => request,
                 Err(err) => {
-                    if tx
+                    if ws_tx
                         .send(Err(RpcResponse::parse_error(err.to_string())))
                         .await
                         .is_err()
@@ -245,13 +291,14 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                     continue;
                 }
             };
+            let req_id = rpc_request.id;
 
             if rpc_request.method == "starknet_unsubscribe" {
                 // End the subscription.
                 let Some(params) = rpc_request.params.0 else {
-                    if tx
+                    if ws_tx
                         .send(Err(RpcResponse::invalid_params(
-                            rpc_request.id,
+                            req_id,
                             "Missing params for starknet_unsubscribe".to_string(),
                         )))
                         .await
@@ -264,11 +311,8 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                 let params = match serde_json::from_str::<StarknetUnsubscribeParams>(params.get()) {
                     Ok(params) => params,
                     Err(err) => {
-                        if tx
-                            .send(Err(RpcResponse::invalid_params(
-                                rpc_request.id,
-                                err.to_string(),
-                            )))
+                        if ws_tx
+                            .send(Err(RpcResponse::invalid_params(req_id, err.to_string())))
                             .await
                             .is_err()
                         {
@@ -278,9 +322,9 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                     }
                 };
                 let Some((_, handle)) = subscriptions.remove(&params.subscription_id) else {
-                    if tx
+                    if ws_tx
                         .send(Err(RpcResponse::invalid_params(
-                            rpc_request.id,
+                            req_id,
                             "Subscription not found".to_string(),
                         )))
                         .await
@@ -291,7 +335,21 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                     continue;
                 };
                 handle.abort();
+                if ws_tx
+                    .send(Ok(Message::Text(
+                        serde_json::to_string(&RpcResponse {
+                            output: Ok(true.into()),
+                            id: req_id.clone(),
+                        })
+                        .unwrap(),
+                    )))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
                 metrics::increment_counter!("rpc_method_calls_total", "method" => "starknet_unsubscribe", "version" => state.version.to_str());
+                continue;
             }
 
             // Also grab the method_name as it is a static str, which is required by the
@@ -300,11 +358,12 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                 .subscription_endpoints
                 .get_key_value(rpc_request.method.as_ref())
             else {
-                tx.send(Ok(Message::Text(
-                    serde_json::to_string(&RpcResponse::method_not_found(rpc_request.id)).unwrap(),
-                )))
-                .await
-                .ok();
+                ws_tx
+                    .send(Ok(Message::Text(
+                        serde_json::to_string(&RpcResponse::method_not_found(req_id)).unwrap(),
+                    )))
+                    .await
+                    .ok();
                 continue;
             };
             metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => state.version.to_str());
@@ -312,7 +371,7 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
             let params = match serde_json::to_value(rpc_request.params) {
                 Ok(params) => params,
                 Err(_e) => {
-                    if tx
+                    if ws_tx
                         .send(Ok(Message::Text(
                             serde_json::to_string(&RpcError::InvalidParams(
                                 "Invalid params".to_string(),
@@ -332,9 +391,8 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
             let subscription_id = SubscriptionId::next();
             let context = state.context.clone();
             let version = state.version;
-            let tx = tx.clone();
-            let req_id = rpc_request.id;
-            if tx
+            let ws_tx = ws_tx.clone();
+            if ws_tx
                 .send(Ok(Message::Text(
                     serde_json::to_string(&RpcResponse {
                         output: Ok(
@@ -360,16 +418,17 @@ pub async fn handle_json_rpc_socket(state: RpcRouter, ws: WebSocket) {
                             subscription_id,
                             subscriptions,
                             version,
-                            tx.clone(),
+                            ws_tx.clone(),
                         )
                         .await
                     {
-                        tx.send(Err(RpcResponse {
-                            output: Err(e),
-                            id: req_id,
-                        }))
-                        .await
-                        .ok();
+                        ws_tx
+                            .send(Err(RpcResponse {
+                                output: Err(e),
+                                id: req_id,
+                            }))
+                            .await
+                            .ok();
                     }
                 }
             });

@@ -1026,7 +1026,7 @@ pub mod request {
 
                 assert_eq!(serde_json::to_value(&txs).unwrap(), json_fixture);
                 assert_eq!(
-                    crate::dto::Value::new(dbg!(json_fixture), crate::RpcVersion::V07)
+                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V07)
                         .deserialize_array(
                             <BroadcastedTransaction as DeserializeForVersion>::deserialize
                         )

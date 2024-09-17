@@ -9,6 +9,8 @@ use std::sync::Arc;
 pub use error::RpcError;
 pub use request::RpcRequest;
 pub use response::RpcResponse;
+#[cfg(test)]
+pub use router::handle_json_rpc_socket;
 pub use router::{rpc_handler, RpcRouter, RpcRouterBuilder, RpcSubscriptionFlow};
 use tokio::sync::broadcast;
 

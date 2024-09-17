@@ -238,7 +238,7 @@ impl Default for SyncState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct SubscriptionId(pub u32);
+pub(crate) struct SubscriptionId(pub u32);
 
 impl SubscriptionId {
     pub fn next() -> Self {

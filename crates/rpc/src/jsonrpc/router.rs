@@ -7,8 +7,8 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use method::RpcMethodEndpoint;
-pub use subscription::RpcSubscriptionFlow;
-use subscription::{handle_json_rpc_socket, RpcSubscriptionEndpoint};
+pub use subscription::{handle_json_rpc_socket, RpcSubscriptionFlow};
+use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
@@ -186,7 +186,8 @@ pub async fn rpc_handler(
 ) -> impl axum::response::IntoResponse {
     match ws {
         Some(ws) => ws.on_upgrade(|ws| async move {
-            handle_json_rpc_socket(state, ws).await;
+            let (ws_tx, ws_rx) = split_ws(ws);
+            handle_json_rpc_socket(state, ws_tx, ws_rx);
         }),
         None => {
             // Only utf8 json content allowed.
