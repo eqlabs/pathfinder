@@ -166,10 +166,10 @@ pub async fn with_metrics<T>(
 
     metrics::histogram!(METRIC_REQUESTS_LATENCY, elapsed, "method" => meta.method);
 
-    result.map_err(|e| {
+    result.inspect_err(|e| {
         increment(METRIC_FAILED_REQUESTS, meta);
 
-        match &e {
+        match e {
             SequencerError::StarknetError(_) => {
                 increment_failed(meta, REASON_STARKNET);
             }
@@ -191,7 +191,5 @@ pub async fn with_metrics<T>(
             }
             SequencerError::ReqwestError(_) => {}
         }
-
-        e
     })
 }

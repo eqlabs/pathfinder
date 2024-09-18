@@ -424,7 +424,7 @@ impl ChainId {
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(self.0.as_be_bytes())
             .expect("valid utf8")
-            .trim_start_matches(|c| c == '\0')
+            .trim_start_matches('\0')
     }
 
     pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");

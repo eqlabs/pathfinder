@@ -200,11 +200,10 @@ pub fn trace(
                 err
             })?;
         let state_diff =
-            to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash).map_err(|e| {
+            to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash).inspect_err(|_| {
                 // Remove the cache entry so it's no longer inflight.
                 let mut cache = cache.0.lock().unwrap();
                 cache.cache_remove(&block_hash);
-                e
             })?;
         tx_state.commit();
 
