@@ -101,6 +101,8 @@ pub struct L2SyncContext<GatewayClient> {
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub is_bulk_sync_enabled: bool,
+    pub sync_up_to: Option<BlockNumber>,
 }
 
 pub async fn sync<GatewayClient>(
@@ -113,16 +115,23 @@ pub async fn sync<GatewayClient>(
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
-    // Phase 1: catch up to the latest block
-    let bulk_tail = latest.borrow().0;
-    bulk_sync(
-        tx_event.clone(),
-        context.clone(),
-        &mut blocks,
-        &mut head,
-        bulk_tail,
-    )
-    .await?;
+    if context.is_bulk_sync_enabled {
+        // Phase 1: catch up to the latest block
+        let mut bulk_tail = latest.borrow().0;
+
+        if let Some(sync_up_to) = context.sync_up_to {
+            bulk_tail = std::cmp::min(bulk_tail, sync_up_to);
+        }
+
+        bulk_sync(
+            tx_event.clone(),
+            context.clone(),
+            &mut blocks,
+            &mut head,
+            bulk_tail,
+        )
+        .await?;
+    }
 
     let L2SyncContext {
         sequencer,
@@ -132,6 +141,8 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency: _,
+        is_bulk_sync_enabled: _,
+        sync_up_to,
     } = context;
 
     // Start polling head of chain
@@ -141,6 +152,12 @@ where
             Some(head) => (head.0 + 1, Some(head)),
             None => (BlockNumber::GENESIS, None),
         };
+
+        if let Some(sync_up_to) = sync_up_to {
+            if next > sync_up_to {
+                return Ok(());
+            }
+        }
 
         // We start downloading the signature for the block
         let signature_handle = tokio::spawn({
@@ -641,6 +658,8 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency,
+        is_bulk_sync_enabled: _,
+        sync_up_to: _,
     } = context;
 
     let mut start = match head {
@@ -1343,6 +1362,8 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                is_bulk_sync_enabled: true,
+                sync_up_to: None,
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -1370,6 +1391,8 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+                is_bulk_sync_enabled: true,
+                sync_up_to: None,
             };
 
             tokio::spawn(async move {
@@ -1811,6 +1834,8 @@ mod tests {
                     storage: StorageBuilder::in_memory().unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                    is_bulk_sync_enabled: true,
+                    sync_up_to: None,
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 

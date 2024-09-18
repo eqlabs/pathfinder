@@ -58,6 +58,10 @@ async fn async_main() -> anyhow::Result<()> {
         "🏁 Starting node."
     );
 
+    info!(is_enabled=%config.is_bulk_sync_enabled ,"BULK SYNC");
+
+    // return Ok(());
+
     if !config.data_directory.exists() {
         std::fs::DirBuilder::new()
             .create(&config.data_directory)
@@ -597,6 +601,8 @@ fn start_feeder_gateway_sync(
         gossiper,
         sequencer_public_key: gateway_public_key,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
+        is_bulk_sync_enabled: config.is_bulk_sync_enabled,
+        sync_up_to: config.sync_up_to,
     };
 
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))

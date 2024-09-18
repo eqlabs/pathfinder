@@ -92,6 +92,8 @@ pub struct SyncContext<G, E> {
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub is_bulk_sync_enabled: bool,
+    pub sync_up_to: Option<BlockNumber>,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -121,6 +123,8 @@ where
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
             fetch_concurrency: value.fetch_concurrency,
+            is_bulk_sync_enabled: value.is_bulk_sync_enabled,
+            sync_up_to: value.sync_up_to,
         }
     }
 }
@@ -201,6 +205,8 @@ where
         gossiper,
         sequencer_public_key: _,
         fetch_concurrency: _,
+        is_bulk_sync_enabled: _,
+        sync_up_to: _,
     } = context;
 
     let mut db_conn = storage

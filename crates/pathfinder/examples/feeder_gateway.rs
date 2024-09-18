@@ -23,11 +23,12 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::num::NonZeroU32;
+use std::ops::RangeInclusive;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{ensure, Context};
 use clap::{Args, Parser};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
@@ -41,6 +42,7 @@ use pathfinder_common::{
 use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
     DeclaredSierraClass,
@@ -64,10 +66,32 @@ struct Cli {
 
 #[derive(Debug, Clone, Args)]
 struct ReorgCli {
-    #[arg(long, long_help = "Reorg should happen after this block", value_parser = parse_block_number, requires = "reorg_to_block")]
-    pub reorg_at_block: Option<BlockNumber>,
-    #[arg(long, long_help = "Reorg should roll back state to this block", value_parser = parse_block_number, requires = "reorg_at_block")]
-    pub reorg_to_block: Option<BlockNumber>,
+    #[arg(long,
+        long_help = "Min and max distance between reorgs, you must provide both values as a comma separated list, e.g.: 100,200",
+        value_parser = parse_block_range,
+        requires = "reorg_depth")]
+    pub distance_to_next_reorg: Option<(BlockNumber, BlockNumber)>,
+    #[arg(long,
+        long_help = "Min and max reorg depth, you must provide both values as a comma separated list, e.g.: 1,10, cannot exceed distance between reorgs",
+        value_parser = parse_block_range,
+        requires = "distance_to_next_reorg")]
+    pub reorg_depth: Option<(BlockNumber, BlockNumber)>,
+}
+
+fn parse_block_range(s: &str) -> Result<(BlockNumber, BlockNumber), String> {
+    let mut items = s.split(',');
+    if items.clone().count() != 2 {
+        return Err("Expected two values separated by a comma".to_string());
+    }
+
+    let start = parse_block_number(items.next().expect(""))?;
+    let end = parse_block_number(items.next().expect(""))?;
+
+    if start > end {
+        return Err("Range start > range end".to_string());
+    }
+
+    Ok((start, end))
 }
 
 fn parse_block_number(s: &str) -> Result<BlockNumber, String> {
@@ -75,6 +99,35 @@ fn parse_block_number(s: &str) -> Result<BlockNumber, String> {
         .parse()
         .map_err(|e| format!("Invalid block number '{s}': {e}"))?;
     BlockNumber::new(n).ok_or_else(|| format!("Invalid block number '{s}'"))
+}
+
+/// Ranges are within valid BlockNumber values
+#[derive(Clone, Debug)]
+struct ReorgConfig {
+    pub distance_to_next: RangeInclusive<u64>,
+    pub depth: RangeInclusive<u64>,
+}
+
+impl TryFrom<ReorgCli> for Option<ReorgConfig> {
+    type Error = anyhow::Error;
+
+    fn try_from(cli: ReorgCli) -> Result<Self, Self::Error> {
+        match (cli.distance_to_next_reorg, cli.reorg_depth) {
+            (Some((min_dist, max_dist)), Some((min_depth, max_depth))) => {
+                ensure!(
+                    max_depth < min_dist,
+                    "Maximum reorg depth must be less than minimum distance to next reorg"
+                );
+
+                Ok(Some(ReorgConfig {
+                    distance_to_next: min_dist.get()..=max_dist.get(),
+                    depth: min_depth.get()..=max_depth.get(),
+                }))
+            }
+            (None, None) => Ok(None),
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[tokio::main]
@@ -85,18 +138,67 @@ async fn main() -> anyhow::Result<()> {
         .with(fmt::layer())
         .with(EnvFilter::from_default_env())
         .init();
-    serve(cli).await
+
+    serve(cli.database_path, cli.reorg.try_into()?).await
 }
 
-#[derive(Debug, Clone)]
-struct ReorgConfig {
-    pub reorg_at_block: BlockNumber,
-    pub reorg_to_block: BlockNumber,
+#[derive(Debug)]
+struct ReorgContext {
+    in_progress: AtomicBool,
+    to_block: AtomicU64,
+    depth: AtomicU64,
+    cfg: ReorgConfig,
 }
 
-async fn serve(cli: Cli) -> anyhow::Result<()> {
-    let database_path = std::env::args().nth(1).unwrap();
-    let storage = pathfinder_storage::StorageBuilder::file(database_path.into())
+impl ReorgContext {
+    pub fn new(cfg: ReorgConfig) -> Self {
+        let to_block = rand::thread_rng().gen_range(cfg.distance_to_next.clone());
+        let depth = rand::thread_rng().gen_range(cfg.depth.clone());
+
+        tracing::info!(%to_block, %depth, "Next reorg");
+
+        Self {
+            in_progress: AtomicBool::new(false),
+            to_block: AtomicU64::new(to_block),
+            depth: AtomicU64::new(depth),
+            cfg,
+        }
+    }
+
+    pub fn finish(&self) {
+        let distance = rand::thread_rng().gen_range(self.cfg.distance_to_next.clone());
+        let depth = rand::thread_rng().gen_range(self.cfg.depth.clone());
+
+        self.to_block.fetch_add(distance, Ordering::Relaxed);
+        self.depth.store(depth, Ordering::Relaxed);
+        self.in_progress.store(false, Ordering::Relaxed);
+
+        tracing::info!(to_block=%self.to_block.load(Ordering::Relaxed), %depth, "Next reorg");
+    }
+
+    pub fn in_progress(&self) -> bool {
+        self.in_progress.load(Ordering::Relaxed)
+    }
+
+    pub fn start(&self) {
+        self.in_progress.store(true, Ordering::Relaxed);
+    }
+
+    pub fn starts_at(&self) -> BlockNumber {
+        BlockNumber::new_or_panic(
+            self.to_block.load(Ordering::Relaxed) + self.depth.load(Ordering::Relaxed),
+        )
+    }
+
+    pub fn to_block(&self) -> BlockNumber {
+        BlockNumber::new_or_panic(self.to_block.load(Ordering::Relaxed))
+    }
+}
+
+async fn serve(database_path: PathBuf, reorg_config: Option<ReorgConfig>) -> anyhow::Result<()> {
+    tracing::info!(?reorg_config, "Reorg config");
+
+    let storage = pathfinder_storage::StorageBuilder::file(database_path)
         .migrate()?
         .create_pool(NonZeroU32::new(10).unwrap())
         .unwrap();
@@ -107,13 +209,9 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         get_chain(&tx)?
     };
 
-    let reorg_config = cli.reorg.reorg_at_block.and_then(|reorg_at_block| {
-        cli.reorg.reorg_to_block.map(|reorg_to_block| ReorgConfig {
-            reorg_at_block,
-            reorg_to_block,
-        })
-    });
-    let reorged = Arc::new(AtomicBool::new(false));
+    let reorg_context = reorg_config.map(ReorgContext::new).map(Arc::new);
+
+    tracing::info!(?reorg_context, "Reorg context");
 
     let get_contract_addresses = warp::path("get_contract_addresses").map(move || {
         let addresses = contract_addresses(chain).unwrap();
@@ -241,13 +339,11 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         .and(warp::query::<BlockIdParam>())
         .and_then({
             let storage = storage.clone();
-            let reorg_config = reorg_config.clone();
-            let reorged = reorged.clone();
+            let reorg_context = reorg_context.clone();
 
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
-                let reorg_config = reorg_config.clone();
-                let reorged = reorged.clone();
+                let reorg_context = reorg_context.clone();
                 async move {
                     let include_block = block_id.include_block.unwrap_or(false);
 
@@ -257,7 +353,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                let state_update = resolve_state_update(&tx, block_id, reorg_config, reorged);
+                                let state_update = resolve_state_update(&tx, block_id, reorg_context);
                                 let block = resolve_block(&tx, block_id);
 
                                 (state_update, block)
@@ -504,23 +600,30 @@ fn resolve_signature(
 fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
     block: BlockId,
-    reorg_config: Option<ReorgConfig>,
-    reorged: Arc<AtomicBool>,
+    reorg_context: Option<Arc<ReorgContext>>,
 ) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
-    let block = if let Some(reorg_config) = reorg_config {
+    let block = if let Some(reorg_context) = reorg_context {
         match block {
             BlockId::Number(block_number) => {
-                if reorged.load(Ordering::Relaxed) {
-                    // reorg is active
-                    if block_number > reorg_config.reorg_to_block {
+                let to_block = reorg_context.to_block();
+
+                if reorg_context.in_progress() {
+                    if block_number > to_block {
+                        // reorg is active
                         anyhow::bail!("Reorged block requested");
+                    } else {
+                        // reorg can be finished now
+                        tracing::warn!(%to_block, requested=%block_number, "Reorg done");
+
+                        reorg_context.finish();
                     }
-                    reorged.store(false, Ordering::Relaxed);
                 } else {
                     // reorg should start at this block
-                    if block_number > reorg_config.reorg_at_block {
-                        tracing::warn!(%reorg_config.reorg_to_block, "Reorg");
-                        reorged.store(true, Ordering::Relaxed);
+                    if block_number > reorg_context.starts_at() {
+                        tracing::warn!(%to_block, requested=%block_number, "Reorg start");
+
+                        reorg_context.start();
+
                         anyhow::bail!("Reorg happened");
                     }
                 }
@@ -528,8 +631,8 @@ fn resolve_state_update(
                 block
             }
             BlockId::Latest => {
-                if reorged.load(Ordering::Relaxed) {
-                    reorg_config.reorg_to_block.into()
+                if reorg_context.in_progress() {
+                    reorg_context.to_block().into()
                 } else {
                     block
                 }

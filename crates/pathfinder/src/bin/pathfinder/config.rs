@@ -11,7 +11,7 @@ use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
-use pathfinder_common::AllowedOrigins;
+use pathfinder_common::{AllowedOrigins, BlockNumber};
 use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
@@ -169,7 +169,8 @@ Examples:
     debug: (),
 
     #[arg(
-        long = "sync.verify_tree_node_data",
+        long = "sync.verify-tree-node-data",
+        alias = "sync.verify_tree_node_data",
         long_help = r"When enabled, state tree node hashes are verified when loaded from disk.
 
 This can be used to identify tree node data corruption which is useful when debugging a state commitment mismatch.
@@ -282,6 +283,23 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
     )]
     custom_versioned_constants_path: Option<PathBuf>,
+
+    #[arg(
+        long = "experimental.enable-bulk-sync",
+        long_help = "Enable bulk sync when syncing the chain",
+        env = "PATHFINDER_EXPERIMENTAL_BULK_SYNC_ENABLED",
+        default_value = "true",
+        action=ArgAction::Set
+    )]
+    is_bulk_sync_enabled: bool,
+
+    #[arg(
+        long = "experimental.sync-up-to",
+        long_help = "Stop the sync after updating the state to the given block",
+        env = "PATHFINDER_EXPERIMENTAL_SYNC_UP_TO",
+        value_parser = parse_block_number,
+    )]
+    sync_up_to: Option<BlockNumber>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -327,6 +345,13 @@ fn parse_state_tries(s: &str) -> Result<StateTries, String> {
             Ok(StateTries::Pruned(value))
         }
     }
+}
+
+fn parse_block_number(s: &str) -> Result<BlockNumber, String> {
+    let n: u64 = s
+        .parse()
+        .map_err(|e| format!("Invalid block number '{s}': {e}"))?;
+    BlockNumber::new(n).ok_or_else(|| format!("Invalid block number '{s}'"))
 }
 
 #[derive(clap::Args)]
@@ -698,6 +723,8 @@ pub struct Config {
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
+    pub is_bulk_sync_enabled: bool,
+    pub sync_up_to: Option<BlockNumber>,
 }
 
 pub struct Ethereum {
@@ -987,6 +1014,8 @@ impl Config {
             custom_versioned_constants: cli
                 .custom_versioned_constants_path
                 .map(parse_versioned_constants_or_exit),
+            is_bulk_sync_enabled: cli.is_bulk_sync_enabled,
+            sync_up_to: cli.sync_up_to,
         }
     }
 }
