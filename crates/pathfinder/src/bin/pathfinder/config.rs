@@ -475,8 +475,7 @@ Example:
     #[arg(
         long = "p2p.experimental.kad-name",
         long_help = "Custom Kademlia protocol name.",
-        value_name = "LIST",
-        value_delimiter = ',',
+        value_name = "PROTOCOL_NAME",
         env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAME"
     )]
     kad_name: Option<String>,
