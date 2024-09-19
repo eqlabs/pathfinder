@@ -473,13 +473,12 @@ Example:
     ip_whitelist: Vec<IpNet>,
 
     #[arg(
-        long = "p2p.experimental.kad-names",
-        long_help = "Comma separated list of custom Kademlia protocol names.",
-        value_name = "LIST",
-        value_delimiter = ',',
-        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAMES"
+        long = "p2p.experimental.kad-name",
+        long_help = "Custom Kademlia protocol name.",
+        value_name = "PROTOCOL_NAME",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAME"
     )]
-    kad_names: Vec<String>,
+    kad_name: Option<String>,
 
     #[arg(
         long = "p2p.experimental.l1-checkpoint-override-json-path",
@@ -731,7 +730,7 @@ pub struct P2PConfig {
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
     pub low_watermark: usize,
-    pub kad_names: Vec<String>,
+    pub kad_name: Option<String>,
     pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
     pub max_concurrent_streams: usize,
@@ -850,7 +849,7 @@ impl P2PConfig {
                 .exit()
         }
 
-        if args.kad_names.iter().any(|x| !x.starts_with('/')) {
+        if args.kad_name.iter().any(|x| !x.starts_with('/')) {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
@@ -878,7 +877,7 @@ impl P2PConfig {
             predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
             low_watermark: 0,
-            kad_names: args.kad_names,
+            kad_name: args.kad_name,
             l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),
             max_concurrent_streams: args.max_concurrent_streams,

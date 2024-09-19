@@ -96,18 +96,11 @@ impl Builder {
 
         // This makes sure that the DHT we're implementing is incompatible with the
         // "default" IPFS DHT from libp2p.
-        let protocol_name = if cfg.kad_names.is_empty() {
-            kademlia_protocol_name(chain_id)
-        } else {
-            // TODO change config to use 1 protocol name
-            cfg.kad_names
-                .iter()
-                .cloned()
-                .map(StreamProtocol::try_from_owned)
-                .collect::<Result<Vec<_>, _>>()
-                .expect("valid protocol names")
-                .swap_remove(0)
-        };
+        let protocol_name = cfg
+            .kad_name
+            .clone()
+            .map(|x| StreamProtocol::try_from_owned(x).expect("valid protocol name"))
+            .unwrap_or_else(|| kademlia_protocol_name(chain_id));
 
         let mut kademlia_config = kad::Config::new(protocol_name);
         kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));

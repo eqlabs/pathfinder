@@ -177,7 +177,7 @@ async fn periodic_bootstrap() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -329,7 +329,7 @@ async fn reconnect_too_quickly() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -434,7 +434,7 @@ async fn duplicate_connection() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -523,7 +523,7 @@ async fn outbound_peer_eviction() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -655,7 +655,7 @@ async fn inbound_peer_eviction() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -744,7 +744,7 @@ async fn evicted_peer_reconnection() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -838,7 +838,7 @@ async fn ip_whitelist() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -874,7 +874,7 @@ async fn ip_whitelist() {
             max: 1000,
             interval: Duration::from_secs(1),
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
@@ -911,7 +911,7 @@ async fn rate_limit() {
             max: 2,
             interval: RATE_LIMIT_INTERVAL,
         },
-        kad_names: Default::default(),
+        kad_name: Default::default(),
         stream_timeout: Duration::from_secs(10),
         max_concurrent_streams: 100,
     };
