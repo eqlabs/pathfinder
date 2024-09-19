@@ -27,3 +27,4 @@ libp2p-swarm-test = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["macros", "time"] }
+# tracing-subscriber = { workspace = true, features = ["env-filter"] }

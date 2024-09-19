@@ -141,6 +141,7 @@ async fn main() -> anyhow::Result<()> {
                                     observed_addr,
                                     ..
                                 },
+                                ..
                         } = *e
                         {
                             // Important change in libp2p-v0.52 compared to v0.51:

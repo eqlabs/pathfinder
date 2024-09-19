@@ -63,6 +63,7 @@ use std::{fmt, io};
 pub use codec::Codec;
 use futures::channel::mpsc;
 use handler::Handler;
+use libp2p::core::transport::PortUse;
 use libp2p::core::{ConnectedPoint, Endpoint, Multiaddr};
 use libp2p::identity::PeerId;
 use libp2p::swarm::behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm};
@@ -630,6 +631,7 @@ where
         peer: PeerId,
         remote_address: &Multiaddr,
         _: Endpoint,
+        _: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         let mut handler = Handler::new(
             self.protocols.clone(),

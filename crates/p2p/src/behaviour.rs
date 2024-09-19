@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
+use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::store::MemoryStore;
@@ -21,7 +22,7 @@ use libp2p::swarm::{
     THandlerOutEvent,
     ToSwarm,
 };
-use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId};
+use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId, StreamProtocol};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -38,8 +39,9 @@ use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
-pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
-    format!("/starknet/kad/{}/1.0.0", chain_id.as_str())
+pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
+    StreamProtocol::try_from_owned(format!("/starknet/kad/{}/1.0.0", chain_id.as_str()))
+        .expect("Starts with /")
 }
 
 pub type BehaviourWithRelayTransport = (Behaviour, relay::client::Transport);
@@ -121,6 +123,7 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         // Disconnect peers without an IP address.
         Self::get_ip(addr)?;
@@ -128,8 +131,13 @@ impl NetworkBehaviour for Behaviour {
         self.check_duplicate_connection(peer)?;
         self.prevent_evicted_peer_reconnections(peer)?;
 
-        self.inner
-            .handle_established_outbound_connection(connection_id, peer, addr, role_override)
+        self.inner.handle_established_outbound_connection(
+            connection_id,
+            peer,
+            addr,
+            role_override,
+            port_use,
+        )
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
