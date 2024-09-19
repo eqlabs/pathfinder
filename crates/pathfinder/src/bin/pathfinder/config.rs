@@ -928,6 +928,7 @@ fn parse_l1_checkpoint_or_exit(
             state_root: dto.state_root,
             block_number: dto.block_number,
             block_hash: dto.block_hash,
+            l1_block_number: None,
         }
     })
 }

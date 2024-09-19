@@ -43,6 +43,7 @@ impl Transaction<'_> {
                     state_root,
                     block_number,
                     block_hash,
+                    l1_block_number: None,
                 })
             },
         )
@@ -66,6 +67,7 @@ impl Transaction<'_> {
                     state_root,
                     block_number,
                     block_hash,
+                    l1_block_number: None,
                 })
             },
         )
@@ -91,6 +93,7 @@ mod tests {
                 state_root: StateCommitment(Felt::from_hex_str(&"3".repeat(i + 1)).unwrap()),
                 block_number: BlockNumber::GENESIS + i as u64,
                 block_hash: BlockHash(Felt::from_hex_str(&"F".repeat(i + 1)).unwrap()),
+                l1_block_number: None,
             })
             .collect::<Vec<_>>()
             .try_into()
@@ -154,6 +157,7 @@ mod tests {
             state_root: state_commitment!("0x1234"),
             block_number: BlockNumber::new_or_panic(10),
             block_hash: block_hash!("0xabdd"),
+            l1_block_number: None,
         };
         tx.upsert_l1_state(&original).unwrap();
 
@@ -161,6 +165,7 @@ mod tests {
             state_root: state_commitment!("0xabcdef"),
             block_number: original.block_number,
             block_hash: block_hash!("0xccdd22"),
+            l1_block_number: None,
         };
         tx.upsert_l1_state(&new_value).unwrap();
 
