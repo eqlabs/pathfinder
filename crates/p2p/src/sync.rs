@@ -91,20 +91,54 @@ pub(crate) mod codec {
         ONE_MIB,
     >;
 
-    #[derive(Clone, Debug)]
-    pub struct SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize>(
+    #[derive(Clone)]
+    pub struct ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize>(
         PhantomData<(Protocol, Req, Resp, ProstReq, ProstResp)>,
     );
 
-    impl<A, B, C, D, E, const F: usize> Default for SyncCodec<A, B, C, D, E, F> {
+    impl<A, B, C, D, E, const F: usize> Default for ProdCodec<A, B, C, D, E, F> {
         fn default() -> Self {
             Self(Default::default())
         }
     }
 
+    /// An enum to prevent _generic parameter explosion_ in the outer
+    /// behaviour.
+    ///
+    /// `SyncCodec::ForTest` falls back to [`SyncCodec::Prod`] unless the caller
+    /// explicitly sets a read/write factory.
+    #[derive(Clone)]
+    pub enum SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> {
+        Prod(ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>),
+        #[cfg(test)]
+        ForTest(
+            crate::test_utils::sync::TestCodec<
+                Protocol,
+                Req,
+                Resp,
+                ProstReq,
+                ProstResp,
+                RESPONSE_SIZE_LIMIT,
+            >,
+        ),
+    }
+
+    impl<A, B, C, D, E, const F: usize> Default for SyncCodec<A, B, C, D, E, F> {
+        fn default() -> Self {
+            Self::Prod(Default::default())
+        }
+    }
+
+    #[cfg(test)]
+    impl<A, B, C, D, E, const F: usize> SyncCodec<A, B, C, D, E, F> {
+        pub fn for_test() -> Self {
+            Self::ForTest(Default::default())
+        }
+    }
+
     #[async_trait]
     impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
-        for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
+        for ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
     where
         Protocol: AsRef<str> + Send + Clone,
         Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
@@ -191,6 +225,83 @@ pub(crate) mod codec {
             let data = response.to_protobuf().encode_length_delimited_to_vec();
             io.write_all(&data).await?;
             Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
+        for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
+    where
+        Protocol: AsRef<str> + Send + Sync + Clone,
+        Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
+        Resp: TryFromProtobuf<ProstResp> + ToProtobuf<ProstResp> + Send,
+        ProstReq: prost::Message + Default,
+        ProstResp: prost::Message + Default,
+    {
+        type Protocol = Protocol;
+        type Request = Req;
+        type Response = Resp;
+
+        async fn read_request<T>(
+            &mut self,
+            protocol: &Self::Protocol,
+            io: &mut T,
+        ) -> std::io::Result<Self::Request>
+        where
+            T: AsyncRead + Unpin + Send,
+        {
+            match self {
+                Self::Prod(codec) => codec.read_request(protocol, io).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.read_request(protocol, io).await,
+            }
+        }
+
+        async fn read_response<T>(
+            &mut self,
+            protocol: &Self::Protocol,
+            io: &mut T,
+        ) -> std::io::Result<Self::Response>
+        where
+            T: AsyncRead + Unpin + Send,
+        {
+            match self {
+                Self::Prod(codec) => codec.read_response(protocol, io).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.read_response(protocol, io).await,
+            }
+        }
+
+        async fn write_request<T>(
+            &mut self,
+            protocol: &Self::Protocol,
+            io: &mut T,
+            request: Self::Request,
+        ) -> std::io::Result<()>
+        where
+            T: AsyncWrite + Unpin + Send,
+        {
+            match self {
+                Self::Prod(codec) => codec.write_request(protocol, io, request).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.write_request(protocol, io, request).await,
+            }
+        }
+
+        async fn write_response<T>(
+            &mut self,
+            protocol: &Self::Protocol,
+            io: &mut T,
+            response: Self::Response,
+        ) -> std::io::Result<()>
+        where
+            T: AsyncWrite + Unpin + Send,
+        {
+            match self {
+                Self::Prod(codec) => codec.write_response(protocol, io, response).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.write_response(protocol, io, response).await,
+            }
         }
     }
 }

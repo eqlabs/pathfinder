@@ -9,8 +9,9 @@ use crate::client::types::{
     ClassDefinition,
     ClassDefinitionsError,
     EventsForBlockByTransaction,
-    IncorrectStateDiffCount,
+    EventsResponseStreamFailure,
     Receipt,
+    StateDiffsError,
     TransactionData,
 };
 use crate::PeerData;
@@ -89,7 +90,7 @@ pub trait BlockClient {
         self,
         block: BlockNumber,
         state_diff_length: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>> + Send;
+    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, StateDiffsError>> + Send;
 
     fn class_definitions_for_block(
         self,
@@ -100,5 +101,10 @@ pub trait BlockClient {
     fn events_for_block(
         self,
         block: BlockNumber,
-    ) -> impl Future<Output = Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)>> + Send;
+    ) -> impl Future<
+        Output = Option<(
+            PeerId,
+            impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>> + Send,
+        )>,
+    > + Send;
 }

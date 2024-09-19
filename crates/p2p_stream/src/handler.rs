@@ -81,9 +81,15 @@ where
     )>,
     /// A channel for signalling that an outbound request has been sent. Cloned
     /// for each outbound request.
-    outbound_sender: mpsc::Sender<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,
+    outbound_sender: mpsc::Sender<(
+        OutboundRequestId,
+        mpsc::Receiver<std::io::Result<TCodec::Response>>,
+    )>,
     /// The [`mpsc::Receiver`] for the above sender.
-    outbound_receiver: mpsc::Receiver<(OutboundRequestId, mpsc::Receiver<TCodec::Response>)>,
+    outbound_receiver: mpsc::Receiver<(
+        OutboundRequestId,
+        mpsc::Receiver<std::io::Result<TCodec::Response>>,
+    )>,
 
     inbound_request_id: Arc<AtomicU64>,
 
@@ -220,14 +226,21 @@ where
                 match codec.read_response(&protocol, &mut stream).await {
                     Ok(response) => {
                         rs_send
-                            .send(response)
+                            .send(Ok(response))
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                     }
                     // The stream is closed, there's nothing more to receive
                     Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => break,
                     // An error occurred, propagate it
-                    Err(error) => return Err(error),
+                    Err(error) => {
+                        let error_clone = io::Error::new(error.kind(), error.to_string());
+                        rs_send
+                            .send(Err(error_clone))
+                            .await
+                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        return Err(error);
+                    }
                 }
             }
 
@@ -312,7 +325,7 @@ where
         /// The ID of the outbound request.
         request_id: OutboundRequestId,
         /// The channel through which we can receive the responses.
-        receiver: mpsc::Receiver<TCodec::Response>,
+        receiver: mpsc::Receiver<std::io::Result<TCodec::Response>>,
     },
     /// An outbound response stream to an inbound request was closed.
     OutboundResponseStreamClosed(InboundRequestId),

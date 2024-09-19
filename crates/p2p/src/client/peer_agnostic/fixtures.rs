@@ -84,13 +84,13 @@ pub fn unzip_fixtures<T>(
 #[allow(clippy::type_complexity)]
 pub async fn send_request<T>(
     responses: Arc<Mutex<VecDeque<Result<Vec<T>, TestPeer>>>>,
-) -> anyhow::Result<mpsc::Receiver<T>> {
+) -> anyhow::Result<mpsc::Receiver<std::io::Result<T>>> {
     let mut guard = responses.lock().await;
     match guard.pop_front() {
         Some(Ok(responses)) => {
             let (mut tx, rx) = mpsc::channel(responses.len() + 1);
             for r in responses {
-                tx.send(r).await.unwrap();
+                tx.send(Ok(r)).await.unwrap();
             }
             Ok(rx)
         }

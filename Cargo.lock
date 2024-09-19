@@ -7126,9 +7126,9 @@ dependencies = [
  "libp2p-plaintext",
  "libp2p-swarm-test",
  "rstest",
+ "test-log",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "void",
 ]
 
