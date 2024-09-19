@@ -58,7 +58,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             PATHFINDER_FORCE_VERSION=${{ steps.generate_version.outputs.pathfinder_version }}
-            CARGO_EXTRA_ARGS="--features p2p"
+            CARGO_EXTRA_ARGS=--features p2p
           builder: ${{ steps.buildx.outputs.name }}
           push: true
           labels: ${{ steps.meta.outputs.labels }}
