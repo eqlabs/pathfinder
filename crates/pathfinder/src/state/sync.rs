@@ -1678,4 +1678,11 @@ mod tests {
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
         consumer(event_rx, context, tx).await.unwrap();
     }
+
+    #[test]
+    fn trie_corruption() {
+        // 1. Load storage at block 116899
+        // 2. Reorg to 116888
+        // 3. Sync to 116910
+    }
 }
