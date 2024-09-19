@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::time::Duration;
 
-use alloy::eips::{BlockId, BlockNumberOrTag, RpcBlockHash};
-use alloy::primitives::{Address, B256};
+use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::primitives::Address;
 use alloy::providers::{Provider, ProviderBuilder, RootProvider, WsConnect};
 use alloy::pubsub::PubSubFrontend;
 use alloy::rpc::types::{Filter, Log};
@@ -51,6 +51,7 @@ pub struct EthereumStateUpdate {
     pub state_root: StateCommitment,
     pub block_number: BlockNumber,
     pub block_hash: BlockHash,
+    pub l1_block_number: Option<BlockNumber>,
 }
 
 /// Ethereum API trait
@@ -58,12 +59,18 @@ pub struct EthereumStateUpdate {
 pub trait EthereumApi {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate>;
     async fn get_chain(&self) -> anyhow::Result<EthereumChain>;
-    async fn get_logs(
+    async fn get_message_logs(
         &self,
         address: &H160,
         from_block: BlockNumber,
         to_block: BlockNumber,
-    ) -> anyhow::Result<Vec<Log>>;
+    ) -> anyhow::Result<Vec<L1ToL2MessageLog>>;
+    async fn get_state_updates(
+        &self,
+        address: &H160,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<Vec<EthereumStateUpdate>>;
     async fn listen<F, Fut>(
         &mut self,
         address: &H160,
@@ -99,20 +106,17 @@ impl EthereumClient {
         Self::new(url)
     }
 
-    /// Returns the hash of the last finalized block
-    async fn get_finalized_block_hash(&self) -> anyhow::Result<H256> {
+    /// Returns the block number of the last finalized block
+    async fn get_finalized_block_number(&self) -> anyhow::Result<BlockNumber> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().on_ws(ws).await?;
 
-        // Fetch the finalized block hash
+        // Fetch the finalized block number
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized, false)
             .await?
-            .map(|block| {
-                let block_hash: [u8; 32] = block.header.hash.into();
-                H256::from(block_hash)
-            })
+            .map(|block| BlockNumber::new_or_panic(block.header.number))
             .context("Failed to fetch finalized block hash")
     }
 }
@@ -184,6 +188,7 @@ impl EthereumApi for EthereumClient {
                             block_number,
                             block_hash: get_block_hash(state_update.inner.blockHash),
                             state_root: get_state_root(state_update.inner.globalRoot),
+                            l1_block_number: None,
                         };
                         self.pending_state_updates.insert(eth_block, state_update);
                     } else {
@@ -196,6 +201,7 @@ impl EthereumApi for EthereumClient {
                     // Create L1ToL2MessageHash from the log data
                     let msg = L1ToL2MessageLog {
                         message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
+                        l1_block_number: Some(log.block_number.expect("missing eth block number")),
                         l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)),
                         l2_tx_hash: None,
                     };
@@ -230,9 +236,8 @@ impl EthereumApi for EthereumClient {
         let contract = StarknetCoreContract::new(address, provider);
 
         // Get the finalized block hash
-        let finalized_block_hash = self.get_finalized_block_hash().await?;
-        let block_hash = B256::from(finalized_block_hash.0);
-        let block_id = BlockId::Hash(RpcBlockHash::from_hash(block_hash, None));
+        let finalized_block_number = self.get_finalized_block_number().await?;
+        let block_id = BlockId::Number(BlockNumberOrTag::Number(finalized_block_number.get()));
 
         // Call the contract methods
         let state_root = contract.stateRoot().block(block_id).call().await?;
@@ -244,6 +249,7 @@ impl EthereumApi for EthereumClient {
             state_root: get_state_root(state_root._0),
             block_hash: get_block_hash(block_hash._0),
             block_number: get_block_number(block_number._0),
+            l1_block_number: Some(finalized_block_number),
         })
     }
 
@@ -265,13 +271,13 @@ impl EthereumApi for EthereumClient {
         })
     }
 
-    /// Get the logs for a given address and block range
-    async fn get_logs(
+    /// Get the L1 to L2 message logs for a given address and block range
+    async fn get_message_logs(
         &self,
         address: &H160,
         from_block: BlockNumber,
         to_block: BlockNumber,
-    ) -> anyhow::Result<Vec<Log>> {
+    ) -> anyhow::Result<Vec<L1ToL2MessageLog>> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().on_ws(ws).await?;
@@ -282,6 +288,12 @@ impl EthereumApi for EthereumClient {
 
         // Create the filter
         let filter = core_contract.LogMessageToL2_filter().filter;
+
+        tracing::trace!(
+            "Fetching L1 to L2 message logs from {} to {}",
+            from_block,
+            to_block
+        );
 
         // Fetch the logs
         let mut logs = Vec::new();
@@ -294,6 +306,69 @@ impl EthereumApi for EthereumClient {
             10_000,
         )
         .await?;
+
+        let logs: Vec<L1ToL2MessageLog> = logs
+            .into_iter()
+            .filter_map(|log| {
+                log.log_decode::<StarknetCoreContract::LogMessageToL2>()
+                    .ok()
+                    .map(|decoded| L1ToL2MessageLog {
+                        message_hash: H256::from(decoded.inner.message_hash().to_be_bytes()),
+                        l1_block_number: Some(log.block_number.expect("missing eth block number")),
+                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)),
+                        l2_tx_hash: None,
+                    })
+            })
+            .collect();
+
+        Ok(logs)
+    }
+
+    /// Get state updates for a given address and block range
+    async fn get_state_updates(
+        &self,
+        address: &H160,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<Vec<EthereumStateUpdate>> {
+        // Create a WebSocket connection
+        let ws = WsConnect::new(self.url.clone());
+        let provider = ProviderBuilder::new().on_ws(ws).await?;
+
+        // Create the StarknetCoreContract instance
+        let address = Address::new((*address).into());
+        let core_contract = StarknetCoreContract::new(address, provider.clone());
+
+        // Create the filter
+        let filter = core_contract.LogStateUpdate_filter().filter;
+
+        // Fetch the logs
+        let mut logs = Vec::new();
+        get_logs_recursive(
+            &provider,
+            &filter,
+            from_block.get(),
+            to_block.get(),
+            &mut logs,
+            2_000,
+        )
+        .await?;
+
+        let logs: Vec<EthereumStateUpdate> = logs
+            .into_iter()
+            .filter_map(|log| {
+                log.log_decode::<StarknetCoreContract::LogStateUpdate>()
+                    .ok()
+                    .map(|decoded| EthereumStateUpdate {
+                        state_root: get_state_root(decoded.inner.globalRoot),
+                        block_hash: get_block_hash(decoded.inner.blockHash),
+                        block_number: get_block_number(decoded.inner.blockNumber),
+                        l1_block_number: Some(BlockNumber::new_or_panic(
+                            log.block_number.expect("missing eth block number"),
+                        )),
+                    })
+            })
+            .collect();
 
         Ok(logs)
     }
@@ -356,7 +431,7 @@ async fn get_logs_recursive(
             logs.extend(new_logs);
         }
         Err(e) => {
-            println!("Provider error at block {}: {}", from_block, e);
+            tracing::debug!("Get logs error at block {}: {}", from_block, e);
             if let Some(err) = e.as_error_resp() {
                 // Retry the request splitting the block range
                 if err.is_retry_err() {
@@ -391,6 +466,4 @@ async fn get_logs_recursive(
     }
 
     Ok(())
-}
-
 }
