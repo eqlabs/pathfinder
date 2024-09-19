@@ -1017,7 +1017,177 @@ async fn l2_update(
     Ok(())
 }
 
-async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
+/// Returns the new [StateCommitment] after the update.
+#[allow(clippy::too_many_arguments)]
+pub fn l2_update0(
+    connection: &mut Connection,
+    block: Block,
+    transaction_commitment: TransactionCommitment,
+    receipt_commitment: ReceiptCommitment,
+    event_commitment: EventCommitment,
+    state_update: StateUpdate,
+    // signature: BlockCommitmentSignature,
+    state_diff_commitment: StateDiffCommitment,
+    verify_tree_hashes: bool,
+    // we need this so that we can create extra read-only transactions for
+    // parallel contract state updates
+    storage: Storage,
+    // websocket_txs: &mut Option<TopicBroadcasters>,
+    // notifications: &mut Notifications,
+) -> anyhow::Result<()> {
+    // tokio::task::block_in_place(move || {
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .context("Create database transaction")?;
+    let (storage_commitment, class_commitment) = update_starknet_state(
+        &transaction,
+        StarknetStateUpdate {
+            contract_updates: &state_update.contract_updates,
+            system_contract_updates: &state_update.system_contract_updates,
+            declared_sierra_classes: &state_update.declared_sierra_classes,
+        },
+        verify_tree_hashes,
+        block.block_number,
+        storage,
+    )
+    .context("Updating Starknet state")?;
+    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+
+    // Ensure that roots match.. what should we do if it doesn't? For now the whole
+    // sync process ends..
+    anyhow::ensure!(
+        state_commitment == block.state_commitment,
+        "State root mismatch"
+    );
+
+    let transaction_count = block.transactions.len();
+    let event_count = block
+        .transaction_receipts
+        .iter()
+        .map(|(_, events)| events.len())
+        .sum();
+
+    // Update L2 database. These types shouldn't be options at this level,
+    // but for now the unwraps are "safe" in that these should only ever be
+    // None for pending queries to the sequencer, but we aren't using those here.
+    let header = BlockHeader {
+        hash: block.block_hash,
+        parent_hash: block.parent_block_hash,
+        number: block.block_number,
+        timestamp: block.timestamp,
+        // Default value for cairo <0.8.2 is 0
+        eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+        // Default value for Starknet <0.13.0 is zero
+        strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+        // Default value for Starknet <0.13.1 is zero
+        eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+        // Default value for Starknet <0.13.1 is zero
+        strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+        sequencer_address: block
+            .sequencer_address
+            .unwrap_or(SequencerAddress(Felt::ZERO)),
+        starknet_version: block.starknet_version,
+        class_commitment,
+        event_commitment,
+        state_commitment,
+        storage_commitment,
+        transaction_commitment,
+        transaction_count,
+        event_count,
+        l1_da_mode: block.l1_da_mode.into(),
+        receipt_commitment,
+        state_diff_commitment,
+        state_diff_length: state_update.state_diff_length(),
+    };
+
+    transaction
+        .insert_block_header(&header)
+        .context("Inserting block header into database")?;
+
+    // Insert the transactions.
+    anyhow::ensure!(
+        block.transactions.len() == block.transaction_receipts.len(),
+        "Transactions and receipts mismatch. There were {} transactions and {} receipts.",
+        block.transactions.len(),
+        block.transaction_receipts.len()
+    );
+    let (transactions_data, events_data): (Vec<_>, Vec<_>) = block
+        .transactions
+        .iter()
+        .cloned()
+        .zip(block.transaction_receipts.iter().cloned())
+        .map(|(tx, (receipt, events))| ((tx, receipt), events))
+        .unzip();
+
+    transaction
+        .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
+        .context("Insert transaction data into database")?;
+
+    // Insert state updates
+    transaction
+        .insert_state_update(block.block_number, &state_update)
+        .context("Insert state update into database")?;
+
+    // Insert signature
+    // transaction
+    //     .insert_signature(block.block_number, &signature)
+    //     .context("Insert signature into database")?;
+
+    // Track combined L1 and L2 state.
+    let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
+    let expected_next = l1_l2_head
+        .map(|head| head + 1)
+        .unwrap_or(BlockNumber::GENESIS);
+
+    if expected_next == header.number {
+        if let Some(l1_state) = transaction
+            .l1_state_at_number(header.number)
+            .context("Query L1 state")?
+        {
+            if l1_state.block_hash == header.hash {
+                transaction
+                    .update_l1_l2_pointer(Some(header.number))
+                    .context("Update L1-L2 head")?;
+            }
+        }
+    }
+
+    transaction
+        .commit()
+        .context("Commit database transaction")?;
+
+    // if let Some(sender) = websocket_txs {
+    //     if let Err(e) = sender.new_head.send_if_receiving(header.clone().into())
+    // {         tracing::error!(error=?e, "Failed to send header over
+    // websocket broadcaster.");         // Disable websocket entirely so
+    // that the closed channel doesn't spam this         // error. It is
+    // unlikely that any error here wouldn't simply repeat         //
+    // indefinitely.         *websocket_txs = None;
+    //         return Ok(());
+    //     }
+    //     if sender.l2_blocks.receiver_count() > 0 {
+    //         if let Err(e) = sender.l2_blocks.send(block.into()) {
+    //             tracing::error!(error=?e, "Failed to send block over websocket
+    // broadcaster.");             *websocket_txs = None;
+    //             return Ok(());
+    //         }
+    //     }
+    // }
+
+    // notifications
+    //     .block_headers
+    //     .send(header.into())
+    //     // Ignore errors in case nobody is listening. New listeners may subscribe
+    // in the     // future.
+    //     .ok();
+
+    Ok(())
+    // })?;
+
+    // Ok(())
+}
+
+pub async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1230,6 +1400,8 @@ pub fn update_starknet_state(
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use pathfinder_common::macro_prelude::*;
@@ -1255,7 +1427,8 @@ mod tests {
     use starknet_gateway_types::reply::{self, Block, GasPrices};
 
     use super::l2;
-    use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
+    use crate::state::sync::{consumer, l2_reorg, ConsumerContext, SyncEvent};
+    use crate::state::{update_starknet_state, StarknetStateUpdate};
 
     /// Generate some arbitrary block chain data from genesis onwards.
     ///
