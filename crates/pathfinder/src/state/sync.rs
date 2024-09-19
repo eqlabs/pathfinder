@@ -104,6 +104,7 @@ where
             chain: value.chain,
             core_address: value.core_address,
             poll_interval: value.l1_poll_interval,
+            last_synced_l1_handler_block: BlockNumber::FIRST_L1_BLOCK_STARKNET_V0_13_2,
         }
     }
 }
@@ -178,7 +179,7 @@ where
         ) -> F2
         + Copy,
 {
-    let l1_context = L1SyncContext::from(&context);
+    let mut l1_context = L1SyncContext::from(&context);
     let l2_context = L2SyncContext::from(&context);
 
     let SyncContext {
@@ -209,6 +210,7 @@ where
 
     let (event_sender, event_receiver) = mpsc::channel(8);
 
+    // Get the latest block from the database
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l2_head = tx
@@ -219,11 +221,13 @@ where
         Ok(l2_head)
     })?;
 
+    // Get the latest block from the sequencer
     let gateway_latest = sequencer
         .head()
         .await
         .context("Fetching latest block from gateway")?;
 
+    // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
     let mut latest_handle = tokio::spawn(l2::poll_latest(
         sequencer.clone(),
@@ -246,10 +250,21 @@ where
         gossiper,
     ));
 
+    // Fetch the latest known block with an L1 handler tx
+    let l1_handler_block = tokio::task::block_in_place(|| -> anyhow::Result<_> {
+        let tx = db_conn.transaction()?;
+        let l1_handler_block = tx
+            .highest_block_with_l1_handler_tx()
+            .context("Fetching latest block with L1 handler tx")?;
+        Ok(l1_handler_block.unwrap_or(BlockNumber::FIRST_L1_BLOCK_STARKNET_V0_13_2))
+    })?;
+    l1_context.last_synced_l1_handler_block = l1_handler_block;
+
     // Start L1 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
     let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
+    // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
@@ -686,24 +701,37 @@ async fn consumer(
                 }
             }
             L1ToL2Message(msg) => {
-                tracing::trace!("Inserting new L1 to L2 message log: {:?}", msg);
+                tracing::trace!("Got an L1ToL2Message");
+                tracing::trace!("{:#?}", msg);
                 tokio::task::block_in_place(|| {
+                    // Note: There's always an L1 tx hash and block number (hence the `expect`)
+                    let l1_tx_hash = msg.l1_tx_hash.expect("missing l1 tx hash");
+                    let l1_block_number = msg.l1_block_number.expect("missing l1 block number");
+
                     let tx = db_conn
                         .transaction()
                         .context("Creating database transaction")?;
+
                     // If we have an L2 tx hash for this message, we can associate the L1 handler tx
                     // with the L2 tx
-                    // Note: There's always an L1 tx hash (hence the `expect`)
-                    tracing::trace!(target: "msgsync", "MSG [{:?}] Got an L1ToL2Message: {:?}", msg.l1_tx_hash, msg.message_hash);
-                    let l1_tx_hash = msg.l1_tx_hash.expect("missing l1 tx hash");
-                    if let (_, Some(l2_tx_hash)) =
-                        tx.fetch_and_remove_l1_to_l2_message_log(&msg.message_hash)?
+                    if let Some(L1ToL2MessageLog {
+                        l2_tx_hash: Some(l2_tx_hash),
+                        ..
+                    }) = tx.fetch_l1_to_l2_message_log(&msg.message_hash)?
                     {
-                        tx.insert_l1_handler_tx(l1_tx_hash, l2_tx_hash)?;
+                        tx.insert_l1_handler_tx(l1_block_number, l1_tx_hash, l2_tx_hash)?;
+                        tx.remove_l1_to_l2_message_log(&msg.message_hash)?;
                     }
                     // Otherwise, we insert the message log with an empty L2 tx hash
                     else {
-                        tx.insert_l1_to_l2_message_log(&msg)?;
+                        tracing::trace!("L2 tx not found for L1 Tx {:?}", l1_tx_hash);
+                        let msg_log = L1ToL2MessageLog {
+                            message_hash: msg.message_hash,
+                            l1_block_number: Some(l1_block_number),
+                            l1_tx_hash: Some(l1_tx_hash),
+                            l2_tx_hash: None,
+                        };
+                        tx.upsert_l1_to_l2_message_log(&msg_log)?;
                     }
                     tx.commit()
                         .context("Associating L1 and L2 transactions from message log")
