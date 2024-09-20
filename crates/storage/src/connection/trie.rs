@@ -366,7 +366,7 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn coalesce_trie_nodes(&self, target_block: BlockNumber) -> anyhow::Result<()> {
+    pub fn coalesce_trie_removals(&self, target_block: BlockNumber) -> anyhow::Result<()> {
         self.coalesce_removed_trie_nodes(target_block, "trie_contracts")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_storage")?;
         self.coalesce_removed_trie_nodes(target_block, "trie_class")
