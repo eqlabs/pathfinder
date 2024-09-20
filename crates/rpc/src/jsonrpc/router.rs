@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use method::RpcMethodEndpoint;
-pub use subscription::{handle_json_rpc_socket, RpcSubscriptionFlow};
+pub use subscription::{handle_json_rpc_socket, RpcSubscriptionFlow, SubscriptionMessage};
 use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;

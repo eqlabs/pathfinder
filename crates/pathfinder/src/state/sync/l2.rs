@@ -1123,7 +1123,6 @@ async fn reorg(
 
 #[cfg(test)]
 mod tests {
-
     mod sync {
         use std::sync::LazyLock;
 

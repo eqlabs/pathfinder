@@ -56,3 +56,5 @@ pub use simulate_transactions::simulate_transactions;
 pub use syncing::syncing;
 pub use trace_block_transactions::trace_block_transactions;
 pub use trace_transaction::trace_transaction;
+
+const REORG_SUBSCRIPTION_NAME: &str = "starknet_subscriptionReorg";

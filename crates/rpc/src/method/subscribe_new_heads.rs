@@ -4,8 +4,10 @@ use axum::async_trait;
 use pathfinder_common::{BlockId, BlockNumber};
 use tokio::sync::mpsc;
 
+use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::jsonrpc::{RpcError, RpcSubscriptionFlow};
+use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::Reorg;
 
 pub struct SubscribeNewHeads;
 
@@ -25,25 +27,29 @@ impl crate::dto::DeserializeForVersion for Request {
 }
 
 #[derive(Debug)]
-pub struct Message(Arc<pathfinder_common::BlockHeader>);
+pub enum Message {
+    BlockHeader(Arc<pathfinder_common::BlockHeader>),
+    Reorg(Arc<Reorg>),
+}
 
 impl crate::dto::serialize::SerializeForVersion for Message {
     fn serialize(
         &self,
         serializer: crate::dto::serialize::Serializer,
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        crate::dto::BlockHeader(&self.0).serialize(serializer)
+        match self {
+            Self::BlockHeader(header) => crate::dto::BlockHeader(header).serialize(serializer),
+            Self::Reorg(reorg) => reorg.serialize(serializer),
+        }
     }
 }
+
+const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewHeads";
 
 #[async_trait]
 impl RpcSubscriptionFlow for SubscribeNewHeads {
     type Request = Request;
     type Notification = Message;
-
-    fn subscription_name() -> &'static str {
-        "starknet_subscriptionNewHeads"
-    }
 
     fn starting_block(req: &Self::Request) -> BlockId {
         req.block
@@ -54,7 +60,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         _req: &Self::Request,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Result<Vec<(Self::Notification, BlockNumber)>, RpcError> {
+    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError> {
         let storage = state.storage.clone();
         let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
@@ -67,28 +73,66 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
             .into_iter()
             .map(|header| {
                 let block_number = header.number;
-                (Message(header.into()), block_number)
+                SubscriptionMessage {
+                    notification: Message::BlockHeader(header.into()),
+                    block_number,
+                    subscription_name: SUBSCRIPTION_NAME,
+                }
             })
             .collect())
     }
 
-    async fn subscribe(state: RpcContext, tx: mpsc::Sender<(Self::Notification, BlockNumber)>) {
-        let mut rx = state.notifications.block_headers.subscribe();
+    async fn subscribe(
+        state: RpcContext,
+        tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+    ) {
+        let mut headers = state.notifications.block_headers.subscribe();
+        let mut reorgs = state.notifications.reorgs.subscribe();
         loop {
-            match rx.recv().await {
-                Ok(header) => {
-                    let block_number = header.number;
-                    if tx.send((Message(header), block_number)).await.is_err() {
-                        break;
+            tokio::select! {
+                reorg = reorgs.recv() => {
+                    match reorg {
+                        Ok(reorg) => {
+                            let block_number = reorg.first_block_number;
+                            if tx.send(SubscriptionMessage {
+                                notification: Message::Reorg(reorg),
+                                block_number,
+                                subscription_name: REORG_SUBSCRIPTION_NAME,
+                            }).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                "Error receiving reorg from notifications channel, node might be \
+                                 lagging: {:?}",
+                                e
+                            );
+                            break;
+                        }
                     }
                 }
-                Err(e) => {
-                    tracing::debug!(
-                        "Error receiving block header from notifications channel, node might be \
-                         lagging: {:?}",
-                        e
-                    );
-                    break;
+                header = headers.recv() => {
+                    match header {
+                        Ok(header) => {
+                            let block_number = header.number;
+                            if tx.send(SubscriptionMessage {
+                                notification: Message::BlockHeader(header),
+                                block_number,
+                                subscription_name: SUBSCRIPTION_NAME,
+                            }).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                "Error receiving block header from notifications channel, node might be \
+                                 lagging: {:?}",
+                                e
+                            );
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -100,7 +144,7 @@ mod tests {
     use std::time::Duration;
 
     use axum::extract::ws::Message;
-    use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ChainId};
+    use pathfinder_common::{felt, BlockHash, BlockHeader, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
@@ -110,7 +154,7 @@ mod tests {
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::v02::types::syncing::Syncing;
-    use crate::{v08, Notifications, SubscriptionId, SyncState};
+    use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks() {
@@ -130,6 +174,46 @@ mod tests {
     #[tokio::test]
     async fn happy_path_with_no_historic_blocks() {
         happy_path_test(0).await;
+    }
+
+    #[tokio::test]
+    async fn reorg() {
+        let (_, mut rx, subscription_id, router) = happy_path_test(0).await;
+        router
+            .context
+            .notifications
+            .reorgs
+            .send(
+                Reorg {
+                    first_block_number: BlockNumber::new_or_panic(1),
+                    first_block_hash: BlockHash(felt!("0x1")),
+                    last_block_number: BlockNumber::new_or_panic(2),
+                    last_block_hash: BlockHash(felt!("0x2")),
+                }
+                .into(),
+            )
+            .unwrap();
+        let res = rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match res {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "starknet_subscriptionReorg",
+                "params": {
+                    "result": {
+                        "first_block_hash": "0x1",
+                        "first_block_number": 1,
+                        "last_block_hash": "0x2",
+                        "last_block_number": 2
+                    },
+                    "subscription_id": subscription_id.0
+                }
+            })
+        );
     }
 
     #[tokio::test]
