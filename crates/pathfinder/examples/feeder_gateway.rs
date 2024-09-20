@@ -67,6 +67,11 @@ struct Cli {
 #[derive(Debug, Clone, Args)]
 struct ReorgCli {
     #[arg(long,
+        long_help = "Block number to do the first reorg at",
+        value_parser = parse_block_number,
+    )]
+    pub start_at: BlockNumber,
+    #[arg(long,
         long_help = "Min and max distance between reorgs, you must provide both values as a comma separated list, e.g.: 100,200",
         value_parser = parse_block_range,
         requires = "reorg_depth")]
@@ -104,6 +109,7 @@ fn parse_block_number(s: &str) -> Result<BlockNumber, String> {
 /// Ranges are within valid BlockNumber values
 #[derive(Clone, Debug)]
 struct ReorgConfig {
+    pub start_at: BlockNumber,
     pub distance_to_next: RangeInclusive<u64>,
     pub depth: RangeInclusive<u64>,
 }
@@ -112,19 +118,20 @@ impl TryFrom<ReorgCli> for Option<ReorgConfig> {
     type Error = anyhow::Error;
 
     fn try_from(cli: ReorgCli) -> Result<Self, Self::Error> {
-        match (cli.distance_to_next_reorg, cli.reorg_depth) {
-            (Some((min_dist, max_dist)), Some((min_depth, max_depth))) => {
+        match (cli.start_at, cli.distance_to_next_reorg, cli.reorg_depth) {
+            (start_at, Some((min_dist, max_dist)), Some((min_depth, max_depth))) => {
                 ensure!(
                     max_depth < min_dist,
                     "Maximum reorg depth must be less than minimum distance to next reorg"
                 );
 
                 Ok(Some(ReorgConfig {
+                    start_at,
                     distance_to_next: min_dist.get()..=max_dist.get(),
                     depth: min_depth.get()..=max_depth.get(),
                 }))
             }
-            (None, None) => Ok(None),
+            (_, None, None) => Ok(None),
             _ => unreachable!(),
         }
     }
@@ -152,14 +159,14 @@ struct ReorgContext {
 
 impl ReorgContext {
     pub fn new(cfg: ReorgConfig) -> Self {
-        let to_block = rand::thread_rng().gen_range(cfg.distance_to_next.clone());
+        let to_block = cfg.start_at;
         let depth = rand::thread_rng().gen_range(cfg.depth.clone());
 
         tracing::info!(%to_block, %depth, "Next reorg");
 
         Self {
             in_progress: AtomicBool::new(false),
-            to_block: AtomicU64::new(to_block),
+            to_block: AtomicU64::new(to_block.get()),
             depth: AtomicU64::new(depth),
             cfg,
         }
