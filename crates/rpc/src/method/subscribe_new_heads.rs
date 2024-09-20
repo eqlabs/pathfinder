@@ -219,7 +219,7 @@ mod tests {
     #[tokio::test]
     async fn race_condition_with_historic_blocks() {
         let num_blocks = 1000;
-        let router = setup(num_blocks);
+        let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -260,20 +260,28 @@ mod tests {
         }
         // Insert more blocks before the active updates kick in. This simulates a
         // real-world race condition.
-        for i in 0..num_blocks {
-            let mut conn = router.context.storage.connection().unwrap();
-            let db = conn.transaction().unwrap();
-            let header = sample_header(i + num_blocks);
-            db.insert_block_header(&header).unwrap();
-            db.commit().unwrap();
-        }
+        let storage = router.context.storage.clone();
+        tokio::task::spawn_blocking(move || {
+            for i in 0..num_blocks {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                let header = sample_header(i + num_blocks);
+                db.insert_block_header(&header).unwrap();
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
         for i in 0..10 {
-            router
-                .context
-                .notifications
-                .block_headers
-                .send(sample_header(i + 2 * num_blocks).into())
-                .unwrap();
+            retry(|| {
+                router
+                    .context
+                    .notifications
+                    .block_headers
+                    .send(sample_header(i + 2 * num_blocks).into())
+            })
+            .await
+            .unwrap();
             if i == 0 {
                 // First, expect all the newly inserted blocks.
                 for j in 0..num_blocks {
@@ -336,15 +344,22 @@ mod tests {
         assert!(rx.is_empty());
     }
 
-    fn setup(num_blocks: u64) -> RpcRouter {
+    async fn setup(num_blocks: u64) -> RpcRouter {
         let storage = StorageBuilder::in_memory().unwrap();
-        let mut conn = storage.connection().unwrap();
-        let db = conn.transaction().unwrap();
-        for i in 0..num_blocks {
-            let header = sample_header(i);
-            db.insert_block_header(&header).unwrap();
-        }
-        db.commit().unwrap();
+        tokio::task::spawn_blocking({
+            let storage = storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                for i in 0..num_blocks {
+                    let header = sample_header(i);
+                    db.insert_block_header(&header).unwrap();
+                }
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
         let (_, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
         let ctx = RpcContext {
@@ -378,7 +393,7 @@ mod tests {
         SubscriptionId,
         RpcRouter,
     ) {
-        let router = setup(num_blocks);
+        let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -486,11 +501,11 @@ mod tests {
     where
         E: std::fmt::Debug,
     {
-        for i in 0..10 {
+        for i in 0..25 {
             match cb() {
                 Ok(result) => return Ok(result),
                 Err(e) => {
-                    if i == 9 {
+                    if i == 24 {
                         return Err(e);
                     }
                     tokio::time::sleep(Duration::from_secs(i)).await;
