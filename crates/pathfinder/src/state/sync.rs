@@ -25,7 +25,7 @@ use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
-use pathfinder_rpc::{Notifications, PendingData, SyncState, TopicBroadcasters};
+use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -603,7 +603,7 @@ async fn consumer(
             }
             Reorg(reorg_tail) => {
                 tracing::trace!("Reorg L2 state to block {}", reorg_tail);
-                l2_reorg(&mut db_conn, reorg_tail)
+                l2_reorg(&mut db_conn, reorg_tail, &mut notifications)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
@@ -1011,7 +1011,11 @@ async fn l2_update(
     Ok(())
 }
 
-async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
+async fn l2_reorg(
+    connection: &mut Connection,
+    reorg_tail: BlockNumber,
+    notifications: &mut Notifications,
+) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1022,6 +1026,15 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Querying latest block number")?
             .context("Latest block number is none during reorg")?
             .0;
+
+        let reorg_tail_hash = transaction
+            .block_hash(reorg_tail.into())
+            .context("Fetching first block hash")?
+            .context("Expected first block hash to exist")?;
+        let head_hash = transaction
+            .block_hash(head.into())
+            .context("Fetching last block hash")?
+            .context("Expected last block hash to exist")?;
 
         transaction
             .increment_reorg_counter()
@@ -1076,7 +1089,26 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             }
         }
 
-        transaction.commit().context("Commit database transaction")
+        transaction
+            .commit()
+            .context("Commit database transaction")?;
+
+        notifications
+            .reorgs
+            .send(
+                Reorg {
+                    first_block_number: reorg_tail,
+                    first_block_hash: reorg_tail_hash,
+                    last_block_number: head,
+                    last_block_hash: head_hash,
+                }
+                .into(),
+            )
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+
+        Ok(())
     })
 }
 

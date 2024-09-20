@@ -28,7 +28,7 @@ use axum::response::IntoResponse;
 use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
-pub use jsonrpc::Notifications;
+pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
 use tokio::sync::RwLock;

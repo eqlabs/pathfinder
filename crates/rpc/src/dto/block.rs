@@ -2,6 +2,7 @@ use pathfinder_common::{GasPrice, L1DataAvailabilityMode};
 use serde::de::Error;
 
 use super::serialize::SerializeStruct;
+use crate::Reorg;
 
 #[derive(Debug)]
 pub struct BlockHeader<'a>(pub &'a pathfinder_common::BlockHeader);
@@ -132,6 +133,26 @@ impl crate::dto::serialize::SerializeForVersion for ResourcePrice {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("price_in_wei", &crate::dto::U128Hex(self.price_in_wei.0))?;
         serializer.serialize_field("price_in_fri", &crate::dto::U128Hex(self.price_in_fri.0))?;
+        serializer.end()
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for Reorg {
+    fn serialize(
+        &self,
+        serializer: super::serialize::Serializer,
+    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("first_block_number", &self.first_block_number.get())?;
+        serializer.serialize_field(
+            "first_block_hash",
+            &crate::dto::Felt(&self.first_block_hash.0),
+        )?;
+        serializer.serialize_field("last_block_number", &self.last_block_number.get())?;
+        serializer.serialize_field(
+            "last_block_hash",
+            &crate::dto::Felt(&self.last_block_hash.0),
+        )?;
         serializer.end()
     }
 }

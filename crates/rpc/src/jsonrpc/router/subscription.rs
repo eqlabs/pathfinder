@@ -60,9 +60,6 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     type Request: crate::dto::DeserializeForVersion + Send + Sync + 'static;
     type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
 
-    /// The value for the `method` field of the subscription notification.
-    fn subscription_name() -> &'static str;
-
     /// The block to start streaming from. If the subscription endpoint does not
     /// support catching up, the value returned by this method is
     /// irrelevant.
@@ -76,10 +73,25 @@ pub trait RpcSubscriptionFlow: Send + Sync {
         req: &Self::Request,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Result<Vec<(Self::Notification, BlockNumber)>, RpcError>;
+    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError>;
 
     /// Subscribe to active updates.
-    async fn subscribe(state: RpcContext, tx: mpsc::Sender<(Self::Notification, BlockNumber)>);
+    async fn subscribe(
+        state: RpcContext,
+        tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+    );
+}
+
+#[derive(Debug)]
+pub struct SubscriptionMessage<T> {
+    /// [`RpcSubscriptionFlow::Notification`] to be sent to the client.
+    pub notification: T,
+    /// The block number of the notification. If the notification does not have
+    /// a block number, this value does not matter.
+    pub block_number: BlockNumber,
+    /// The value for the `method` field of the subscription notification sent
+    /// to the client.
+    pub subscription_name: &'static str,
 }
 
 #[axum::async_trait]
@@ -102,7 +114,6 @@ where
             subscription_id,
             subscriptions,
             tx,
-            subscription_name: T::subscription_name(),
             version,
             _phantom: Default::default(),
         };
@@ -143,12 +154,16 @@ where
                         // Caught up.
                         break;
                     }
-                    for (message, block_number) in messages {
-                        if tx.send(message).await.is_err() {
+                    for msg in messages {
+                        if tx
+                            .send(msg.notification, msg.subscription_name)
+                            .await
+                            .is_err()
+                        {
                             // Subscription closing.
                             return Ok(());
                         }
-                        current_block = block_number;
+                        current_block = msg.block_number;
                     }
                     // Increment the current block by 1 because the catch_up range is inclusive.
                     current_block += 1;
@@ -158,9 +173,9 @@ where
         };
 
         // Subscribe to new blocks. Receive the first subscription message.
-        let (tx1, mut rx1) = mpsc::channel::<(T::Notification, BlockNumber)>(1024);
+        let (tx1, mut rx1) = mpsc::channel::<SubscriptionMessage<T::Notification>>(1024);
         tokio::spawn(T::subscribe(state.clone(), tx1));
-        let (first_message, block_number) = match rx1.recv().await {
+        let first_msg = match rx1.recv().await {
             Some(msg) => msg,
             None => {
                 // Subscription closing.
@@ -172,10 +187,14 @@ where
         // block that will be streamed from the subscription. This way we don't miss any
         // blocks. Because the catch_up range is inclusive, we need to subtract 1 from
         // the block number.
-        if let Some(block_number) = block_number.parent() {
+        if let Some(block_number) = first_msg.block_number.parent() {
             let messages = T::catch_up(&state, &req, current_block, block_number).await?;
-            for (message, _) in messages {
-                if tx.send(message).await.is_err() {
+            for msg in messages {
+                if tx
+                    .send(msg.notification, msg.subscription_name)
+                    .await
+                    .is_err()
+                {
                     // Subscription closing.
                     return Ok(());
                 }
@@ -183,23 +202,31 @@ where
         }
 
         // Send the first subscription message and then forward the rest.
-        if tx.send(first_message).await.is_err() {
+        if tx
+            .send(first_msg.notification, first_msg.subscription_name)
+            .await
+            .is_err()
+        {
             // Subscription closing.
             return Ok(());
         }
-        let mut last_block = block_number;
+        let mut last_block = first_msg.block_number;
         tokio::spawn(async move {
-            while let Some((message, block_number)) = rx1.recv().await {
-                if block_number.get() > last_block.get() + 1 {
+            while let Some(msg) = rx1.recv().await {
+                if msg.block_number.get() > last_block.get() + 1 {
                     // One or more blocks have been skipped. This is likely due to a race condition
                     // resulting from a reorg. This message should be ignored.
                     continue;
                 }
-                if tx.send(message).await.is_err() {
+                if tx
+                    .send(msg.notification, msg.subscription_name)
+                    .await
+                    .is_err()
+                {
                     // Subscription closing.
                     break;
                 }
-                last_block = block_number;
+                last_block = msg.block_number;
             }
         });
         Ok(())
@@ -455,7 +482,6 @@ struct SubscriptionSender<T> {
     subscription_id: SubscriptionId,
     subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
     tx: mpsc::Sender<Result<Message, RpcResponse>>,
-    subscription_name: &'static str,
     version: RpcVersion,
     _phantom: std::marker::PhantomData<T>,
 }
@@ -466,7 +492,6 @@ impl<T> Clone for SubscriptionSender<T> {
             subscription_id: self.subscription_id,
             subscriptions: self.subscriptions.clone(),
             tx: self.tx.clone(),
-            subscription_name: self.subscription_name,
             version: self.version,
             _phantom: Default::default(),
         }
@@ -474,14 +499,18 @@ impl<T> Clone for SubscriptionSender<T> {
 }
 
 impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
-    pub async fn send(&self, value: T) -> Result<(), mpsc::error::SendError<()>> {
+    pub async fn send(
+        &self,
+        value: T,
+        subscription_name: &'static str,
+    ) -> Result<(), mpsc::error::SendError<()>> {
         if !self.subscriptions.contains_key(&self.subscription_id) {
             // Race condition due to the subscription ending.
             return Ok(());
         }
         let notification = RpcNotification {
             jsonrpc: "2.0",
-            method: self.subscription_name,
+            method: subscription_name,
             params: SubscriptionResult {
                 subscription_id: self.subscription_id,
                 result: value,
