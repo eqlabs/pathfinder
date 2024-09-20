@@ -1,11 +1,12 @@
-use anyhow::Context;
-use futures::{stream, StreamExt, TryStreamExt};
-use pathfinder_common::BlockNumber;
-use starknet_gateway_types::reply::{Block, StateUpdate};
 use std::collections::BTreeSet;
 use std::env::args;
 use std::fs::create_dir;
 use std::time::Duration;
+
+use anyhow::Context;
+use futures::{stream, StreamExt, TryStreamExt};
+use pathfinder_common::BlockNumber;
+use starknet_gateway_types::reply::{Block, StateUpdate};
 
 #[allow(unused)]
 #[derive(serde::Deserialize)]
@@ -21,23 +22,28 @@ struct Head {
     block_number: u64,
 }
 
-/// Download blocks and state updates from the mainnet feeder gateway. Store each pair in a separate file.
+/// Download blocks and state updates from the mainnet feeder gateway. Store
+/// each pair in a separate file.
 ///
 /// Example usage:
-/// `while true; do cargo run --release -p pathfinder --example fgw_downloader -- API_KEY NETWORK; sleep 5; done`
+/// `while true; do cargo run --release -p pathfinder --example fgw_downloader
+/// -- API_KEY NETWORK [START]; sleep 5; done`
 ///
 /// NETWORK is either `mainnet` or `sepolia`.
 #[tokio::main(flavor = "multi_thread", worker_threads = 64)]
 async fn main() -> anyhow::Result<()> {
     let api_key = args()
         .nth(1)
-        .ok_or(anyhow::anyhow!("Missing API key"))
-        .context("API key")?;
+        .context("Missing API key")?;
 
     let network = args()
         .nth(2)
-        .ok_or(anyhow::anyhow!("Missing network"))
-        .context("Network")?;
+        .context("Missing network")?;
+
+    let cli_start = match args().nth(3) {
+        Some(start) => Some(BlockNumber::new(start.parse::<u64>().context("Invalid start block")?).context("Invalid start block")?),
+        None => None,
+    };
 
     anyhow::ensure!(
         network == "mainnet" || network == "sepolia",
@@ -55,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let client = reqwest::ClientBuilder::new()
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120))
         .build()?;
 
     let Head {
@@ -63,7 +69,8 @@ async fn main() -> anyhow::Result<()> {
         ..
     } = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true")).send().await?.json::<Head>().await?;
 
-    let concurrency_limit = std::thread::available_parallelism()?.get() * 16;
+    // let concurrency_limit = std::thread::available_parallelism()?.get() * 16;
+    let concurrency_limit = std::thread::available_parallelism()?.get();
 
     let files = std::fs::read_dir(&download_dir)
         .with_context(|| format!("Reading directory: {download_dir}"))?;
@@ -103,6 +110,7 @@ async fn main() -> anyhow::Result<()> {
     let start = BlockNumber::new((last + 1) as u64)
         .ok_or(anyhow::anyhow!("Block number overflow"))
         .context("Start block")?;
+    let start = std::cmp::min(start, cli_start.unwrap_or(start));
 
     println!("Start: {start}");
 
@@ -117,14 +125,39 @@ async fn main() -> anyhow::Result<()> {
             async move {
                 println!("Get:  {block_number}");
 
-                let txt = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true"))
-                    .header("X-Throttling-Bypass", api_key).send().await?.text().await?;
+                let cloned_api_key = api_key.clone();
 
-                serde_json::from_str::<BlockAndStateUpdate>(&txt)?;
+                let block_txt = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_state_update?blockNumber={block_number}&includeBlock=true"))
+                    .header("X-Throttling-Bypass", cloned_api_key).send().await?.text().await?;
+
+                let block_and_state_update = serde_json::from_str::<BlockAndStateUpdate>(&block_txt).context("Deserialize block and state update")?;
+                let declared_classes = block_and_state_update.state_update.state_diff.declared_classes.iter().map(|x| x.class_hash);
+
+                let classes_txt = stream::iter(declared_classes).map(|class_hash| {
+                    let client = client.clone();
+                    let api_key = api_key.clone();
+                    let network = network.clone();
+
+                    async move {
+                        let class_txt = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_class_by_hash?classHash={class_hash}&blockNumber=pending"))
+                        .header("X-Throttling-Bypass", api_key).send().await?.text().await?;
+    
+                        anyhow::Ok(class_txt)
+                    }
+                }).buffer_unordered(concurrency_limit).try_collect::<Vec<_>>().await?;
+
+                let classes_txt = classes_txt.join(",");
+
+                let final_txt = format!(
+                    "{{
+                        \"block\": {block_txt},
+                        \"classes\": [{classes_txt}]
+                    }}",
+                );
 
                 tokio::task::spawn_blocking(move ||
                     {
-                        let compressed = zstd::encode_all(txt.as_bytes(), 10)?;
+                        let compressed = zstd::encode_all(final_txt.as_bytes(), 10)?;
                         std::fs::write(format!("{download_dir}/{block_number}.json.zst"), compressed)?;
                         std::io::Result::Ok(())
                     }
@@ -135,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::Result::Ok(())
             }
         })
-        .await.context("Download failed")?;
+        .await.context("Downloading failed")?;
 
     Ok(())
 }
