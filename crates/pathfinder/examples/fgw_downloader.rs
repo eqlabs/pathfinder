@@ -27,7 +27,7 @@ struct Head {
 ///
 /// Example usage:
 /// `while true; do cargo run --release -p pathfinder --example fgw_downloader
-/// -- API_KEY NETWORK [START]; sleep 5; done`
+/// -- API_KEY NETWORK [START] [STOP]; sleep 5; done`
 ///
 /// NETWORK is either `mainnet` or `sepolia`.
 #[tokio::main(flavor = "multi_thread", worker_threads = 64)]
@@ -42,6 +42,11 @@ async fn main() -> anyhow::Result<()> {
 
     let cli_start = match args().nth(3) {
         Some(start) => Some(BlockNumber::new(start.parse::<u64>().context("Invalid start block")?).context("Invalid start block")?),
+        None => None,
+    };
+
+    let cli_stop = match args().nth(4) {
+        Some(stop) => Some(BlockNumber::new(stop.parse::<u64>().context("Invalid stop block")?).context("Invalid stop block")?),
         None => None,
     };
 
@@ -69,7 +74,6 @@ async fn main() -> anyhow::Result<()> {
         ..
     } = client.get(format!("https://alpha-{network}.starknet.io/feeder_gateway/get_block?blockNumber=latest&headerOnly=true")).send().await?.json::<Head>().await?;
 
-    // let concurrency_limit = std::thread::available_parallelism()?.get() * 16;
     let concurrency_limit = std::thread::available_parallelism()?.get();
 
     let files = std::fs::read_dir(&download_dir)
@@ -110,11 +114,12 @@ async fn main() -> anyhow::Result<()> {
     let start = BlockNumber::new((last + 1) as u64)
         .ok_or(anyhow::anyhow!("Block number overflow"))
         .context("Start block")?;
-    let start = std::cmp::min(start, cli_start.unwrap_or(start));
+    let start = std::cmp::max(start, cli_start.unwrap_or(start));
+    let stop = cli_stop.unwrap_or(BlockNumber::new(head).expect("Head is from the fgw so it's valid"));
 
-    println!("Start: {start}");
+    println!("Start: {start}, stop: {stop}");
 
-    stream::iter(gaps).chain(stream::iter(start.get()..=head))
+    stream::iter(gaps).chain(stream::iter(start.get()..=stop.get()))
         .map(anyhow::Result::<u64>::Ok)
         .try_for_each_concurrent(concurrency_limit, |block_number| {
             let client = client.clone();
