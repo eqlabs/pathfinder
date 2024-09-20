@@ -493,7 +493,7 @@ mod tests {
                     if i == 9 {
                         return Err(e);
                     }
-                    tokio::task::yield_now().await;
+                    tokio::time::sleep(Duration::from_secs(i)).await;
                 }
             }
         }
