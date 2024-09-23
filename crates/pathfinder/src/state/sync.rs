@@ -104,7 +104,15 @@ where
             chain: value.chain,
             core_address: value.core_address,
             poll_interval: value.l1_poll_interval,
-            last_synced_l1_handler_block: BlockNumber::FIRST_L1_BLOCK_STARKNET_V0_13_2,
+            last_synced_l1_handler_block: match value.chain {
+                Chain::Mainnet => {
+                    pathfinder_ethereum::block_numbers::mainnet::FIRST_L1_BLOCK_STARKNET_V0_13_2
+                }
+                Chain::SepoliaTestnet | Chain::SepoliaIntegration => {
+                    pathfinder_ethereum::block_numbers::sepolia::FIRST_L1_BLOCK_STARKNET_V0_13_2
+                }
+                _ => BlockNumber::new_or_panic(0),
+            },
         }
     }
 }
@@ -256,7 +264,16 @@ where
         let l1_handler_block = tx
             .highest_block_with_l1_handler_tx()
             .context("Fetching latest block with L1 handler tx")?;
-        Ok(l1_handler_block.unwrap_or(BlockNumber::FIRST_L1_BLOCK_STARKNET_V0_13_2))
+        let default_block_number = match context.chain {
+            Chain::Mainnet => {
+                pathfinder_ethereum::block_numbers::mainnet::FIRST_L1_BLOCK_STARKNET_V0_13_2
+            }
+            Chain::SepoliaTestnet | Chain::SepoliaIntegration => {
+                pathfinder_ethereum::block_numbers::sepolia::FIRST_L1_BLOCK_STARKNET_V0_13_2
+            }
+            _ => BlockNumber::new_or_panic(0),
+        };
+        Ok(l1_handler_block.unwrap_or(default_block_number))
     })?;
     l1_context.last_synced_l1_handler_block = l1_handler_block;
 

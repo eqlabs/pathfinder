@@ -264,11 +264,6 @@ impl BlockNumber {
     /// The maximum [BlockNumber] we can support. Restricted to `u64::MAX/2` to
     /// match Sqlite's maximum integer value.
     pub const MAX: BlockNumber = BlockNumber::new_or_panic(i64::MAX as u64);
-    /// The first v0.13.2 block number
-    pub const FIRST_V0_13_2_BLOCK: BlockNumber = BlockNumber::new_or_panic(86_311);
-    /// The first L1 block number with a state update corresponding to v0.13.2
-    /// of Starknet
-    pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: BlockNumber = BlockNumber::new_or_panic(6453990);
 
     /// Returns the parent's [BlockNumber] or [None] if the current number is
     /// genesis.

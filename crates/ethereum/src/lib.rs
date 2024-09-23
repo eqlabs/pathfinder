@@ -37,6 +37,29 @@ pub mod core_addr {
         Decoder::Hex.decode(b"4737c0c1B4D5b1A687B42610DdabEE781152359c");
 }
 
+pub mod block_numbers {
+    use super::BlockNumber;
+    pub mod mainnet {
+        use super::BlockNumber;
+        /// The first v0.13.2 block number
+        pub const FIRST_V0_13_2_BLOCK: BlockNumber = BlockNumber::new_or_panic(671_813);
+        /// The first L1 block number with a state update corresponding to
+        /// v0.13.2 of Starknet
+        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: BlockNumber =
+            BlockNumber::new_or_panic(20_627_771);
+    }
+
+    pub mod sepolia {
+        use super::BlockNumber;
+        /// The first v0.13.2 block number
+        pub const FIRST_V0_13_2_BLOCK: BlockNumber = BlockNumber::new_or_panic(86_311);
+        /// The first L1 block number with a state update corresponding to
+        /// v0.13.2 of Starknet
+        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: BlockNumber =
+            BlockNumber::new_or_panic(6_453_990);
+    }
+}
+
 /// Events that can be emitted by the Ethereum client
 #[derive(Debug)]
 pub enum EthereumEvent {
