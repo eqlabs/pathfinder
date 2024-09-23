@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
 - `--disable-version-update-check` CLI option has been added to disable the periodic checking for a new version.
+- Pathfinder now syncs L1 to L2 message logs for improved cross-chain tracking.
 
 ### Changed
 
