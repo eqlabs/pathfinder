@@ -23,12 +23,12 @@ impl Transaction<'_> {
             .context("Upserting L1 to L2 message log")?;
 
         if let Some(l2_tx_hash) = &message.l2_tx_hash {
-            tracing::trace!(
+            tracing::debug!(
                 "Inserted L1 to L2 message log with L2 tx hash: {:?}",
                 l2_tx_hash
             );
         } else if let Some(l1_tx_hash) = &message.l1_tx_hash {
-            tracing::trace!(
+            tracing::debug!(
                 "Inserted L1 to L2 message log with L1 tx hash: {:?}",
                 l1_tx_hash
             );
@@ -68,7 +68,7 @@ impl Transaction<'_> {
                 (None, Some(_)) => "[X, L2]",
                 _ => "N/A",
             };
-            tracing::trace!(
+            tracing::debug!(
                 "Fetched (and found: {}) an L1 to L2 message log for {:?}",
                 debug_tx_str,
                 message_hash
