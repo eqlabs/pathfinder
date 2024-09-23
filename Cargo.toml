@@ -38,11 +38,11 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-authors = ["Equilibrium Labs <info@equilibrium.co>"]
+version = "0.14.3"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.80"
-version = "0.14.2"
+authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
 anyhow = "1.0.75"
