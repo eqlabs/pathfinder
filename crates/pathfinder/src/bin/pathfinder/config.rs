@@ -149,6 +149,15 @@ Examples:
     )]
     color: Color,
 
+    #[arg(
+        long = "disable-version-update-check",
+        long_help = "Disable the periodic version update check.",
+        default_value = "false",
+        env = "PATHFINDER_DISABLE_VERSION_UPDATE_CHECK",
+        value_name = "BOOL"
+    )]
+    disable_version_update_check: bool,
+
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
     p2p: P2PCli,
@@ -684,6 +693,7 @@ pub struct Config {
     pub poll_interval: std::time::Duration,
     pub l1_poll_interval: std::time::Duration,
     pub color: Color,
+    pub disable_version_update_check: bool,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
@@ -970,6 +980,7 @@ impl Config {
             poll_interval: Duration::from_secs(cli.poll_interval.get()),
             l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
+            disable_version_update_check: cli.disable_version_update_check,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,

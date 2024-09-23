@@ -289,7 +289,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
-    tokio::spawn(update::poll_github_for_releases());
+    if !config.disable_version_update_check {
+        tokio::spawn(update::poll_github_for_releases());
+    }
 
     let mut term_signal = signal(SignalKind::terminate())?;
     let mut int_signal = signal(SignalKind::interrupt())?;
