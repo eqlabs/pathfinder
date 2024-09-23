@@ -457,6 +457,11 @@ fn get_logs_recursive<'a>(
                 tracing::debug!("Get logs error at block {}: {}", from_block, e);
                 if let Some(err) = e.as_error_resp() {
                     // Retry the request splitting the block range in half
+                    //
+                    // Multiple providers have multiple restrictions. The max range limit can help
+                    // with the obvious restrictions, but not with those that depend on the response
+                    // size. And because there's no way we can predict this, retrying with a smaller
+                    // range is the best we can do.
                     if err.is_retry_err() {
                         tracing::debug!(
                             "Retrying request (splitting) at block {}: {}",
