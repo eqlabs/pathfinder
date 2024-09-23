@@ -14,7 +14,6 @@ alloy = { version = "0.3", default-features = false, features = [
     "reqwest-rustls-tls",
 ] }
 anyhow = { workspace = true }
-async-recursion = "1.1"
 async-trait = { workspace = true }
 const-decoder = { workspace = true }
 futures = { workspace = true }
