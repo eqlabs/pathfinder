@@ -8,8 +8,7 @@ use alloy::providers::{Provider, ProviderBuilder, RootProvider, WsConnect};
 use alloy::pubsub::PubSubFrontend;
 use alloy::rpc::types::{Filter, Log};
 use anyhow::Context;
-use async_recursion::async_recursion;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, L1ToL2MessageLog, StateCommitment};
 use primitive_types::{H160, H256, U256};
 use reqwest::{IntoUrl, Url};
@@ -375,16 +374,16 @@ impl EthereumApi for EthereumClient {
 }
 
 /// Recursively fetches logs while respecting provider limits
-#[async_recursion]
-async fn get_logs_recursive(
-    provider: &RootProvider<PubSubFrontend>,
-    base_filter: &Filter,
+fn get_logs_recursive<'a>(
+    provider: &'a RootProvider<PubSubFrontend>,
+    base_filter: &'a Filter,
     from_block: u64,
     to_block: u64,
-    logs: &mut Vec<Log>,
+    logs: &'a mut Vec<Log>,
     // Limits
     max_block_range: u64,
-) -> anyhow::Result<()> {
+) -> futures::future::BoxFuture<'a, anyhow::Result<()>> {
+    async move {
     // Nothing to do
     if from_block > to_block {
         return Ok(());
@@ -419,7 +418,7 @@ async fn get_logs_recursive(
     // Adjust the base filter to the current block range
     let from_block_id = BlockNumberOrTag::Number(from_block);
     let to_block_id = BlockNumberOrTag::Number(to_block);
-    let filter = base_filter
+    let filter = (*base_filter)
         .clone()
         .from_block(from_block_id)
         .to_block(to_block_id);
@@ -466,4 +465,7 @@ async fn get_logs_recursive(
     }
 
     Ok(())
+
+    }
+    .boxed()
 }
