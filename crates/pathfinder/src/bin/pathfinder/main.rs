@@ -449,7 +449,7 @@ async fn start_p2p(
             max_outbound_peers: config.max_outbound_connections,
             low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
-            bootstrap: Default::default(),
+            bootstrap_period: Duration::from_secs(2 * 60),
             eviction_timeout: config.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,

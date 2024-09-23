@@ -37,7 +37,7 @@ impl Config {
             max_outbound_peers: 10,
             low_watermark: 10,
             ip_whitelist: vec!["::/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-            bootstrap: Default::default(),
+            bootstrap_period: Duration::from_secs(2 * 60),
             eviction_timeout: Duration::from_secs(15 * 60),
             inbound_connections_rate_limit: RateLimit {
                 max: 1000,

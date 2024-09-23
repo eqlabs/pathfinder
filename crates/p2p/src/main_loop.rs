@@ -1,18 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::kad::{
-    self,
-    BootstrapError,
-    BootstrapOk,
-    ProgressStep,
-    QueryId,
-    QueryInfo,
-    QueryResult,
-};
+use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
@@ -46,8 +39,6 @@ pub struct MainLoop {
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
-    /// Ongoing Kademlia bootstrap query.
-    ongoing_bootstrap: Option<QueryId>,
     _pending_test_queries: TestQueries,
 }
 
@@ -96,26 +87,16 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
-            ongoing_bootstrap: None,
             _pending_test_queries: Default::default(),
         }
     }
 
     pub async fn run(mut self) {
-        // Delay bootstrap so that by the time we attempt it we've connected to the
-        // bootstrap node
-        let bootstrap_start = tokio::time::Instant::now() + self.cfg.bootstrap.start_offset;
-        let mut bootstrap_interval =
-            tokio::time::interval_at(bootstrap_start, self.cfg.bootstrap.period);
-
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
         let me = *self.swarm.local_peer_id();
 
         loop {
-            let bootstrap_interval_tick = bootstrap_interval.tick();
-            tokio::pin!(bootstrap_interval_tick);
-
             let network_status_interval_tick = network_status_interval.tick();
             tokio::pin!(network_status_interval_tick);
 
@@ -161,31 +142,6 @@ impl MainLoop {
                         connected,
                         dht,
                     );
-                }
-                _ = bootstrap_interval_tick => {
-                    tracing::debug!("Checking low watermark");
-                    if let Some(query_id) = self.ongoing_bootstrap {
-                        match self.swarm.behaviour_mut().kademlia_mut().query_mut(&query_id) {
-                            Some(mut query) if matches!(query.info(), QueryInfo::Bootstrap {
-                                step: ProgressStep { last: false, .. }, .. }
-                            ) => {
-                                tracing::debug!("Previous bootstrap still in progress, aborting it");
-                                query.finish();
-                                continue;
-                            }
-                            _ => self.ongoing_bootstrap = None,
-                        }
-                    }
-                    if self.swarm.behaviour_mut().outbound_peers().count() < self.cfg.low_watermark {
-                        if let Ok(query_id) = self.swarm.behaviour_mut().kademlia_mut().bootstrap() {
-                            self.ongoing_bootstrap = Some(query_id);
-                            send_test_event(
-                                &self.event_sender,
-                                TestEvent::KademliaBootstrapStarted,
-                            )
-                            .await;
-                        }
-                    }
                 }
                 command = self.command_receiver.recv() => {
                     match command {
@@ -397,7 +353,6 @@ impl MainLoop {
                                         Err(peer)
                                     }
                                 };
-                                self.ongoing_bootstrap = None;
                                 send_test_event(
                                     &self.event_sender,
                                     TestEvent::KademliaBootstrapCompleted(result),
@@ -451,31 +406,61 @@ impl MainLoop {
                             }
                             _ => self.test_query_completed(id, result).await,
                         }
-                    } else if let QueryResult::GetProviders(result) = result {
-                        use libp2p::kad::GetProvidersOk;
-
-                        let result = match result {
-                            Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                            Ok(_) => Ok(Default::default()),
-                            Err(_) => {
-                                unreachable!(
-                                    "when a query times out libp2p makes it the last stage"
-                                )
-                            }
-                        };
-
-                        let sender = self
-                            .pending_queries
-                            .get_providers
-                            .get(&id)
-                            .expect("Query to be pending");
-
-                        sender
-                            .send(result)
-                            .await
-                            .expect("Receiver not to be dropped");
                     } else {
-                        self.test_query_progressed(id, result).await;
+                        match result {
+                            QueryResult::GetProviders(result) => {
+                                use libp2p::kad::GetProvidersOk;
+
+                                let result = match result {
+                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                        Ok(providers)
+                                    }
+                                    Ok(_) => Ok(Default::default()),
+                                    Err(_) => {
+                                        unreachable!(
+                                            "when a query times out libp2p makes it the last stage"
+                                        )
+                                    }
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_providers
+                                    .get(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                            QueryResult::Bootstrap(_) => {
+                                tracing::debug!("Checking low watermark");
+                                // Starting from libp2p-v0.54.1 bootstrap queries are started
+                                // automatically in the kad behaviour:
+                                // - periodically,
+                                // - after a peer is added to the routing table.
+                                // If we have enough peers, we just stop any ongoing bootstrap
+                                // query initiated by libp2p.
+                                if self.swarm.behaviour_mut().outbound_peers().count()
+                                    >= self.cfg.low_watermark
+                                {
+                                    self.swarm
+                                        .behaviour_mut()
+                                        .kademlia_mut()
+                                        .query_mut(&id)
+                                        .expect("Query to be active")
+                                        .finish();
+                                } else if step.count == NonZeroUsize::new(1).expect("1>0") {
+                                    send_test_event(
+                                        &self.event_sender,
+                                        TestEvent::KademliaBootstrapStarted,
+                                    )
+                                    .await;
+                                }
+                            }
+                            _ => self.test_query_progressed(id, result).await,
+                        }
                     }
                 }
                 kad::Event::RoutingUpdated {

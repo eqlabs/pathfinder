@@ -15,7 +15,7 @@ use rstest::rstest;
 
 use crate::sync::codec;
 use crate::test_utils::peer::TestPeer;
-use crate::{BootstrapConfig, Config, Event, EventReceiver, RateLimit, TestEvent};
+use crate::{Config, Event, EventReceiver, RateLimit, TestEvent};
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall.
@@ -168,10 +168,7 @@ async fn periodic_bootstrap() {
         max_inbound_relayed_peers: 10,
         max_outbound_peers: 10,
         low_watermark: 3,
-        bootstrap: BootstrapConfig {
-            period: BOOTSTRAP_PERIOD,
-            start_offset: Duration::from_secs(1),
-        },
+        bootstrap_period: BOOTSTRAP_PERIOD,
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -320,10 +317,7 @@ async fn reconnect_too_quickly() {
         max_inbound_relayed_peers: 10,
         max_outbound_peers: 10,
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_secs(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -425,10 +419,7 @@ async fn duplicate_connection() {
         max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -514,10 +505,7 @@ async fn outbound_peer_eviction() {
         max_outbound_peers: 2,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -646,10 +634,7 @@ async fn inbound_peer_eviction() {
         max_outbound_peers: 100,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -735,10 +720,7 @@ async fn evicted_peer_reconnection() {
         max_outbound_peers: 1,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -829,10 +811,7 @@ async fn ip_whitelist() {
         max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -865,10 +844,7 @@ async fn ip_whitelist() {
         max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 1000,
@@ -902,10 +878,7 @@ async fn rate_limit() {
         max_outbound_peers: 10,
         // Don't open connections automatically.
         low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
+        bootstrap_period: Duration::from_millis(500),
         eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 2,
