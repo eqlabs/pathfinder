@@ -362,14 +362,12 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
 #[cfg(not(feature = "tokio-console"))]
 fn setup_tracing(color: config::Color, pretty_log: bool) {
     use time::macros::format_description;
-    use tracing_subscriber::EnvFilter;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
     let time_fmt = tracing_subscriber::fmt::time::UtcTime::new(time_fmt);
 
     let subscriber = tracing_subscriber::fmt()
-        //.with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_env_filter(EnvFilter::new("msgsync=trace"))
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_target(pretty_log)
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled());

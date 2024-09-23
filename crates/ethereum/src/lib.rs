@@ -289,12 +289,6 @@ impl EthereumApi for EthereumClient {
         // Create the filter
         let filter = core_contract.LogMessageToL2_filter().filter;
 
-        tracing::trace!(
-            "Fetching L1 to L2 message logs from {} to {}",
-            from_block,
-            to_block
-        );
-
         // Fetch the logs
         let mut logs = Vec::new();
         get_logs_recursive(
@@ -306,6 +300,13 @@ impl EthereumApi for EthereumClient {
             10_000,
         )
         .await?;
+
+        tracing::debug!(
+            "Fetched {} `L1ToL2MessageLog` logs from {} to {}",
+            logs.len(),
+            from_block,
+            to_block
+        );
 
         let logs: Vec<L1ToL2MessageLog> = logs
             .into_iter()
@@ -433,9 +434,13 @@ async fn get_logs_recursive(
         Err(e) => {
             tracing::debug!("Get logs error at block {}: {}", from_block, e);
             if let Some(err) = e.as_error_resp() {
-                // Retry the request splitting the block range
+                // Retry the request splitting the block range in half
                 if err.is_retry_err() {
-                    tracing::debug!(target: "logfetch", "Retrying request (splitting) at block {}: {}", from_block, err);
+                    tracing::debug!(
+                        "Retrying request (splitting) at block {}: {}",
+                        from_block,
+                        err
+                    );
                     let mid_block = from_block + block_range / 2;
                     get_logs_recursive(
                         provider,

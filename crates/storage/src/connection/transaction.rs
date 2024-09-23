@@ -176,7 +176,7 @@ impl Transaction<'_> {
         // Associate L1 handler transactions with L2 transactions
         for (transaction, _) in transactions.iter() {
             if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
-                tracing::trace!(
+                tracing::debug!(
                     "Found an l1_handler variant while inserting transaction {:?}",
                     transaction.hash
                 );
@@ -230,7 +230,7 @@ impl Transaction<'_> {
             ":l2_tx_hash": &l2_tx_hash,
         ])?;
 
-        tracing::trace!(
+        tracing::debug!(
             "Saved l1_handler_tx: [{}] {:?} <-> {:?}",
             l1_block_number,
             l1_tx_hash,

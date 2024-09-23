@@ -701,8 +701,7 @@ async fn consumer(
                 }
             }
             L1ToL2Message(msg) => {
-                tracing::trace!("Got an L1ToL2Message");
-                tracing::trace!("{:#?}", msg);
+                tracing::debug!("Got an L1ToL2Message: {:?}", msg.message_hash);
                 tokio::task::block_in_place(|| {
                     // Note: There's always an L1 tx hash and block number (hence the `expect`)
                     let l1_tx_hash = msg.l1_tx_hash.expect("missing l1 tx hash");
@@ -719,12 +718,13 @@ async fn consumer(
                         ..
                     }) = tx.fetch_l1_to_l2_message_log(&msg.message_hash)?
                     {
+                        tracing::debug!("Found L2 tx for L1 Tx {:?}", l1_tx_hash);
                         tx.insert_l1_handler_tx(l1_block_number, l1_tx_hash, l2_tx_hash)?;
                         tx.remove_l1_to_l2_message_log(&msg.message_hash)?;
                     }
                     // Otherwise, we insert the message log with an empty L2 tx hash
                     else {
-                        tracing::trace!("L2 tx not found for L1 Tx {:?}", l1_tx_hash);
+                        tracing::debug!("L2 tx NOT found for L1 Tx {:?}", l1_tx_hash);
                         let msg_log = L1ToL2MessageLog {
                             message_hash: msg.message_hash,
                             l1_block_number: Some(l1_block_number),

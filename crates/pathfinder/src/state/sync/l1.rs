@@ -4,7 +4,6 @@ use pathfinder_common::{BlockNumber, Chain};
 use pathfinder_ethereum::{EthereumApi, EthereumEvent};
 use primitive_types::H160;
 use tokio::sync::mpsc;
-use tracing::trace;
 
 use crate::state::sync::SyncEvent;
 
@@ -57,7 +56,7 @@ where
         )
         .await?;
 
-    trace!(
+    tracing::debug!(
         "Fetched {} L1 to L2 new message logs from {} to {}",
         logs.len(),
         last_synced_l1_handler_block,
