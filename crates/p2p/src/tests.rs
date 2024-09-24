@@ -15,7 +15,7 @@ use rstest::rstest;
 
 use crate::sync::codec;
 use crate::test_utils::peer::TestPeer;
-use crate::{BootstrapConfig, Config, Event, EventReceiver, RateLimit, TestEvent};
+use crate::{Config, Event, EventReceiver, RateLimit, TestEvent};
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall.
@@ -161,25 +161,8 @@ async fn periodic_bootstrap() {
 
     const BOOTSTRAP_PERIOD: Duration = Duration::from_millis(500);
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        low_watermark: 3,
-        bootstrap: BootstrapConfig {
-            period: BOOTSTRAP_PERIOD,
-            start_offset: Duration::from_secs(1),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        bootstrap_period: BOOTSTRAP_PERIOD,
+        ..Config::for_test()
     };
     let mut boot = TestPeer::new(cfg.clone());
     let mut peer1 = TestPeer::new(cfg.clone());
@@ -270,41 +253,6 @@ async fn periodic_bootstrap() {
         peer2.client.for_test().get_peers_from_dht().await,
         [boot.peer_id, peer1.peer_id].into()
     );
-
-    // Start a new peer and connect to the other peers, immediately reaching the low
-    // watermark.
-    let mut peer3 = TestPeer::new(cfg);
-
-    peer3
-        .client
-        .dial(boot.peer_id, boot_addr.clone())
-        .await
-        .unwrap();
-    peer3
-        .client
-        .dial(peer1.peer_id, addr1.clone())
-        .await
-        .unwrap();
-    peer3
-        .client
-        .dial(peer2.peer_id, addr2.clone())
-        .await
-        .unwrap();
-
-    consume_accumulated_events(&mut peer3.event_receiver).await;
-
-    // The low watermark is reached for peer3, so no more bootstrap attempts are
-    // made.
-    let timeout = tokio::time::timeout(
-        BOOTSTRAP_PERIOD + Duration::from_millis(100),
-        wait_for_event(&mut peer3.event_receiver, |event| match event {
-            Event::Test(TestEvent::KademliaBootstrapStarted) => Some(()),
-            _ => None,
-        }),
-    )
-    .await;
-
-    assert!(timeout.is_err());
 }
 
 /// Test that if a peer attempts to reconnect too quickly, the connection is
@@ -314,24 +262,7 @@ async fn reconnect_too_quickly() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
     let cfg = Config {
         direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
 
     let mut peer1 = TestPeer::new(cfg.clone());
@@ -418,25 +349,7 @@ async fn duplicate_connection() {
     const CONNECTION_TIMEOUT: Duration = Duration::from_millis(50);
     let cfg = Config {
         direct_connection_timeout: CONNECTION_TIMEOUT,
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
     let keypair = Keypair::generate_ed25519();
     let mut peer1 = TestPeer::with_keypair(keypair.clone(), cfg.clone());
@@ -506,26 +419,10 @@ async fn duplicate_connection() {
 #[test_log::test(tokio::test)]
 async fn outbound_peer_eviction() {
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 2,
         max_inbound_relayed_peers: 0,
         max_outbound_peers: 2,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
 
     let mut peer = TestPeer::new(cfg.clone());
@@ -638,26 +535,10 @@ async fn outbound_peer_eviction() {
 #[test_log::test(tokio::test)]
 async fn inbound_peer_eviction() {
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 25,
         max_inbound_relayed_peers: 0,
         max_outbound_peers: 100,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
 
     let mut peer = TestPeer::new(cfg.clone());
@@ -727,26 +608,10 @@ async fn inbound_peer_eviction() {
 #[test_log::test(tokio::test)]
 async fn evicted_peer_reconnection() {
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
         max_inbound_direct_peers: 1000,
         max_inbound_relayed_peers: 0,
         max_outbound_peers: 1,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
 
     let mut peer1 = TestPeer::new(cfg.clone());
@@ -821,26 +686,8 @@ async fn evicted_peer_reconnection() {
 #[test_log::test(tokio::test)]
 async fn ip_whitelist() {
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["127.0.0.2/32".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
     let mut peer1 = TestPeer::new(cfg.clone());
     let peer2 = TestPeer::new(cfg.clone());
@@ -857,26 +704,8 @@ async fn ip_whitelist() {
 
     // Start another peer accepting connections from 127.0.0.1.
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
         ip_whitelist: vec!["127.0.0.1/32".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
-        inbound_connections_rate_limit: RateLimit {
-            max: 1000,
-            interval: Duration::from_secs(1),
-        },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
     let mut peer3 = TestPeer::new(cfg);
 
@@ -894,26 +723,11 @@ async fn rate_limit() {
     const RATE_LIMIT_INTERVAL: Duration = Duration::from_secs(1);
 
     let cfg = Config {
-        direct_connection_timeout: Duration::from_secs(0),
-        relay_connection_timeout: Duration::from_secs(0),
-        ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-        max_inbound_direct_peers: 10,
-        max_inbound_relayed_peers: 10,
-        max_outbound_peers: 10,
-        // Don't open connections automatically.
-        low_watermark: 0,
-        bootstrap: BootstrapConfig {
-            period: Duration::from_millis(500),
-            start_offset: Duration::from_secs(10),
-        },
-        eviction_timeout: Duration::from_secs(15 * 60),
         inbound_connections_rate_limit: RateLimit {
             max: 2,
             interval: RATE_LIMIT_INTERVAL,
         },
-        kad_name: Default::default(),
-        stream_timeout: Duration::from_secs(10),
-        max_concurrent_streams: 100,
+        ..Config::for_test()
     };
 
     let mut peer1 = TestPeer::new(cfg.clone());

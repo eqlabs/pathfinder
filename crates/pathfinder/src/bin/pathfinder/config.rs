@@ -459,17 +459,6 @@ Example:
     max_outbound_connections: u32,
 
     #[arg(
-        long = "p2p.low-watermark",
-        long_help = "The minimum number of outbound peers to maintain. If the number of outbound \
-                     peers drops below this number, the node will attempt to connect to more \
-                     peers.",
-        value_name = "LOW_WATERMARK",
-        env = "PATHFINDER_LOW_WATERMARK",
-        default_value = "20"
-    )]
-    low_watermark: u32,
-
-    #[arg(
         long = "p2p.ip-whitelist",
         long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to \
                      whitelist for incoming connections. If not provided, all incoming \
@@ -739,7 +728,6 @@ pub struct P2PConfig {
     pub max_inbound_relayed_connections: usize,
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
-    pub low_watermark: usize,
     pub kad_name: Option<String>,
     pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
@@ -850,15 +838,6 @@ impl P2PConfig {
                 .exit()
         }
 
-        if args.low_watermark > args.max_outbound_connections {
-            Cli::command()
-                .error(
-                    ErrorKind::ValueValidation,
-                    "p2p.low-watermark must be less than or equal to p2p.max_outbound_connections",
-                )
-                .exit()
-        }
-
         if args.kad_name.iter().any(|x| !x.starts_with('/')) {
             Cli::command()
                 .error(
@@ -886,7 +865,6 @@ impl P2PConfig {
             ),
             predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
-            low_watermark: 0,
             kad_name: args.kad_name,
             l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),

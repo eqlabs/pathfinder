@@ -49,7 +49,7 @@ impl Builder {
         let client = Client::new(command_sender, local_peer_id);
 
         let (behaviour, relay_transport) = behaviour_builder
-            .unwrap_or_else(|| Behaviour::builder(keypair.clone(), chain_id, cfg.clone()))
+            .unwrap_or_else(|| Behaviour::builder(keypair.clone(), chain_id, cfg))
             .build(client.clone());
 
         let swarm = Swarm::new(
@@ -65,7 +65,7 @@ impl Builder {
         (
             client,
             event_receiver,
-            MainLoop::new(swarm, command_receiver, event_sender, cfg),
+            MainLoop::new(swarm, command_receiver, event_sender),
         )
     }
 }

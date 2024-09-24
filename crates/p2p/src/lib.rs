@@ -56,14 +56,12 @@ pub struct Config {
     pub max_inbound_relayed_peers: usize,
     /// Maximum number of outbound peers.
     pub max_outbound_peers: usize,
-    /// The minimum number of peers to maintain. If the number of outbound peers
-    /// drops below this number, the node will attempt to connect to more
-    /// peers.
-    pub low_watermark: usize,
     /// How long to prevent evicted peers from reconnecting.
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
-    pub bootstrap: BootstrapConfig,
+    /// If the number of peers is below the low watermark, the node will attempt
+    /// periodic bootstrapping at this interval.
+    pub bootstrap_period: Duration,
     pub inbound_connections_rate_limit: RateLimit,
     /// Custom protocol name for Kademlia
     pub kad_name: Option<String>,
@@ -77,21 +75,6 @@ pub struct Config {
 pub struct RateLimit {
     pub max: usize,
     pub interval: Duration,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct BootstrapConfig {
-    pub start_offset: Duration,
-    pub period: Duration,
-}
-
-impl Default for BootstrapConfig {
-    fn default() -> Self {
-        Self {
-            start_offset: Duration::from_secs(5),
-            period: Duration::from_secs(2 * 60),
-        }
-    }
 }
 
 pub type HeadTx = tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>;
