@@ -1554,6 +1554,19 @@ mod tests {
                 .return_once(move |_| returned_result);
         }
 
+        fn expect_state_update_with_block_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_state_update_with_block()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(move |_| returned_result);
+        }
+
         /// Convenience wrapper
         fn expect_block_header(
             mock: &mut MockGatewayApi,
@@ -1600,6 +1613,19 @@ mod tests {
                 .return_once(|_| returned_result);
         }
 
+        fn expect_signature_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(|_| returned_result);
+        }
+
         /// Convenience wrapper
         fn expect_class_by_hash(
             mock: &mut MockGatewayApi,
@@ -1623,6 +1649,17 @@ mod tests {
             mock.expect_pending_class_by_hash()
                 .withf(move |x| x == &class_hash)
                 .times(1)
+                .return_once(|_| returned_result);
+        }
+
+        fn expect_class_by_hash_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            class_hash: ClassHash,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_pending_class_by_hash()
+                .withf(move |x| x == &class_hash)
+                .times(..=1)
                 .return_once(|_| returned_result);
         }
 
@@ -3046,18 +3083,19 @@ mod tests {
                 let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
                 let mut mock = MockGatewayApi::new();
 
-                // Download the genesis block with respective state update and contracts
-                expect_state_update_with_block_no_sequence(
+                // Downloading the genesis block data is racing against the failure of block 1,
+                // hence "at most once"
+                expect_state_update_with_block_no_sequence_at_most_once(
                     &mut mock,
                     BLOCK0_NUMBER,
                     Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
                 );
-                expect_class_by_hash_no_sequence(
+                expect_class_by_hash_no_sequence_at_most_once(
                     &mut mock,
                     CONTRACT0_HASH,
                     Ok(CONTRACT0_DEF.clone()),
                 );
-                expect_signature_no_sequence(
+                expect_signature_no_sequence_at_most_once(
                     &mut mock,
                     BLOCK0_NUMBER.into(),
                     Ok(BLOCK0_SIGNATURE.clone()),
@@ -3072,19 +3110,12 @@ mod tests {
                 // Let's run the UUT
                 let jh = spawn_bulk_sync(tx_event, mock);
 
-                assert_matches!(rx_event.recv().await.unwrap(),
-                    SyncEvent::CairoClass { hash, .. } => {
-                        assert_eq!(hash, CONTRACT0_HASH);
-                });
-                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
-                    assert_eq!(*block, *BLOCK0);
-                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
-                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
-                });
+                // The entire unemitted, yet cached batch is rejected
+                assert!(rx_event.recv().await.is_none());
 
                 // Bulk sync should _not_ fail if the block is not found
                 let result = jh.await.unwrap();
-                assert_matches!(result, Ok(Some((BLOCK0_NUMBER, BLOCK0_HASH, _))));
+                assert_matches!(result, Ok(None));
             }
         }
     }
