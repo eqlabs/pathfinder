@@ -56,10 +56,6 @@ pub struct Config {
     pub max_inbound_relayed_peers: usize,
     /// Maximum number of outbound peers.
     pub max_outbound_peers: usize,
-    /// The minimum number of peers to maintain. If the number of outbound peers
-    /// drops below this number, the node will attempt to connect to more
-    /// peers.
-    pub low_watermark: usize,
     /// How long to prevent evicted peers from reconnecting.
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,

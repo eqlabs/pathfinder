@@ -22,10 +22,9 @@ use tokio::time::Duration;
 
 #[cfg(test)]
 use crate::test_utils;
-use crate::{behaviour, Command, Config, EmptyResultSender, Event, TestCommand, TestEvent};
+use crate::{behaviour, Command, EmptyResultSender, Event, TestCommand, TestEvent};
 
 pub struct MainLoop {
-    cfg: crate::Config,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
@@ -77,10 +76,8 @@ impl MainLoop {
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
-        cfg: Config,
     ) -> Self {
         Self {
-            cfg,
             swarm,
             command_receiver,
             event_sender,
@@ -438,20 +435,11 @@ impl MainLoop {
                                 tracing::debug!("Checking low watermark");
                                 // Starting from libp2p-v0.54.1 bootstrap queries are started
                                 // automatically in the kad behaviour:
-                                // - periodically,
-                                // - after a peer is added to the routing table.
-                                // If we have enough peers, we just stop any ongoing bootstrap
-                                // query initiated by libp2p.
-                                if self.swarm.behaviour_mut().outbound_peers().count()
-                                    >= self.cfg.low_watermark
-                                {
-                                    self.swarm
-                                        .behaviour_mut()
-                                        .kademlia_mut()
-                                        .query_mut(&id)
-                                        .expect("Query to be active")
-                                        .finish();
-                                } else if step.count == NonZeroUsize::new(1).expect("1>0") {
+                                // 1. periodically,
+                                // 2. after a peer is added to the routing table, if the number of
+                                //    peers in the DHT is lower than 20. See `bootstrap_on_low_peers` for more details:
+                                //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+                                if step.count == NonZeroUsize::new(1).expect("1>0") {
                                     send_test_event(
                                         &self.event_sender,
                                         TestEvent::KademliaBootstrapStarted,

@@ -35,8 +35,6 @@ impl Config {
             max_inbound_direct_peers: 10,
             max_inbound_relayed_peers: 10,
             max_outbound_peers: 10,
-            // Don't open connections automatically.
-            low_watermark: 0,
             ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
             bootstrap_period: Duration::from_millis(500),
             eviction_timeout: Duration::from_secs(15 * 60),

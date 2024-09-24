@@ -447,7 +447,6 @@ async fn start_p2p(
             max_inbound_direct_peers: config.max_inbound_direct_connections,
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
             max_outbound_peers: config.max_outbound_connections,
-            low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
             bootstrap_period: Duration::from_secs(2 * 60),
             eviction_timeout: config.eviction_timeout,

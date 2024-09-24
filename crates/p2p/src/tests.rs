@@ -161,7 +161,6 @@ async fn periodic_bootstrap() {
 
     const BOOTSTRAP_PERIOD: Duration = Duration::from_millis(500);
     let cfg = Config {
-        low_watermark: 3,
         bootstrap_period: BOOTSTRAP_PERIOD,
         ..Config::for_test()
     };
@@ -254,41 +253,6 @@ async fn periodic_bootstrap() {
         peer2.client.for_test().get_peers_from_dht().await,
         [boot.peer_id, peer1.peer_id].into()
     );
-
-    // Start a new peer and connect to the other peers, immediately reaching the low
-    // watermark.
-    let mut peer3 = TestPeer::new(cfg);
-
-    peer3
-        .client
-        .dial(boot.peer_id, boot_addr.clone())
-        .await
-        .unwrap();
-    peer3
-        .client
-        .dial(peer1.peer_id, addr1.clone())
-        .await
-        .unwrap();
-    peer3
-        .client
-        .dial(peer2.peer_id, addr2.clone())
-        .await
-        .unwrap();
-
-    consume_accumulated_events(&mut peer3.event_receiver).await;
-
-    // The low watermark is reached for peer3, so no more bootstrap attempts are
-    // made.
-    let timeout = tokio::time::timeout(
-        BOOTSTRAP_PERIOD + Duration::from_millis(100),
-        wait_for_event(&mut peer3.event_receiver, |event| match event {
-            Event::Test(TestEvent::KademliaBootstrapStarted) => Some(()),
-            _ => None,
-        }),
-    )
-    .await;
-
-    assert!(timeout.is_err());
 }
 
 /// Test that if a peer attempts to reconnect too quickly, the connection is
