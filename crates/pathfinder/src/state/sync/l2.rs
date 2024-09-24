@@ -3041,77 +3041,50 @@ mod tests {
                 assert_matches!(result, Ok(Some((BLOCK1_NUMBER, BLOCK1_HASH, _))));
             }
 
-            mod no_such_block {
-                use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+            #[tokio::test]
+            async fn no_such_block() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
 
-                use super::*;
+                // Download the genesis block with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Downloading block 1 fails with block not found
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Err(block_not_found()),
+                );
 
-                #[tokio::test]
-                async fn first_in_batch() {
-                    let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                    let mut mock = MockGatewayApi::new();
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
 
-                    // Downloading the genesis block fails with block not found
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER,
-                        Err(block_not_found()),
-                    );
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                        assert_eq!(hash, CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
+                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
+                });
 
-                    // Let's run the UUT
-                    let jh = spawn_bulk_sync(tx_event, mock);
-
-                    assert!(rx_event.recv().await.is_none());
-
-                    let result = jh.await.unwrap();
-                    assert_matches!(result, Ok(None));
-                }
-
-                #[tokio::test]
-                async fn further_in_batch() {
-                    let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                    let mut mock = MockGatewayApi::new();
-
-                    // Download the genesis block with respective state update and contracts
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER,
-                        Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
-                    );
-                    expect_class_by_hash_no_sequence(
-                        &mut mock,
-                        CONTRACT0_HASH,
-                        Ok(CONTRACT0_DEF.clone()),
-                    );
-                    expect_signature_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER.into(),
-                        Ok(BLOCK0_SIGNATURE.clone()),
-                    );
-                    // Downloading block 1 fails with block not found
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK1_NUMBER,
-                        Err(block_not_found()),
-                    );
-
-                    // Let's run the UUT
-                    let jh = spawn_bulk_sync(tx_event, mock);
-
-                    assert_matches!(rx_event.recv().await.unwrap(),
-                        SyncEvent::CairoClass { hash, .. } => {
-                            assert_eq!(hash, CONTRACT0_HASH);
-                    });
-                    assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
-                        assert_eq!(*block, *BLOCK0);
-                        assert_eq_sorted!(*state_update, *STATE_UPDATE0);
-                        assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
-                    });
-
-                    // Bulk sync should _not_ fail if the block is not found
-                    let result = jh.await.unwrap();
-                    assert_matches!(result, Ok(Some((BLOCK0_NUMBER, BLOCK0_HASH, _))));
-                }
+                // Bulk sync should _not_ fail if the block is not found
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(Some((BLOCK0_NUMBER, BLOCK0_HASH, _))));
             }
         }
     }
