@@ -23,13 +23,13 @@ impl Transaction<'_> {
 
         if let Some(l2_tx_hash) = &message.l2_tx_hash {
             tracing::debug!(
-                "Inserted L1 to L2 message log with L2 tx hash: {:?}",
-                l2_tx_hash
+                %l2_tx_hash,
+                "Inserted L1 to L2 message log with L2 tx hash"
             );
         } else if let Some(l1_tx_hash) = &message.l1_tx_hash {
             tracing::debug!(
-                "Inserted L1 to L2 message log with L1 tx hash: {:?}",
-                l1_tx_hash
+                %l1_tx_hash,
+                "Inserted L1 to L2 message log with L1 tx hash"
             );
         }
 
@@ -62,17 +62,12 @@ impl Transaction<'_> {
             .context("Querying L1 to L2 message log")?;
 
         if let Some(data) = raw_data {
-            let debug_tx_str = match (&data.1, &data.2) {
-                (Some(_), None) => "[L1, X]",
-                (None, Some(_)) => "[X, L2]",
-                _ => "N/A",
-            };
-            tracing::debug!(
-                "Fetched (and found: {}) an L1 to L2 message log for {:?}",
-                debug_tx_str,
-                message_hash
+            tracing::trace!(
+                %message_hash,
+                l1_tx_hash=?data.1,
+                l2_tx_hash=?data.2,
+                "Fetched an L1 to L2 message log"
             );
-
             Ok(Some(L1ToL2MessageLog {
                 message_hash: *message_hash,
                 l1_block_number: data.0,
@@ -93,7 +88,7 @@ impl Transaction<'_> {
             )
             .context("Removing L1 to L2 message log")?;
 
-        tracing::trace!("Removed L1 to L2 message log: {:?}", message_hash);
+        tracing::trace!(?message_hash, "Removed L1 to L2 message log");
         Ok(())
     }
 

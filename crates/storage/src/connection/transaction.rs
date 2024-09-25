@@ -183,9 +183,9 @@ impl Transaction<'_> {
         // transactions to satisfy `starknet_getMessagesStatus`
         for (transaction, _) in transactions.iter() {
             if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
-                tracing::debug!(
-                    "Found an l1_handler variant while inserting transaction {:?}",
-                    transaction.hash
+                tracing::trace!(
+                    transaction_hash=%transaction.hash,
+                    "Found an l1_handler variant while inserting transaction"
                 );
 
                 // Fetch the L1 to L2 message log for this transaction
@@ -202,7 +202,7 @@ impl Transaction<'_> {
                     }
                 }
                 // Otherwise, we insert the message log with an empty L1 tx hash
-                tracing::trace!("L1 tx not found for L2 Tx {:?}", transaction.hash);
+                tracing::trace!(transaction_hash=%transaction.hash, "L1 tx not found for L2 tx");
                 let msg_log = L1ToL2MessageLog {
                     message_hash: msg_hash,
                     l1_block_number: None,
@@ -237,11 +237,11 @@ impl Transaction<'_> {
             ":l2_tx_hash": &l2_tx_hash,
         ])?;
 
-        tracing::debug!(
-            "Saved l1_handler_tx: [{}] {:?} <-> {:?}",
-            l1_block_number,
-            l1_tx_hash,
-            l2_tx_hash
+        tracing::trace!(
+            %l1_block_number,
+            %l1_tx_hash,
+            %l2_tx_hash,
+            "Saved l1_handler_tx"
         );
 
         Ok(())

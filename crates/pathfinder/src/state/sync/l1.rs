@@ -56,11 +56,11 @@ where
         )
         .await?;
 
-    tracing::debug!(
-        "Fetched {} L1 to L2 new message logs from {} to {}",
-        logs.len(),
-        last_synced_l1_handler_block,
-        state_update.block_number
+    tracing::trace!(
+        number_of_logs=%logs.len(),
+        from_block=%last_synced_l1_handler_block,
+        to_block=?state_update.l1_block_number.unwrap(),
+        "Fetched L1 to L2 message logs",
     );
 
     for log in logs {

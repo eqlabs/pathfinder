@@ -324,11 +324,11 @@ impl EthereumApi for EthereumClient {
         let mut logs = Vec::new();
         get_logs_recursive(&provider, &filter, from_block, to_block, &mut logs, 10_000).await?;
 
-        tracing::debug!(
-            "Fetched {} `L1ToL2MessageLog` logs from {} to {}",
-            logs.len(),
-            from_block,
-            to_block
+        tracing::trace!(
+            number_of_logs=%logs.len(),
+            %from_block,
+            %to_block,
+            "Fetched L1ToL2MessageLog logs"
         );
 
         let logs: Vec<L1ToL2MessageLog> = logs
@@ -447,7 +447,7 @@ fn get_logs_recursive<'a>(
                 logs.extend(new_logs);
             }
             Err(e) => {
-                tracing::debug!("Get logs error at block {}: {}", from_block, e);
+                tracing::debug!(%from_block, error=?e, "Get logs error at block");
                 if let Some(err) = e.as_error_resp() {
                     // Retry the request splitting the block range in half
                     //
@@ -457,9 +457,9 @@ fn get_logs_recursive<'a>(
                     // range is the best we can do.
                     if err.is_retry_err() {
                         tracing::debug!(
-                            "Retrying request (splitting) at block {}: {}",
-                            from_block,
-                            err
+                            %from_block,
+                            error=?err,
+                            "Retrying request (splitting) at block"
                         );
                         let mid_block = from_block + block_range / 2;
                         get_logs_recursive(
@@ -483,13 +483,17 @@ fn get_logs_recursive<'a>(
                         return Ok(());
                     } else {
                         tracing::error!(
-                            "get_logs: Provider error at block {}: {}",
-                            from_block,
-                            err
+                            %from_block,
+                            error=?err,
+                            "get_logs provider error"
                         );
                     }
                 } else {
-                    tracing::error!("get_logs: Unknown error at block {}: {}", from_block, e);
+                    tracing::error!(
+                        %from_block,
+                        error=?e,
+                        "get_logs: Unknown error"
+                    );
                 }
             }
         }
