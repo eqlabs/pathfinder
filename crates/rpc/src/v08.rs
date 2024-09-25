@@ -7,5 +7,5 @@ pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V08)
         .register("starknet_subscribeNewHeads",            SubscribeNewHeads)
         .register("starknet_subscribePendingTransactions", SubscribePendingTransactions)
-        .register("starknet_specVersion",                  || "0.8.0")
+        .register("starknet_specVersion",                  || "0.8.0-rc0")
 }
