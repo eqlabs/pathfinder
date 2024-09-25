@@ -23,9 +23,11 @@ use pathfinder_common::{
     EventKey,
     Fee,
     GasPrice,
+    L1BlockNumber,
     L1DataAvailabilityMode,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
+    L1TransactionHash,
     L2ToL1MessagePayloadElem,
     ReceiptCommitment,
     SequencerAddress,
@@ -124,6 +126,7 @@ to_sql_felt!(
 to_sql_compressed_felt!(ContractNonce, StorageValue, TransactionNonce);
 
 to_sql_int!(BlockNumber, BlockTimestamp);
+to_sql_int!(L1BlockNumber);
 
 to_sql_builtin!(
     String,
@@ -140,6 +143,13 @@ to_sql_builtin!(
     u16,
     u8
 );
+
+impl ToSql for L1TransactionHash {
+    fn to_sql(&self) -> rusqlite::types::ToSqlOutput<'_> {
+        use rusqlite::types::{ToSqlOutput, ValueRef};
+        ToSqlOutput::Borrowed(ValueRef::Blob(self.as_bytes()))
+    }
+}
 
 try_into_sql!(usize, u64);
 
@@ -212,6 +222,13 @@ pub trait RowExt {
         let num = self.get_i64(index)?;
         // Always safe since we are fetching an i64
         Ok(BlockNumber::new_or_panic(num as u64))
+    }
+
+    fn get_optional_transaction_hash<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<TransactionHash>> {
+        Ok(self.get_optional_felt(index)?.map(TransactionHash))
     }
 
     fn get_gas_price<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<GasPrice> {
@@ -347,6 +364,39 @@ pub trait RowExt {
             }
         };
         Ok(mode)
+    }
+
+    fn get_l1_block_number<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<L1BlockNumber> {
+        let num = self.get_i64(index)?;
+        // Always safe since we are fetching an i64
+        Ok(L1BlockNumber::new_or_panic(num as u64))
+    }
+
+    fn get_optional_l1_block_number<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<L1BlockNumber>> {
+        let num = self.get_optional_i64(index)?;
+        // Always safe since we are fetching an i64
+        Ok(num.map(|num| L1BlockNumber::new_or_panic(num as u64)))
+    }
+
+    #[allow(dead_code)]
+    fn get_l1_tx_hash<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<L1TransactionHash> {
+        let blob = self.get_blob(index)?;
+        let tx_hash = L1TransactionHash::from_slice(blob);
+        Ok(tx_hash)
+    }
+
+    fn get_optional_l1_tx_hash<Index: RowIndex>(
+        &self,
+        index: Index,
+    ) -> rusqlite::Result<Option<L1TransactionHash>> {
+        let blob = self.get_optional_blob(index)?;
+        Ok(blob.map(L1TransactionHash::from_slice))
     }
 
     row_felt_wrapper!(get_block_hash, BlockHash);

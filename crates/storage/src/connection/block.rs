@@ -473,18 +473,6 @@ impl Transaction<'_> {
             .context("Querying highest block with events")
     }
 
-    pub fn highest_block_with_l1_handler_tx(&self) -> anyhow::Result<Option<BlockNumber>> {
-        let mut stmt = self.inner().prepare_cached(
-            r"SELECT l1_block_number
-        FROM l1_handler_txs
-        ORDER BY l1_block_number DESC
-        LIMIT 1",
-        )?;
-        stmt.query_row([], |row| row.get_block_number(0))
-            .optional()
-            .context("Querying highest block with L1 handler txs")
-    }
-
     pub fn update_storage_and_class_commitments(
         &self,
         block_number: BlockNumber,

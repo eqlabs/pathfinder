@@ -4,8 +4,14 @@ use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction as StarknetTransaction, TransactionVariant};
-use pathfinder_common::{BlockHash, BlockNumber, L1ToL2MessageLog, TransactionHash};
-use primitive_types::H256;
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    L1BlockNumber,
+    L1ToL2MessageLog,
+    L1TransactionHash,
+    TransactionHash,
+};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 use crate::prelude::*;
@@ -173,7 +179,8 @@ impl Transaction<'_> {
                 .context("Inserting events into Bloom filter")?;
         }
 
-        // Associate L1 handler transactions with L2 transactions
+        // Keep track of L1 handler transactions so we can associate them with L1
+        // transactions to satisfy `starknet_getMessagesStatus`
         for (transaction, _) in transactions.iter() {
             if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
                 tracing::debug!(
@@ -197,7 +204,7 @@ impl Transaction<'_> {
                 // Otherwise, we insert the message log with an empty L1 tx hash
                 tracing::trace!("L1 tx not found for L2 Tx {:?}", transaction.hash);
                 let msg_log = L1ToL2MessageLog {
-                    message_hash: l1_handler_tx.calculate_message_hash(),
+                    message_hash: msg_hash,
                     l1_block_number: None,
                     l1_tx_hash: None,
                     l2_tx_hash: Some(transaction.hash),
@@ -212,8 +219,8 @@ impl Transaction<'_> {
     /// Inserts an L1 handler transaction with it's corresponding L2 tx hash
     pub fn insert_l1_handler_tx(
         &self,
-        l1_block_number: u64,
-        l1_tx_hash: H256,
+        l1_block_number: L1BlockNumber,
+        l1_tx_hash: L1TransactionHash,
         l2_tx_hash: TransactionHash,
     ) -> anyhow::Result<()> {
         let mut insert_l1_handler_tx_stmt = self
@@ -226,7 +233,7 @@ impl Transaction<'_> {
 
         insert_l1_handler_tx_stmt.execute(named_params![
             ":l1_block_number": &l1_block_number,
-            ":l1_tx_hash": &l1_tx_hash.as_bytes(),
+            ":l1_tx_hash": &l1_tx_hash,
             ":l2_tx_hash": &l2_tx_hash,
         ])?;
 

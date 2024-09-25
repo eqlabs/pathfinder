@@ -15,6 +15,7 @@ use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
+    L1BlockNumber,
     L1ToL2MessageLog,
     PublicKey,
     ReceiptCommitment,
@@ -111,7 +112,7 @@ where
                 Chain::SepoliaTestnet | Chain::SepoliaIntegration => {
                     pathfinder_ethereum::block_numbers::sepolia::FIRST_L1_BLOCK_STARKNET_V0_13_2
                 }
-                _ => BlockNumber::new_or_panic(0),
+                _ => L1BlockNumber::GENESIS,
             },
         }
     }
@@ -271,7 +272,7 @@ where
             Chain::SepoliaTestnet | Chain::SepoliaIntegration => {
                 pathfinder_ethereum::block_numbers::sepolia::FIRST_L1_BLOCK_STARKNET_V0_13_2
             }
-            _ => BlockNumber::new_or_panic(0),
+            _ => L1BlockNumber::GENESIS,
         };
         Ok(l1_handler_block.unwrap_or(default_block_number))
     })?;

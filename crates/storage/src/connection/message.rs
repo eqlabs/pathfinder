@@ -1,6 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{L1ToL2MessageLog, TransactionHash};
-use pathfinder_crypto::Felt;
+use pathfinder_common::{L1BlockNumber, L1ToL2MessageLog};
 use primitive_types::H256;
 
 use super::Transaction;
@@ -14,10 +13,10 @@ impl Transaction<'_> {
                 "INSERT OR REPLACE INTO l1_to_l2_message_logs (msg_hash, l1_block_number, \
                  l1_tx_hash, l2_tx_hash) VALUES (?, ?, ?, ?)",
                 params![
-                    &message.message_hash.as_bytes(),
+                    &message.message_hash,
                     &message.l1_block_number,
-                    &message.l1_tx_hash.map(|h| h.as_bytes().to_vec()),
-                    &message.l2_tx_hash.map(|h| h.0.as_be_bytes().to_vec()),
+                    &message.l1_tx_hash,
+                    &message.l2_tx_hash,
                 ],
             )
             .context("Upserting L1 to L2 message log")?;
@@ -54,9 +53,9 @@ impl Transaction<'_> {
         let raw_data = stmt
             .query_row(params![&message_hash.as_bytes().to_vec()], |row| {
                 Ok((
-                    row.get::<_, Option<u64>>(0)?,
-                    row.get::<_, Option<Vec<u8>>>(1)?,
-                    row.get::<_, Option<Vec<u8>>>(2)?,
+                    row.get_optional_l1_block_number(0)?,
+                    row.get_optional_l1_tx_hash(1)?,
+                    row.get_optional_transaction_hash(2)?,
                 ))
             })
             .optional()
@@ -77,10 +76,8 @@ impl Transaction<'_> {
             Ok(Some(L1ToL2MessageLog {
                 message_hash: *message_hash,
                 l1_block_number: data.0,
-                l1_tx_hash: data.1.map(|b| H256::from_slice(&b)),
-                l2_tx_hash: data.2.map(|b| {
-                    TransactionHash(Felt::from_be_slice(&b).expect("Invalid transaction hash"))
-                }),
+                l1_tx_hash: data.1,
+                l2_tx_hash: data.2,
             }))
         } else {
             Ok(None)
@@ -98,5 +95,18 @@ impl Transaction<'_> {
 
         tracing::trace!("Removed L1 to L2 message log: {:?}", message_hash);
         Ok(())
+    }
+
+    /// Fetches the highest L1 block number with an L1 handler tx.
+    pub fn highest_block_with_l1_handler_tx(&self) -> anyhow::Result<Option<L1BlockNumber>> {
+        let mut stmt = self.inner().prepare_cached(
+            r"SELECT l1_block_number
+        FROM l1_handler_txs
+        ORDER BY l1_block_number DESC
+        LIMIT 1",
+        )?;
+        stmt.query_row([], |row| row.get_l1_block_number(0))
+            .optional()
+            .context("Querying highest block with L1 handler txs")
     }
 }

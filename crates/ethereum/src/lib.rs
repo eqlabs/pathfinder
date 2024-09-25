@@ -9,7 +9,15 @@ use alloy::pubsub::PubSubFrontend;
 use alloy::rpc::types::{Filter, Log};
 use anyhow::Context;
 use futures::{FutureExt, StreamExt};
-use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, L1ToL2MessageLog, StateCommitment};
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    EthereumChain,
+    L1BlockNumber,
+    L1ToL2MessageLog,
+    L1TransactionHash,
+    StateCommitment,
+};
 use primitive_types::{H160, H256, U256};
 use reqwest::{IntoUrl, Url};
 use starknet::StarknetCoreContract;
@@ -38,25 +46,25 @@ pub mod core_addr {
 }
 
 pub mod block_numbers {
-    use super::BlockNumber;
+    use super::{BlockNumber, L1BlockNumber};
     pub mod mainnet {
-        use super::BlockNumber;
+        use super::{BlockNumber, L1BlockNumber};
         /// The first v0.13.2 block number
         pub const FIRST_V0_13_2_BLOCK: BlockNumber = BlockNumber::new_or_panic(671_813);
         /// The first L1 block number with a state update corresponding to
         /// v0.13.2 of Starknet
-        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: BlockNumber =
-            BlockNumber::new_or_panic(20_627_771);
+        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: L1BlockNumber =
+            L1BlockNumber::new_or_panic(20_627_771);
     }
 
     pub mod sepolia {
-        use super::BlockNumber;
+        use super::{BlockNumber, L1BlockNumber};
         /// The first v0.13.2 block number
         pub const FIRST_V0_13_2_BLOCK: BlockNumber = BlockNumber::new_or_panic(86_311);
         /// The first L1 block number with a state update corresponding to
         /// v0.13.2 of Starknet
-        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: BlockNumber =
-            BlockNumber::new_or_panic(6_453_990);
+        pub const FIRST_L1_BLOCK_STARKNET_V0_13_2: L1BlockNumber =
+            L1BlockNumber::new_or_panic(6_453_990);
     }
 }
 
@@ -73,7 +81,7 @@ pub struct EthereumStateUpdate {
     pub state_root: StateCommitment,
     pub block_number: BlockNumber,
     pub block_hash: BlockHash,
-    pub l1_block_number: Option<BlockNumber>,
+    pub l1_block_number: Option<L1BlockNumber>,
 }
 
 /// Ethereum API trait
@@ -84,14 +92,14 @@ pub trait EthereumApi {
     async fn get_message_logs(
         &self,
         address: &H160,
-        from_block: BlockNumber,
-        to_block: BlockNumber,
+        from_block: L1BlockNumber,
+        to_block: L1BlockNumber,
     ) -> anyhow::Result<Vec<L1ToL2MessageLog>>;
     async fn get_state_updates(
         &self,
         address: &H160,
-        from_block: BlockNumber,
-        to_block: BlockNumber,
+        from_block: L1BlockNumber,
+        to_block: L1BlockNumber,
     ) -> anyhow::Result<Vec<EthereumStateUpdate>>;
     async fn listen<F, Fut>(
         &mut self,
@@ -108,7 +116,7 @@ pub trait EthereumApi {
 #[derive(Clone, Debug)]
 pub struct EthereumClient {
     url: Url,
-    pending_state_updates: BTreeMap<u64, EthereumStateUpdate>,
+    pending_state_updates: BTreeMap<L1BlockNumber, EthereumStateUpdate>,
 }
 
 impl EthereumClient {
@@ -129,16 +137,15 @@ impl EthereumClient {
     }
 
     /// Returns the block number of the last finalized block
-    async fn get_finalized_block_number(&self) -> anyhow::Result<BlockNumber> {
+    async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().on_ws(ws).await?;
-
         // Fetch the finalized block number
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized, false)
             .await?
-            .map(|block| BlockNumber::new_or_panic(block.header.number))
+            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
             .context("Failed to fetch finalized block hash")
     }
 }
@@ -181,7 +188,7 @@ impl EthereumApi for EthereumClient {
         // Poll regularly for finalized block number
         let provider_clone = provider.clone();
         let (finalized_block_tx, mut finalized_block_rx) =
-            tokio::sync::mpsc::channel::<BlockNumber>(1);
+            tokio::sync::mpsc::channel::<L1BlockNumber>(1);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
@@ -190,18 +197,20 @@ impl EthereumApi for EthereumClient {
                     .get_block_by_number(BlockNumberOrTag::Finalized, false)
                     .await
                 {
-                    let block_number = BlockNumber::new_or_panic(finalized_block.header.number);
+                    let block_number = L1BlockNumber::new_or_panic(finalized_block.header.number);
                     let _ = finalized_block_tx.send(block_number).await.unwrap();
                 }
             }
         });
 
-        // Add the finalized block stream to the select! macro
+        // Process incoming events
         loop {
             select! {
                 Some(state_update) = state_updates.next() => {
                     // Decode the state update
-                    let eth_block = state_update.block_number.expect("missing eth block number");
+                    let eth_block = L1BlockNumber::new_or_panic(
+                        state_update.block_number.expect("missing eth block number")
+                    );
                     let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
                     let block_number = get_block_number(state_update.inner.blockNumber);
                     // Add or remove to/from pending state updates accordingly
@@ -223,8 +232,8 @@ impl EthereumApi for EthereumClient {
                     // Create L1ToL2MessageHash from the log data
                     let msg = L1ToL2MessageLog {
                         message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
-                        l1_block_number: Some(log.block_number.expect("missing eth block number")),
-                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)),
+                        l1_block_number: log.block_number.map(L1BlockNumber::new_or_panic),
+                        l1_tx_hash: log.transaction_hash.map(|hash| L1TransactionHash::from(hash.0)),
                         l2_tx_hash: None,
                     };
                     // Emit the message log
@@ -233,11 +242,11 @@ impl EthereumApi for EthereumClient {
                 Some(block_number) = finalized_block_rx.recv() => {
                     // Collect all state updates up to (and including) the finalized block
                     let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
-                        .range(..=block_number.get())
+                        .range(..=block_number)
                         .map(|(_, &update)| update)
                         .collect();
                     // Remove emitted updates from the map
-                    self.pending_state_updates.retain(|&k, _| k > block_number.get());
+                    self.pending_state_updates.retain(|&k, _| k > block_number);
                     // Emit the state updates
                     for state_update in pending_state_updates {
                         callback(EthereumEvent::StateUpdate(state_update)).await;
@@ -297,8 +306,8 @@ impl EthereumApi for EthereumClient {
     async fn get_message_logs(
         &self,
         address: &H160,
-        from_block: BlockNumber,
-        to_block: BlockNumber,
+        from_block: L1BlockNumber,
+        to_block: L1BlockNumber,
     ) -> anyhow::Result<Vec<L1ToL2MessageLog>> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
@@ -313,15 +322,7 @@ impl EthereumApi for EthereumClient {
 
         // Fetch the logs
         let mut logs = Vec::new();
-        get_logs_recursive(
-            &provider,
-            &filter,
-            from_block.get(),
-            to_block.get(),
-            &mut logs,
-            10_000,
-        )
-        .await?;
+        get_logs_recursive(&provider, &filter, from_block, to_block, &mut logs, 10_000).await?;
 
         tracing::debug!(
             "Fetched {} `L1ToL2MessageLog` logs from {} to {}",
@@ -337,8 +338,10 @@ impl EthereumApi for EthereumClient {
                     .ok()
                     .map(|decoded| L1ToL2MessageLog {
                         message_hash: H256::from(decoded.inner.message_hash().to_be_bytes()),
-                        l1_block_number: Some(log.block_number.expect("missing eth block number")),
-                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)),
+                        l1_block_number: log.block_number.map(L1BlockNumber::new_or_panic),
+                        l1_tx_hash: log
+                            .transaction_hash
+                            .map(|hash| L1TransactionHash::from(hash.0)),
                         l2_tx_hash: None,
                     })
             })
@@ -351,8 +354,8 @@ impl EthereumApi for EthereumClient {
     async fn get_state_updates(
         &self,
         address: &H160,
-        from_block: BlockNumber,
-        to_block: BlockNumber,
+        from_block: L1BlockNumber,
+        to_block: L1BlockNumber,
     ) -> anyhow::Result<Vec<EthereumStateUpdate>> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
@@ -367,15 +370,7 @@ impl EthereumApi for EthereumClient {
 
         // Fetch the logs
         let mut logs = Vec::new();
-        get_logs_recursive(
-            &provider,
-            &filter,
-            from_block.get(),
-            to_block.get(),
-            &mut logs,
-            2_000,
-        )
-        .await?;
+        get_logs_recursive(&provider, &filter, from_block, to_block, &mut logs, 2_000).await?;
 
         let logs: Vec<EthereumStateUpdate> = logs
             .into_iter()
@@ -386,9 +381,7 @@ impl EthereumApi for EthereumClient {
                         state_root: get_state_root(decoded.inner.globalRoot),
                         block_hash: get_block_hash(decoded.inner.blockHash),
                         block_number: get_block_number(decoded.inner.blockNumber),
-                        l1_block_number: Some(BlockNumber::new_or_panic(
-                            log.block_number.expect("missing eth block number"),
-                        )),
+                        l1_block_number: log.block_number.map(L1BlockNumber::new_or_panic),
                     })
             })
             .collect();
@@ -401,8 +394,8 @@ impl EthereumApi for EthereumClient {
 fn get_logs_recursive<'a>(
     provider: &'a RootProvider<PubSubFrontend>,
     base_filter: &'a Filter,
-    from_block: u64,
-    to_block: u64,
+    from_block: L1BlockNumber,
+    to_block: L1BlockNumber,
     logs: &'a mut Vec<Log>,
     // Limits
     max_block_range: u64,
@@ -414,7 +407,7 @@ fn get_logs_recursive<'a>(
         }
 
         // If the block range exceeds the maximum, split it
-        let block_range = to_block - from_block + 1;
+        let block_range = to_block.get() - from_block.get() + 1;
         if block_range > max_block_range {
             let mid_block = from_block + block_range / 2;
             get_logs_recursive(
@@ -440,8 +433,8 @@ fn get_logs_recursive<'a>(
         }
 
         // Adjust the base filter to the current block range
-        let from_block_id = BlockNumberOrTag::Number(from_block);
-        let to_block_id = BlockNumberOrTag::Number(to_block);
+        let from_block_id = BlockNumberOrTag::Number(from_block.get());
+        let to_block_id = BlockNumberOrTag::Number(to_block.get());
         let filter = (*base_filter)
             .clone()
             .from_block(from_block_id)
