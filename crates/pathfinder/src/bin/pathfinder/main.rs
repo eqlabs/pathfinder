@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -641,6 +642,11 @@ async fn spawn_monitoring(
         .context("Creating Prometheus recorder")?;
 
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
+
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => metrics::gauge!("process_start_time_seconds", duration.as_secs() as f64),
+        Err(err) => tracing::error!("Failed to read system time: {:?}", err),
+    }
 
     let (_, handle) =
         monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await?;
