@@ -9,7 +9,7 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 /// Provides the latest [PendingData] which is consistent with a given
 /// view of storage.
 #[derive(Clone)]
-pub struct PendingWatcher(WatchReceiver<PendingData>);
+pub struct PendingWatcher(pub WatchReceiver<PendingData>);
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct PendingData {

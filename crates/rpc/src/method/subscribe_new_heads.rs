@@ -11,28 +11,28 @@ use crate::Reorg;
 
 pub struct SubscribeNewHeads;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Request {
-    block: BlockId,
+    block: Option<BlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Request {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
             Ok(Self {
-                block: value.deserialize_serde("block")?,
+                block: value.deserialize_optional_serde("block")?,
             })
         })
     }
 }
 
 #[derive(Debug)]
-pub enum Message {
+pub enum Notification {
     BlockHeader(Arc<pathfinder_common::BlockHeader>),
     Reorg(Arc<Reorg>),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Message {
+impl crate::dto::serialize::SerializeForVersion for Notification {
     fn serialize(
         &self,
         serializer: crate::dto::serialize::Serializer,
@@ -49,10 +49,10 @@ const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewHeads";
 #[async_trait]
 impl RpcSubscriptionFlow for SubscribeNewHeads {
     type Request = Request;
-    type Notification = Message;
+    type Notification = Notification;
 
     fn starting_block(req: &Self::Request) -> BlockId {
-        req.block
+        req.block.unwrap_or(BlockId::Latest)
     }
 
     async fn catch_up(
@@ -74,7 +74,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
             .map(|header| {
                 let block_number = header.number;
                 SubscriptionMessage {
-                    notification: Message::BlockHeader(header.into()),
+                    notification: Notification::BlockHeader(header.into()),
                     block_number,
                     subscription_name: SUBSCRIPTION_NAME,
                 }
@@ -84,6 +84,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
 
     async fn subscribe(
         state: RpcContext,
+        _req: Self::Request,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) {
         let mut headers = state.notifications.block_headers.subscribe();
@@ -95,7 +96,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
                         Ok(reorg) => {
                             let block_number = reorg.first_block_number;
                             if tx.send(SubscriptionMessage {
-                                notification: Message::Reorg(reorg),
+                                notification: Notification::Reorg(reorg),
                                 block_number,
                                 subscription_name: REORG_SUBSCRIPTION_NAME,
                             }).await.is_err() {
@@ -117,7 +118,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
                         Ok(header) => {
                             let block_number = header.number;
                             if tx.send(SubscriptionMessage {
-                                notification: Message::BlockHeader(header),
+                                notification: Notification::BlockHeader(header),
                                 block_number,
                                 subscription_name: SUBSCRIPTION_NAME,
                             }).await.is_err() {
@@ -151,14 +152,14 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
+    use crate::jsonrpc::{handle_json_rpc_socket, RequestId, RpcError, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::v02::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks() {
-        happy_path_test(1000).await;
+        happy_path_test(2000).await;
     }
 
     #[tokio::test]
@@ -296,6 +297,88 @@ mod tests {
             }
             // Then, expect the block updates.
             let expected = sample_new_heads_message(i + 2 * num_blocks, subscription_id);
+            let header = sender_rx.recv().await.unwrap().unwrap();
+            let json: serde_json::Value = match header {
+                Message::Text(json) => serde_json::from_str(&json).unwrap(),
+                _ => panic!("Expected text message"),
+            };
+            assert_eq!(json, expected);
+        }
+        assert!(sender_rx.is_empty());
+    }
+
+    #[tokio::test]
+    async fn invalid_subscription() {
+        let router = setup(0).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeNewHeads",
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap();
+        let res = match res {
+            Ok(_) => panic!("Expected Err, got Ok"),
+            Err(e) => e,
+        };
+        assert_eq!(
+            res,
+            RpcResponse {
+                output: Err(RpcError::InvalidParams(
+                    "expected object or array".to_string()
+                )),
+                id: RequestId::Number(1),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn subscribe_no_params() {
+        let router = setup(0).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeNewHeads",
+                    "params": {}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].as_u64().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+        for i in 0..10 {
+            retry(|| {
+                router
+                    .context
+                    .notifications
+                    .block_headers
+                    .send(sample_header(i).into())
+            })
+            .await
+            .unwrap();
+            let expected = sample_new_heads_message(i, subscription_id);
             let header = sender_rx.recv().await.unwrap().unwrap();
             let json: serde_json::Value = match header {
                 Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -501,11 +584,12 @@ mod tests {
     where
         E: std::fmt::Debug,
     {
-        for i in 0..25 {
+        const RETRIES: u64 = 25;
+        for i in 0..RETRIES {
             match cb() {
                 Ok(result) => return Ok(result),
                 Err(e) => {
-                    if i == 24 {
+                    if i == RETRIES - 1 {
                         return Err(e);
                     }
                     tokio::time::sleep(Duration::from_secs(i)).await;
