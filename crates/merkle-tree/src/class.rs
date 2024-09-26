@@ -89,50 +89,12 @@ impl<'tx> ClassCommitmentTree<'tx> {
             return Ok(None);
         };
 
-        let storage = ClassTrieStorage {
+        let storage = ClassStorage {
             tx,
             block: Some(block),
         };
 
         MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
-    }
-}
-
-struct ClassTrieStorage<'tx> {
-    tx: &'tx Transaction<'tx>,
-    block: Option<BlockNumber>,
-}
-
-impl crate::storage::Storage for ClassTrieStorage<'_> {
-    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.tx.class_trie_node(index)
-    }
-
-    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
-        self.tx.class_trie_node_hash(index)
-    }
-
-    fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
-        assert!(path.len() == 251);
-
-        let Some(block) = self.block else {
-            return Ok(None);
-        };
-
-        let sierra =
-            ClassHash(Felt::from_bits(path).context("Mapping leaf path to contract address")?);
-
-        let casm = self
-            .tx
-            .casm_hash_at(block.into(), sierra)
-            .context("Querying CASM hash")?;
-        let Some(casm) = casm else {
-            return Ok(None);
-        };
-
-        let value = self.tx.class_commitment_leaf(block, &casm)?.map(|x| x.0);
-
-        Ok(value)
     }
 }
 
