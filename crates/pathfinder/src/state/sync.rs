@@ -263,7 +263,7 @@ where
     let l1_handler_block = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l1_handler_block = tx
-            .highest_block_with_l1_handler_tx()
+            .last_known_l1_block_with_l1_to_l2_message()
             .context("Fetching latest block with L1 handler tx")?;
         let default_block_number = match context.chain {
             Chain::Mainnet => {

@@ -93,12 +93,16 @@ impl Transaction<'_> {
     }
 
     /// Fetches the highest L1 block number with an L1 handler tx.
-    pub fn highest_block_with_l1_handler_tx(&self) -> anyhow::Result<Option<L1BlockNumber>> {
+    pub fn last_known_l1_block_with_l1_to_l2_message(
+        &self,
+    ) -> anyhow::Result<Option<L1BlockNumber>> {
         let mut stmt = self.inner().prepare_cached(
-            r"SELECT l1_block_number
-        FROM l1_handler_txs
-        ORDER BY l1_block_number DESC
-        LIMIT 1",
+            r"SELECT MAX(l1_block_number) AS l1_block_number
+            FROM (
+                SELECT l1_block_number FROM l1_handler_txs
+                UNION ALL
+                SELECT l1_block_number FROM l1_to_l2_message_logs
+            );",
         )?;
         stmt.query_row([], |row| row.get_l1_block_number(0))
             .optional()

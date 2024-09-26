@@ -10,7 +10,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             l1_block_number INTEGER,
             l1_tx_hash BLOB,
             l2_tx_hash BLOB
-        );",
+        );
+        CREATE INDEX idx_l1_to_l2_message_logs_l1_block_number ON l1_to_l2_message_logs(l1_block_number);
+        ",
     )
     .context("Adding table to store L1 to L2 message data")?;
 
@@ -22,6 +24,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             l2_tx_hash BLOB NOT NULL
         );
         CREATE INDEX idx_l1_handler_txs_l1_tx_hash ON l1_handler_txs(l1_tx_hash);
+        CREATE INDEX idx_l1_handler_txs_l1_block_number ON l1_handler_txs(l1_block_number);
         ",
     )
     .context("Adding table and index to store L1 handler tx data")?;
