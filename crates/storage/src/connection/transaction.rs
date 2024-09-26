@@ -3,8 +3,15 @@
 use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+use pathfinder_common::transaction::{Transaction as StarknetTransaction, TransactionVariant};
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    L1BlockNumber,
+    L1ToL2MessageLog,
+    L1TransactionHash,
+    TransactionHash,
+};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 use crate::prelude::*;
@@ -171,6 +178,71 @@ impl Transaction<'_> {
             self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
         }
+
+        // Keep track of L1 handler transactions so we can associate them with L1
+        // transactions to satisfy `starknet_getMessagesStatus`
+        for (transaction, _) in transactions.iter() {
+            if let TransactionVariant::L1Handler(l1_handler_tx) = &transaction.variant {
+                tracing::trace!(
+                    transaction_hash=%transaction.hash,
+                    "Found an l1_handler variant while inserting transaction"
+                );
+
+                // Fetch the L1 to L2 message log for this transaction
+                let msg_hash = l1_handler_tx.calculate_message_hash();
+                if let Some(msg_log) = self.fetch_l1_to_l2_message_log(&msg_hash)? {
+                    // If we have an L1 block number and tx hash for this message, we can associate
+                    // the L1 handler tx with the L2 tx
+                    if let (Some(l1_block_number), Some(l1_tx_hash)) =
+                        (msg_log.l1_block_number, msg_log.l1_tx_hash)
+                    {
+                        self.insert_l1_handler_tx(l1_block_number, l1_tx_hash, transaction.hash)?;
+                        self.remove_l1_to_l2_message_log(&msg_hash)?;
+                        return Ok(());
+                    }
+                }
+                // Otherwise, we insert the message log with an empty L1 tx hash
+                tracing::trace!(transaction_hash=%transaction.hash, "L1 tx not found for L2 tx");
+                let msg_log = L1ToL2MessageLog {
+                    message_hash: msg_hash,
+                    l1_block_number: None,
+                    l1_tx_hash: None,
+                    l2_tx_hash: Some(transaction.hash),
+                };
+                self.upsert_l1_to_l2_message_log(&msg_log)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Inserts an L1 handler transaction with it's corresponding L2 tx hash
+    pub fn insert_l1_handler_tx(
+        &self,
+        l1_block_number: L1BlockNumber,
+        l1_tx_hash: L1TransactionHash,
+        l2_tx_hash: TransactionHash,
+    ) -> anyhow::Result<()> {
+        let mut insert_l1_handler_tx_stmt = self
+            .inner()
+            .prepare_cached(
+                "INSERT INTO l1_handler_txs (l1_block_number, l1_tx_hash, l2_tx_hash) VALUES \
+                 (:l1_block_number, :l1_tx_hash, :l2_tx_hash)",
+            )
+            .context("Preparing insert L1 handler tx statement")?;
+
+        insert_l1_handler_tx_stmt.execute(named_params![
+            ":l1_block_number": &l1_block_number,
+            ":l1_tx_hash": &l1_tx_hash,
+            ":l2_tx_hash": &l2_tx_hash,
+        ])?;
+
+        tracing::trace!(
+            %l1_block_number,
+            %l1_tx_hash,
+            %l2_tx_hash,
+            "Saved l1_handler_tx"
+        );
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use pathfinder_common::Chain;
+use pathfinder_common::{Chain, L1BlockNumber};
 use pathfinder_ethereum::{EthereumApi, EthereumEvent};
 use primitive_types::H160;
 use tokio::sync::mpsc;
@@ -16,6 +16,9 @@ pub struct L1SyncContext<EthereumClient> {
     pub core_address: H160,
     /// The interval at which to poll for updates on finalized blocks
     pub poll_interval: Duration,
+    /// The last L1 block number that we know of that triggered an L1 handler
+    /// transaction
+    pub last_synced_l1_handler_block: L1BlockNumber,
 }
 
 /// Syncs L1 state update logs. Emits [Ethereum state
@@ -33,28 +36,31 @@ where
         chain: _,
         core_address,
         poll_interval,
+        last_synced_l1_handler_block,
     } = context;
 
-    // Fetch the current Starknet state from Ethereum
-    let state_update = ethereum.get_starknet_state(&core_address).await?;
-    let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
+    let tx_event = std::sync::Arc::new(tx_event);
 
     // Subscribe to subsequent state updates and message logs
-    let tx_event = std::sync::Arc::new(tx_event);
     ethereum
-        .listen(&core_address, poll_interval, move |event| {
-            let tx_event = tx_event.clone();
-            async move {
-                match event {
-                    EthereumEvent::StateUpdate(state_update) => {
-                        let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
-                    }
-                    EthereumEvent::MessageLog(log) => {
-                        let _ = tx_event.send(SyncEvent::L1ToL2Message(log)).await;
+        .sync_and_listen(
+            &core_address,
+            last_synced_l1_handler_block,
+            poll_interval,
+            move |event| {
+                let tx_event = tx_event.clone();
+                async move {
+                    match event {
+                        EthereumEvent::StateUpdate(state_update) => {
+                            let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
+                        }
+                        EthereumEvent::MessageLog(log) => {
+                            let _ = tx_event.send(SyncEvent::L1ToL2Message(log)).await;
+                        }
                     }
                 }
-            }
-        })
+            },
+        )
         .await?;
 
     Ok(())
