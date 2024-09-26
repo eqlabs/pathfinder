@@ -13,7 +13,7 @@ impl Transaction<'_> {
                 "INSERT OR REPLACE INTO l1_to_l2_message_logs (msg_hash, l1_block_number, \
                  l1_tx_hash, l2_tx_hash) VALUES (?, ?, ?, ?)",
                 params![
-                    &message.message_hash,
+                    &message.message_hash.as_bytes().to_vec(),
                     &message.l1_block_number,
                     &message.l1_tx_hash,
                     &message.l2_tx_hash,
