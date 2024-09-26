@@ -35,6 +35,17 @@ impl crate::dto::DeserializeForVersion for GetProofInput {
     }
 }
 
+impl crate::dto::DeserializeForVersion for GetClassProofInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                class_hash: ClassHash(value.deserialize("class_hash")?),
+            })
+        })
+    }
+}
+
 // FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.
 // This may not actually be possible though.
 #[derive(Debug)]
