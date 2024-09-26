@@ -317,6 +317,10 @@ This endpoint is useful for Docker nodes which only want to present themselves a
 
 `/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently the following metrics are available:
 
+#### Process metrics
+
+- `process_start_time_seconds` provides the unix timestamp at which pathfinder started
+
 #### RPC related counters
 
 - `rpc_method_calls_total`,
