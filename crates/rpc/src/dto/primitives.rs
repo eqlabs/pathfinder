@@ -1,6 +1,8 @@
 use pathfinder_common::ContractAddress;
+use serde::de::Error;
 
 use super::serialize::SerializeForVersion;
+use super::{DeserializeForVersion, Value};
 use crate::dto::serialize::{self, Serializer};
 
 pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
@@ -9,15 +11,26 @@ pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
-pub enum NumAsHex<'a> {
-    U64(u64),
-    H256(&'a primitive_types::H256),
-}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct U64Hex(pub u64);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct U128Hex(pub u128);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct H256Hex(pub primitive_types::H256);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct U256Hex(pub primitive_types::U256);
+
 pub struct Address<'a>(pub &'a ContractAddress);
 pub struct EthAddress<'a>(pub &'a pathfinder_common::EthereumAddress);
 
-mod hex_str {
+pub mod hex_str {
     use std::borrow::Cow;
+
+    use anyhow::anyhow;
 
     const LUT: [u8; 16] = *b"0123456789abcdef";
 
@@ -70,6 +83,83 @@ mod hex_str {
         // SAFETY: we only insert hex digits.
         unsafe { String::from_utf8_unchecked(buf) }
     }
+
+    pub fn bytes_from_hex_str_stripped<const N: usize>(hex_str: &str) -> anyhow::Result<[u8; N]> {
+        from_hex_str(hex_str, true)
+    }
+
+    #[inline]
+    fn from_hex_str<const N: usize>(hex_str: &str, stripped: bool) -> anyhow::Result<[u8; N]> {
+        fn parse_hex_digit(digit: u8) -> anyhow::Result<u8> {
+            match digit {
+                b'0'..=b'9' => Ok(digit - b'0'),
+                b'A'..=b'F' => Ok(digit - b'A' + 10),
+                b'a'..=b'f' => Ok(digit - b'a' + 10),
+                other => Err(anyhow!("invalid hex digit: {}", other)),
+            }
+        }
+
+        let bytes = hex_str.as_bytes();
+        let start = if bytes.len() >= 2 && bytes[0] == b'0' && bytes[1] == b'x' {
+            2
+        } else {
+            0
+        };
+        let len = bytes.len() - start;
+
+        if len > 2 * N {
+            return Err(anyhow!(
+                "hex string too long: expected at most 64 characters, got {}",
+                len
+            ));
+        }
+
+        let mut buf = [0u8; N];
+
+        if stripped {
+            // Handle a possible odd nibble remaining nibble.
+            if len % 2 == 1 {
+                let idx = len / 2;
+                buf[N - 1 - idx] = match parse_hex_digit(bytes[start]) {
+                    Ok(b) => b,
+                    Err(e) => return Err(e),
+                };
+            }
+        } else if len != 2 * N {
+            return Err(anyhow!(
+                "hex string too short: expected 64 characters, got {}",
+                len
+            ));
+        }
+
+        let chunks = len / 2;
+        let mut chunk = 0;
+
+        while chunk < chunks {
+            let lower = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 1]) {
+                Ok(b) => b,
+                Err(e) => return Err(e),
+            };
+            let upper = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 2]) {
+                Ok(b) => b,
+                Err(e) => return Err(e),
+            };
+            buf[N - 1 - chunk] = upper << 4 | lower;
+            chunk += 1;
+        }
+
+        Ok(buf)
+    }
+}
+
+impl DeserializeForVersion for U64Hex {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        let hex_str: String = value.deserialize_serde()?;
+        let bytes = hex_str::bytes_from_hex_str_stripped::<8>(&hex_str).map_err(|e| {
+            serde_json::Error::custom(format!("failed to parse hex string as u64: {}", e))
+        })?;
+        Ok(Self(u64::from_be_bytes(bytes)))
+    }
 }
 
 impl SerializeForVersion for SyncStatus<'_> {
@@ -92,6 +182,15 @@ impl SerializeForVersion for Felt<'_> {
     }
 }
 
+impl DeserializeForVersion for pathfinder_crypto::Felt {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        let hex_str: String = value.deserialize_serde()?;
+        let bytes = hex_str::bytes_from_hex_str_stripped::<32>(&hex_str)
+            .map_err(|e| serde_json::Error::custom(format!("failed to parse hex string: {}", e)))?;
+        Self::from_be_bytes(bytes).map_err(|e| serde_json::Error::custom("felt overflow"))
+    }
+}
+
 impl SerializeForVersion for BlockHash<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize(&Felt(&self.0 .0))
@@ -111,13 +210,39 @@ impl SerializeForVersion for BlockNumber {
     }
 }
 
-impl SerializeForVersion for NumAsHex<'_> {
+impl SerializeForVersion for U64Hex {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        let hex_str = match self {
-            NumAsHex::U64(x) => hex_str::bytes_to_hex_str_stripped(&x.to_be_bytes()),
-            NumAsHex::H256(x) => hex_str::bytes_to_hex_str_stripped(x.as_bytes()),
-        };
-        serializer.serialize_str(&hex_str)
+        serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
+    }
+}
+
+impl SerializeForVersion for U128Hex {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
+    }
+}
+
+impl DeserializeForVersion for U128Hex {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        let hex_str: String = value.deserialize_serde()?;
+        let bytes = hex_str::bytes_from_hex_str_stripped::<16>(&hex_str).map_err(|e| {
+            serde_json::Error::custom(format!("failed to parse hex string as u128: {}", e))
+        })?;
+        Ok(Self(u128::from_be_bytes(bytes)))
+    }
+}
+
+impl SerializeForVersion for H256Hex {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_bytes()))
+    }
+}
+
+impl SerializeForVersion for U256Hex {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&<[u8; 32]>::from(
+            self.0,
+        )))
     }
 }
 
@@ -220,7 +345,7 @@ mod tests {
         bytes[30] = 0x12;
         bytes[31] = 0x34;
         let uut = primitive_types::H256(bytes);
-        let uut = NumAsHex::H256(&uut);
+        let uut = H256Hex(uut);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
@@ -229,7 +354,7 @@ mod tests {
 
     #[test]
     fn num_as_hex_u64() {
-        let uut = NumAsHex::U64(0x1234);
+        let uut = U64Hex(0x1234);
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
@@ -250,7 +375,7 @@ mod tests {
         assert_eq!(encoded, expected);
     }
 
-    mod hex_str {
+    mod to_hex {
         use super::super::hex_str::*;
 
         #[test]
@@ -286,6 +411,45 @@ mod tests {
             let data = 0x123456u32.to_be_bytes();
             assert_eq!(&bytes_to_hex_str_full(&data), "0x00123456");
             assert_eq!(&bytes_to_hex_str_stripped(&data), "0x123456");
+        }
+    }
+
+    mod from_hex {
+        use super::super::hex_str::*;
+
+        #[test]
+        fn zero() {
+            let bytes = bytes_from_hex_str_stripped::<2>("0x0").unwrap();
+            assert_eq!(bytes, [0; 2]);
+
+            let bytes = bytes_from_hex_str_stripped::<2>("0x").unwrap();
+            assert_eq!(bytes, [0; 2]);
+        }
+
+        #[test]
+        fn leading_zeros_even() {
+            let bytes = bytes_from_hex_str_stripped::<2>("0x12").unwrap();
+            assert_eq!(bytes, [0, 0x12]);
+            let bytes = bytes_from_hex_str_stripped::<2>("0x0012").unwrap();
+            assert_eq!(bytes, [0, 0x12]);
+        }
+
+        #[test]
+        fn leading_zeros_odd() {
+            let bytes = bytes_from_hex_str_stripped::<2>("0x1").unwrap();
+            assert_eq!(bytes, [0, 0x1]);
+        }
+
+        #[test]
+        fn multibyte_odd() {
+            let bytes = bytes_from_hex_str_stripped::<4>("0x12345").unwrap();
+            assert_eq!(bytes, [0, 0x01, 0x23, 0x45]);
+        }
+
+        #[test]
+        fn multibyte_even() {
+            let bytes = bytes_from_hex_str_stripped::<4>("0x123456").unwrap();
+            assert_eq!(bytes, [0, 0x12, 0x34, 0x56]);
         }
     }
 }

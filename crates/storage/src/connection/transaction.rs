@@ -126,7 +126,6 @@ impl Transaction<'_> {
                 ":idx": &idx,
             ])?;
         }
-
         let transactions_with_receipts: Vec<_> = transactions
             .iter()
             .map(|(transaction, receipt)| dto::TransactionWithReceiptV2 {

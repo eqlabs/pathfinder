@@ -29,6 +29,7 @@ pub struct UnverifiedTransactions {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(Transaction, Receipt)>,
     pub version: StarknetVersion,
+    pub block_number: BlockNumber,
 }
 
 pub(super) async fn next_missing(
@@ -75,12 +76,17 @@ pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = (TransactionData, StarknetVersion, TransactionCommitment);
+    type Input = (
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    );
     type Output = UnverifiedTransactions;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
         use rayon::prelude::*;
-        let (transactions, version, expected_commitment) = input;
+        let (transactions, block_number, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
             .map(|(tv, r)| {
@@ -104,6 +110,7 @@ impl ProcessStage for CalculateHashes {
             expected_commitment,
             transactions,
             version,
+            block_number,
         })
     }
 }
@@ -125,7 +132,7 @@ impl<T> FetchCommitmentFromDb<T> {
 impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     const NAME: &'static str = "Transactions::FetchCommitmentFromDb";
     type Input = (T, BlockNumber);
-    type Output = (T, StarknetVersion, TransactionCommitment);
+    type Output = (T, BlockNumber, StarknetVersion, TransactionCommitment);
 
     fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
         let mut db = self
@@ -140,7 +147,7 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
             .transaction_commitment(block_number)
             .context("Fetching transaction commitment")?
             .ok_or(SyncError2::TransactionCommitmentNotFound)?;
-        Ok((data, version, commitment))
+        Ok((data, block_number, version, commitment))
     }
 }
 
@@ -156,10 +163,12 @@ impl ProcessStage for VerifyCommitment {
             expected_commitment,
             transactions,
             version,
+            block_number,
         } = transactions;
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
         let actual = calculate_transaction_commitment(&txs, version)?;
         if actual != expected_commitment {
+            tracing::debug!(%block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
             return Err(SyncError2::TransactionCommitmentMismatch);
         }
         Ok(transactions)

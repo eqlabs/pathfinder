@@ -15,6 +15,7 @@ use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
+    L1ToL2MessageLog,
     PublicKey,
     ReceiptCommitment,
     StateDiffCommitment,
@@ -24,7 +25,7 @@ use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
-use pathfinder_rpc::{PendingData, SyncState, TopicBroadcasters};
+use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -67,6 +68,8 @@ pub enum SyncEvent {
     },
     /// A new L2 pending update was polled.
     Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
+    /// A new L1 to L2 message was finalized.
+    L1ToL2Message(L1ToL2MessageLog),
 }
 
 pub struct SyncContext<G, E> {
@@ -82,11 +85,13 @@ pub struct SyncContext<G, E> {
     pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
+    pub fetch_concurrency: std::num::NonZeroUsize,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -115,6 +120,7 @@ where
             block_validation_mode: value.block_validation_mode,
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
+            fetch_concurrency: value.fetch_concurrency,
         }
     }
 }
@@ -188,19 +194,20 @@ where
         pending_data,
         block_validation_mode: _,
         websocket_txs,
+        notifications,
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
         gossiper,
         sequencer_public_key: _,
+        fetch_concurrency: _,
     } = context;
 
     let mut db_conn = storage
         .connection()
         .context("Creating database connection")?;
 
-    // TODO: consider increasing the capacity.
-    let (event_sender, event_receiver) = mpsc::channel(2);
+    let (event_sender, event_receiver) = mpsc::channel(8);
 
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
@@ -266,6 +273,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         websocket_txs,
+        notifications,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
 
@@ -438,6 +446,7 @@ struct ConsumerContext {
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
 }
 
 async fn consumer(
@@ -451,6 +460,7 @@ async fn consumer(
         pending_data,
         verify_tree_hashes,
         mut websocket_txs,
+        mut notifications,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -479,6 +489,7 @@ async fn consumer(
         use SyncEvent::*;
         match event {
             L1Update(update) => {
+                tracing::trace!("Updating L1 sync to block {}", update.block_number);
                 l1_update(&mut db_conn, &update).await?;
                 tracing::info!("L1 sync updated to block {}", update.block_number);
             }
@@ -489,6 +500,7 @@ async fn consumer(
                 state_diff_commitment,
                 timings,
             ) => {
+                tracing::trace!("Updating L2 state to block {}", block.block_number);
                 if block.block_number < next_number {
                     tracing::debug!("Ignoring duplicate block {}", block.block_number);
                     continue;
@@ -515,6 +527,7 @@ async fn consumer(
                     verify_tree_hashes,
                     storage.clone(),
                     &mut websocket_txs,
+                    &mut notifications,
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -589,7 +602,8 @@ async fn consumer(
                 }
             }
             Reorg(reorg_tail) => {
-                l2_reorg(&mut db_conn, reorg_tail)
+                tracing::trace!("Reorg L2 state to block {}", reorg_tail);
+                l2_reorg(&mut db_conn, reorg_tail, &mut notifications)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
@@ -607,9 +621,10 @@ async fn consumer(
                 }
             }
             CairoClass { definition, hash } => {
+                tracing::trace!("Inserting new Cairo class with hash: {hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_cairo_class(hash, &definition)
                         .context("Inserting new cairo class")?;
@@ -625,9 +640,10 @@ async fn consumer(
                 casm_definition,
                 casm_hash,
             } => {
+                tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
                 tokio::task::block_in_place(|| {
                     let tx = db_conn
-                        .transaction()
+                        .transaction_with_behavior(TransactionBehavior::Immediate)
                         .context("Creating database transaction")?;
                     tx.insert_sierra_class(
                         &sierra_hash,
@@ -645,6 +661,7 @@ async fn consumer(
                 tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
             }
             Pending(pending) => {
+                tracing::trace!("Updating pending data");
                 let (number, hash) = tokio::task::block_in_place(|| {
                     let tx = db_conn
                         .transaction()
@@ -667,6 +684,10 @@ async fn consumer(
                     pending_data.send_replace(data);
                     tracing::debug!("Updated pending data");
                 }
+            }
+            L1ToL2Message(msg) => {
+                tracing::trace!("Got a new L1 to L2 message log: {:?}", msg);
+                // todo!()
             }
         }
     }
@@ -836,6 +857,7 @@ async fn l2_update(
     // parallel contract state updates
     storage: Storage,
     websocket_txs: &mut Option<TopicBroadcasters>,
+    notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -959,7 +981,7 @@ async fn l2_update(
             .context("Commit database transaction")?;
 
         if let Some(sender) = websocket_txs {
-            if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
+            if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
                 tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
                 // Disable websocket entirely so that the closed channel doesn't spam this
                 // error. It is unlikely that any error here wouldn't simply repeat
@@ -976,13 +998,24 @@ async fn l2_update(
             }
         }
 
+        notifications
+            .block_headers
+            .send(header.into())
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+
         Ok(())
     })?;
 
     Ok(())
 }
 
-async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
+async fn l2_reorg(
+    connection: &mut Connection,
+    reorg_tail: BlockNumber,
+    notifications: &mut Notifications,
+) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -993,6 +1026,15 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Querying latest block number")?
             .context("Latest block number is none during reorg")?
             .0;
+
+        let reorg_tail_hash = transaction
+            .block_hash(reorg_tail.into())
+            .context("Fetching first block hash")?
+            .context("Expected first block hash to exist")?;
+        let head_hash = transaction
+            .block_hash(head.into())
+            .context("Fetching last block hash")?
+            .context("Expected last block hash to exist")?;
 
         transaction
             .increment_reorg_counter()
@@ -1047,7 +1089,26 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             }
         }
 
-        transaction.commit().context("Commit database transaction")
+        transaction
+            .commit()
+            .context("Commit database transaction")?;
+
+        notifications
+            .reorgs
+            .send(
+                Reorg {
+                    first_block_number: reorg_tail,
+                    first_block_hash: reorg_tail_hash,
+                    last_block_number: head,
+                    last_block_hash: head_hash,
+                }
+                .into(),
+            )
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+
+        Ok(())
     })
 }
 
@@ -1351,6 +1412,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1400,6 +1462,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1463,6 +1526,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1511,6 +1575,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1548,6 +1613,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1588,6 +1654,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1631,6 +1698,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());

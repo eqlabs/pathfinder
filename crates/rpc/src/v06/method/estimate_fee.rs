@@ -16,6 +16,12 @@ pub struct EstimateFeeInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for EstimateFeeInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, serde::Deserialize, Eq, PartialEq)]
 pub struct SimulationFlags(pub Vec<SimulationFlag>);
 

@@ -121,11 +121,21 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
 }
 
 #[derive(Debug)]
-pub struct IncorrectStateDiffCount(pub PeerId);
+pub enum StateDiffsError {
+    IncorrectStateDiffCount(PeerId),
+    ResponseStreamFailure(PeerId, std::io::Error),
+}
 
-impl std::fmt::Display for IncorrectStateDiffCount {
+impl std::fmt::Display for StateDiffsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Incorrect state diff count from peer {}", self.0)
+        match self {
+            StateDiffsError::IncorrectStateDiffCount(peer) => {
+                write!(f, "Incorrect state diff count from peer {}", peer)
+            }
+            StateDiffsError::ResponseStreamFailure(peer, err) => {
+                write!(f, "Failed to read state diffs from peer {}: {}", peer, err)
+            }
+        }
     }
 }
 
@@ -134,6 +144,7 @@ pub enum ClassDefinitionsError {
     IncorrectClassDefinitionCount(PeerId),
     CairoDefinitionError(PeerId),
     SierraDefinitionError(PeerId),
+    ResponseStreamFailure(PeerId, std::io::Error),
 }
 
 impl std::fmt::Display for ClassDefinitionsError {
@@ -148,6 +159,22 @@ impl std::fmt::Display for ClassDefinitionsError {
             ClassDefinitionsError::SierraDefinitionError(peer) => {
                 write!(f, "Sierra class definition error from peer {}", peer)
             }
+            ClassDefinitionsError::ResponseStreamFailure(peer, err) => {
+                write!(
+                    f,
+                    "Failed to read class definitions from peer {}: {}",
+                    peer, err
+                )
+            }
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct EventsResponseStreamFailure(pub PeerId, pub std::io::Error);
+
+impl std::fmt::Display for EventsResponseStreamFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to read events from peer {}: {}", self.0, self.1)
     }
 }

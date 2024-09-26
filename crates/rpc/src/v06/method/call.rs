@@ -12,7 +12,7 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractErrorV05 { revert_error: String },
+    ContractError { revert_error: String },
 }
 
 impl From<anyhow::Error> for CallError {
@@ -27,7 +27,7 @@ impl From<pathfinder_executor::CallError> for CallError {
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            ContractError(error) => Self::ContractErrorV05 {
+            ContractError(error) => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
             },
             Internal(e) => Self::Internal(e),
@@ -51,9 +51,9 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
-            CallError::ContractErrorV05 { revert_error } => {
-                ApplicationError::ContractErrorV05 { revert_error }
-            }
+            CallError::ContractError { revert_error } => ApplicationError::ContractError {
+                revert_error: Some(revert_error),
+            },
             CallError::Internal(e) => ApplicationError::Internal(e),
             CallError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -65,6 +65,12 @@ impl From<CallError> for ApplicationError {
 pub struct CallInput {
     pub request: FunctionCall,
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for CallInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
@@ -144,6 +150,8 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
+        use crate::RpcVersion;
 
         #[test]
         fn positional_args() {
@@ -152,7 +160,8 @@ mod tests {
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<CallInput>(positional).unwrap();
+            let input = CallInput::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                .unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -171,7 +180,8 @@ mod tests {
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<CallInput>(named).unwrap();
+            let input =
+                CallInput::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -221,8 +231,8 @@ mod tests {
 
             // Empty genesis block
             let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS)
-                .with_timestamp(BlockTimestamp::new_or_panic(0))
+                .number(BlockNumber::GENESIS)
+                .timestamp(BlockTimestamp::new_or_panic(0))
                 .finalize_with_hash(BlockHash(felt!("0xb00")));
             tx.insert_block_header(&header).unwrap();
 
@@ -234,9 +244,9 @@ mod tests {
                 .unwrap();
 
             let header = BlockHeader::builder()
-                .with_number(block1_number)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_eth_l1_gas_price(GasPrice(1))
+                .number(block1_number)
+                .timestamp(BlockTimestamp::new_or_panic(1))
+                .eth_l1_gas_price(GasPrice(1))
                 .finalize_with_hash(block1_hash);
             tx.insert_block_header(&header).unwrap();
 
@@ -451,7 +461,7 @@ mod tests {
                 .unwrap();
 
             let header = BlockHeader::builder()
-                .with_number(block_number)
+                .number(block_number)
                 .finalize_with_hash(block_hash!("0xb02"));
             tx.insert_block_header(&header).unwrap();
 

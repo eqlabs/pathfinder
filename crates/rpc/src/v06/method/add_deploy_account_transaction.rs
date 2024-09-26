@@ -22,6 +22,12 @@ pub struct AddDeployAccountTransactionInput {
     deploy_account_transaction: Transaction,
 }
 
+impl crate::dto::DeserializeForVersion for AddDeployAccountTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeployAccountTransactionOutput {

@@ -1,31 +1,37 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
-use axum::async_trait;
-use axum::extract::State;
+use axum::extract::{State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
-use serde::de::DeserializeOwned;
-use serde_json::value::RawValue;
-use tracing::Instrument;
+use method::RpcMethodEndpoint;
+pub use subscription::{handle_json_rpc_socket, RpcSubscriptionFlow, SubscriptionMessage};
+use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
-use crate::jsonrpc::request::{RawParams, RpcRequest};
-use crate::jsonrpc::response::{RpcResponse, RpcResult};
+use crate::jsonrpc::request::RpcRequest;
+use crate::jsonrpc::response::RpcResponse;
 use crate::RpcVersion;
+
+mod method;
+mod subscription;
+
+pub use method::handle_json_rpc_body;
 
 #[derive(Clone)]
 pub struct RpcRouter {
     pub context: RpcContext,
-    methods: &'static HashMap<&'static str, Box<dyn RpcMethod>>,
+    method_endpoints: &'static HashMap<&'static str, Box<dyn RpcMethodEndpoint>>,
+    subscription_endpoints: &'static HashMap<&'static str, Box<dyn RpcSubscriptionEndpoint>>,
     version: RpcVersion,
 }
 
 pub struct RpcRouterBuilder {
-    methods: HashMap<&'static str, Box<dyn RpcMethod>>,
+    method_endpoints: HashMap<&'static str, Box<dyn RpcMethodEndpoint>>,
+    subscription_endpoints: HashMap<&'static str, Box<dyn RpcSubscriptionEndpoint>>,
     version: RpcVersion,
 }
 
@@ -33,38 +39,55 @@ impl RpcRouterBuilder {
     /// Registers an RPC method.
     ///
     /// Panics if the method was already registered.
-    pub fn register<I, O, S, M: IntoRpcMethod<'static, I, O, S>>(
+    pub fn register<I, O, S, M: IntoRpcEndpoint<I, O, S>>(
         mut self,
         method_name: &'static str,
         method: M,
     ) -> Self {
-        if self
-            .methods
-            .insert(method_name, IntoRpcMethod::into_method(method))
-            .is_some()
-        {
-            panic!("'{method_name}' is already registered");
+        match IntoRpcEndpoint::into_endpoint(method).0 {
+            RpcEndpointInner::Method(method) => {
+                if self.method_endpoints.insert(method_name, method).is_some() {
+                    panic!("'{method_name}' is already registered");
+                }
+                if self.subscription_endpoints.contains_key(method_name) {
+                    panic!("'{method_name}' is already registered as a subscription");
+                }
+            }
+            RpcEndpointInner::Subscription(subscription) => {
+                if self
+                    .subscription_endpoints
+                    .insert(method_name, subscription)
+                    .is_some()
+                {
+                    panic!("'{method_name}' is already registered");
+                }
+                if self.method_endpoints.contains_key(method_name) {
+                    panic!("'{method_name}' is already registered as a method");
+                }
+            }
         }
         self
     }
 
     pub fn build(self, context: RpcContext) -> RpcRouter {
-        // Intentionally leak the hashmap to give it a static lifetime.
-        //
+        // Intentionally leak the hashmaps to give them a static lifetime.
         // Since the router is expected to be long lived, this shouldn't be an issue.
-        let methods = Box::new(self.methods);
+        let methods = Box::new(self.method_endpoints);
         let methods = Box::leak(methods);
-
+        let subscriptions = Box::new(self.subscription_endpoints);
+        let subscriptions = Box::leak(subscriptions);
         RpcRouter {
             context,
-            methods,
+            method_endpoints: methods,
+            subscription_endpoints: subscriptions,
             version: self.version,
         }
     }
 
     fn new(version: RpcVersion) -> Self {
         RpcRouterBuilder {
-            methods: Default::default(),
+            method_endpoints: Default::default(),
+            subscription_endpoints: Default::default(),
             version,
         }
     }
@@ -93,7 +116,8 @@ impl RpcRouter {
 
         // Also grab the method_name as it is a static str, which is required by the
         // metrics.
-        let Some((&method_name, method)) = self.methods.get_key_value(request.method.as_ref())
+        let Some((&method_name, method)) =
+            self.method_endpoints.get_key_value(request.method.as_ref())
         else {
             return Some(RpcResponse::method_not_found(request.id));
         };
@@ -157,31 +181,42 @@ fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
 pub async fn rpc_handler(
     State(state): State<RpcRouter>,
     headers: http::HeaderMap,
+    ws: Option<WebSocketUpgrade>,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
-    // Only utf8 json content allowed.
-    if !is_utf8_encoded_json(headers) {
-        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
-    }
-
-    let mut response = match handle_json_rpc_body(&state, body.as_ref()).await {
-        Ok(responses) => match responses {
-            RpcResponses::Empty => ().into_response(),
-            RpcResponses::Single(response) => response.into_response(),
-            RpcResponses::Multiple(responses) => {
-                serde_json::to_string(&responses).unwrap().into_response()
+    match ws {
+        Some(ws) => ws.on_upgrade(|ws| async move {
+            let (ws_tx, ws_rx) = split_ws(ws);
+            handle_json_rpc_socket(state, ws_tx, ws_rx);
+        }),
+        None => {
+            // Only utf8 json content allowed.
+            if !is_utf8_encoded_json(headers) {
+                return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
             }
-        },
-        Err(RpcRequestError::ParseError(e)) => RpcResponse::parse_error(e).into_response(),
-        Err(RpcRequestError::InvalidRequest(e)) => RpcResponse::invalid_request(e).into_response(),
-    };
 
-    use http::header::CONTENT_TYPE;
-    static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, APPLICATION_JSON.clone());
-    response
+            let mut response = match handle_json_rpc_body(&state, body.as_ref()).await {
+                Ok(responses) => match responses {
+                    RpcResponses::Empty => ().into_response(),
+                    RpcResponses::Single(response) => response.into_response(),
+                    RpcResponses::Multiple(responses) => {
+                        serde_json::to_string(&responses).unwrap().into_response()
+                    }
+                },
+                Err(RpcRequestError::ParseError(e)) => RpcResponse::parse_error(e).into_response(),
+                Err(RpcRequestError::InvalidRequest(e)) => {
+                    RpcResponse::invalid_request(e).into_response()
+                }
+            };
+
+            use http::header::CONTENT_TYPE;
+            static APPLICATION_JSON: HeaderValue = HeaderValue::from_static("application/json");
+            response
+                .headers_mut()
+                .insert(CONTENT_TYPE, APPLICATION_JSON.clone());
+            response
+        }
+    }
 }
 
 pub(super) enum RpcRequestError {
@@ -202,375 +237,52 @@ impl serde::ser::Serialize for RpcResponses {
         S: serde::Serializer,
     {
         match self {
-            Self::Empty => ().serialize(serializer),
-            Self::Single(response) => response.serialize(serializer),
-            Self::Multiple(responses) => responses.serialize(serializer),
+            Self::Empty => serde::ser::Serialize::serialize(&(), serializer),
+            Self::Single(response) => serde::ser::Serialize::serialize(response, serializer),
+            Self::Multiple(responses) => serde::ser::Serialize::serialize(responses, serializer),
         }
     }
 }
 
-/// Helper to scope the responses so we can set the content-type afterwards
-/// instead of dealing with branches / early exits.
-pub(super) async fn handle_json_rpc_body(
-    state: &RpcRouter,
-    body: &[u8],
-) -> Result<RpcResponses, RpcRequestError> {
-    // Unfortunately due to this https://github.com/serde-rs/json/issues/497
-    // we cannot use an enum with borrowed raw values inside to do a single
-    // deserialization for us. Instead we have to distinguish manually
-    // between a single request and a batch request which we do by checking
-    // the first byte.
-    if body.first() != Some(&b'[') {
-        let request = match serde_json::from_slice::<&RawValue>(body) {
-            Ok(request) => request,
-            Err(e) => {
-                return Err(RpcRequestError::ParseError(e.to_string()));
-            }
-        };
+pub struct RpcEndpoint(RpcEndpointInner);
 
-        match state.run_request(request.get()).await {
-            Some(response) => Ok(RpcResponses::Single(response)),
-            None => Ok(RpcResponses::Empty),
-        }
-    } else {
-        let requests = match serde_json::from_slice::<Vec<&RawValue>>(body) {
-            Ok(requests) => requests,
-            Err(e) => {
-                return Err(RpcRequestError::ParseError(e.to_string()));
-            }
-        };
+enum RpcEndpointInner {
+    Method(Box<dyn RpcMethodEndpoint>),
+    Subscription(Box<dyn RpcSubscriptionEndpoint>),
+}
 
-        if requests.is_empty() {
-            return Err(RpcRequestError::InvalidRequest(
-                "A batch request must contain at least one request".to_owned(),
-            ));
-        }
+/// This trait is implemented for all types that implemented
+/// [`subscription::RpcSubscriptionEndpoint`], or for async functions. You can
+/// find the particular list in the [`method`] module.
+///
+/// (The generic parameters are there to allow multiple different blanket
+/// implementations of the trait - this allows the trait to be implemented for
+/// different `Fn` signatures. It's a Rust hack.)
+pub trait IntoRpcEndpoint<I, O, S> {
+    fn into_endpoint(self) -> RpcEndpoint;
+}
 
-        let responses = run_concurrently(
-            state.context.config.batch_concurrency_limit,
-            requests.into_iter().enumerate(),
-            |(idx, request)| {
-                state
-                    .run_request(request.get())
-                    .instrument(tracing::debug_span!("batch", idx))
-            },
-        )
-        .await
-        .flatten()
-        .collect::<Vec<RpcResponse>>();
-
-        // All requests were notifications.
-        if responses.is_empty() {
-            return Ok(RpcResponses::Empty);
-        }
-
-        Ok(RpcResponses::Multiple(responses))
+impl IntoRpcEndpoint<(), (), ()> for RpcEndpoint {
+    fn into_endpoint(self) -> RpcEndpoint {
+        self
     }
 }
 
-#[axum::async_trait]
-pub trait RpcMethod: Send + Sync {
-    async fn invoke<'a>(
-        &self,
-        state: RpcContext,
-        input: RawParams<'a>,
-        version: RpcVersion,
-    ) -> RpcResult;
-}
-
-/// Utility trait which automates the serde of an RPC methods input and output.
-///
-/// This trait is sealed to prevent attempts at implementing it manually. This
-/// will likely clash with the existing blanket implementations with very
-/// unhelpful error messages.
-///
-/// This trait is automatically implemented for the following methods:
-/// ```
-/// async fn input_and_context(
-///     ctx: RpcContext,
-///     input: impl Deserialize,
-/// ) -> Result<impl Serialize, Into<RpcError>>;
-/// async fn input_only(input: impl Deserialize) -> Result<impl Serialize, Into<RpcError>>;
-/// async fn context_only(ctx: RpcContext) -> Result<impl Serialize, Into<RpcError>>;
-/// ```
-///
-/// The generics allow us to achieve a form of variadic specialization and can
-/// be ignored by callers. See [sealed::Sealed] to add more method signatures or
-/// more information on how this works.
-pub trait IntoRpcMethod<'a, I, O, S>: sealed::Sealed<I, O, S> {
-    fn into_method(self) -> Box<dyn RpcMethod>;
-}
-
-impl<'a, T, I, O, S> IntoRpcMethod<'a, I, O, S> for T
+impl<T> IntoRpcEndpoint<(), (), T> for T
 where
-    T: sealed::Sealed<I, O, S>,
+    T: RpcMethodEndpoint + 'static,
 {
-    fn into_method(self) -> Box<dyn RpcMethod> {
-        sealed::Sealed::<I, O, S>::into_method(self)
+    fn into_endpoint(self) -> RpcEndpoint {
+        RpcEndpoint(RpcEndpointInner::Method(Box::new(self)))
     }
 }
 
-mod sealed {
-    use std::marker::PhantomData;
-
-    use super::*;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
-    use crate::jsonrpc::error::RpcError;
-    use crate::RpcVersion;
-
-    /// Sealed implementation of [RpcMethod].
-    ///
-    /// The generics allow for a form of specialization over a methods Input,
-    /// Output and State by treating each as a tuple. Varying the tuple
-    /// length allows us to target a specific method signature. This same
-    /// could be achieved with a single generic but it becomes less clear as
-    /// each permutation would require a different tuple length.
-    ///
-    /// By convention, the lack of a type is equivalent to the unit tuple (). So
-    /// if we want to target functions with no input params, no input state
-    /// and an output:
-    /// ```rust
-    /// Sealed<I = (), S = (), O = ((), Output)>
-    /// ```
-    pub trait Sealed<I, O, S> {
-        fn into_method(self) -> Box<dyn RpcMethod>;
-    }
-
-    /// ```
-    /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
-    /// ```
-    impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ((), RpcContext)> for F
-    where
-        F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
-        Input: DeserializeOwned + Send + Sync + 'static,
-        Output: SerializeForVersion + Send + Sync + 'static,
-        Error: Into<RpcError> + Send + Sync + 'static,
-        Fut: Future<Output = Result<Output, Error>> + Send,
-    {
-        fn into_method(self) -> Box<dyn RpcMethod> {
-            struct Helper<F, Input, Output, Error> {
-                f: F,
-                _marker: PhantomData<(Input, Output, Error)>,
-            }
-
-            #[axum::async_trait]
-            impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
-            where
-                F: Fn(RpcContext, Input) -> Fut + Sync + Send,
-                Input: DeserializeOwned + Send + Sync,
-                Output: SerializeForVersion + Send + Sync,
-                Error: Into<RpcError> + Send + Sync,
-                Fut: Future<Output = Result<Output, Error>> + Send,
-            {
-                async fn invoke<'a>(
-                    &self,
-                    state: RpcContext,
-                    input: RawParams<'a>,
-                    version: RpcVersion,
-                ) -> RpcResult {
-                    let input = input.deserialize()?;
-                    (self.f)(state, input)
-                        .await
-                        .map_err(Into::into)?
-                        .serialize(Serializer::new(version))
-                        .map_err(|e| RpcError::InternalError(e.into()))
-                }
-            }
-
-            Box::new(Helper {
-                f: self,
-                _marker: Default::default(),
-            })
-        }
-    }
-
-    /// ```
-    /// async fn example(impl Deserialize) -> Result<Output, Into<RpcError>>
-    /// ```
-    #[async_trait]
-    impl<'a, F, Input, Output, Error, Fut> Sealed<((), Input), ((), Output), ()> for F
-    where
-        F: Fn(Input) -> Fut + Sync + Send + 'static,
-        Input: DeserializeOwned + Sync + Send + 'static,
-        Output: SerializeForVersion + Sync + Send + 'static,
-        Error: Into<RpcError> + Sync + Send + 'static,
-        Fut: Future<Output = Result<Output, Error>> + Send,
-    {
-        fn into_method(self) -> Box<dyn RpcMethod> {
-            struct Helper<F, Input, Output, Error> {
-                f: F,
-                _marker: PhantomData<(Input, Output, Error)>,
-            }
-
-            #[axum::async_trait]
-            impl<F, Input, Output, Error, Fut> RpcMethod for Helper<F, Input, Output, Error>
-            where
-                F: Fn(Input) -> Fut + Sync + Send,
-                Input: DeserializeOwned + Send + Sync,
-                Output: SerializeForVersion + Send + Sync,
-                Error: Into<RpcError> + Send + Sync,
-                Fut: Future<Output = Result<Output, Error>> + Send,
-            {
-                async fn invoke<'a>(
-                    &self,
-                    _state: RpcContext,
-                    input: RawParams<'a>,
-                    version: RpcVersion,
-                ) -> RpcResult {
-                    let input = input.deserialize()?;
-                    (self.f)(input)
-                        .await
-                        .map_err(Into::into)?
-                        .serialize(Serializer::new(version))
-                        .map_err(|e| RpcError::InternalError(e.into()))
-                }
-            }
-
-            Box::new(Helper {
-                f: self,
-                _marker: Default::default(),
-            })
-        }
-    }
-
-    /// ```
-    /// async fn example(RpcContext) -> Result<Output, Into<RpcError>>
-    /// ```
-    #[async_trait]
-    impl<'a, F, Output, Error, Fut> Sealed<(), ((), Output), ((), RpcContext)> for F
-    where
-        F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
-        Output: SerializeForVersion + Sync + Send + 'static,
-        Error: Into<RpcError> + Send + Sync + 'static,
-        Fut: Future<Output = Result<Output, Error>> + Send,
-    {
-        fn into_method(self) -> Box<dyn RpcMethod> {
-            struct Helper<F, Output, Error> {
-                f: F,
-                _marker: PhantomData<(Output, Error)>,
-            }
-
-            #[axum::async_trait]
-            impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
-            where
-                F: Fn(RpcContext) -> Fut + Sync + Send,
-                Output: SerializeForVersion + Send + Sync,
-                Error: Into<RpcError> + Send + Sync,
-                Fut: Future<Output = Result<Output, Error>> + Send,
-            {
-                async fn invoke<'a>(
-                    &self,
-                    state: RpcContext,
-                    input: RawParams<'a>,
-                    version: RpcVersion,
-                ) -> RpcResult {
-                    if !input.is_empty() {
-                        return Err(RpcError::InvalidParams(
-                            "This method takes no inputs".to_owned(),
-                        ));
-                    }
-                    (self.f)(state)
-                        .await
-                        .map_err(Into::into)?
-                        .serialize(Serializer::new(version))
-                        .map_err(|e| RpcError::InternalError(e.into()))
-                }
-            }
-
-            Box::new(Helper {
-                f: self,
-                _marker: Default::default(),
-            })
-        }
-    }
-
-    /// ```
-    /// async fn example() -> Result<Output, Into<RpcError>>
-    /// ```
-    #[async_trait]
-    impl<'a, F, Output, Error, Fut> Sealed<(), (), ((), Output)> for F
-    where
-        F: Fn() -> Fut + Sync + Send + 'static,
-        Output: SerializeForVersion + Sync + Send + 'static,
-        Error: Into<RpcError> + Sync + Send + 'static,
-        Fut: Future<Output = Result<Output, Error>> + Send,
-    {
-        fn into_method(self) -> Box<dyn RpcMethod> {
-            struct Helper<F, Output, Error> {
-                f: F,
-                _marker: PhantomData<(Output, Error)>,
-            }
-
-            #[axum::async_trait]
-            impl<F, Output, Error, Fut> RpcMethod for Helper<F, Output, Error>
-            where
-                F: Fn() -> Fut + Sync + Send,
-                Output: SerializeForVersion + Send + Sync,
-                Error: Into<RpcError> + Send + Sync,
-                Fut: Future<Output = Result<Output, Error>> + Send,
-            {
-                async fn invoke<'a>(
-                    &self,
-                    _state: RpcContext,
-                    input: RawParams<'a>,
-                    version: RpcVersion,
-                ) -> RpcResult {
-                    if !input.is_empty() {
-                        return Err(RpcError::InvalidParams(
-                            "This method takes no inputs".to_owned(),
-                        ));
-                    }
-                    (self.f)()
-                        .await
-                        .map_err(Into::into)?
-                        .serialize(Serializer::new(version))
-                        .map_err(|e| RpcError::InternalError(e.into()))
-                }
-            }
-
-            Box::new(Helper {
-                f: self,
-                _marker: Default::default(),
-            })
-        }
-    }
-
-    /// ```
-    /// fn example() -> &'static str
-    /// ```
-    #[async_trait]
-    impl<'a, F> Sealed<(), (), ((), (), &'static str)> for F
-    where
-        F: Fn() -> &'static str + Sync + Send + 'static,
-    {
-        fn into_method(self) -> Box<dyn RpcMethod> {
-            struct Helper<F> {
-                f: F,
-            }
-
-            #[axum::async_trait]
-            impl<F> RpcMethod for Helper<F>
-            where
-                F: Fn() -> &'static str + Sync + Send,
-            {
-                async fn invoke<'a>(
-                    &self,
-                    _state: RpcContext,
-                    input: RawParams<'a>,
-                    version: RpcVersion,
-                ) -> RpcResult {
-                    if !input.is_empty() {
-                        return Err(RpcError::InvalidParams(
-                            "This method takes no inputs".to_owned(),
-                        ));
-                    }
-                    (self.f)()
-                        .serialize(Serializer::new(version))
-                        .map_err(|e| RpcError::InternalError(e.into()))
-                }
-            }
-            Box::new(Helper { f: self })
-        }
+impl<T> IntoRpcEndpoint<(), T, ()> for T
+where
+    T: RpcSubscriptionEndpoint + 'static,
+{
+    fn into_endpoint(self) -> RpcEndpoint {
+        RpcEndpoint(RpcEndpointInner::Subscription(Box::new(self)))
     }
 }
 
@@ -647,6 +359,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use super::*;
+    use crate::jsonrpc::response::RpcResult;
 
     async fn spawn_server(router: RpcRouter) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -687,21 +400,43 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
 
-            #[derive(Debug, Deserialize, Serialize)]
+            #[derive(Debug, Serialize)]
             struct SubtractInput {
                 minuend: i32,
                 subtrahend: i32,
             }
+
+            impl DeserializeForVersion for SubtractInput {
+                fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                    value.deserialize_map(|value| {
+                        Ok(Self {
+                            minuend: value.deserialize_serde("minuend")?,
+                            subtrahend: value.deserialize_serde("subtrahend")?,
+                        })
+                    })
+                }
+            }
+
             async fn subtract(input: SubtractInput) -> Result<Value, ExampleError> {
                 Ok(Value::Number((input.minuend - input.subtrahend).into()))
             }
 
-            #[derive(Debug, Deserialize, Serialize)]
+            #[derive(Debug, Serialize)]
             struct SumInput(Vec<i32>);
+
+            impl DeserializeForVersion for SumInput {
+                fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                    Ok(Self(
+                        value.deserialize_array(|value| value.deserialize_serde())?,
+                    ))
+                }
+            }
+
             async fn sum(input: SumInput) -> Result<Value, ExampleError> {
                 Ok(Value::Number((input.0.iter().sum::<i32>()).into()))
             }

@@ -7,7 +7,7 @@ use std::io::Read;
 
 use anyhow::Context;
 use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, SierraEntryPoint};
-use p2p_proto::common::{Address, Hash};
+use p2p_proto::common::{Address, Hash, Hash256};
 use p2p_proto::receipt::execution_resources::BuiltinCounter;
 use p2p_proto::receipt::{
     DeclareTransactionReceipt,
@@ -326,10 +326,10 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
                     },
                     steps: e.n_steps.try_into().unwrap(),
                     memory_holes: e.n_memory_holes.try_into().unwrap(),
-                    l1_gas: da.l1_gas.into(),
-                    l1_data_gas: da.l1_data_gas.into(),
-                    total_l1_gas: total.l1_gas.into(),
-                    total_l1_data_gas: total.l1_data_gas.into(),
+                    l1_gas: Some(da.l1_gas.into()),
+                    l1_data_gas: Some(da.l1_data_gas.into()),
+                    total_l1_gas: Some(total.l1_gas.into()),
+                    total_l1_data_gas: Some(total.l1_data_gas.into()),
                 }
             },
             revert_reason,
@@ -364,9 +364,9 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
             TransactionVariant::InvokeV0(_)
             | TransactionVariant::InvokeV1(_)
             | TransactionVariant::InvokeV3(_) => Invoke(InvokeTransactionReceipt { common }),
-            TransactionVariant::L1Handler(_) => L1Handler(L1HandlerTransactionReceipt {
+            TransactionVariant::L1Handler(tx) => L1Handler(L1HandlerTransactionReceipt {
                 common,
-                msg_hash: Hash(Felt::ZERO), // TODO what is this
+                msg_hash: Hash256(tx.calculate_message_hash()),
             }),
         }
     }
@@ -716,13 +716,25 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                     n_steps: common.execution_resources.steps.into(),
                     n_memory_holes: common.execution_resources.memory_holes.into(),
                     data_availability: L1Gas {
-                        l1_gas: GasPrice::try_from(common.execution_resources.l1_gas)?.0,
-                        l1_data_gas: GasPrice::try_from(common.execution_resources.l1_data_gas)?.0,
+                        l1_gas: GasPrice::try_from(
+                            common.execution_resources.l1_gas.unwrap_or_default(),
+                        )?
+                        .0,
+                        l1_data_gas: GasPrice::try_from(
+                            common.execution_resources.l1_data_gas.unwrap_or_default(),
+                        )?
+                        .0,
                     },
                     total_gas_consumed: L1Gas {
-                        l1_gas: GasPrice::try_from(common.execution_resources.total_l1_gas)?.0,
+                        l1_gas: GasPrice::try_from(
+                            common.execution_resources.total_l1_gas.unwrap_or_default(),
+                        )?
+                        .0,
                         l1_data_gas: GasPrice::try_from(
-                            common.execution_resources.total_l1_data_gas,
+                            common
+                                .execution_resources
+                                .total_l1_data_gas
+                                .unwrap_or_default(),
                         )?
                         .0,
                     },

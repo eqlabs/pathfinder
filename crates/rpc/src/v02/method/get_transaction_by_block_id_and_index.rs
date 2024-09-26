@@ -11,6 +11,12 @@ pub struct GetTransactionByBlockIdAndIndexInput {
     index: TransactionIndex,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionByBlockIdAndIndexInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 crate::error::generate_rpc_error_subset!(
     GetTransactionByBlockIdAndIndexError: BlockNotFound,
     InvalidTxnIndex

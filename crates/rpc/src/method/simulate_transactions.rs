@@ -1,16 +1,173 @@
+use anyhow::Context;
+use pathfinder_common::BlockId;
+use pathfinder_executor::TransactionExecutionError;
+
 use crate::context::RpcContext;
+use crate::executor::ExecutionStateError;
 use crate::v06::method::simulate_transactions as v06;
+
+pub struct Output(Vec<pathfinder_executor::types::TransactionSimulation>);
 
 pub async fn simulate_transactions(
     context: RpcContext,
     input: v06::SimulateTransactionInput,
-) -> Result<v06::SimulateTransactionOutput, v06::SimulateTransactionError> {
-    v06::simulate_transactions_impl(
-        context,
-        input,
-        pathfinder_executor::L1BlobDataAvailability::Enabled,
-    )
+) -> Result<Output, SimulateTransactionError> {
+    let span = tracing::Span::current();
+    tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+
+        let skip_validate = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &v06::dto::SimulationFlag::SkipValidate);
+
+        let skip_fee_charge = input
+            .simulation_flags
+            .0
+            .iter()
+            .any(|flag| flag == &v06::dto::SimulationFlag::SkipFeeCharge);
+
+        let mut db = context
+            .execution_storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let (header, pending) = match input.block_id {
+            BlockId::Pending => {
+                let pending = context
+                    .pending_data
+                    .get(&db)
+                    .context("Querying pending data")?;
+
+                (pending.header(), Some(pending.state_update.clone()))
+            }
+            other => {
+                let block_id = other.try_into().expect("Only pending should fail");
+
+                let header = db
+                    .block_header(block_id)
+                    .context("Fetching block header")?
+                    .ok_or(SimulateTransactionError::BlockNotFound)?;
+
+                (header, None)
+            }
+        };
+
+        let state = pathfinder_executor::ExecutionState::simulation(
+            &db,
+            context.chain_id,
+            header,
+            pending,
+            pathfinder_executor::L1BlobDataAvailability::Enabled,
+            context.config.custom_versioned_constants,
+        );
+
+        let transactions = input
+            .transactions
+            .into_iter()
+            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let txs =
+            pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
+        Ok(Output(txs))
+    })
     .await
+    .context("Simulating transaction")?
+}
+
+impl crate::dto::serialize::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(TransactionSimulation))
+    }
+}
+
+struct TransactionSimulation<'a>(&'a pathfinder_executor::types::TransactionSimulation);
+
+impl crate::dto::serialize::SerializeForVersion for TransactionSimulation<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field(
+            "fee_estimation",
+            &crate::dto::FeeEstimate(&self.0.fee_estimation),
+        )?;
+        serializer.serialize_field(
+            "transaction_trace",
+            &crate::dto::TransactionTrace {
+                trace: &self.0.trace,
+                include_state_diff: true,
+            },
+        )?;
+        serializer.end()
+    }
+}
+
+#[derive(Debug)]
+pub enum SimulateTransactionError {
+    Internal(anyhow::Error),
+    Custom(anyhow::Error),
+    BlockNotFound,
+    TransactionExecutionError {
+        transaction_index: usize,
+        error: String,
+    },
+}
+
+impl From<anyhow::Error> for SimulateTransactionError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
+    }
+}
+
+impl From<SimulateTransactionError> for crate::error::ApplicationError {
+    fn from(e: SimulateTransactionError) -> Self {
+        match e {
+            SimulateTransactionError::Internal(internal) => Self::Internal(internal),
+            SimulateTransactionError::Custom(internal) => Self::Custom(internal),
+            SimulateTransactionError::BlockNotFound => Self::BlockNotFound,
+            SimulateTransactionError::TransactionExecutionError {
+                transaction_index,
+                error,
+            } => Self::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
+        }
+    }
+}
+
+impl From<TransactionExecutionError> for SimulateTransactionError {
+    fn from(value: TransactionExecutionError) -> Self {
+        use TransactionExecutionError::*;
+        match value {
+            ExecutionError {
+                transaction_index,
+                error,
+            } => Self::TransactionExecutionError {
+                transaction_index,
+                error,
+            },
+            Internal(e) => Self::Internal(e),
+            Custom(e) => Self::Custom(e),
+        }
+    }
+}
+
+impl From<ExecutionStateError> for SimulateTransactionError {
+    fn from(error: ExecutionStateError) -> Self {
+        match error {
+            ExecutionStateError::BlockNotFound => Self::BlockNotFound,
+            ExecutionStateError::Internal(e) => Self::Internal(e),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -35,6 +192,7 @@ pub(crate) mod tests {
 
     use super::simulate_transactions;
     use crate::context::RpcContext;
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
     use crate::v02::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
@@ -44,12 +202,9 @@ pub(crate) mod tests {
     use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
     use crate::v06::method::call::FunctionCall;
     use crate::v06::method::simulate_transactions::tests::setup_storage_with_starknet_version;
-    use crate::v06::method::simulate_transactions::{
-        dto,
-        SimulateTransactionInput,
-        SimulateTransactionOutput,
-    };
+    use crate::v06::method::simulate_transactions::{dto, SimulateTransactionInput};
     use crate::v06::types::PriceUnit;
+    use crate::RpcVersion;
 
     #[tokio::test]
     async fn test_simulate_transaction_with_skip_fee_charge() {
@@ -161,15 +316,21 @@ pub(crate) mod tests {
             };
             vec![tx]
         };
+        let expected = serde_json::to_value(expected).unwrap();
 
         let result = simulate_transactions(context, input).await.expect("result");
-        pretty_assertions_sorted::assert_eq!(result.0, expected);
+        let result = result
+            .serialize(Serializer {
+                version: RpcVersion::V07,
+            })
+            .unwrap();
+        pretty_assertions_sorted::assert_eq!(result, expected);
     }
 
     #[tokio::test]
     async fn declare_cairo_v0_class() {
         pub const CAIRO0_DEFINITION: &[u8] =
-            include_bytes!("../../../fixtures/contracts/cairo0_test.json");
+            include_bytes!("../../fixtures/contracts/cairo0_test.json");
 
         pub const CAIRO0_HASH: ClassHash =
             class_hash!("02c52e7084728572ea940b4df708a2684677c19fa6296de2ea7ba5327e3a84ef");
@@ -210,117 +371,121 @@ pub(crate) mod tests {
         use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
 
         pretty_assertions_sorted::assert_eq!(
-            result,
-            SimulateTransactionOutput(vec![SimulatedTransaction {
-                fee_estimation: FeeEstimate {
-                    gas_consumed: 15464.into(),
-                    gas_price: 1.into(),
-                    data_gas_consumed: Some(128.into()),
-                    data_gas_price: Some(2.into()),
-                    overall_fee: 15720.into(),
-                    unit: PriceUnit::Wei,
-                },
-                transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
-                    fee_transfer_invocation: Some(
-                        FunctionInvocation {
-                            call_type: CallType::Call,
-                            caller_address: *account_contract_address.get(),
-                            calls: vec![],
-                            class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
-                            entry_point_type: EntryPointType::External,
-                            events: vec![OrderedEvent {
-                                order: 0,
-                                data: vec![
-                                    *account_contract_address.get(),
-                                    last_block_header.sequencer_address.0,
-                                    Felt::from_u64(OVERALL_FEE),
-                                    felt!("0x0"),
+            result.serialize(Serializer {
+                version: RpcVersion::V07,
+            }).unwrap(),
+            serde_json::to_value(
+                vec![SimulatedTransaction {
+                    fee_estimation: FeeEstimate {
+                        gas_consumed: 15464.into(),
+                        gas_price: 1.into(),
+                        data_gas_consumed: Some(128.into()),
+                        data_gas_price: Some(2.into()),
+                        overall_fee: 15720.into(),
+                        unit: PriceUnit::Wei,
+                    },
+                    transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
+                        fee_transfer_invocation: Some(
+                            FunctionInvocation {
+                                call_type: CallType::Call,
+                                caller_address: *account_contract_address.get(),
+                                calls: vec![],
+                                class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                                entry_point_type: EntryPointType::External,
+                                events: vec![OrderedEvent {
+                                    order: 0,
+                                    data: vec![
+                                        *account_contract_address.get(),
+                                        last_block_header.sequencer_address.0,
+                                        Felt::from_u64(OVERALL_FEE),
+                                        felt!("0x0"),
+                                    ],
+                                    keys: vec![felt!(
+                                        "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                                    )],
+                                }],
+                                function_call: FunctionCall {
+                                    calldata: vec![
+                                        CallParam(last_block_header.sequencer_address.0),
+                                        CallParam(Felt::from_u64(OVERALL_FEE)),
+                                        call_param!("0x0"),
+                                    ],
+                                    contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                                    entry_point_selector: EntryPoint::hashed(b"transfer"),
+                                },
+                                messages: vec![],
+                                result: vec![felt!("0x1")],
+                                execution_resources: ComputationResources {
+                                    steps: 1354,
+                                    memory_holes: 59,
+                                    range_check_builtin_applications: 31,
+                                    pedersen_builtin_applications: 4,
+                                    ..Default::default()
+                                },
+                            }
+                        ),
+                        validate_invocation: Some(
+                            FunctionInvocation {
+                                call_type: CallType::Call,
+                                caller_address: felt!("0x0"),
+                                calls: vec![],
+                                class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                entry_point_type: EntryPointType::External,
+                                events: vec![],
+                                function_call: FunctionCall {
+                                    contract_address: account_contract_address,
+                                    entry_point_selector: EntryPoint::hashed(b"__validate_declare__"),
+                                    calldata: vec![CallParam(CAIRO0_HASH.0)],
+                                },
+                                messages: vec![],
+                                result: vec![],
+                                execution_resources: ComputationResources {
+                                    steps: 12,
+                                    ..Default::default()
+                                },
+                            }
+                        ),
+                        state_diff: Some(StateDiff {
+                            storage_diffs: vec![StorageDiff {
+                                address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                                storage_entries: vec![
+                                    StorageEntry {
+                                        key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                                        value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffc298")
+                                    },
+                                    StorageEntry {
+                                        key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                                        value: StorageValue(OVERALL_FEE.into()),
+                                    },
                                 ],
-                                keys: vec![felt!(
-                                    "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
-                                )],
                             }],
-                            function_call: FunctionCall {
-                                calldata: vec![
-                                    CallParam(last_block_header.sequencer_address.0),
-                                    CallParam(Felt::from_u64(OVERALL_FEE)),
-                                    call_param!("0x0"),
-                                ],
-                                contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
-                                entry_point_selector: EntryPoint::hashed(b"transfer"),
-                            },
-                            messages: vec![],
-                            result: vec![felt!("0x1")],
-                            execution_resources: ComputationResources {
-                                steps: 1354,
+                            deprecated_declared_classes: vec![
+                                CAIRO0_HASH
+                            ],
+                            declared_classes: vec![],
+                            deployed_contracts: vec![],
+                            replaced_classes: vec![],
+                            nonces: vec![Nonce {
+                                contract_address: account_contract_address,
+                                nonce: contract_nonce!("0x1"),
+                            }],
+                        }),
+                        execution_resources: Some(ExecutionResources {
+                            computation_resources: ComputationResources {
+                                steps: 1366,
                                 memory_holes: 59,
                                 range_check_builtin_applications: 31,
                                 pedersen_builtin_applications: 4,
                                 ..Default::default()
                             },
-                        }
-                    ),
-                    validate_invocation: Some(
-                        FunctionInvocation {
-                            call_type: CallType::Call,
-                            caller_address: felt!("0x0"),
-                            calls: vec![],
-                            class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
-                            entry_point_type: EntryPointType::External,
-                            events: vec![],
-                            function_call: FunctionCall {
-                                contract_address: account_contract_address,
-                                entry_point_selector: EntryPoint::hashed(b"__validate_declare__"),
-                                calldata: vec![CallParam(CAIRO0_HASH.0)],
-                            },
-                            messages: vec![],
-                            result: vec![],
-                            execution_resources: ComputationResources {
-                                steps: 12,
-                                ..Default::default()
-                            },
-                        }
-                    ),
-                    state_diff: Some(StateDiff {
-                        storage_diffs: vec![StorageDiff {
-                            address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
-                            storage_entries: vec![
-                                StorageEntry {
-                                    key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                                    value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffc298")
-                                },
-                                StorageEntry {
-                                    key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
-                                    value: StorageValue(OVERALL_FEE.into()),
-                                },
-                            ],
-                        }],
-                        deprecated_declared_classes: vec![
-                            CAIRO0_HASH
-                        ],
-                        declared_classes: vec![],
-                        deployed_contracts: vec![],
-                        replaced_classes: vec![],
-                        nonces: vec![Nonce {
-                            contract_address: account_contract_address,
-                            nonce: contract_nonce!("0x1"),
-                        }],
+                            data_availability: DataAvailabilityResources {
+                                l1_gas: 0,
+                                l1_data_gas: 128,
+                            }
+                        }),
                     }),
-                    execution_resources: Some(ExecutionResources {
-                        computation_resources: ComputationResources {
-                            steps: 1366,
-                            memory_holes: 59,
-                            range_check_builtin_applications: 31,
-                            pedersen_builtin_applications: 4,
-                            ..Default::default()
-                        },
-                        data_availability: DataAvailabilityResources {
-                            l1_gas: 0,
-                            l1_data_gas: 128,
-                        }
-                    }),
-                }),
-            }])
+                }]
+            ).unwrap()
         );
     }
 
@@ -1436,8 +1601,12 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         pretty_assertions_sorted::assert_eq!(
-            result,
-            SimulateTransactionOutput(vec![
+            result
+                .serialize(Serializer {
+                    version: RpcVersion::V07
+                })
+                .unwrap(),
+            serde_json::to_value(vec![
                 fixtures::expected_output_0_13_1_1::declare(
                     account_contract_address,
                     &last_block_header
@@ -1458,6 +1627,7 @@ pub(crate) mod tests {
                     test_storage_value,
                 ),
             ])
+            .unwrap()
         );
     }
 
@@ -1488,8 +1658,12 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         pretty_assertions_sorted::assert_eq!(
-            result,
-            SimulateTransactionOutput(vec![
+            result
+                .serialize(Serializer {
+                    version: RpcVersion::V07
+                })
+                .unwrap(),
+            serde_json::to_value(vec![
                 fixtures::expected_output_0_13_1_1::declare_without_fee_transfer(
                     account_contract_address
                 ),
@@ -1506,6 +1680,7 @@ pub(crate) mod tests {
                     test_storage_value,
                 ),
             ])
+            .unwrap()
         );
     }
 
@@ -1536,8 +1711,12 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         pretty_assertions_sorted::assert_eq!(
-            result,
-            SimulateTransactionOutput(vec![
+            result
+                .serialize(Serializer {
+                    version: RpcVersion::V07
+                })
+                .unwrap(),
+            serde_json::to_value(vec![
                 fixtures::expected_output_0_13_1_1::declare_without_validate(
                     account_contract_address,
                     &last_block_header,
@@ -1558,6 +1737,7 @@ pub(crate) mod tests {
                     test_storage_value,
                 ),
             ])
+            .unwrap()
         );
     }
 }

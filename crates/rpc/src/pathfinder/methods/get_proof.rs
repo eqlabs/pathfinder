@@ -9,7 +9,7 @@ use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetProofInput {
     pub block_id: BlockId,
     pub contract_address: ContractAddress,
@@ -20,6 +20,19 @@ pub struct GetProofInput {
 pub struct GetClassProofInput {
     pub block_id: BlockId,
     pub class_hash: ClassHash,
+}
+
+impl crate::dto::DeserializeForVersion for GetProofInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                contract_address: ContractAddress(value.deserialize("contract_address")?),
+                keys: value
+                    .deserialize_array("keys", |value| Ok(StorageAddress(value.deserialize()?)))?,
+            })
+        })
+    }
 }
 
 // FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.

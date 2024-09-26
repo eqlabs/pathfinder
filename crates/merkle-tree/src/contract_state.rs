@@ -207,7 +207,7 @@ pub fn revert_contract_state(
             } else {
                 transaction
                     .contract_root(head, contract_address)?
-                    .context("Fetching current contract root")?
+                    .unwrap_or(ContractRoot::ZERO)
             };
 
             let state_hash = if contract_address.is_system_contract() && root == ContractRoot::ZERO

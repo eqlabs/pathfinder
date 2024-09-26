@@ -407,7 +407,7 @@ fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     BlockHash(chain.finalize())
 }
 
-pub(crate) fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
     // Concatenate the transaction count, event count, state diff length, and L1
     // data availability mode into a single felt.
     let mut concat_counts = [0u8; 32];

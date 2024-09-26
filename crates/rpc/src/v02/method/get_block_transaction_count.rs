@@ -9,6 +9,12 @@ pub struct GetBlockTransactionCountInput {
     block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for GetBlockTransactionCountInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 type BlockTransactionCount = u64;
 
 crate::error::generate_rpc_error_subset!(GetBlockTransactionCountError: BlockNotFound);

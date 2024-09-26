@@ -126,7 +126,7 @@ pub fn serialize_roundkeys(rcs: &[MontFelt]) -> Vec<[u64; 4]> {
 pub fn generate_code(name: &str, rcs: &[[u64; 4]]) -> String {
     let mut buf = String::with_capacity(1024 * 1024);
 
-    write!(buf, "pub const {}: [MontFelt; {}] = [", name, rcs.len()).unwrap();
+    write!(buf, "pub static {}: [MontFelt; {}] = [", name, rcs.len()).unwrap();
 
     let push_point = |buf: &mut String, rc: &[u64; 4]| {
         buf.push_str("\n    MontFelt::from_raw([");

@@ -15,9 +15,11 @@ pub mod v02;
 pub mod v03;
 pub mod v06;
 pub mod v07;
+pub mod v08;
 
 use std::net::SocketAddr;
 use std::result::Result;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
@@ -26,6 +28,7 @@ use axum::response::IntoResponse;
 use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
+pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
 use tokio::sync::RwLock;
@@ -45,6 +48,7 @@ pub enum RpcVersion {
     V06,
     #[default]
     V07,
+    V08,
     PathfinderV01,
 }
 
@@ -53,6 +57,7 @@ impl RpcVersion {
         match self {
             RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
+            RpcVersion::V08 => "v0.8",
             RpcVersion::PathfinderV01 => "v0.1",
         }
     }
@@ -162,11 +167,13 @@ impl RpcServer {
 
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
+        let v08_routes = v08::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
+            RpcVersion::V08 => v08_routes.clone(),
             RpcVersion::PathfinderV01 => {
                 anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
             }
@@ -227,6 +234,16 @@ impl Default for SyncState {
         Self {
             status: RwLock::new(Syncing::False(false)),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SubscriptionId(pub u32);
+
+impl SubscriptionId {
+    pub fn next() -> Self {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
     }
 }
 
@@ -356,10 +373,10 @@ pub mod test_utils {
             .insert_storage_root(BlockNumber::GENESIS, storage_root_idx)
             .unwrap();
         let header0 = BlockHeader::builder()
-            .with_number(BlockNumber::GENESIS)
-            .with_storage_commitment(storage_commitment0)
-            .with_class_commitment(class_commitment0)
-            .with_calculated_state_commitment()
+            .number(BlockNumber::GENESIS)
+            .storage_commitment(storage_commitment0)
+            .class_commitment(class_commitment0)
+            .calculated_state_commitment()
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -398,12 +415,12 @@ pub mod test_utils {
             .unwrap();
         let header1 = header0
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(1))
-            .with_storage_commitment(storage_commitment1)
-            .with_class_commitment(class_commitment1)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(1))
-            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .timestamp(BlockTimestamp::new_or_panic(1))
+            .storage_commitment(storage_commitment1)
+            .class_commitment(class_commitment1)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(1))
+            .sequencer_address(sequencer_address_bytes!(&[1u8]))
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
         db_txn
@@ -457,12 +474,12 @@ pub mod test_utils {
             .unwrap();
         let header2 = header1
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(2))
-            .with_storage_commitment(storage_commitment2)
-            .with_class_commitment(class_commitment2)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(2))
-            .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
+            .timestamp(BlockTimestamp::new_or_panic(2))
+            .storage_commitment(storage_commitment2)
+            .class_commitment(class_commitment2)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(2))
+            .sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header2).unwrap();

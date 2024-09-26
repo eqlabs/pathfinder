@@ -141,8 +141,6 @@ impl Sync {
     /// No guarantees are made about any headers newer than the anchor.
     #[tracing::instrument(level = "debug", skip(self, anchor))]
     async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
-        tracing::info!(?anchor);
-
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
                 .await
@@ -289,7 +287,6 @@ async fn handle_header_stream(
     public_key: PublicKey,
     storage: Storage,
 ) -> Result<(), SyncError> {
-    tracing::info!("Syncing headers");
     InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
@@ -327,10 +324,7 @@ async fn handle_transaction_stream(
         .pipe(transactions::VerifyCommitment, 10)
         .pipe(transactions::Store::new(storage.connection()?, start), 10)
         .into_stream()
-        .inspect_ok(|x| {
-            tracing::info!(tail=%x.data, "Transactions chunk
-    synced")
-        })
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
         .map_err(SyncError::from_v2)?;
@@ -360,7 +354,7 @@ async fn handle_state_diff_stream(
             10,
         )
         .into_stream()
-        .inspect_ok(|x| tracing::info!(tail=%x.data, "State diff synced"))
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
         .map_err(SyncError::from_v2)?;
@@ -410,7 +404,7 @@ async fn handle_event_stream(
         .try_chunks(100)
         .map_err(|e| e.1)
         .and_then(|x| events::persist(storage.clone(), x))
-        .inspect_ok(|x| tracing::info!(tail=%x, "Events chunk synced"))
+        .inspect_ok(|x| tracing::debug!(tail=%x, "Events chunk synced"))
         // Drive stream to completion.
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await?;

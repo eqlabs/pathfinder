@@ -1,27 +1,32 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::Duration;
 
 use anyhow::{anyhow, Context};
+use futures::{StreamExt, TryStreamExt};
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::{
     BlockCommitmentSignature,
     BlockHash,
     BlockNumber,
+    CasmHash,
     Chain,
     ChainId,
     ClassHash,
     EventCommitment,
     PublicKey,
     ReceiptCommitment,
+    SierraHash,
     StateCommitment,
+    StateDiffCommitment,
     StateUpdate,
     TransactionCommitment,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::{Block, Status};
+use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
+use tracing::Instrument;
 
 use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
 use crate::state::sync::class::{download_class, DownloadedClass};
@@ -95,6 +100,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub block_validation_mode: BlockValidationMode,
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
+    pub fetch_concurrency: std::num::NonZeroUsize,
 }
 
 pub async fn sync<GatewayClient>(
@@ -107,6 +113,17 @@ pub async fn sync<GatewayClient>(
 where
     GatewayClient: GatewayApi + Clone + Send + 'static,
 {
+    // Phase 1: catch up to the latest block
+    let bulk_tail = latest.borrow().0;
+    bulk_sync(
+        tx_event.clone(),
+        context.clone(),
+        &mut blocks,
+        &mut head,
+        bulk_tail,
+    )
+    .await?;
+
     let L2SyncContext {
         sequencer,
         chain,
@@ -114,8 +131,10 @@ where
         block_validation_mode,
         storage,
         sequencer_public_key,
+        fetch_concurrency: _,
     } = context;
 
+    // Start polling head of chain
     'outer: loop {
         // Get the next block from L2.
         let (next, head_meta) = match &head {
@@ -216,9 +235,15 @@ where
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
+        let downloaded_classes = download_new_classes(&state_update, &sequencer, storage.clone())
             .await
             .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        emit_events_for_downloaded_classes(
+            &tx_event,
+            downloaded_classes,
+            &state_update.declared_sierra_classes,
+        )
+        .await?;
         let t_declare = t_declare.elapsed();
 
         // Download signature
@@ -388,9 +413,8 @@ pub async fn poll_latest(
 pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
-    tx_event: &mpsc::Sender<SyncEvent>,
     storage: Storage,
-) -> Result<(), anyhow::Error> {
+) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
         .contract_updates
         .iter()
@@ -414,7 +438,7 @@ pub async fn download_new_classes(
         .collect::<Vec<_>>();
 
     if new_classes.is_empty() {
-        return Ok(());
+        return Ok(vec![]);
     }
 
     let require_downloading = tokio::task::spawn_blocking(move || {
@@ -441,58 +465,20 @@ pub async fn download_new_classes(
     .context("Joining database task")?
     .context("Querying database for missing classes")?;
 
-    for class_hash in require_downloading {
-        let class = download_class(sequencer, class_hash)
-            .await
-            .with_context(|| format!("Downloading class {}", class_hash.0))?;
-
-        match class {
-            DownloadedClass::Cairo { definition, hash } => tx_event
-                .send(SyncEvent::CairoClass { definition, hash })
+    let futures = require_downloading.into_iter().map(|class_hash| {
+        async move {
+            download_class(sequencer, class_hash)
                 .await
-                .with_context(|| {
-                    format!(
-                        "Sending Event::NewCairoContract for declared class {}",
-                        class_hash.0
-                    )
-                })?,
-            DownloadedClass::Sierra {
-                sierra_definition,
-                sierra_hash,
-                casm_definition,
-            } => {
-                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
-                // feeder gateway, since that's what has been added to the class
-                // commitment tree.
-                let Some(casm_hash) = state_update
-                    .declared_sierra_classes
-                    .iter()
-                    .find_map(|(sierra, casm)| (sierra.0 == class_hash.0).then_some(*casm))
-                else {
-                    // This can occur if the sierra was in here as a deploy contract, if the class
-                    // was declared in a previous block but not yet persisted by
-                    // the database.
-                    continue;
-                };
-                tx_event
-                    .send(SyncEvent::SierraClass {
-                        sierra_definition,
-                        sierra_hash,
-                        casm_definition,
-                        casm_hash,
-                    })
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Sending Event::NewSierraContract for declared class {}",
-                            class_hash.0
-                        )
-                    })?
-            }
+                .with_context(|| format!("Downloading class {}", class_hash.0))
         }
-    }
+        .in_current_span()
+    });
 
-    Ok(())
+    let stream = futures::stream::iter(futures).buffer_unordered(4);
+
+    let downloaded_classes = stream.try_collect().await?;
+
+    Ok(downloaded_classes)
 }
 
 enum DownloadBlock {
@@ -637,6 +623,424 @@ async fn download_block(
     }
 }
 
+async fn bulk_sync<GatewayClient>(
+    tx_event: mpsc::Sender<SyncEvent>,
+    context: L2SyncContext<GatewayClient>,
+    blocks: &mut BlockChain,
+    head: &mut Option<(BlockNumber, BlockHash, StateCommitment)>,
+    tail: BlockNumber,
+) -> anyhow::Result<()>
+where
+    GatewayClient: GatewayApi + Clone + Send + 'static,
+{
+    let L2SyncContext {
+        sequencer,
+        chain,
+        chain_id,
+        block_validation_mode,
+        storage,
+        sequencer_public_key,
+        fetch_concurrency,
+    } = context;
+
+    let mut start = match head {
+        Some(head) => head.0.get() + 1,
+        None => BlockNumber::GENESIS.get(),
+    };
+    let end = tail.get();
+    if start >= end {
+        return Ok(());
+    }
+
+    tracing::trace!(%start, %end, "Catching up to the latest block");
+
+    let mut futures = (start..=end)
+        .map(|block_number| {
+            let block_number = BlockNumber::new_or_panic(block_number);
+
+            let _span =
+                tracing::debug_span!("download_and_verify_block_data", %block_number).entered();
+            tracing::trace!("Downloading block");
+
+            let sequencer = sequencer.clone();
+            let storage = storage.clone();
+
+            async move {
+                let t_block = std::time::Instant::now();
+                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
+                let t_block = t_block.elapsed();
+
+                let t_signature = std::time::Instant::now();
+                let signature = sequencer.signature(block_number.into()).await?;
+                let t_signature = t_signature.elapsed();
+
+                let span = tracing::Span::current();
+
+                let (tx, rx) = tokio::sync::oneshot::channel();
+
+                rayon::spawn(move || {
+                    let _span = span.entered();
+
+                    let t_verification = std::time::Instant::now();
+
+                    let result = verify_block_and_state_update(
+                        &block,
+                        &state_update,
+                        chain,
+                        chain_id,
+                        block_validation_mode,
+                    )
+                    .and_then(
+                        |(
+                            transaction_commitment,
+                            event_commitment,
+                            receipt_commitment,
+                            state_diff_commitment,
+                        )| {
+                            verify_signature(
+                                block.block_hash,
+                                state_diff_commitment,
+                                &signature,
+                                sequencer_public_key,
+                                BlockValidationMode::AllowMismatch,
+                            )
+                            .map_err(|err| err.into())
+                            .map(|_| {
+                                (
+                                    block,
+                                    state_update,
+                                    signature,
+                                    transaction_commitment,
+                                    event_commitment,
+                                    receipt_commitment,
+                                    state_diff_commitment,
+                                )
+                            })
+                        },
+                    );
+
+                    let t_verification = t_verification.elapsed();
+                    tracing::trace!(elapsed=?t_verification, "Block verification done");
+
+                    let _ = tx.send(result);
+                });
+
+                let (
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                ) = rx
+                    .await
+                    .expect("Panic on rayon thread while verifying block")
+                    .context("Verifying block contents")?;
+
+                let t_declare = std::time::Instant::now();
+                let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
+                    .await
+                    .with_context(|| {
+                        format!("Handling newly declared classes for block {block_number:?}")
+                    })?;
+                let t_declare = t_declare.elapsed();
+
+                let timings = Timings {
+                    block_download: t_block,
+                    class_declaration: t_declare,
+                    signature_download: t_signature,
+                };
+
+                Ok::<_, anyhow::Error>((
+                    block,
+                    state_update,
+                    signature,
+                    transaction_commitment,
+                    event_commitment,
+                    receipt_commitment,
+                    state_diff_commitment,
+                    downloaded_classes,
+                    timings,
+                ))
+            }
+            .in_current_span()
+        })
+        .peekable();
+
+    // We want to download blocks in an unordered fashion, but still have a limit on
+    // the size of the cache that is used to then sort the downloaded blocks before
+    // emitting them. (Tries need to be updated in order, hence the sorting.)
+    //
+    // The limit is needed because if we encounter problems downloading a block, at
+    // some point we need to wait for it, otherwise the cache would balloon being
+    // filled with endless newer and newer blocks that we cannot emit and this would
+    // lead to oom.
+    const UNORDERED_CACHE_CAPACITY_FACTOR: usize = 32;
+
+    while futures.peek().is_some() {
+        let futures_chunk = futures
+            .by_ref()
+            .take(fetch_concurrency.get() * UNORDERED_CACHE_CAPACITY_FACTOR);
+
+        let mut stream =
+            futures::stream::iter(futures_chunk).buffer_unordered(fetch_concurrency.get());
+
+        let mut ordered_blocks = BTreeMap::new();
+
+        while let Some(result) = stream.next().await {
+            let Ok(ok) = result else {
+                // We've hit an error, so we stop the loop and return. `head` has been updated
+                // to the last synced block so our "tracking" sync will just
+                // continue from there.
+                tracing::info!(
+                    "Error during bulk syncing blocks, falling back to normal sync: {}",
+                    result.err().unwrap()
+                );
+                return Ok(());
+            };
+
+            ordered_blocks.insert(ok.0.block_number.get(), ok);
+
+            let keys = ordered_blocks.keys().copied().collect::<Vec<_>>();
+
+            tracing::trace!(start, len = ordered_blocks.len(), ?keys, "Cached blocks");
+
+            // Find number of elems till the first gap that we can emit right now
+            let num_to_emit = ordered_blocks
+                .keys()
+                .take_while(|block_number| {
+                    if **block_number == start {
+                        start += 1;
+                        true
+                    } else {
+                        false
+                    }
+                })
+                .count();
+
+            for _ in 0..num_to_emit {
+                let (
+                    _,
+                    (
+                        block,
+                        state_update,
+                        signature,
+                        transaction_commitment,
+                        event_commitment,
+                        receipt_commitment,
+                        state_diff_commitment,
+                        downloaded_classes,
+                        timings,
+                    ),
+                ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
+
+                *head = Some((
+                    block.block_number,
+                    block.block_hash,
+                    state_update.state_commitment,
+                ));
+                blocks.push(
+                    block.block_number,
+                    block.block_hash,
+                    state_update.state_commitment,
+                );
+
+                emit_events_for_downloaded_classes(
+                    &tx_event,
+                    downloaded_classes,
+                    &state_update.declared_sierra_classes,
+                )
+                .await?;
+
+                tx_event
+                    .send(SyncEvent::Block(
+                        (
+                            Box::new(block),
+                            (transaction_commitment, event_commitment, receipt_commitment),
+                        ),
+                        Box::new(state_update),
+                        Box::new(signature.signature()),
+                        Box::new(state_diff_commitment),
+                        timings,
+                    ))
+                    .await
+                    .context("Event channel closed")?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) async fn emit_events_for_downloaded_classes(
+    tx_event: &mpsc::Sender<SyncEvent>,
+    downloaded_classes: Vec<DownloadedClass>,
+    declared_sierra_classes: &HashMap<SierraHash, CasmHash>,
+) -> anyhow::Result<()> {
+    for downloaded_class in downloaded_classes {
+        match downloaded_class {
+            DownloadedClass::Cairo { definition, hash } => {
+                tracing::trace!(class_hash=%hash, "Sending Cairo class event");
+                tx_event
+                    .send(SyncEvent::CairoClass { definition, hash })
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Sending Event::NewCairoContract for declared class {}",
+                            hash.0
+                        )
+                    })?
+            }
+            DownloadedClass::Sierra {
+                sierra_definition,
+                sierra_hash,
+                casm_definition,
+            } => {
+                // NOTE: we _have_ to use the same compiled_class_class hash as returned by the
+                // feeder gateway, since that's what has been added to the class
+                // commitment tree.
+                let Some(casm_hash) = declared_sierra_classes
+                    .iter()
+                    .find_map(|(sierra, casm)| (sierra.0 == sierra_hash.0).then_some(*casm))
+                else {
+                    // This can occur if the sierra was in here as a deploy contract, if the class
+                    // was declared in a previous block but not yet persisted by
+                    // the database.
+                    continue;
+                };
+                tracing::trace!(class_hash=%sierra_hash, "Sending Sierra class event");
+                tx_event
+                    .send(SyncEvent::SierraClass {
+                        sierra_definition,
+                        sierra_hash,
+                        casm_definition,
+                        casm_hash,
+                    })
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Sending Event::NewSierraContract for declared class {}",
+                            sierra_hash.0
+                        )
+                    })?
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn verify_block_and_state_update(
+    block: &Block,
+    state_update: &StateUpdate,
+    chain: Chain,
+    chain_id: ChainId,
+    mode: BlockValidationMode,
+) -> anyhow::Result<(
+    TransactionCommitment,
+    EventCommitment,
+    ReceiptCommitment,
+    StateDiffCommitment,
+)> {
+    // Check if commitments and block hash are correct
+    let state_diff_commitment = StateUpdateData::from(state_update.clone())
+        .compute_state_diff_commitment(block.starknet_version);
+    let state_diff_length = state_update.state_diff_length();
+
+    let verify_result = verify_gateway_block_commitments_and_hash(
+        block,
+        state_diff_commitment,
+        state_diff_length,
+        chain,
+        chain_id,
+    )
+    .context("Verify block hash")?;
+
+    let (transaction_commitment, event_commitment, receipt_commitment) =
+        match (block.status, verify_result, mode) {
+            (Status::AcceptedOnL1 | Status::AcceptedOnL2, VerifyResult::Match(commitments), _) => {
+                Ok(commitments)
+            }
+            (
+                Status::AcceptedOnL1 | Status::AcceptedOnL2,
+                VerifyResult::Mismatch,
+                BlockValidationMode::AllowMismatch,
+            ) => Ok(Default::default()),
+            (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
+                Err(anyhow!("Block hash mismatch"))
+            }
+            _ => Err(anyhow!(
+                "Rejecting block as its status is {}, and only accepted blocks are allowed",
+                block.status
+            )),
+        }?;
+
+    // Check if transaction hashes are valid
+    verify_transaction_hashes(block.block_number, &block.transactions, chain_id)
+        .context("Verify transaction hashes")?;
+
+    // Always compute the state diff commitment from the state update.
+    // If any of the feeder gateway replies (block or signature) contain a state
+    // diff commitment, check if the value matches. If it doesn't, just log the
+    // fact.
+    let version = block.starknet_version;
+    let computed_state_diff_commitment = state_update.compute_state_diff_commitment(version);
+
+    if let Some(x) = block.state_diff_commitment {
+        if x != computed_state_diff_commitment {
+            tracing::warn!(
+                "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
+                computed_state_diff_commitment.0,
+                x.0
+            );
+        }
+    }
+
+    Ok((
+        transaction_commitment,
+        event_commitment,
+        receipt_commitment,
+        computed_state_diff_commitment,
+    ))
+}
+
+/// Check that transaction hashes match the actual contents.
+fn verify_transaction_hashes(
+    block_number: BlockNumber,
+    transactions: &[pathfinder_common::transaction::Transaction],
+    chain_id: ChainId,
+) -> anyhow::Result<()> {
+    use rayon::prelude::*;
+
+    transactions
+        .par_iter()
+        .enumerate()
+        .try_for_each(|(i, txn)| {
+            if !txn.verify_hash(chain_id) {
+                anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
+            };
+            Ok(())
+        })
+}
+
+/// Check block commitment signature.
+fn verify_signature(
+    block_hash: BlockHash,
+    state_diff_commitment: StateDiffCommitment,
+    signature: &BlockSignature,
+    sequencer_public_key: PublicKey,
+    mode: BlockValidationMode,
+) -> Result<(), pathfinder_crypto::signature::SignatureError> {
+    let signature = signature.signature();
+    match mode {
+        BlockValidationMode::Strict => {
+            signature.verify(sequencer_public_key, block_hash, state_diff_commitment)
+        }
+        BlockValidationMode::AllowMismatch => Ok(()),
+    }
+}
+
 async fn reorg(
     head: &(BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
@@ -695,7 +1099,6 @@ async fn reorg(
 
 #[cfg(test)]
 mod tests {
-
     mod sync {
         use std::sync::LazyLock;
 
@@ -732,7 +1135,7 @@ mod tests {
         use tokio::sync::mpsc;
         use tokio::task::JoinHandle;
 
-        use super::super::{sync, BlockValidationMode, SyncEvent};
+        use super::super::{bulk_sync, sync, BlockValidationMode, SyncEvent};
         use crate::state::l2::{BlockChain, L2SyncContext};
 
         const MODE: BlockValidationMode = BlockValidationMode::AllowMismatch;
@@ -914,6 +1317,7 @@ mod tests {
                 block_validation_mode: MODE,
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
+                fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -925,6 +1329,38 @@ mod tests {
                 BlockChain::with_capacity(100, vec![]),
                 latest.1,
             ))
+        }
+
+        fn spawn_bulk_sync(
+            tx_event: mpsc::Sender<SyncEvent>,
+            sequencer: MockGatewayApi,
+        ) -> JoinHandle<anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>>> {
+            let storage = StorageBuilder::in_memory().unwrap();
+            let sequencer = std::sync::Arc::new(sequencer);
+            let context = L2SyncContext {
+                sequencer,
+                chain: Chain::SepoliaTestnet,
+                chain_id: ChainId::SEPOLIA_TESTNET,
+                block_validation_mode: MODE,
+                storage,
+                sequencer_public_key: PublicKey::ZERO,
+                fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+            };
+
+            tokio::spawn(async move {
+                let mut blocks = BlockChain::with_capacity(100, vec![]);
+                let mut head = None;
+                bulk_sync(
+                    tx_event,
+                    context,
+                    &mut blocks,
+                    &mut head,
+                    BlockNumber::new_or_panic(1),
+                )
+                .await?;
+
+                Ok(head)
+            })
         }
 
         static CONTRACT0_DEF: LazyLock<bytes::Bytes> =
@@ -1105,6 +1541,33 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_state_update_with_block_no_sequence(
+            mock: &mut MockGatewayApi,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_state_update_with_block()
+                .with(eq(block))
+                .times(1)
+                .return_once(move |_| returned_result);
+        }
+
+        fn expect_state_update_with_block_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_state_update_with_block()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(move |_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_block_header(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -1137,6 +1600,33 @@ mod tests {
         }
 
         /// Convenience wrapper
+        fn expect_signature_no_sequence(
+            mock: &mut MockGatewayApi,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(1)
+                .return_once(|_| returned_result);
+        }
+
+        fn expect_signature_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(|_| returned_result);
+        }
+
+        /// Convenience wrapper
         fn expect_class_by_hash(
             mock: &mut MockGatewayApi,
             seq: &mut mockall::Sequence,
@@ -1147,6 +1637,29 @@ mod tests {
                 .withf(move |x| x == &class_hash)
                 .times(1)
                 .in_sequence(seq)
+                .return_once(|_| returned_result);
+        }
+
+        /// Convenience wrapper
+        fn expect_class_by_hash_no_sequence(
+            mock: &mut MockGatewayApi,
+            class_hash: ClassHash,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_pending_class_by_hash()
+                .withf(move |x| x == &class_hash)
+                .times(1)
+                .return_once(|_| returned_result);
+        }
+
+        fn expect_class_by_hash_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            class_hash: ClassHash,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_pending_class_by_hash()
+                .withf(move |x| x == &class_hash)
+                .times(..=1)
                 .return_once(|_| returned_result);
         }
 
@@ -1309,6 +1822,7 @@ mod tests {
                     block_validation_mode: MODE,
                     storage: StorageBuilder::in_memory().unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
+                    fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 
@@ -1365,7 +1879,7 @@ mod tests {
                 let jh = spawn_sync_default(tx_event, mock);
                 let error = jh.await.unwrap().unwrap_err();
                 assert_eq!(
-                    &error.to_string(),
+                    &error.root_cause().to_string(),
                     "Rejecting block as its status is REVERTED, and only accepted blocks are \
                      allowed"
                 );
@@ -2492,6 +3006,116 @@ mod tests {
                     .unwrap()
                     .unwrap()
                     .unwrap_err();
+            }
+        }
+
+        mod bulk {
+            use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+
+            use super::*;
+
+            #[tokio::test]
+            async fn happy_path() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
+
+                // Download the genesis block with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Download block #1 with respective state update and contracts
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Ok((BLOCK1.clone(), STATE_UPDATE1.clone())),
+                );
+                expect_class_by_hash_no_sequence(
+                    &mut mock,
+                    CONTRACT1_HASH,
+                    Ok(CONTRACT1_DEF.clone()),
+                );
+                expect_signature_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER.into(),
+                    Ok(BLOCK1_SIGNATURE.clone()),
+                );
+
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
+
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                        assert_eq!(hash, CONTRACT0_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK0);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE0);
+                    assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
+                });
+                assert_matches!(rx_event.recv().await.unwrap(),
+                    SyncEvent::CairoClass { hash, .. } => {
+                    assert_eq!(hash, CONTRACT1_HASH);
+                });
+                assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
+                    assert_eq!(*block, *BLOCK1);
+                    assert_eq_sorted!(*state_update, *STATE_UPDATE1);
+                    assert_eq!(*signature, BLOCK1_SIGNATURE.signature());
+                });
+
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(Some((BLOCK1_NUMBER, BLOCK1_HASH, _))));
+            }
+
+            #[tokio::test]
+            async fn no_such_block() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
+
+                // Downloading the genesis block data is racing against the failure of block 1,
+                // hence "at most once"
+                expect_state_update_with_block_no_sequence_at_most_once(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence_at_most_once(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence_at_most_once(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Downloading block 1 fails with block not found
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Err(block_not_found()),
+                );
+
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
+
+                // The entire unemitted, yet cached batch is rejected
+                assert!(rx_event.recv().await.is_none());
+
+                // Bulk sync should _not_ fail if the block is not found
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(None));
             }
         }
     }

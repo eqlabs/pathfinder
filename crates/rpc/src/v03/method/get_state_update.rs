@@ -9,6 +9,12 @@ pub struct GetStateUpdateInput {
     block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for GetStateUpdateInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 crate::error::generate_rpc_error_subset!(GetStateUpdateError: BlockNotFound);
 
 pub async fn get_state_update(

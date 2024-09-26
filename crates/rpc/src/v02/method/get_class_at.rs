@@ -13,6 +13,12 @@ pub struct GetClassAtInput {
     contract_address: ContractAddress,
 }
 
+impl crate::dto::DeserializeForVersion for GetClassAtInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 pub async fn get_class_at(
     context: RpcContext,
     input: GetClassAtInput,

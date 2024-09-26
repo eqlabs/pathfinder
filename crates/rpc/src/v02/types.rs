@@ -3,13 +3,27 @@
 pub(crate) mod class;
 pub use class::*;
 use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
+use serde::de::Error;
 use serde_with::serde_as;
+
+use crate::dto::{U128Hex, U64Hex};
 pub mod syncing;
 
 #[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
+}
+
+impl crate::dto::DeserializeForVersion for ResourceBounds {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                l1_gas: value.deserialize("l1_gas")?,
+                l2_gas: value.deserialize("l2_gas")?,
+            })
+        })
+    }
 }
 
 impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
@@ -30,6 +44,19 @@ pub struct ResourceBound {
     pub max_price_per_unit: ResourcePricePerUnit,
 }
 
+impl crate::dto::DeserializeForVersion for ResourceBound {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                max_amount: ResourceAmount(value.deserialize::<U64Hex>("max_amount")?.0),
+                max_price_per_unit: ResourcePricePerUnit(
+                    value.deserialize::<U128Hex>("max_price_per_unit")?.0,
+                ),
+            })
+        })
+    }
+}
+
 impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
     fn from(resource_bound: ResourceBound) -> Self {
         Self {
@@ -44,6 +71,17 @@ pub enum DataAvailabilityMode {
     #[default]
     L1,
     L2,
+}
+
+impl crate::dto::DeserializeForVersion for DataAvailabilityMode {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let value: String = value.deserialize_serde()?;
+        match value.as_str() {
+            "L1" => Ok(Self::L1),
+            "L2" => Ok(Self::L2),
+            _ => Err(serde_json::Error::custom("invalid data availability mode")),
+        }
+    }
 }
 
 impl From<DataAvailabilityMode> for pathfinder_common::transaction::DataAvailabilityMode {
@@ -82,8 +120,11 @@ pub mod request {
         TransactionSignatureElem,
         TransactionVersion,
     };
+    use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
+
+    use crate::dto::U64Hex;
 
     /// "Broadcasted" L2 transaction in requests the RPC API.
     ///
@@ -100,6 +141,26 @@ pub mod request {
         Invoke(BroadcastedInvokeTransaction),
         #[serde(rename = "DEPLOY_ACCOUNT")]
         DeployAccount(BroadcastedDeployAccountTransaction),
+    }
+
+    impl crate::dto::DeserializeForVersion for BroadcastedTransaction {
+        fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+            value.deserialize_map(|value| {
+                let tag: String = value.deserialize_serde("type")?;
+                match tag.as_str() {
+                    "DECLARE" => Ok(Self::Declare(BroadcastedDeclareTransaction::deserialize(
+                        value,
+                    )?)),
+                    "INVOKE" => Ok(Self::Invoke(BroadcastedInvokeTransaction::deserialize(
+                        value,
+                    )?)),
+                    "DEPLOY_ACCOUNT" => Ok(Self::DeployAccount(
+                        BroadcastedDeployAccountTransaction::deserialize(value)?,
+                    )),
+                    _ => Err(serde_json::Error::custom("unknown transaction type")),
+                }
+            })
+        }
     }
 
     impl BroadcastedTransaction {
@@ -152,6 +213,63 @@ pub mod request {
         V1(BroadcastedDeclareTransactionV1),
         V2(BroadcastedDeclareTransactionV2),
         V3(BroadcastedDeclareTransactionV3),
+    }
+
+    impl BroadcastedDeclareTransaction {
+        pub fn deserialize(value: &mut crate::dto::Map) -> Result<Self, serde_json::Error> {
+            let version = value.deserialize("version").map(TransactionVersion)?;
+            let signature = value.deserialize_array("signature", |value| {
+                value.deserialize().map(TransactionSignatureElem)
+            })?;
+            let sender_address = value.deserialize("sender_address").map(ContractAddress)?;
+            match version.without_query_version() {
+                0 => Ok(Self::V0(BroadcastedDeclareTransactionV0 {
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    version,
+                    signature,
+                    contract_class: value.deserialize("contract_class")?,
+                    sender_address,
+                })),
+                1 => Ok(Self::V1(BroadcastedDeclareTransactionV1 {
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    version,
+                    signature,
+                    nonce: value.deserialize("nonce").map(TransactionNonce)?,
+                    contract_class: value.deserialize("contract_class")?,
+                    sender_address,
+                })),
+                2 => Ok(Self::V2(BroadcastedDeclareTransactionV2 {
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    version,
+                    signature,
+                    nonce: value.deserialize("nonce").map(TransactionNonce)?,
+                    compiled_class_hash: value.deserialize("compiled_class_hash").map(CasmHash)?,
+                    contract_class: value.deserialize("contract_class")?,
+                    sender_address,
+                })),
+                3 => Ok(Self::V3(BroadcastedDeclareTransactionV3 {
+                    version,
+                    signature,
+                    nonce: value.deserialize("nonce").map(TransactionNonce)?,
+                    resource_bounds: value.deserialize("resource_bounds")?,
+                    tip: value.deserialize::<U64Hex>("tip").map(|tip| Tip(tip.0))?,
+                    paymaster_data: value.deserialize_array("paymaster_data", |value| {
+                        value.deserialize().map(PaymasterDataElem)
+                    })?,
+                    account_deployment_data: value
+                        .deserialize_array("account_deployment_data", |value| {
+                            value.deserialize().map(AccountDeploymentDataElem)
+                        })?,
+                    nonce_data_availability_mode: value
+                        .deserialize("nonce_data_availability_mode")?,
+                    fee_data_availability_mode: value.deserialize("fee_data_availability_mode")?,
+                    compiled_class_hash: value.deserialize("compiled_class_hash").map(CasmHash)?,
+                    contract_class: value.deserialize("contract_class")?,
+                    sender_address,
+                })),
+                _ => Err(serde_json::Error::custom("unknown transaction version")),
+            }
+        }
     }
 
     impl<'de> serde::Deserialize<'de> for BroadcastedDeclareTransaction {
@@ -266,15 +384,6 @@ pub mod request {
         V3(BroadcastedDeployAccountTransactionV3),
     }
 
-    impl BroadcastedDeployAccountTransaction {
-        pub fn deployed_contract_address(&self) -> ContractAddress {
-            match self {
-                Self::V1(tx) => tx.deployed_contract_address(),
-                Self::V3(tx) => tx.deployed_contract_address(),
-            }
-        }
-    }
-
     impl<'de> serde::Deserialize<'de> for BroadcastedDeployAccountTransaction {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -300,6 +409,59 @@ pub mod request {
                         .map_err(de::Error::custom)?,
                 )),
                 v => Err(de::Error::custom(format!("invalid version {v}"))),
+            }
+        }
+    }
+
+    impl BroadcastedDeployAccountTransaction {
+        pub fn deserialize(value: &mut crate::dto::Map) -> Result<Self, serde_json::Error> {
+            let version = value.deserialize("version").map(TransactionVersion)?;
+            let signature = value.deserialize_array("signature", |value| {
+                value.deserialize().map(TransactionSignatureElem)
+            })?;
+            let nonce = value.deserialize("nonce").map(TransactionNonce)?;
+            let contract_address_salt = value
+                .deserialize("contract_address_salt")
+                .map(ContractAddressSalt)?;
+            let constructor_calldata = value
+                .deserialize_array("constructor_calldata", |value| {
+                    value.deserialize().map(CallParam)
+                })?;
+            let class_hash = value.deserialize("class_hash").map(ClassHash)?;
+            match version.without_query_version() {
+                1 => Ok(Self::V1(BroadcastedDeployAccountTransactionV1 {
+                    version,
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    signature,
+                    nonce,
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                })),
+                3 => Ok(Self::V3(BroadcastedDeployAccountTransactionV3 {
+                    version,
+                    signature,
+                    nonce,
+                    resource_bounds: value.deserialize("resource_bounds")?,
+                    tip: value.deserialize::<U64Hex>("tip").map(|tip| Tip(tip.0))?,
+                    paymaster_data: value.deserialize_array("paymaster_data", |value| {
+                        value.deserialize().map(PaymasterDataElem)
+                    })?,
+                    nonce_data_availability_mode: value
+                        .deserialize("nonce_data_availability_mode")?,
+                    fee_data_availability_mode: value.deserialize("fee_data_availability_mode")?,
+                    contract_address_salt,
+                    constructor_calldata,
+                    class_hash,
+                })),
+                _ => Err(serde_json::Error::custom("unknown transaction version")),
+            }
+        }
+
+        pub fn deployed_contract_address(&self) -> ContractAddress {
+            match self {
+                Self::V1(tx) => tx.deployed_contract_address(),
+                Self::V3(tx) => tx.deployed_contract_address(),
             }
         }
     }
@@ -369,22 +531,6 @@ pub mod request {
         V3(BroadcastedInvokeTransactionV3),
     }
 
-    impl BroadcastedInvokeTransaction {
-        pub fn into_v1(self) -> Option<BroadcastedInvokeTransactionV1> {
-            match self {
-                Self::V1(x) => Some(x),
-                _ => None,
-            }
-        }
-
-        pub fn into_v0(self) -> Option<BroadcastedInvokeTransactionV0> {
-            match self {
-                Self::V0(x) => Some(x),
-                _ => None,
-            }
-        }
-    }
-
     impl<'de> Deserialize<'de> for BroadcastedInvokeTransaction {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
         where
@@ -411,6 +557,71 @@ pub mod request {
                     BroadcastedInvokeTransactionV3::deserialize(&v).map_err(de::Error::custom)?,
                 )),
                 _ => Err(de::Error::custom("version must be 0, 1 or 3")),
+            }
+        }
+    }
+
+    impl BroadcastedInvokeTransaction {
+        pub fn deserialize(value: &mut crate::dto::Map) -> Result<Self, serde_json::Error> {
+            let version = value.deserialize("version").map(TransactionVersion)?;
+            let signature = value.deserialize_array("signature", |value| {
+                value.deserialize().map(TransactionSignatureElem)
+            })?;
+            let calldata =
+                value.deserialize_array("calldata", |value| value.deserialize().map(CallParam))?;
+            match version.without_query_version() {
+                0 => Ok(Self::V0(BroadcastedInvokeTransactionV0 {
+                    version,
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    signature,
+                    contract_address: value.deserialize("contract_address").map(ContractAddress)?,
+                    entry_point_selector: value
+                        .deserialize("entry_point_selector")
+                        .map(EntryPoint)?,
+                    calldata,
+                })),
+                1 => Ok(Self::V1(BroadcastedInvokeTransactionV1 {
+                    version,
+                    max_fee: value.deserialize("max_fee").map(Fee)?,
+                    signature,
+                    nonce: value.deserialize("nonce").map(TransactionNonce)?,
+                    sender_address: value.deserialize("sender_address").map(ContractAddress)?,
+                    calldata,
+                })),
+                3 => Ok(Self::V3(BroadcastedInvokeTransactionV3 {
+                    version,
+                    signature,
+                    nonce: value.deserialize("nonce").map(TransactionNonce)?,
+                    resource_bounds: value.deserialize("resource_bounds")?,
+                    tip: value.deserialize::<U64Hex>("tip").map(|tip| Tip(tip.0))?,
+                    paymaster_data: value.deserialize_array("paymaster_data", |value| {
+                        value.deserialize().map(PaymasterDataElem)
+                    })?,
+                    account_deployment_data: value
+                        .deserialize_array("account_deployment_data", |value| {
+                            value.deserialize().map(AccountDeploymentDataElem)
+                        })?,
+                    nonce_data_availability_mode: value
+                        .deserialize("nonce_data_availability_mode")?,
+                    fee_data_availability_mode: value.deserialize("fee_data_availability_mode")?,
+                    sender_address: value.deserialize("sender_address").map(ContractAddress)?,
+                    calldata,
+                })),
+                _ => Err(serde_json::Error::custom("unknown transaction version")),
+            }
+        }
+
+        pub fn into_v1(self) -> Option<BroadcastedInvokeTransactionV1> {
+            match self {
+                Self::V1(x) => Some(x),
+                _ => None,
+            }
+        }
+
+        pub fn into_v0(self) -> Option<BroadcastedInvokeTransactionV0> {
+            match self {
+                Self::V0(x) => Some(x),
+                _ => None,
             }
         }
     }
@@ -619,6 +830,7 @@ pub mod request {
             use pretty_assertions_sorted::assert_eq;
 
             use super::super::*;
+            use crate::dto::DeserializeForVersion;
             use crate::v02::types::{
                 CairoContractClass,
                 ContractEntryPoints,
@@ -809,11 +1021,16 @@ pub mod request {
                     )),
                 ];
 
-                let json_fixture = fixture!("broadcasted_transactions.json");
+                let json_fixture: serde_json::Value =
+                    serde_json::from_str(&fixture!("broadcasted_transactions.json")).unwrap();
 
-                assert_eq!(serde_json::to_string(&txs).unwrap(), json_fixture);
+                assert_eq!(serde_json::to_value(&txs).unwrap(), json_fixture);
                 assert_eq!(
-                    serde_json::from_str::<Vec<BroadcastedTransaction>>(&json_fixture).unwrap(),
+                    crate::dto::Value::new(json_fixture, crate::RpcVersion::V07)
+                        .deserialize_array(
+                            <BroadcastedTransaction as DeserializeForVersion>::deserialize
+                        )
+                        .unwrap(),
                     txs
                 );
             }

@@ -9,7 +9,8 @@ use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
-    IncorrectStateDiffCount,
+    EventsResponseStreamFailure,
+    StateDiffsError,
     TransactionData,
 };
 use p2p::PeerData;
@@ -343,7 +344,14 @@ struct TransactionSource<P> {
 }
 
 impl<P> TransactionSource<P> {
-    fn spawn(self) -> SyncReceiver<(TransactionData, StarknetVersion, TransactionCommitment)>
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    )>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -394,6 +402,7 @@ impl<P> TransactionSource<P> {
                         peer,
                         (
                             transactions_vec,
+                            header.number,
                             header.starknet_version,
                             header.transaction_commitment,
                         ),
@@ -453,13 +462,21 @@ impl<P> EventSource<P> {
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
-                    let Some((tx_hash, event)) = events.next().await else {
-                        let err = PeerData::new(peer, SyncError2::TooFewEvents);
-                        let _ = tx.send(Err(err)).await;
-                        return;
-                    };
-
-                    block_events.entry(tx_hash).or_default().push(event);
+                    match events.next().await {
+                        Some(Ok((tx_hash, event))) => {
+                            block_events.entry(tx_hash).or_default().push(event);
+                        }
+                        Some(Err(_)) => {
+                            let err = PeerData::new(peer, SyncError2::InvalidDto);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                        None => {
+                            let err = PeerData::new(peer, SyncError2::TooFewEvents);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                    }
                 }
 
                 // Ensure that the stream is exhausted.
@@ -497,7 +514,14 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(self) -> SyncReceiver<(StateUpdateData, StarknetVersion, StateDiffCommitment)>
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        StateUpdateData,
+        BlockNumber,
+        StarknetVersion,
+        StateDiffCommitment,
+    )>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -514,8 +538,13 @@ impl<P> StateDiffSource<P> {
                     match state_diff {
                         Ok(Some(state_diff)) => break state_diff,
                         Ok(None) => {}
-                        Err(IncorrectStateDiffCount(peer)) => {
+                        Err(StateDiffsError::IncorrectStateDiffCount(peer)) => {
                             let err = PeerData::new(peer, SyncError2::IncorrectStateDiffCount);
+                            let _ = tx.send(Err(err)).await;
+                            return;
+                        }
+                        Err(StateDiffsError::ResponseStreamFailure(peer, error)) => {
+                            let err = PeerData::new(peer, SyncError2::InvalidDto);
                             let _ = tx.send(Err(err)).await;
                             return;
                         }
@@ -527,6 +556,7 @@ impl<P> StateDiffSource<P> {
                         peer,
                         (
                             state_diff,
+                            header.header.number,
                             header.header.starknet_version,
                             header.header.state_diff_commitment,
                         ),
@@ -584,6 +614,9 @@ impl<P> ClassSource<P> {
                                 }
                                 ClassDefinitionsError::SierraDefinitionError(peer) => {
                                     PeerData::new(peer, SyncError2::SierraDefinitionError)
+                                }
+                                ClassDefinitionsError::ResponseStreamFailure(peer, error) => {
+                                    PeerData::new(peer, SyncError2::InvalidDto)
                                 }
                             };
                             let _ = tx.send(Err(err)).await;
@@ -796,7 +829,7 @@ impl ProcessStage for StoreBlock {
             .context("Committing transaction")
             .map_err(Into::into);
 
-        tracing::info!(number=%block_number, "Block stored");
+        tracing::debug!(number=%block_number, "Block stored");
 
         result
     }
@@ -808,8 +841,9 @@ mod tests {
     use p2p::client::types::{
         ClassDefinition,
         ClassDefinitionsError,
-        IncorrectStateDiffCount,
+        EventsResponseStreamFailure,
         Receipt as P2PReceipt,
+        StateDiffsError,
     };
     use p2p::libp2p::PeerId;
     use p2p::PeerData;
@@ -975,7 +1009,7 @@ mod tests {
             self,
             block: BlockNumber,
             state_diff_length: u64,
-        ) -> Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount> {
+        ) -> Result<Option<(PeerId, StateUpdateData)>, StateDiffsError> {
             let sd: StateUpdateData = self
                 .blocks
                 .iter()
@@ -1023,7 +1057,10 @@ mod tests {
         async fn events_for_block(
             self,
             block: BlockNumber,
-        ) -> Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)> {
+        ) -> Option<(
+            PeerId,
+            impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>> + Send,
+        )> {
             let e = self
                 .blocks
                 .iter()
@@ -1032,6 +1069,7 @@ mod tests {
                 .transaction_data
                 .iter()
                 .flat_map(|(t, _, e)| e.iter().map(move |e| (t.hash, e.clone())))
+                .map(Ok)
                 .collect::<Vec<_>>();
 
             Some((PeerId::random(), stream::iter(e)))

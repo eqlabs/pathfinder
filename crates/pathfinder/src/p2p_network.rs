@@ -91,10 +91,6 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         tracing::info!(topic=%block_propagation_topic, "Subscribed to");
     }
 
-    for capability in p2p::PROTOCOLS {
-        p2p_client.provide_capability(capability).await?
-    }
-
     let (mut tx, rx) = tokio::sync::watch::channel(None);
 
     let join_handle = {

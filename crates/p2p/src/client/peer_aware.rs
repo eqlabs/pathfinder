@@ -30,7 +30,7 @@ macro_rules! impl_send {
             &self,
             peer_id: PeerId,
             request: $req_type,
-        ) -> anyhow::Result<ResponseReceiver<$res_type>> {
+        ) -> anyhow::Result<ResponseReceiver<std::io::Result<$res_type>>> {
             let (sender, receiver) = oneshot::channel();
             self.sender
                 .send(Command::$req_command {
@@ -85,6 +85,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    /// ### Important
+    ///
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
@@ -97,6 +102,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    /// ### Important
+    ///
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn get_capability_providers(
         &self,
         capability: &str,
@@ -123,7 +133,9 @@ impl Client {
 
     /// ### Important
     ///
-    /// Triggers kademlia queries to other peers.
+    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
+    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
+    /// each remote that does not support our kademlia protocol.
     pub async fn get_closest_peers(&self, peer: PeerId) -> anyhow::Result<HashSet<PeerId>> {
         let (sender, mut receiver) = mpsc::channel(1);
         self.sender
@@ -214,7 +226,7 @@ impl Client {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(&self) -> test_utils::Client {
-        test_utils::Client::new(self.sender.clone())
+    pub(crate) fn for_test(&self) -> test_utils::peer_aware::Client {
+        test_utils::peer_aware::Client::new(self.sender.clone())
     }
 }

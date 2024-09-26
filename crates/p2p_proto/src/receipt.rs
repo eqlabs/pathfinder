@@ -2,7 +2,7 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
 
-use crate::common::Hash;
+use crate::common::Hash256;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -29,10 +29,14 @@ pub struct ExecutionResources {
     pub builtins: execution_resources::BuiltinCounter,
     pub steps: u32,
     pub memory_holes: u32,
-    pub l1_gas: Felt,
-    pub l1_data_gas: Felt,
-    pub total_l1_gas: Felt,
-    pub total_l1_data_gas: Felt,
+    #[optional]
+    pub l1_gas: Option<Felt>,
+    #[optional]
+    pub l1_data_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_data_gas: Option<Felt>,
 }
 
 pub mod execution_resources {
@@ -76,7 +80,7 @@ pub struct InvokeTransactionReceipt {
 #[protobuf(name = "crate::proto::receipt::receipt::L1Handler")]
 pub struct L1HandlerTransactionReceipt {
     pub common: ReceiptCommon,
-    pub msg_hash: Hash,
+    pub msg_hash: Hash256,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

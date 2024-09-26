@@ -1,20 +1,38 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::BlockId;
+use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
-use crate::v07::dto;
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
-pub(crate) enum Output {
-    Full(dto::receipt::BlockWithReceipts),
-    Pending(dto::receipt::PendingBlockWithReceipts),
+pub enum Output {
+    Full {
+        header: Box<pathfinder_common::BlockHeader>,
+        body: Vec<(
+            pathfinder_common::transaction::Transaction,
+            pathfinder_common::receipt::Receipt,
+            Vec<pathfinder_common::event::Event>,
+        )>,
+        is_l1_accepted: bool,
+    },
+    Pending(Arc<PendingBlock>),
 }
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Input {
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize_serde("block_id")?,
+            })
+        })
+    }
 }
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
@@ -37,7 +55,7 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
                     .get(&db)
                     .context("Querying pending data")?;
 
-                return Ok(Output::Pending(pending.into()));
+                return Ok(Output::Pending(pending.block));
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -56,22 +74,111 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
             .block_is_l1_accepted(block_id)
             .context("Fetching block finality")?;
 
-        Ok(Output::Full(dto::receipt::BlockWithReceipts::from_common(
-            header,
+        Ok(Output::Full {
+            header: header.into(),
             body,
             is_l1_accepted,
-        )))
+        })
     })
     .await
     .context("Joining blocking task")?
 }
 
+impl crate::dto::serialize::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        match self {
+            Output::Full {
+                header,
+                body,
+                is_l1_accepted,
+            } => {
+                let finality = if *is_l1_accepted {
+                    crate::dto::TxnFinalityStatus::AcceptedOnL1
+                } else {
+                    crate::dto::TxnFinalityStatus::AcceptedOnL2
+                };
+                serializer.serialize_field(
+                    "status",
+                    &if *is_l1_accepted {
+                        "ACCEPTED_ON_L1"
+                    } else {
+                        "ACCEPTED_ON_L2"
+                    },
+                )?;
+                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.serialize_iter(
+                    "transactions",
+                    body.len(),
+                    &mut body
+                        .iter()
+                        .map(|(transaction, receipt, events)| TransactionWithReceipt {
+                            transaction,
+                            receipt,
+                            events,
+                            finality,
+                        }),
+                )?;
+            }
+            Output::Pending(block) => {
+                serializer.flatten(&crate::dto::PendingBlockHeader(block))?;
+                serializer.serialize_iter(
+                    "transactions",
+                    block.transactions.len(),
+                    &mut block
+                        .transactions
+                        .iter()
+                        .zip(block.transaction_receipts.iter())
+                        .map(|(transaction, (receipt, events))| TransactionWithReceipt {
+                            transaction,
+                            receipt,
+                            events,
+                            finality: crate::dto::TxnFinalityStatus::AcceptedOnL2,
+                        }),
+                )?;
+            }
+        }
+        serializer.end()
+    }
+}
+
+struct TransactionWithReceipt<'a> {
+    pub transaction: &'a pathfinder_common::transaction::Transaction,
+    pub receipt: &'a pathfinder_common::receipt::Receipt,
+    pub events: &'a [pathfinder_common::event::Event],
+    pub finality: crate::dto::TxnFinalityStatus,
+}
+
+impl crate::dto::serialize::SerializeForVersion for TransactionWithReceipt<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("transaction", &crate::dto::Transaction(self.transaction))?;
+        serializer.serialize_field(
+            "receipt",
+            &crate::dto::TxnReceipt {
+                receipt: self.receipt,
+                transaction: self.transaction,
+                events: self.events,
+                finality: self.finality,
+            },
+        )?;
+        serializer.end()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pretty_assertions_sorted::assert_eq;
-    use serde::Serialize;
 
     use super::*;
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
 
     #[tokio::test]
     async fn pending() {
@@ -83,7 +190,9 @@ mod tests {
         let output = get_block_with_receipts(context.clone(), input)
             .await
             .unwrap()
-            .serialize(serde_json::value::Serializer)
+            .serialize(Serializer {
+                version: RpcVersion::V07,
+            })
             .unwrap();
 
         let expected = serde_json::json!({
@@ -233,7 +342,9 @@ mod tests {
         let output = get_block_with_receipts(context.clone(), input)
             .await
             .unwrap()
-            .serialize(serde_json::value::Serializer)
+            .serialize(Serializer {
+                version: RpcVersion::V07,
+            })
             .unwrap();
 
         let expected = serde_json::json!({

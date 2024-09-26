@@ -57,6 +57,7 @@ use pathfinder_crypto::Felt;
 ///
 /// This can be easily accomplished by marking a field with `#[serde_as(as =
 /// "RpcFelt")]`.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RpcFelt(pub Felt);
 
 impl From<Felt> for RpcFelt {

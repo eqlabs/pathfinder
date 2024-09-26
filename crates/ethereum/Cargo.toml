@@ -5,12 +5,18 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+alloy = { version = "0.3", default-features = false, features = [
+    "contract",
+    "rpc-types",
+    "provider-ws",
+    "reqwest-rustls-tls",
+] }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 const-decoder = { workspace = true }
+futures = { workspace = true }
 hex = { workspace = true }
 keccak-hash = { workspace = true }
 pathfinder-common = { path = "../common" }
@@ -18,10 +24,7 @@ pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-httpmock = { workspace = true }
-tokio = { workspace = true, features = ["macros"] }

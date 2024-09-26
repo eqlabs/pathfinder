@@ -13,6 +13,12 @@ pub struct GetClassInput {
     class_hash: ClassHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetClassInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 pub async fn get_class(
     context: RpcContext,
     input: GetClassInput,

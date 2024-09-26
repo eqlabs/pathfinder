@@ -178,6 +178,7 @@ impl ProcessStage for ForwardContinuity {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
+            tracing::debug!(expected_block_number=%self.next, actual_block_number=%header.number, expected_parent_block_hash=%self.parent_hash, actual_parent_block_hash=%header.parent_hash, "Block chain discontinuity");
             return Err(SyncError2::Discontinuity);
         }
 
@@ -209,6 +210,7 @@ impl ProcessStage for BackwardContinuity {
         let number = self.number.ok_or(SyncError2::Discontinuity)?;
 
         if input.header.number != number || input.header.hash != self.hash {
+            tracing::debug!(expected_block_number=%number, actual_block_number=%input.header.number, expected_block_hash=%self.hash, actual_block_hash=%input.header.hash, "Block chain discontinuity");
             return Err(SyncError2::Discontinuity);
         }
 
@@ -249,38 +251,46 @@ impl VerifyHashAndSignature {
     }
 
     fn verify_hash(&self, header: &BlockHeader) -> bool {
-        matches!(
-            verify_block_hash(
-                BlockHeaderData {
-                    hash: header.hash,
-                    parent_hash: header.parent_hash,
-                    number: header.number,
-                    timestamp: header.timestamp,
-                    sequencer_address: header.sequencer_address,
-                    state_commitment: header.state_commitment,
-                    transaction_commitment: header.transaction_commitment,
-                    transaction_count: header
-                        .transaction_count
-                        .try_into()
-                        .expect("ptr size is 64 bits"),
-                    event_commitment: header.event_commitment,
-                    event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
-                    state_diff_commitment: header.state_diff_commitment,
-                    state_diff_length: header.state_diff_length,
-                    starknet_version: header.starknet_version,
-                    starknet_version_str: header.starknet_version.to_string(),
-                    eth_l1_gas_price: header.eth_l1_gas_price,
-                    strk_l1_gas_price: header.strk_l1_gas_price,
-                    eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-                    strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-                    receipt_commitment: header.receipt_commitment,
-                    l1_da_mode: header.l1_da_mode,
-                },
-                self.chain,
-                self.chain_id
-            ),
-            Ok(VerifyResult::Match(_))
-        )
+        let result = verify_block_hash(
+            BlockHeaderData {
+                hash: header.hash,
+                parent_hash: header.parent_hash,
+                number: header.number,
+                timestamp: header.timestamp,
+                sequencer_address: header.sequencer_address,
+                state_commitment: header.state_commitment,
+                transaction_commitment: header.transaction_commitment,
+                transaction_count: header
+                    .transaction_count
+                    .try_into()
+                    .expect("ptr size is 64 bits"),
+                event_commitment: header.event_commitment,
+                event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
+                state_diff_commitment: header.state_diff_commitment,
+                state_diff_length: header.state_diff_length,
+                starknet_version: header.starknet_version,
+                starknet_version_str: header.starknet_version.to_string(),
+                eth_l1_gas_price: header.eth_l1_gas_price,
+                strk_l1_gas_price: header.strk_l1_gas_price,
+                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+                receipt_commitment: header.receipt_commitment,
+                l1_da_mode: header.l1_da_mode,
+            },
+            self.chain,
+            self.chain_id,
+        );
+        match result {
+            Ok(VerifyResult::Match(_)) => true,
+            Ok(VerifyResult::Mismatch) => {
+                tracing::debug!(block_number=%header.number, expected_block_hash=%header.hash, "Block hash mismatch");
+                false
+            }
+            Err(e) => {
+                tracing::debug!(block_number=%header.number, error = ?e, "Failed to verify block hash");
+                false
+            }
+        }
     }
 
     fn verify_signature(&self, header: &SignedBlockHeader) -> bool {

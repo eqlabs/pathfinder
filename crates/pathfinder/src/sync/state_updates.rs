@@ -89,7 +89,7 @@ impl<T> FetchCommitmentFromDb<T> {
 impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     const NAME: &'static str = "StateDiff::FetchCommitmentFromDb";
     type Input = (T, BlockNumber);
-    type Output = (T, StarknetVersion, StateDiffCommitment);
+    type Output = (T, BlockNumber, StarknetVersion, StateDiffCommitment);
 
     fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
         let mut db = self
@@ -104,7 +104,7 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
             .state_diff_commitment(block_number)
             .context("Fetching state diff commitment")?
             .ok_or(SyncError2::StateDiffCommitmentNotFound)?;
-        Ok((data, version, commitment))
+        Ok((data, block_number, version, commitment))
     }
 }
 
@@ -112,14 +112,20 @@ pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "StateDiff::Verify";
-    type Input = (StateUpdateData, StarknetVersion, StateDiffCommitment);
+    type Input = (
+        StateUpdateData,
+        BlockNumber,
+        StarknetVersion,
+        StateDiffCommitment,
+    );
     type Output = StateUpdateData;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let (state_diff, version, expected_commitment) = input;
-        let actual = state_diff.compute_state_diff_commitment(version);
+        let (state_diff, block_number, version, expected_commitment) = input;
+        let actual_commitment = state_diff.compute_state_diff_commitment(version);
 
-        if actual != expected_commitment {
+        if actual_commitment != expected_commitment {
+            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
             return Err(SyncError2::StateDiffCommitmentMismatch);
         }
 
@@ -168,6 +174,11 @@ impl ProcessStage for UpdateStarknetState {
             .context("Querying state commitment")?
             .context("State commitment not found")?;
         if state_commitment != expected_state_commitment {
+            tracing::debug!(
+                actual_storage_commitment=%storage_commitment,
+                actual_class_commitment=%class_commitment,
+                actual_state_commitment=%state_commitment,
+                "State root mismatch");
             return Err(SyncError2::StateRootMismatch);
         }
 

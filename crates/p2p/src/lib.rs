@@ -7,7 +7,8 @@ use ipnet::IpNet;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
-use libp2p::{swarm, Multiaddr, PeerId, Swarm};
+use libp2p::{Multiaddr, PeerId};
+use main_loop::MainLoop;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
@@ -18,6 +19,7 @@ use peers::Peer;
 use tokio::sync::{mpsc, oneshot};
 
 mod behaviour;
+mod builder;
 pub mod client;
 mod main_loop;
 mod peer_data;
@@ -31,36 +33,14 @@ mod tests;
 mod transport;
 
 pub use behaviour::kademlia_protocol_name;
+use builder::Builder;
 use client::peer_aware::Client;
 pub use libp2p;
-use main_loop::MainLoop;
 pub use peer_data::PeerData;
 pub use sync::protocol::PROTOCOLS;
 
 pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
-    let local_peer_id = keypair.public().to_peer_id();
-
-    let (command_sender, command_receiver) = mpsc::channel(1);
-    let client = Client::new(command_sender, local_peer_id);
-
-    let (behaviour, relay_transport) =
-        behaviour::Behaviour::new(&keypair, chain_id, client.clone(), cfg.clone());
-
-    let swarm = Swarm::new(
-        transport::create(&keypair, relay_transport),
-        behaviour,
-        local_peer_id,
-        swarm::Config::with_tokio_executor()
-            .with_idle_connection_timeout(Duration::from_secs(3600 * 365)), // A YEAR
-    );
-
-    let (event_sender, event_receiver) = mpsc::channel(1);
-
-    (
-        client,
-        event_receiver,
-        MainLoop::new(swarm, command_receiver, event_sender, cfg, chain_id),
-    )
+    Builder::new(keypair, cfg, chain_id).build()
 }
 
 /// P2P limitations.
@@ -76,17 +56,15 @@ pub struct Config {
     pub max_inbound_relayed_peers: usize,
     /// Maximum number of outbound peers.
     pub max_outbound_peers: usize,
-    /// The minimum number of peers to maintain. If the number of outbound peers
-    /// drops below this number, the node will attempt to connect to more
-    /// peers.
-    pub low_watermark: usize,
     /// How long to prevent evicted peers from reconnecting.
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
-    pub bootstrap: BootstrapConfig,
+    /// If the number of peers is below the low watermark, the node will attempt
+    /// periodic bootstrapping at this interval.
+    pub bootstrap_period: Duration,
     pub inbound_connections_rate_limit: RateLimit,
-    /// Alternative protocol names for Kademlia
-    pub kad_names: Vec<String>,
+    /// Custom protocol name for Kademlia
+    pub kad_name: Option<String>,
     /// Request timeout for p2p-stream
     pub stream_timeout: Duration,
     /// Applies to each of the p2p-stream protocols separately
@@ -97,21 +75,6 @@ pub struct Config {
 pub struct RateLimit {
     pub max: usize,
     pub interval: Duration,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct BootstrapConfig {
-    pub start_offset: Duration,
-    pub period: Duration,
-}
-
-impl Default for BootstrapConfig {
-    fn default() -> Self {
-        Self {
-            start_offset: Duration::from_secs(5),
-            period: Duration::from_secs(2 * 60),
-        }
-    }
 }
 
 pub type HeadTx = tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>;
@@ -153,27 +116,32 @@ enum Command {
     SendHeadersSyncRequest {
         peer_id: PeerId,
         request: BlockHeadersRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
+        sender: oneshot::Sender<
+            anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>,
+        >,
     },
     SendClassesSyncRequest {
         peer_id: PeerId,
         request: ClassesRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
     },
     SendStateDiffsSyncRequest {
         peer_id: PeerId,
         request: StateDiffsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
+        sender:
+            oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
     },
     SendTransactionsSyncRequest {
         peer_id: PeerId,
         request: TransactionsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<TransactionsResponse>>>,
+        sender: oneshot::Sender<
+            anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>,
+        >,
     },
     SendEventsSyncRequest {
         peer_id: PeerId,
         request: EventsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<EventsResponse>>>,
+        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
     },
     PublishPropagationMessage {
         topic: IdentTopic,

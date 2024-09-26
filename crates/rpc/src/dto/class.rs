@@ -1,7 +1,8 @@
 use serde_with::ser::SerializeAsWrap;
 
+use super::U64Hex;
 use crate::dto::serialize::SerializeForVersion;
-use crate::dto::{serialize, Felt, NumAsHex};
+use crate::dto::{serialize, Felt};
 use crate::v02::types;
 
 pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
@@ -138,7 +139,7 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("offset", &NumAsHex::U64(self.0.offset))?;
+        serializer.serialize_field("offset", &self.0.offset)?;
         serializer.serialize_field("selector", &Felt(&self.0.selector))?;
 
         serializer.end()

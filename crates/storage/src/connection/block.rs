@@ -358,6 +358,27 @@ impl Transaction<'_> {
         Ok(header)
     }
 
+    /// Return all block headers from a range, inclusive on both ends.
+    pub fn block_range(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> anyhow::Result<Vec<BlockHeader>> {
+        let sql =
+            "SELECT * FROM block_headers WHERE number >= $1 AND number <= $2 ORDER BY number ASC";
+        let mut stmt = self
+            .inner()
+            .prepare_cached(sql)
+            .context("Preparing block header query")?;
+        let mut headers = Vec::new();
+        let mut rows = stmt.query(params![&from, &to])?;
+        while let Some(row) = rows.next()? {
+            let header = parse_row_as_header(row)?;
+            headers.push(header);
+        }
+        Ok(headers)
+    }
+
     pub fn state_commitment(&self, block: BlockId) -> anyhow::Result<Option<StateCommitment>> {
         let sql = match block {
             BlockId::Latest => {
@@ -683,32 +704,32 @@ mod tests {
         };
         let header1 = genesis
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(12))
-            .with_eth_l1_gas_price(GasPrice(34))
-            .with_strk_l1_gas_price(GasPrice(35))
-            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
-            .with_event_commitment(event_commitment_bytes!(b"event commitment 1"))
-            .with_class_commitment(class_commitment_bytes!(b"class commitment 1"))
-            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
-            .with_calculated_state_commitment()
-            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
-            .with_l1_da_mode(L1DataAvailabilityMode::Calldata)
-            .with_receipt_commitment(receipt_commitment_bytes!(b"block 1 receipt commitment"))
+            .timestamp(BlockTimestamp::new_or_panic(12))
+            .eth_l1_gas_price(GasPrice(34))
+            .strk_l1_gas_price(GasPrice(35))
+            .sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
+            .event_commitment(event_commitment_bytes!(b"event commitment 1"))
+            .class_commitment(class_commitment_bytes!(b"class commitment 1"))
+            .storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
+            .calculated_state_commitment()
+            .transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
+            .l1_da_mode(L1DataAvailabilityMode::Calldata)
+            .receipt_commitment(receipt_commitment_bytes!(b"block 1 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 1 hash"));
 
         let header2 = header1
             .child_builder()
-            .with_eth_l1_gas_price(GasPrice(38))
-            .with_strk_l1_gas_price(GasPrice(39))
-            .with_timestamp(BlockTimestamp::new_or_panic(15))
-            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
-            .with_event_commitment(event_commitment_bytes!(b"event commitment 2"))
-            .with_class_commitment(class_commitment_bytes!(b"class commitment 2"))
-            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
-            .with_calculated_state_commitment()
-            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
-            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
-            .with_receipt_commitment(receipt_commitment_bytes!(b"block 2 receipt commitment"))
+            .eth_l1_gas_price(GasPrice(38))
+            .strk_l1_gas_price(GasPrice(39))
+            .timestamp(BlockTimestamp::new_or_panic(15))
+            .sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
+            .event_commitment(event_commitment_bytes!(b"event commitment 2"))
+            .class_commitment(class_commitment_bytes!(b"class commitment 2"))
+            .storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
+            .calculated_state_commitment()
+            .transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .receipt_commitment(receipt_commitment_bytes!(b"block 2 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));
 
         let headers = vec![genesis, header1, header2];
