@@ -12,6 +12,7 @@ use crate::context::RpcContext;
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::DeserializeForVersion;
 use crate::error::ApplicationError;
+use crate::jsonrpc::router::{handle_json_rpc_body, RpcRequestError, RpcResponses};
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
@@ -353,6 +354,9 @@ pub fn handle_json_rpc_socket(
                 }
             };
 
+            // TODO Might be an array of requests, probably very worth it to factor out
+            // another function at this point, also needs concurrency, see fn
+            // run_concurrently in router, probably can just reuse that
             let rpc_request = match serde_json::from_slice::<RpcRequest<'_>>(&request) {
                 Ok(request) => request,
                 Err(err) => {
@@ -368,6 +372,33 @@ pub fn handle_json_rpc_socket(
                 }
             };
             let req_id = rpc_request.id;
+
+            // Handle JSON-RPC non-subscription methods.
+            if state
+                .method_endpoints
+                .contains_key(rpc_request.method.as_ref())
+            {
+                let response = match handle_json_rpc_body(&state, &request).await {
+                    Ok(RpcResponses::Empty) => {
+                        // No response.
+                        continue;
+                    }
+                    Ok(RpcResponses::Single(response)) => serde_json::to_string(&response).unwrap(),
+                    Ok(RpcResponses::Multiple(responses)) => {
+                        serde_json::to_string(&responses).unwrap()
+                    }
+                    Err(RpcRequestError::ParseError(e)) => {
+                        serde_json::to_string(&RpcResponse::parse_error(e)).unwrap()
+                    }
+                    Err(RpcRequestError::InvalidRequest(e)) => {
+                        serde_json::to_string(&RpcResponse::invalid_request(e)).unwrap()
+                    }
+                };
+                if ws_tx.send(Ok(Message::Text(response))).await.is_err() {
+                    break;
+                }
+                continue;
+            }
 
             if rpc_request.method == "starknet_unsubscribe" {
                 // End the subscription.
