@@ -181,6 +181,7 @@ fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
 pub async fn rpc_handler(
     State(state): State<RpcRouter>,
     headers: http::HeaderMap,
+    method: http::Method,
     ws: Option<WebSocketUpgrade>,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
@@ -190,6 +191,10 @@ pub async fn rpc_handler(
             handle_json_rpc_socket(state, ws_tx, ws_rx);
         }),
         None => {
+            if method != http::Method::POST {
+                return StatusCode::METHOD_NOT_ALLOWED.into_response();
+            }
+
             // Only utf8 json content allowed.
             if !is_utf8_encoded_json(headers) {
                 return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();

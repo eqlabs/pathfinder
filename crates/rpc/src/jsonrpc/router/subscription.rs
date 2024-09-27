@@ -58,20 +58,22 @@ pub(super) trait RpcSubscriptionEndpoint: Send + Sync {
 /// - Stream the first active update, and then keep streaming the rest.
 #[axum::async_trait]
 pub trait RpcSubscriptionFlow: Send + Sync {
-    type Request: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
+    /// `params` field of the subscription request.
+    type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
+    /// The notification type to be sent to the client.
     type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
 
     /// The block to start streaming from. If the subscription endpoint does not
     /// support catching up, this method should always return
     /// [`BlockId::Latest`].
-    fn starting_block(req: &Self::Request) -> BlockId;
+    fn starting_block(params: &Self::Params) -> BlockId;
 
     /// Fetch historical data from the `from` block to the `to` block. The
     /// range is inclusive on both ends. If there is no historical data in the
     /// range, return an empty vec.
     async fn catch_up(
         state: &RpcContext,
-        req: &Self::Request,
+        params: &Self::Params,
         from: BlockNumber,
         to: BlockNumber,
     ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError>;
@@ -79,7 +81,7 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// Subscribe to active updates.
     async fn subscribe(
         state: RpcContext,
-        req: Self::Request,
+        params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     );
 }
@@ -110,7 +112,7 @@ where
         req_id: RequestId,
         ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
     ) -> Result<(), RpcError> {
-        let req = T::Request::deserialize(crate::dto::Value::new(input, router.version))
+        let req = T::Params::deserialize(crate::dto::Value::new(input, router.version))
             .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
         let tx = SubscriptionSender {
             subscription_id,
@@ -444,11 +446,12 @@ pub fn handle_json_rpc_socket(
 
             let params = match serde_json::to_value(rpc_request.params) {
                 Ok(params) => params,
-                Err(_e) => {
+                Err(e) => {
                     if ws_tx
                         .send(Ok(Message::Text(
-                            serde_json::to_string(&RpcError::InvalidParams(
-                                "Invalid params".to_string(),
+                            serde_json::to_string(&RpcResponse::invalid_params(
+                                req_id,
+                                e.to_string(),
                             ))
                             .unwrap(),
                         )))
