@@ -316,7 +316,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_no_params() {
-        let router = setup(0);
+        let router = setup(0).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_empty_params() {
-        let router = setup(0);
+        let router = setup(0).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
