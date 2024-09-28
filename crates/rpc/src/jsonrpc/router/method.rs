@@ -40,13 +40,16 @@ pub async fn handle_json_rpc_body(
     state: &RpcRouter,
     body: &[u8],
 ) -> Result<RpcResponses, RpcRequestError> {
+    let body = std::str::from_utf8(body).map_err(|e| RpcRequestError::ParseError(e.to_string()))?;
+    let body = body.trim_start();
     // Unfortunately due to this https://github.com/serde-rs/json/issues/497
     // we cannot use an enum with borrowed raw values inside to do a single
     // deserialization for us. Instead we have to distinguish manually
     // between a single request and a batch request which we do by checking
     // the first byte.
-    if body.first() != Some(&b'[') {
-        let request = match serde_json::from_slice::<&RawValue>(body) {
+    if !body.starts_with('[') {
+        // Not a batch request.
+        let request = match serde_json::from_str::<&RawValue>(body) {
             Ok(request) => request,
             Err(e) => {
                 return Err(RpcRequestError::ParseError(e.to_string()));
@@ -58,7 +61,8 @@ pub async fn handle_json_rpc_body(
             None => Ok(RpcResponses::Empty),
         }
     } else {
-        let requests = match serde_json::from_slice::<Vec<&RawValue>>(body) {
+        // Batch request.
+        let requests = match serde_json::from_str::<Vec<&RawValue>>(body) {
             Ok(requests) => requests,
             Err(e) => {
                 return Err(RpcRequestError::ParseError(e.to_string()));

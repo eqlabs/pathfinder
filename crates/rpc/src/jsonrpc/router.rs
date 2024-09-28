@@ -181,6 +181,7 @@ fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
 pub async fn rpc_handler(
     State(state): State<RpcRouter>,
     headers: http::HeaderMap,
+    method: http::Method,
     ws: Option<WebSocketUpgrade>,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
@@ -190,6 +191,10 @@ pub async fn rpc_handler(
             handle_json_rpc_socket(state, ws_tx, ws_rx);
         }),
         None => {
+            if method != http::Method::POST {
+                return StatusCode::METHOD_NOT_ALLOWED.into_response();
+            }
+
             // Only utf8 json content allowed.
             if !is_utf8_encoded_json(headers) {
                 return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
@@ -355,6 +360,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use futures::SinkExt;
     use serde::{Deserialize, Serialize};
     use serde_json::{json, Value};
 
@@ -368,7 +374,7 @@ mod tests {
 
         tokio::spawn(async {
             let router = axum::Router::new()
-                .route("/", axum::routing::post(rpc_handler))
+                .route("/", axum::routing::post(rpc_handler).get(rpc_handler))
                 .with_state(router);
             axum::serve(listener, router.into_make_service()).await
         });
@@ -377,10 +383,9 @@ mod tests {
     }
 
     /// Spawns an RPC server with the given router and queries it with the given
-    /// request.
+    /// request over HTTP.
     async fn serve_and_query(router: RpcRouter, request: Value) -> Value {
         let url = spawn_server(router).await;
-
         let client = reqwest::Client::new();
         client
             .post(url.clone())
@@ -391,6 +396,24 @@ mod tests {
             .json::<Value>()
             .await
             .unwrap()
+    }
+
+    /// Spawns an RPC server with the given router and queries it with the given
+    /// request over a WS connection.
+    async fn serve_and_query_ws(router: RpcRouter, request: Value) -> Value {
+        let url = spawn_server(router).await.replace("http", "ws");
+        let (mut ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+        ws.send(tokio_tungstenite::tungstenite::Message::Text(
+            request.to_string(),
+        ))
+        .await
+        .unwrap();
+        let tokio_tungstenite::tungstenite::Message::Text(response) =
+            ws.next().await.unwrap().unwrap()
+        else {
+            panic!("Expected a text response");
+        };
+        serde_json::from_str(&response).unwrap()
     }
 
     mod specification_tests {
@@ -541,8 +564,9 @@ mod tests {
         )]
         #[tokio::test]
         async fn specification_test(#[case] request: Value, #[case] expected: Value) {
-            let response = serve_and_query(spec_router(), request).await;
-
+            let response = serve_and_query(spec_router(), request.clone()).await;
+            assert_eq!(response, expected);
+            let response = serve_and_query_ws(spec_router(), request).await;
             assert_eq!(response, expected);
         }
 
@@ -598,6 +622,23 @@ mod tests {
 
             let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32700, "data": {"reason": reason}, "message": "Parse error"}, "id": null});
             assert_eq!(res, expected);
+
+            let url = spawn_server(spec_router()).await;
+            let (mut ws, _) = tokio_tungstenite::connect_async(url.replace("http", "ws"))
+                .await
+                .unwrap();
+            ws.send(tokio_tungstenite::tungstenite::Message::Text(
+                request.to_string(),
+            ))
+            .await
+            .unwrap();
+            let tokio_tungstenite::tungstenite::Message::Text(response) =
+                ws.next().await.unwrap().unwrap()
+            else {
+                panic!("Expected a text response");
+            };
+            let res: serde_json::Value = serde_json::from_str(&response).unwrap();
+            assert_eq!(res, expected);
         }
     }
 
@@ -628,7 +669,16 @@ mod tests {
                 ),
             )
             .await;
+            let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1});
+            assert_eq!(response, expected);
 
+            let response = serve_and_query_ws(
+                panic_router(),
+                json!(
+                    {"jsonrpc": "2.0", "method": "panic", "id": 1}
+                ),
+            )
+            .await;
             let expected = serde_json::json!({"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1});
             assert_eq!(response, expected);
         }
@@ -643,7 +693,20 @@ mod tests {
                 ]),
             )
             .await;
+            let expected = serde_json::json!([
+                {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1},
+                {"jsonrpc": "2.0", "result": "Success", "id": 2},
+            ]);
+            assert_eq!(response, expected);
 
+            let response = serve_and_query_ws(
+                panic_router(),
+                json!([
+                    {"jsonrpc": "2.0", "method": "panic", "id": 1},
+                    {"jsonrpc": "2.0", "method": "success", "id": 2},
+                ]),
+            )
+            .await;
             let expected = serde_json::json!([
                 {"jsonrpc": "2.0", "error": {"code": -32603, "message": "Internal error"}, "id": 1},
                 {"jsonrpc": "2.0", "result": "Success", "id": 2},
