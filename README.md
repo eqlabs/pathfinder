@@ -25,6 +25,14 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the Starknet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
+## Hardware Requirements
+
+Pathfinder hardware requirements depend greatly on your use case. The _recommended_ configuration that allows for fast syncing and JSON-RPC queries (with limited concurrency) is:
+
+- 4 CPU cores
+- 8 GiB RAM
+- 250 GiB SSD storage  
+
 ## Running with Docker
 
 The `pathfinder` node can be run in the provided Docker image.
