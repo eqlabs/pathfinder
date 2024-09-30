@@ -670,7 +670,7 @@ async fn evicted_peer_reconnection() {
     consume_accumulated_events(&mut peer2.event_receiver).await;
 
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(40)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
     peer1
         .client
