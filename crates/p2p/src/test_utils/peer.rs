@@ -13,6 +13,18 @@ use crate::peers::Peer;
 use crate::{Builder, Config, Event, RateLimit, TestEvent};
 
 #[allow(dead_code)]
+pub trait ShortId {
+    fn short(&self) -> String;
+}
+
+impl ShortId for PeerId {
+    fn short(&self) -> String {
+        let s = self.to_string();
+        s[s.len() - 2..].to_string()
+    }
+}
+
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct TestPeer {
     pub keypair: Keypair,
