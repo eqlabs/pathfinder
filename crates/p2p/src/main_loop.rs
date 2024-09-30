@@ -752,10 +752,6 @@ impl MainLoop {
                 if let std::collections::hash_map::Entry::Vacant(e) =
                     self.pending_dials.entry(peer_id)
                 {
-                    self.swarm
-                        .behaviour_mut()
-                        .kademlia_mut()
-                        .add_address(&peer_id, addr.clone());
                     match self.swarm.dial(
                         // Dial a known peer with a given address only if it's not connected yet
                         // and we haven't started dialing yet.
