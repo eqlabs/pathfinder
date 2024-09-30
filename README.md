@@ -25,11 +25,13 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the Starknet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
-## Database compatibility
+## Hardware Requirements
 
-**pathfinder 0.9.0 contains a change in our Merkle tree storage implementation that makes it impossible to use database files produced by earlier versions.**
+Pathfinder hardware requirements depend greatly on your use case. The _recommended_ configuration that allows for fast syncing and JSON-RPC queries (with limited concurrency) is:
 
-This means that upgrading to 0.9.0 will require either a full re-sync _or_ downloading a [database snapshot](#database-snapshots).
+- 4 CPU cores
+- 8 GiB RAM
+- 250 GiB SSD storage  
 
 ## Running with Docker
 
@@ -80,7 +82,7 @@ sudo docker stop pathfinder
 When pathfinder detects there has been a new release, it will log a message similar to:
 
 ```
-WARN New pathfinder release available! Please consider updating your node! release=0.4.5
+WARN New pathfinder release available! Please consider updating your node! release=0.14.3
 ```
 
 You can try pulling the latest docker image to update it:
@@ -158,7 +160,7 @@ acl = private
 You can then download a compressed database using the command:
 
 ```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_47191.sqlite.zst .
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst .
 ```
 
 ### Uncompressing database snapshots
@@ -273,11 +275,9 @@ This can be used to interact with a custom Starknet gateway, or to use a gateway
 
 You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently, pathfinder supports `v0.4`, `v0.5`, `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
+Currently, pathfinder supports `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
-- the `v0.4.0` API is exposed on the `/rpc/v0.4` and `/rpc/v0_4` path
-- the `v0.5.1` API is exposed on the `/`, `/rpc/v0.5` and `/rpc/v0_5` path
 - the `v0.6.0` API is exposed on the `/rpc/v0_6` path via HTTP and on `/ws/rpc/v0_6` via Websocket
 - the `v0.7.0` API is exposed on the `/rpc/v0_7` path via HTTP and on `/ws/rpc/v0_7` via Websocket
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1` and `/rpc/pathfinder/v0_1` via HTTP and `/ws/rpc/pathfinder/v0_1` via Websocket.
