@@ -674,7 +674,8 @@ async fn evicted_peer_reconnection() {
 
     peer1
         .client
-        .dial(peer2.peer_id, addr2.clone())
+        .for_test()
+        .force_dial(peer2.peer_id, addr2.clone())
         .await
         .unwrap();
 

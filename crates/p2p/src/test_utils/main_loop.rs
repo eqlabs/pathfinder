@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
-use libp2p::gossipsub;
 use libp2p::kad::{QueryId, QueryResult};
+use libp2p::swarm::dial_opts::{DialOpts, PeerCondition};
 use libp2p::swarm::SwarmEvent;
+use libp2p::{gossipsub, swarm};
 use tokio::sync::mpsc;
 
 use crate::{behaviour, Event, TestCommand, TestEvent};
@@ -30,13 +31,14 @@ pub async fn handle_event(event_sender: &mpsc::Sender<Event>, event: SwarmEvent<
 }
 
 pub async fn handle_command(
-    behavior: &mut behaviour::Behaviour,
+    swarm: &mut swarm::Swarm<behaviour::Behaviour>,
     command: TestCommand,
     _pending_test_queries: &mut PendingQueries,
 ) {
     match command {
         TestCommand::GetPeersFromDHT(sender) => {
-            let peers = behavior
+            let peers = swarm
+                .behaviour_mut()
                 .kademlia_mut()
                 .kbuckets()
                 // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
@@ -51,7 +53,8 @@ pub async fn handle_command(
             sender.send(peers).expect("Receiver not to be dropped")
         }
         TestCommand::GetConnectedPeers(sender) => {
-            let peers = behavior
+            let peers = swarm
+                .behaviour()
                 .peers()
                 .filter_map(|(peer_id, peer)| {
                     if peer.is_connected() {
@@ -62,6 +65,19 @@ pub async fn handle_command(
                 })
                 .collect();
             sender.send(peers).expect("Receiver not to be dropped")
+        }
+        TestCommand::ForceDial {
+            peer_id,
+            addr,
+            sender,
+        } => {
+            let res = swarm.dial(
+                DialOpts::peer_id(peer_id)
+                    .addresses(vec![addr.clone()])
+                    .condition(PeerCondition::Always)
+                    .build(),
+            );
+            _ = sender.send(res.map_err(Into::into));
         }
     }
 }

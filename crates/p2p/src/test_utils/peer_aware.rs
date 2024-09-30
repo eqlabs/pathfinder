@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use libp2p::PeerId;
+use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::peers::Peer;
@@ -31,6 +31,19 @@ impl Client {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::_Test(TestCommand::GetConnectedPeers(sender)))
+            .await
+            .expect("Command receiver not to be dropped");
+        receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub async fn force_dial(&self, peer_id: PeerId, addr: Multiaddr) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::_Test(TestCommand::ForceDial {
+                peer_id,
+                addr,
+                sender,
+            }))
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")

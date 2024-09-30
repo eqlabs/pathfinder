@@ -161,6 +161,11 @@ enum Command {
 pub enum TestCommand {
     GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
     GetConnectedPeers(oneshot::Sender<HashMap<PeerId, Peer>>),
+    ForceDial {
+        peer_id: PeerId,
+        addr: Multiaddr,
+        sender: EmptyResultSender,
+    },
 }
 
 #[derive(Debug)]

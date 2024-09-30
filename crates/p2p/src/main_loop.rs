@@ -933,7 +933,7 @@ impl MainLoop {
     async fn handle_test_command(&mut self, _command: TestCommand) {
         #[cfg(test)]
         test_utils::main_loop::handle_command(
-            self.swarm.behaviour_mut(),
+            &mut self.swarm,
             _command,
             &mut self._pending_test_queries.inner,
         )
