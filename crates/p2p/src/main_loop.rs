@@ -161,14 +161,21 @@ impl MainLoop {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
+                use crate::short_id::PeerIdExt;
+                let me = self.swarm.local_peer_id().short();
+
                 if endpoint.is_dialer() {
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
                         let _ = sender.send(Ok(()));
                         tracing::debug!(%peer_id, "Established outbound connection");
+
+                        tracing::error!(%me, p=%peer_id.short(), "Established outbound connection");
                     }
                     // FIXME else: trigger an error?
                 } else {
                     tracing::debug!(%peer_id, "Established inbound connection");
+
+                    tracing::error!(%me, p=%peer_id.short(), "Established inbound connection");
                 }
 
                 send_test_event(

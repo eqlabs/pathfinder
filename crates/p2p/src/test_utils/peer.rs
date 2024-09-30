@@ -1,5 +1,6 @@
+use core::str;
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -12,15 +13,45 @@ use tokio::task::JoinHandle;
 use crate::peers::Peer;
 use crate::{Builder, Config, Event, RateLimit, TestEvent};
 
-#[allow(dead_code)]
-pub trait ShortId {
-    fn short(&self) -> String;
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ShortId([u8; 2]);
+
+impl Debug for ShortId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(str::from_utf8(&self.0).expect("Ascii"))
+    }
 }
 
-impl ShortId for PeerId {
-    fn short(&self) -> String {
-        let s = self.to_string();
-        s[s.len() - 2..].to_string()
+impl Display for ShortId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
+
+impl From<&PeerId> for ShortId {
+    fn from(peer_id: &PeerId) -> Self {
+        let s = peer_id.to_string();
+        let s = s.as_bytes();
+        let mut short = [0; 2];
+        short.copy_from_slice(&s[s.len() - 2..]);
+        ShortId(short)
+    }
+}
+
+impl From<PeerId> for ShortId {
+    fn from(peer_id: PeerId) -> Self {
+        ShortId::from(&peer_id)
+    }
+}
+
+#[allow(dead_code)]
+pub trait PeerExt {
+    fn short(&self) -> ShortId;
+}
+
+impl PeerExt for PeerId {
+    fn short(&self) -> ShortId {
+        ShortId::from(self)
     }
 }
 

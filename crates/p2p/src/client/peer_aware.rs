@@ -227,6 +227,6 @@ impl Client {
 
     #[cfg(test)]
     pub(crate) fn for_test(&self) -> test_utils::peer_aware::Client {
-        test_utils::peer_aware::Client::new(self.sender.clone())
+        test_utils::peer_aware::Client::new(self.sender.clone(), self.peer_id)
     }
 }

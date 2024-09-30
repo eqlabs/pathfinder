@@ -25,6 +25,7 @@ mod main_loop;
 mod peer_data;
 mod peers;
 mod secret;
+mod short_id;
 mod sync;
 #[cfg(test)]
 mod test_utils;

@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::time::Duration;
 
@@ -14,7 +15,7 @@ use pathfinder_common::ChainId;
 use rstest::rstest;
 
 use crate::sync::codec;
-use crate::test_utils::peer::TestPeer;
+use crate::test_utils::peer::{PeerExt, ShortId, TestPeer};
 use crate::{Config, Event, EventReceiver, RateLimit, TestEvent};
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
@@ -601,6 +602,7 @@ async fn inbound_peer_eviction() {
     assert!(!connected.contains_key(&disconnected));
     assert!(connected.contains_key(&inbound_peers.last().unwrap().peer_id));
     assert!(connected.contains_key(&outbound1.peer_id));
+    assert_eq!(connected.len(), 26);
 }
 
 /// Ensure that evicted peers can't reconnect too quickly.
@@ -640,6 +642,11 @@ async fn evicted_peer_reconnection() {
         peer1.client.dial(peer.peer_id, addr).await.unwrap();
     }
 
+    let me = peer1.peer_id.short();
+    let p2 = peer2.peer_id.short();
+    let p3 = peer3.peer_id.short();
+    tracing::error!(%me, %p2, %p3, "START");
+
     // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
     // is 21, peer2 will be evicted when peer1 connects to peer3.
     peer1
@@ -660,6 +667,9 @@ async fn evicted_peer_reconnection() {
     })
     .await;
 
+    tracing::error!(%p2, %p3, "p2 should be evicted by p3");
+    peer1.client.for_test().trace_connected().await;
+
     // Mark peer3 as not useful, and hence a candidate for eviction.
     peer1.client.not_useful(peer3.peer_id).await;
 
@@ -669,16 +679,46 @@ async fn evicted_peer_reconnection() {
 
     consume_accumulated_events(&mut peer2.event_receiver).await;
 
+    // let dht = peer1
+    //     .client
+    //     .for_test()
+    //     .get_peers_from_dht()
+    //     .await
+    //     .into_iter()
+    //     .map(ShortId::from)
+    //     .collect::<BTreeSet<ShortId>>();
+    // let len = dht.len();
+    // tracing::error!(?dht, %len);
+
+    // peer1.client.for_test().trace_dht().await;
+
+    tracing::error!(%p2, %p3, "p2 should still be out");
+    peer1.client.for_test().trace_connected().await;
+
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(20)).await;
+
+    // let dht = peer1
+    //     .client
+    //     .for_test()
+    //     .get_peers_from_dht()
+    //     .await
+    //     .into_iter()
+    //     .map(ShortId::from)
+    //     .collect::<BTreeSet<ShortId>>();
+    // let len = dht.len();
+    // tracing::error!(?dht, %len);
+
+    // peer1.client.for_test().trace_dht().await;
+
+    tracing::error!(%p2, %p3, "p2 should still be out after timeout");
+    peer1.client.for_test().trace_connected().await;
 
     peer1
         .client
-        .for_test()
-        .force_dial(peer2.peer_id, addr2.clone())
+        .dial(peer2.peer_id, addr2.clone())
         .await
         .unwrap();
-
     wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer3.peer_id => {
             Some(())
@@ -686,6 +726,77 @@ async fn evicted_peer_reconnection() {
         _ => None,
     })
     .await;
+
+    // if peer1
+    //     .client
+    //     .dial(peer2.peer_id, addr2.clone())
+    //     .await
+    //     .is_ok()
+    // {
+    //     // wait_for_event(&mut peer1.event_receiver, |event| match event {
+    //     //     Event::Test(TestEvent::ConnectionEstablished { remote, .. })
+    //     //         if remote == peer2.peer_id =>
+    //     //     {
+    //     //         Some(())
+    //     //     }
+    //     //     _ => None,
+    //     // })
+    //     // .await;
+
+    //     wait_for_event(&mut peer1.event_receiver, |event| match event {
+    //         Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote ==
+    // peer3.peer_id => {             Some(())
+    //         }
+    //         _ => None,
+    //     })
+    //     .await;
+    // }
+
+    // peer1
+    //     .client
+    //     // .dial(peer2.peer_id, addr2.clone())
+    //     .for_test()
+    //     .force_dial(peer2.peer_id, addr2.clone())
+    //     .await
+    //     .unwrap();
+
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let connected_to_peer1 = peer1.client.for_test().get_connected_peers().await;
+    assert!(connected_to_peer1.contains_key(&peer2.peer_id));
+    assert!(!connected_to_peer1.contains_key(&peer3.peer_id));
+
+    // wait_for_event(&mut peer1.event_receiver, |event| match event {
+    //     Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote ==
+    // peer3.peer_id => {         Some(())
+    //     }
+    //     _ => None,
+    // })
+    // .await;
+
+    // wait_for_event(&mut peer1.event_receiver, |event| match event {
+    //     Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote ==
+    // peer2.peer_id => {         Some(())
+    //     }
+    //     _ => None,
+    // })
+    // .await;
+
+    // let dht = peer1
+    //     .client
+    //     .for_test()
+    //     .get_peers_from_dht()
+    //     .await
+    //     .into_iter()
+    //     .map(ShortId::from)
+    //     .collect::<BTreeSet<ShortId>>();
+    // let len = dht.len();
+    // tracing::error!(?dht, %len);
+
+    // peer1.client.for_test().trace_dht().await;
+
+    tracing::error!(%p2, %p3, "p2 should be connected and p3 should be out");
+    peer1.client.for_test().trace_connected().await;
 }
 
 /// Test that peers can only connect if they are whitelisted.
