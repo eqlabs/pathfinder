@@ -682,7 +682,9 @@ impl Behaviour {
     /// Prevent evicted peers from reconnecting too quickly.
     fn prevent_evicted_peer_reconnections(&self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         let timeout = if cfg!(test) {
-            Duration::from_secs(1)
+            // Needs to be large enough to mitigate the possibility of failing explicit
+            // dials in tests, due to implicit dials triggered by automatic bootstrapping.
+            Duration::from_secs(15)
         } else {
             Duration::from_secs(30)
         };

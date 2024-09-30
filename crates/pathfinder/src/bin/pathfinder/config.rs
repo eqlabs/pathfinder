@@ -838,6 +838,19 @@ impl P2PConfig {
                 .exit()
         }
 
+        // The low watermark is defined in `bootstrap_on_low_peers`
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+        // as the K value of 20
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/lib.rs#L93
+        if args.max_outbound_connections <= 20 {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "p2p.max-outbound-connections must be at least 21",
+                )
+                .exit()
+        }
+
         if args.kad_name.iter().any(|x| !x.starts_with('/')) {
             Cli::command()
                 .error(
