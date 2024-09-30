@@ -74,7 +74,7 @@ sudo docker stop pathfinder
 When pathfinder detects there has been a new release, it will log a message similar to:
 
 ```
-WARN New pathfinder release available! Please consider updating your node! release=0.4.5
+WARN New pathfinder release available! Please consider updating your node! release=0.14.3
 ```
 
 You can try pulling the latest docker image to update it:
