@@ -152,7 +152,7 @@ acl = private
 You can then download a compressed database using the command:
 
 ```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_47191.sqlite.zst .
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst .
 ```
 
 ### Uncompressing database snapshots
