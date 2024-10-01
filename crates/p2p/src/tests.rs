@@ -595,6 +595,9 @@ async fn inbound_peer_eviction() {
     .await
     .unwrap();
 
+    // Let it settle.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
     assert_eq!(connected.len(), 26);
@@ -685,6 +688,13 @@ async fn evicted_peer_reconnection() {
         _ => None,
     })
     .await;
+
+    // Let it settle.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let connected_to_peer1 = peer1.connected().await;
+    assert!(connected_to_peer1.contains_key(&peer2.peer_id));
+    assert!(!connected_to_peer1.contains_key(&peer3.peer_id));
 }
 
 /// Test that peers can only connect if they are whitelisted.
