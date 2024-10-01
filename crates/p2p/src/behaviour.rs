@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use std::{cmp, task};
@@ -11,6 +11,7 @@ use libp2p::kad::{self};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
+    CloseConnection,
     ConnectionClosed,
     ConnectionDenied,
     ConnectionId,
@@ -50,9 +51,9 @@ pub type BehaviourWithRelayTransport = (Behaviour, relay::client::Transport);
 pub struct Behaviour {
     cfg: Config,
     peers: PeerSet,
-    swarm: crate::Client,
     secret: Secret,
     inner: Inner,
+    pending_events: VecDeque<ToSwarm<<Self as NetworkBehaviour>::ToSwarm, THandlerInEvent<Self>>>,
 }
 
 #[derive(NetworkBehaviour)]
@@ -174,11 +175,9 @@ impl NetworkBehaviour for Behaviour {
                             useful: true,
                         },
                     );
-                    let swarm = self.swarm.clone();
-                    tokio::spawn(async move {
-                        if let Err(err) = swarm.disconnect(peer_id).await {
-                            tracing::debug!(%peer_id, %err, "Failed to disconnect peer");
-                        }
+                    self.pending_events.push_back(ToSwarm::CloseConnection {
+                        peer_id,
+                        connection: CloseConnection::All,
                     });
                     return;
                 };
@@ -275,7 +274,10 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        self.inner.poll(cx)
+        match self.pending_events.pop_front() {
+            Some(event) => task::Poll::Ready(event),
+            None => self.inner.poll(cx),
+        }
     }
 
     fn handle_pending_inbound_connection(
@@ -538,13 +540,9 @@ impl Behaviour {
             };
             peer.evicted = true;
         });
-        tokio::spawn({
-            let swarm = self.swarm.clone();
-            async move {
-                if let Err(e) = swarm.disconnect(peer_id).await {
-                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
-                }
-            }
+        self.pending_events.push_back(ToSwarm::CloseConnection {
+            peer_id,
+            connection: CloseConnection::All,
         });
 
         Ok(())
@@ -667,13 +665,9 @@ impl Behaviour {
             };
             peer.evicted = true;
         });
-        tokio::spawn({
-            let swarm = self.swarm.clone();
-            async move {
-                if let Err(e) = swarm.disconnect(peer_id).await {
-                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
-                }
-            }
+        self.pending_events.push_back(ToSwarm::CloseConnection {
+            peer_id,
+            connection: CloseConnection::All,
         });
 
         Ok(())
