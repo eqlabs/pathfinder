@@ -678,7 +678,7 @@ impl Behaviour {
         let timeout = if cfg!(test) {
             // Needs to be large enough to mitigate the possibility of failing explicit
             // dials in tests, due to implicit dials triggered by automatic bootstrapping.
-            Duration::from_secs(15)
+            Duration::from_secs(5)
         } else {
             Duration::from_secs(30)
         };
