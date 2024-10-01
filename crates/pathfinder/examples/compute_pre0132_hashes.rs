@@ -103,7 +103,7 @@ fn main() -> anyhow::Result<()> {
         let state_update = tx
             .state_update(block_id)?
             .context("Fetching state update")?;
-        header.state_diff_commitment = state_update.compute_state_diff_commitment(VERSION_CUTOFF);
+        header.state_diff_commitment = state_update.compute_state_diff_commitment();
 
         drop(tx);
 

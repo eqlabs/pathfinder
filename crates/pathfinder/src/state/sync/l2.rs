@@ -302,10 +302,9 @@ where
         };
 
         // Always compute the state diff commitment from the state update.
-        let version = block.starknet_version;
         let (computed_state_diff_commitment, state_update) =
             tokio::task::spawn_blocking(move || {
-                let commitment = state_update.compute_state_diff_commitment(version);
+                let commitment = state_update.compute_state_diff_commitment();
                 (commitment, state_update)
             })
             .await?;
@@ -484,8 +483,8 @@ async fn download_block(
 
             // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let state_diff_commitment = StateUpdateData::from(state_update.clone())
-                    .compute_state_diff_commitment(block.starknet_version);
+                let state_diff_commitment =
+                    StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
@@ -909,8 +908,8 @@ fn verify_block_and_state_update(
     StateDiffCommitment,
 )> {
     // Check if commitments and block hash are correct
-    let state_diff_commitment = StateUpdateData::from(state_update.clone())
-        .compute_state_diff_commitment(block.starknet_version);
+    let state_diff_commitment =
+        StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
     let state_diff_length = state_update.state_diff_length();
 
     let verify_result = verify_gateway_block_commitments_and_hash(
@@ -949,8 +948,7 @@ fn verify_block_and_state_update(
     // If any of the feeder gateway replies (block or signature) contain a state
     // diff commitment, check if the value matches. If it doesn't, just log the
     // fact.
-    let version = block.starknet_version;
-    let computed_state_diff_commitment = state_update.compute_state_diff_commitment(version);
+    let computed_state_diff_commitment = state_update.compute_state_diff_commitment();
 
     if let Some(x) = block.state_diff_commitment {
         if x != computed_state_diff_commitment {

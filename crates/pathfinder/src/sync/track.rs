@@ -514,14 +514,7 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(
-        self,
-    ) -> SyncReceiver<(
-        StateUpdateData,
-        BlockNumber,
-        StarknetVersion,
-        StateDiffCommitment,
-    )>
+    fn spawn(self) -> SyncReceiver<(StateUpdateData, BlockNumber, StateDiffCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -557,7 +550,6 @@ impl<P> StateDiffSource<P> {
                         (
                             state_diff,
                             header.header.number,
-                            header.header.starknet_version,
                             header.header.state_diff_commitment,
                         ),
                     )))
