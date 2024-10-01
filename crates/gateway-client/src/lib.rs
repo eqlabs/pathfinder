@@ -1164,7 +1164,7 @@ mod tests {
             let (_jh, url) = setup([(
                 "/feeder_gateway/get_signature?blockNumber=350000",
                 (
-                    starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000,
+                    starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748,
                     200,
                 ),
             )]);
