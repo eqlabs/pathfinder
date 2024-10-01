@@ -567,6 +567,10 @@ async fn inbound_peer_eviction() {
             .unwrap();
     }
 
+    // Let the automatic bootstrap "noise" fade away as in some circumstances it can
+    // cause additional dials that interrupt the flow of the test
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
     assert_eq!(connected.len(), 26);
