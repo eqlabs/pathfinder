@@ -7291,6 +7291,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder-block-hashes"
+version = "0.14.4"
+dependencies = [
+ "pathfinder-common",
+ "pathfinder-crypto",
+]
+
+[[package]]
 name = "pathfinder-common"
 version = "0.14.4"
 dependencies = [
