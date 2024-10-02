@@ -1083,25 +1083,28 @@ fn verify_gateway_block_commitments_and_hash(
             // the legacy commitments. The P2P protocol requires that all
             // commitments in block headers are the 0.13.2 variants for legacy
             // blocks.
-            const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
-            let (transaction_commitment, event_commitment, receipt_commitment) =
-                if block.starknet_version < V_0_13_2 {
-                    let transaction_commitment =
-                        calculate_transaction_commitment(&block.transactions, V_0_13_2)?;
-                    let event_commitment =
-                        calculate_event_commitment(&events_with_tx_hashes, V_0_13_2)?;
-                    (
-                        transaction_commitment,
-                        event_commitment,
-                        computed_receipt_commitment,
-                    )
-                } else {
-                    (
-                        computed_transaction_commitment,
-                        event_commitment,
-                        computed_receipt_commitment,
-                    )
-                };
+            let (transaction_commitment, event_commitment, receipt_commitment) = if block
+                .starknet_version
+                < StarknetVersion::V_0_13_2
+            {
+                let transaction_commitment = calculate_transaction_commitment(
+                    &block.transactions,
+                    StarknetVersion::V_0_13_2,
+                )?;
+                let event_commitment =
+                    calculate_event_commitment(&events_with_tx_hashes, StarknetVersion::V_0_13_2)?;
+                (
+                    transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            } else {
+                (
+                    computed_transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            };
 
             VerifyResult::Match((transaction_commitment, event_commitment, receipt_commitment))
         }

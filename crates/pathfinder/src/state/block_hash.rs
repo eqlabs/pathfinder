@@ -33,7 +33,6 @@ use sha3::Digest;
 use starknet_gateway_types::reply::Block;
 
 const V_0_11_1: StarknetVersion = StarknetVersion::new(0, 11, 1, 0);
-const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
@@ -233,7 +232,7 @@ pub fn verify_block_hash(
 
         let computed_hash = compute_final_hash_pre_0_7(&header, chain_id);
         computed_hash == header.hash
-    } else if header.starknet_version < V_0_13_2 {
+    } else if header.starknet_version < StarknetVersion::V_0_13_2 {
         let computed_hash = compute_final_hash_pre_0_13_2(&header);
         if computed_hash == header.hash {
             true
@@ -462,7 +461,7 @@ pub fn calculate_transaction_commitment(
         .map(|tx| {
             if version < V_0_11_1 {
                 calculate_transaction_hash_with_signature_pre_0_11_1(tx)
-            } else if version < V_0_13_2 {
+            } else if version < StarknetVersion::V_0_13_2 {
                 calculate_transaction_hash_with_signature_pre_0_13_2(tx)
             } else {
                 calculate_transaction_hash_with_signature(tx)
@@ -470,7 +469,7 @@ pub fn calculate_transaction_commitment(
         })
         .collect();
 
-    if version < V_0_13_2 {
+    if version < StarknetVersion::V_0_13_2 {
         calculate_commitment_root::<PedersenHash>(final_hashes).map(TransactionCommitment)
     } else {
         calculate_commitment_root::<PoseidonHash>(final_hashes).map(TransactionCommitment)
@@ -664,7 +663,7 @@ pub fn calculate_event_commitment(
         .par_iter()
         .flat_map(|(tx_hash, events)| events.par_iter().map(|e| (*tx_hash, e)))
         .map(|(tx_hash, e)| {
-            if version < V_0_13_2 {
+            if version < StarknetVersion::V_0_13_2 {
                 calculate_event_hash_pre_0_13_2(e)
             } else {
                 calculate_event_hash(e, tx_hash)
@@ -672,7 +671,7 @@ pub fn calculate_event_commitment(
         })
         .collect();
 
-    if version < V_0_13_2 {
+    if version < StarknetVersion::V_0_13_2 {
         calculate_commitment_root::<PedersenHash>(event_hashes).map(EventCommitment)
     } else {
         calculate_commitment_root::<PoseidonHash>(event_hashes).map(EventCommitment)
@@ -948,8 +947,11 @@ mod tests {
             "0x0282b635972328bd1cfa86496fe920d20bd9440cd78ee8dc90ae2b383d664dcf"
         ));
         assert_eq!(
-            calculate_transaction_commitment(&[transaction.clone(), transaction], V_0_13_2)
-                .unwrap(),
+            calculate_transaction_commitment(
+                &[transaction.clone(), transaction],
+                StarknetVersion::V_0_13_2
+            )
+            .unwrap(),
             expected
         );
     }
@@ -961,9 +963,12 @@ mod tests {
         let events = &[get_event(0), get_event(1), get_event(2)];
         let expected = felt!("0x069bb140ddbbeb01d81c7201ecfb933031306e45dab9c77ff9f9ba3cd4c2b9c3");
         assert_eq!(
-            calculate_event_commitment(&[(transaction_hash!("0x1234"), events)], V_0_13_2)
-                .unwrap()
-                .0,
+            calculate_event_commitment(
+                &[(transaction_hash!("0x1234"), events)],
+                StarknetVersion::V_0_13_2
+            )
+            .unwrap()
+            .0,
             expected
         );
 
@@ -1048,7 +1053,7 @@ mod tests {
             eth_l1_gas_price: GasPrice(7),
             strk_l1_data_gas_price: GasPrice(10),
             eth_l1_data_gas_price: GasPrice(9),
-            starknet_version: V_0_13_2,
+            starknet_version: StarknetVersion::V_0_13_2,
             starknet_version_str: "10".to_string(),
             parent_hash: BlockHash(11u64.into()),
             transaction_commitment: TransactionCommitment(felt!(
