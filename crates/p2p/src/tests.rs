@@ -567,6 +567,10 @@ async fn inbound_peer_eviction() {
             .unwrap();
     }
 
+    // Let the automatic bootstrap "noise" fade away as in some circumstances it can
+    // cause additional dials that interrupt the flow of the test
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
     assert_eq!(connected.len(), 26);
@@ -594,6 +598,9 @@ async fn inbound_peer_eviction() {
     })
     .await
     .unwrap();
+
+    // Let it settle.
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
@@ -629,16 +636,18 @@ async fn evicted_peer_reconnection() {
     // triggers "automatic bootstrap" so that it does not interfere with the test
     // https://github.com/libp2p/rust-libp2p/pull/4838
     // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
-    let twenty_peers = (0..20)
+    let mut twenty_peers = (0..20)
         .map(|_| TestPeer::new(cfg.clone()))
         .collect::<Vec<_>>();
 
-    for mut peer in twenty_peers.into_iter() {
+    for peer in &mut twenty_peers {
         let addr = peer.start_listening().await.unwrap();
-        consume_all_events_forever(peer.event_receiver);
-
         peer1.client.dial(peer.peer_id, addr).await.unwrap();
     }
+
+    // Let the automatic bootstrap "noise" fade away as in some circumstances it can
+    // cause additional dials that interrupt the flow of the test
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
     // is 21, peer2 will be evicted when peer1 connects to peer3.
@@ -647,7 +656,6 @@ async fn evicted_peer_reconnection() {
         .dial(peer2.peer_id, addr2.clone())
         .await
         .unwrap();
-
     peer1.client.not_useful(peer2.peer_id).await;
     peer1.client.dial(peer3.peer_id, addr3).await.unwrap();
 
@@ -670,7 +678,7 @@ async fn evicted_peer_reconnection() {
     consume_accumulated_events(&mut peer2.event_receiver).await;
 
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(40)).await;
+    tokio::time::sleep(Duration::from_secs(7)).await;
 
     peer1
         .client
@@ -685,6 +693,13 @@ async fn evicted_peer_reconnection() {
         _ => None,
     })
     .await;
+
+    // Let it settle.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    let connected_to_peer1 = peer1.connected().await;
+    assert!(connected_to_peer1.contains_key(&peer2.peer_id));
+    assert!(!connected_to_peer1.contains_key(&peer3.peer_id));
 }
 
 /// Test that peers can only connect if they are whitelisted.

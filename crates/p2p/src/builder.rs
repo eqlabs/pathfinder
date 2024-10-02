@@ -50,7 +50,7 @@ impl Builder {
 
         let (behaviour, relay_transport) = behaviour_builder
             .unwrap_or_else(|| Behaviour::builder(keypair.clone(), chain_id, cfg))
-            .build(client.clone());
+            .build();
 
         let swarm = Swarm::new(
             transport::create(&keypair, relay_transport),

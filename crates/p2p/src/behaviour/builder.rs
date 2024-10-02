@@ -80,7 +80,7 @@ impl Builder {
         self
     }
 
-    pub fn build(self, client: crate::Client) -> BehaviourWithRelayTransport {
+    pub fn build(self) -> BehaviourWithRelayTransport {
         let Self {
             identity,
             chain_id,
@@ -150,7 +150,6 @@ impl Builder {
             Behaviour {
                 peers: PeerSet::new(cfg.eviction_timeout),
                 cfg,
-                swarm: client,
                 secret,
                 inner: Inner {
                     relay,
@@ -172,6 +171,7 @@ impl Builder {
                     transaction_sync,
                     event_sync,
                 },
+                pending_events: Default::default(),
             },
             relay_transport,
         )
