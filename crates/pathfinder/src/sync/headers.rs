@@ -281,7 +281,7 @@ impl VerifyHashAndSignature {
             self.chain_id,
         );
         match result {
-            Ok(VerifyResult::Match(_)) => true,
+            Ok(VerifyResult::Match) => true,
             Ok(VerifyResult::Mismatch) => {
                 tracing::debug!(block_number=%header.number, expected_block_hash=%header.hash, "Block hash mismatch");
                 false

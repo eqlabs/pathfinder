@@ -34,7 +34,6 @@ use crate::state::block_hash::{
     calculate_transaction_commitment,
     verify_block_hash,
     BlockHeaderData,
-    VerifyResult,
 };
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
@@ -1018,8 +1017,13 @@ fn verify_signature(
     }
 }
 
+enum VerifyResult {
+    Match((TransactionCommitment, EventCommitment, ReceiptCommitment)),
+    Mismatch,
+}
+
 /// Verify that the block hash matches the actual contents.
-pub fn verify_gateway_block_commitments_and_hash(
+fn verify_gateway_block_commitments_and_hash(
     block: &Block,
     state_diff_commitment: StateDiffCommitment,
     state_diff_length: u64,
@@ -1083,7 +1087,14 @@ pub fn verify_gateway_block_commitments_and_hash(
         return Ok(VerifyResult::Mismatch);
     }
 
-    verify_block_hash(bhd, chain, chain_id)
+    Ok(match verify_block_hash(bhd, chain, chain_id)? {
+        crate::state::block_hash::VerifyResult::Match => VerifyResult::Match((
+            computed_transaction_commitment,
+            event_commitment,
+            computed_receipt_commitment,
+        )),
+        crate::state::block_hash::VerifyResult::Mismatch => VerifyResult::Mismatch,
+    })
 }
 
 async fn reorg(

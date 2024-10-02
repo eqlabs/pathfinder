@@ -37,13 +37,13 @@ const V_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VerifyResult {
-    Match((TransactionCommitment, EventCommitment, ReceiptCommitment)),
+    Match,
     Mismatch,
 }
 
 impl VerifyResult {
     pub fn is_match(&self) -> bool {
-        matches!(self, Self::Match(_))
+        matches!(self, Self::Match)
     }
 }
 
@@ -254,11 +254,7 @@ pub fn verify_block_hash(
 
     Ok(match verified {
         false => VerifyResult::Mismatch,
-        true => VerifyResult::Match((
-            header.transaction_commitment,
-            header.event_commitment,
-            header.receipt_commitment,
-        )),
+        true => VerifyResult::Match,
     })
 }
 
@@ -820,7 +816,7 @@ mod tests {
                 ChainId::MAINNET
             )
             .unwrap(),
-            VerifyResult::Match(_)
+            VerifyResult::Match
         );
     }
 
@@ -840,7 +836,7 @@ mod tests {
                 ChainId::MAINNET
             )
             .unwrap(),
-            VerifyResult::Match(_)
+            VerifyResult::Match
         );
     }
 
@@ -861,7 +857,7 @@ mod tests {
                 ChainId::MAINNET
             )
             .unwrap(),
-            VerifyResult::Match(_)
+            VerifyResult::Match
         );
     }
 
@@ -879,7 +875,7 @@ mod tests {
                 ChainId::MAINNET
             )
             .unwrap(),
-            VerifyResult::Match(_)
+            VerifyResult::Match
         );
     }
 
@@ -899,7 +895,7 @@ mod tests {
                 ChainId::MAINNET
             )
             .unwrap(),
-            VerifyResult::Match(_)
+            VerifyResult::Match
         );
     }
 
