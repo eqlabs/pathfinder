@@ -11,14 +11,16 @@ use pathfinder_common::{BlockHash, BlockNumber};
 pub use request::RpcRequest;
 pub use response::RpcResponse;
 #[cfg(test)]
-pub use router::handle_json_rpc_socket;
+pub use router::{handle_json_rpc_socket, CATCH_UP_BATCH_SIZE};
 pub use router::{
     rpc_handler,
+    CatchUp,
     RpcRouter,
     RpcRouterBuilder,
     RpcSubscriptionFlow,
     SubscriptionMessage,
 };
+use starknet_gateway_types::reply::Block;
 use tokio::sync::broadcast;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -40,6 +42,7 @@ impl RequestId {
 #[derive(Debug, Clone)]
 pub struct Notifications {
     pub block_headers: broadcast::Sender<Arc<pathfinder_common::BlockHeader>>,
+    pub l2_blocks: broadcast::Sender<Arc<Block>>,
     pub reorgs: broadcast::Sender<Arc<Reorg>>,
 }
 
@@ -54,9 +57,11 @@ pub struct Reorg {
 impl Default for Notifications {
     fn default() -> Self {
         let (block_headers, _) = broadcast::channel(1024);
+        let (l2_blocks, _) = broadcast::channel(1024);
         let (reorgs, _) = broadcast::channel(1024);
         Self {
             block_headers,
+            l2_blocks,
             reorgs,
         }
     }

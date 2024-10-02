@@ -23,7 +23,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
-use super::{Params, TransactionStatusUpdate};
+use super::{EmittedEvent, Params, TransactionStatusUpdate};
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -34,7 +34,6 @@ use crate::jsonrpc::websocket::data::{
     SubscriptionItem,
 };
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
-use crate::method::get_events::types::EmittedEvent;
 use crate::{BlockHeader, PendingData};
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
