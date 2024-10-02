@@ -576,8 +576,12 @@ impl CheckpointAnalysis {
 }
 
 struct LocalState {
+    /// The highest L2 head recorded in our database.
     latest_header: Option<(BlockNumber, BlockHash)>,
+    /// The latest L1 state (Starknet block number, hash, root) recorded in
+    /// local database.
     anchor: Option<EthereumStateUpdate>,
+    /// The current latest L1 state, recently fetched from the L1 api.
     checkpoint: Option<(BlockNumber, BlockHash)>,
 }
 
