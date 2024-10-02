@@ -1,6 +1,4 @@
 use anyhow::Context;
-use bitvec::order::Msb0;
-use bitvec::prelude::BitSlice;
 use pathfinder_common::hash::PoseidonHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
