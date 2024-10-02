@@ -274,56 +274,14 @@ where
 
         // An extra sanity check for the signature API.
         anyhow::ensure!(
-            block.block_hash == signature.block_hash(),
+            block.block_hash == signature.block_hash,
             "Signature block hash mismatch, actual {:x}, expected {:x}",
-            signature.block_hash().0,
+            signature.block_hash.0,
             block.block_hash.0,
         );
 
-        // Always compute the state diff commitment from the state update.
-        // If any of the feeder gateway replies (block or signature) contain a state
-        // diff commitment, check if the value matches. If it doesn't, just log the
-        // fact.
-        let version = block.starknet_version;
-        let (computed_state_diff_commitment, state_update) =
-            tokio::task::spawn_blocking(move || {
-                let commitment = state_update.compute_state_diff_commitment(version);
-                (commitment, state_update)
-            })
-            .await?;
-
-        let fgw_state_diff_commitment = match (
-            block.state_diff_commitment,
-            signature.state_diff_commitment(),
-        ) {
-            (Some(x), None) | (None, Some(x)) => Some(x),
-            // This should never happen, but if it does, we treat it as a sanity check for the API.
-            (Some(x), Some(y)) => {
-                anyhow::ensure!(
-                    x == y,
-                    "Conflicting feeder gateway responses: state diff commitment in block {:x} vs \
-                     in signature {:x}",
-                    y.0,
-                    x.0,
-                );
-                Some(x)
-            }
-            _ => None,
-        };
-
-        if let Some(x) = fgw_state_diff_commitment {
-            if x != computed_state_diff_commitment {
-                tracing::warn!(
-                    "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
-                    computed_state_diff_commitment.0,
-                    x.0
-                );
-            }
-        }
-
-        let signature = signature.signature();
-
         // Check block commitment signature
+        let signature: BlockCommitmentSignature = signature.signature();
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
@@ -332,7 +290,6 @@ where
                         .verify(
                             sequencer_public_key,
                             block_hash,
-                            computed_state_diff_commitment,
                         );
                     (verify_result, signature, state_update)
                 }).await?;
@@ -343,6 +300,14 @@ where
             }
             BlockValidationMode::AllowMismatch => (signature, state_update),
         };
+
+        // Always compute the state diff commitment from the state update.
+        let (computed_state_diff_commitment, state_update) =
+            tokio::task::spawn_blocking(move || {
+                let commitment = state_update.compute_state_diff_commitment();
+                (commitment, state_update)
+            })
+            .await?;
 
         head = Some((next, block.block_hash, state_update.state_commitment));
         blocks.push(next, block.block_hash, state_update.state_commitment);
@@ -518,8 +483,8 @@ async fn download_block(
 
             // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let state_diff_commitment = StateUpdateData::from(state_update.clone())
-                    .compute_state_diff_commitment(block.starknet_version);
+                let state_diff_commitment =
+                    StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
@@ -699,7 +664,6 @@ where
                         )| {
                             verify_signature(
                                 block.block_hash,
-                                state_diff_commitment,
                                 &signature,
                                 sequencer_public_key,
                                 BlockValidationMode::AllowMismatch,
@@ -944,8 +908,8 @@ fn verify_block_and_state_update(
     StateDiffCommitment,
 )> {
     // Check if commitments and block hash are correct
-    let state_diff_commitment = StateUpdateData::from(state_update.clone())
-        .compute_state_diff_commitment(block.starknet_version);
+    let state_diff_commitment =
+        StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
     let state_diff_length = state_update.state_diff_length();
 
     let verify_result = verify_gateway_block_commitments_and_hash(
@@ -984,8 +948,7 @@ fn verify_block_and_state_update(
     // If any of the feeder gateway replies (block or signature) contain a state
     // diff commitment, check if the value matches. If it doesn't, just log the
     // fact.
-    let version = block.starknet_version;
-    let computed_state_diff_commitment = state_update.compute_state_diff_commitment(version);
+    let computed_state_diff_commitment = state_update.compute_state_diff_commitment();
 
     if let Some(x) = block.state_diff_commitment {
         if x != computed_state_diff_commitment {
@@ -1027,16 +990,13 @@ fn verify_transaction_hashes(
 /// Check block commitment signature.
 fn verify_signature(
     block_hash: BlockHash,
-    state_diff_commitment: StateDiffCommitment,
     signature: &BlockSignature,
     sequencer_public_key: PublicKey,
     mode: BlockValidationMode,
 ) -> Result<(), pathfinder_crypto::signature::SignatureError> {
     let signature = signature.signature();
     match mode {
-        BlockValidationMode::Strict => {
-            signature.verify(sequencer_public_key, block_hash, state_diff_commitment)
-        }
+        BlockValidationMode::Strict => signature.verify(sequencer_public_key, block_hash),
         BlockValidationMode::AllowMismatch => Ok(()),
     }
 }
@@ -1196,113 +1156,64 @@ mod tests {
         const STORAGE_VAL0_V2: StorageValue = storage_value_bytes!(b"contract 0 storage val 0 v2");
         const STORAGE_VAL1: StorageValue = storage_value_bytes!(b"contract 1 storage val 0");
 
-        const BLOCK0_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK0_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 0 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 0 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK0_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 0 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK0_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK0_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s"),
+            ],
+        };
         // const BLOCK0_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
         // BlockCommitmentSignature {     r: BLOCK0_SIGNATURE.signature[0],
         //     s: BLOCK0_SIGNATURE.signature[1],
         // };
-        const BLOCK0_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK0_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK0_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 0 state diff commitment 2"
-                    ),
-                },
-            });
+        const BLOCK0_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK0_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
+            ],
+        };
 
-        const BLOCK1_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK1_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 1 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 1 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK1_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 1 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK1_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK1_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s"),
+            ],
+        };
         // const BLOCK1_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
         // BlockCommitmentSignature {     r: BLOCK1_SIGNATURE.signature[0],
         //     s: BLOCK1_SIGNATURE.signature[1],
         // };
-        const BLOCK1_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK1_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK1_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 1 state diff commitment 2"
-                    ),
-                },
-            });
-        const BLOCK2_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK2_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 2 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 2 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK2_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 2 state diff commitment"
-                    ),
-                },
-            });
-        const BLOCK2_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK2_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK2_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 2 state diff commitment 2"
-                    ),
-                },
-            });
-        const BLOCK3_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK3_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 3 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 3 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK3_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 3 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK1_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK1_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
+            ],
+        };
+        const BLOCK2_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK2_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s"),
+            ],
+        };
+        const BLOCK2_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK2_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
+            ],
+        };
+        const BLOCK3_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK3_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 3 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 3 signature s"),
+            ],
+        };
 
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,

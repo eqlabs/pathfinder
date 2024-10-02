@@ -27,9 +27,6 @@ fn main() -> anyhow::Result<()> {
     for block_number in 0..latest_block_number.get() {
         let block_number = BlockNumber::new_or_panic(block_number);
         let block_id = pathfinder_storage::BlockId::Number(block_number);
-        let version = tx
-            .block_version(block_number)?
-            .context("Fetching block version")?;
         let state_update = tx
             .state_update(block_id)?
             .context("Fetching state update")?;
@@ -38,7 +35,7 @@ fn main() -> anyhow::Result<()> {
             .context("Fetching block header")?;
 
         let state_diff_length = state_update.state_diff_length();
-        let state_diff_commitment = state_update.compute_state_diff_commitment(version);
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         if state_diff_length != header.state_diff_length
             || state_diff_commitment != header.state_diff_commitment

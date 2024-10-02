@@ -383,7 +383,6 @@ pub mod init {
                     SignedBlockHeader {
                         header:
                             BlockHeader {
-                                starknet_version,
                                 state_diff_length,
                                 state_diff_commitment,
                                 ..
@@ -424,8 +423,7 @@ pub mod init {
                 cairo_defs.extend(implicitly_declared);
 
                 *state_diff_length = state_update.state_diff_length();
-                *state_diff_commitment =
-                    state_update.compute_state_diff_commitment(*starknet_version);
+                *state_diff_commitment = state_update.compute_state_diff_commitment();
             }
 
             // Compute the block hash, update parent block hash with the correct value

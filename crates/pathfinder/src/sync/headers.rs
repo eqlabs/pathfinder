@@ -296,11 +296,7 @@ impl VerifyHashAndSignature {
     fn verify_signature(&self, header: &SignedBlockHeader) -> bool {
         header
             .signature
-            .verify(
-                self.public_key,
-                header.header.hash,
-                header.header.state_diff_commitment,
-            )
+            .verify(self.public_key, header.header.hash)
             .is_ok()
     }
 }

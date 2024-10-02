@@ -84,7 +84,7 @@ pub fn blocks() -> [Block; 2] {
                     event_count: 0,
                     l1_da_mode: L1DataAvailabilityMode::Calldata,
                     receipt_commitment: receipt_commitment!("0x0200A173F6AECAB11A7166EFB0BF8F4362A8403CA32292695A37B322793F1302"),
-                    state_diff_commitment: state_diff_commitment!("0x06C4A7559B57CADED12AD2275F78C4AC310FF54B2E233D25C9CF4891C251B450"),
+                    state_diff_commitment: state_diff_commitment!("0x00A8AC20EF93DBE185D09AE31DE4EA3372ECF753F14EBAAE97ADAB22B1AB72F2"),
                     state_diff_length: 25,
                 },
                 signature: BlockCommitmentSignature {
@@ -1200,7 +1200,7 @@ pub fn blocks() -> [Block; 2] {
                     event_count: 0,
                     l1_da_mode: L1DataAvailabilityMode::Calldata,
                     receipt_commitment: receipt_commitment!("0x00FB6833B56FCA428975B0DF7875F35B7EADBD26B517DAF1B9702E1D85665065"),
-                    state_diff_commitment: state_diff_commitment!("0x013BEED68D79C0FF1D6B465660BCF245A7F0EC11AF5E9C6564FBA30543705FE3"),
+                    state_diff_commitment: state_diff_commitment!("0x05D83BBEEDF35B7D310A43B11F3623DD5D705FF09A7FBC8B634222E083433CAE"),
                     state_diff_length: 12,
                 },
                 signature: BlockCommitmentSignature {
