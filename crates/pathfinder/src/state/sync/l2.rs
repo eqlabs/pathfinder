@@ -28,7 +28,14 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
+use crate::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+    verify_block_hash,
+    BlockHeaderData,
+    VerifyResult,
+};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 
@@ -1009,6 +1016,74 @@ fn verify_signature(
         BlockValidationMode::Strict => signature.verify(sequencer_public_key, block_hash),
         BlockValidationMode::AllowMismatch => Ok(()),
     }
+}
+
+/// Verify that the block hash matches the actual contents.
+pub fn verify_gateway_block_commitments_and_hash(
+    block: &Block,
+    state_diff_commitment: StateDiffCommitment,
+    state_diff_length: u64,
+    chain: Chain,
+    chain_id: ChainId,
+) -> anyhow::Result<VerifyResult> {
+    let mut bhd =
+        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+
+    let computed_transaction_commitment =
+        calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
+
+    // Older blocks on mainnet don't carry a precalculated transaction commitment.
+    if block.transaction_commitment == TransactionCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != bhd.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    let computed_receipt_commitment = calculate_receipt_commitment(
+        block
+            .transaction_receipts
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect::<Vec<_>>()
+            .as_slice(),
+    )?;
+
+    // Older blocks on mainnet don't carry a precalculated receipt commitment.
+    if let Some(receipt_commitment) = block.receipt_commitment {
+        if computed_receipt_commitment != receipt_commitment {
+            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
+            return Ok(VerifyResult::Mismatch);
+        }
+    } else {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.receipt_commitment = computed_receipt_commitment;
+    }
+
+    let event_commitment = calculate_event_commitment(
+        &block
+            .transaction_receipts
+            .iter()
+            .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
+            .collect::<Vec<_>>(),
+        block.starknet_version,
+    )?;
+
+    // Older blocks on mainnet don't carry a precalculated event
+    // commitment.
+    if block.event_commitment == EventCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.event_commitment = event_commitment;
+    } else if event_commitment != block.event_commitment {
+        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    verify_block_hash(bhd, chain, chain_id)
 }
 
 async fn reorg(

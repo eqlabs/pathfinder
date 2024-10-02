@@ -47,18 +47,6 @@ impl VerifyResult {
     }
 }
 
-/// Verify the block hash value.
-///
-/// The method to compute the block hash is documented
-/// [here](https://docs.starknet.io/docs/Blocks/header/#block-hash).
-///
-/// Unfortunately that'a not-fully-correct description, since the transaction
-/// commitment Merkle tree is not constructed directly with the transaction
-/// hashes, but with a hash computed from the transaction hash and the signature
-/// values (for invoke transactions).
-///
-/// See the `compute_block_hash.py` helper script that uses the cairo-lang
-/// Python implementation to compute the block hash for details.
 pub fn verify_gateway_block_commitments_and_hash(
     block: &Block,
     state_diff_commitment: StateDiffCommitment,
@@ -221,6 +209,15 @@ impl BlockHeaderData {
     }
 }
 
+/// Verify the block hash value.
+///
+/// The method to compute the block hash is documented
+/// [here](https://docs.starknet.io/docs/Blocks/header/#block-hash).
+///
+/// Unfortunately that'a not-fully-correct description, since the transaction
+/// commitment Merkle tree is not constructed directly with the transaction
+/// hashes, but with a hash computed from the transaction hash and the signature
+/// values (for invoke transactions).
 pub fn verify_block_hash(
     header: BlockHeaderData,
     chain: Chain,
