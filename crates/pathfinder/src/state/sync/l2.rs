@@ -480,13 +480,33 @@ async fn download_block(
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
+    use rayon::prelude::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.state_update_with_block(block_number).await;
-
-    let result = match result {
+    match sequencer.state_update_with_block(block_number).await {
         Ok((block, state_update)) => {
             let block = Box::new(block);
+
+            // Verify that transaction hashes match transaction contents.
+            // Block hash is verified using these transaction hashes so we have to make
+            // sure these are correct first.
+            let (send, recv) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
+                let result = block
+                    .transactions
+                    .par_iter()
+                    .enumerate()
+                    .try_for_each(|(i, txn)| {
+                        if !txn.verify_hash(chain_id) {
+                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
+                        };
+                        Ok(())
+                    })
+                    .map(|_| block);
+
+                let _ = send.send(result);
+            });
+            let block = recv.await.expect("Panic on rayon thread")?;
 
             // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
@@ -508,6 +528,7 @@ async fn download_block(
             });
             let (block, state_update, state_diff_commitment, verify_result) =
                 verify_hash.await.context("Verify block hash")??;
+
             match (block.status, verify_result, mode) {
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
@@ -569,40 +590,6 @@ async fn download_block(
             }
         }
         Err(other) => Err(other).context("Download block from sequencer"),
-    };
-
-    match result {
-        Ok(DownloadBlock::Block(block, commitments, state_update, state_diff_commitment)) => {
-            use rayon::prelude::*;
-
-            let (send, recv) = tokio::sync::oneshot::channel();
-
-            rayon::spawn(move || {
-                let result = block
-                    .transactions
-                    .par_iter()
-                    .enumerate()
-                    .try_for_each(|(i, txn)| {
-                        if !txn.verify_hash(chain_id) {
-                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
-                        };
-                        Ok(())
-                    })
-                    .map(|_| block);
-
-                let _ = send.send(result);
-            });
-
-            let block = recv.await.expect("Panic on rayon thread")?;
-
-            Ok(DownloadBlock::Block(
-                block,
-                commitments,
-                state_update,
-                state_diff_commitment,
-            ))
-        }
-        Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
     }
 }
 
