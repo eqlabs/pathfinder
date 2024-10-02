@@ -178,6 +178,11 @@ impl ProcessStage for ForwardContinuity {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
+            eprintln!(
+                "ForwardContinuity: expected block number {}, actual block number {}, expected \
+                 parent block hash {}, actual parent block hash {}",
+                self.next, header.number, self.parent_hash, header.parent_hash
+            );
             tracing::debug!(expected_block_number=%self.next, actual_block_number=%header.number, expected_parent_block_hash=%self.parent_hash, actual_parent_block_hash=%header.parent_hash, "Block chain discontinuity");
             return Err(SyncError2::Discontinuity);
         }

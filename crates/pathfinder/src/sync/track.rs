@@ -190,7 +190,7 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                // Ignore reorgs for now. Unsure how to handle this properly.
+                // Ignore reorgs for now. Unsure how o handle this properly.
 
                 // TODO: Probably need a loop here if we don't get enough headers?
                 let mut headers =
@@ -747,6 +747,8 @@ impl ProcessStage for StoreBlock {
 
         let block_number = header.number;
 
+        eprintln!("Storing block: {}", block_number);
+
         let db = self.connection.transaction().with_context(|| {
             format!("Creating database connection, block_number: {block_number}")
         })?;
@@ -776,7 +778,7 @@ impl ProcessStage for StoreBlock {
         };
 
         db.insert_block_header(&header)
-            .context("Inserting block header")?;
+            .with_context(|| format!("Inserting header for block: {block_number}"))?;
 
         db.insert_signature(block_number, &signature)
             .context("Inserting signature")?;
@@ -837,6 +839,10 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
+    use core::{net, num};
+    use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
     use futures::{stream, Stream, StreamExt};
     use p2p::client::types::{
         ClassDefinition,
@@ -883,6 +889,7 @@ mod tests {
 
         let p2p: FakeP2PClient = FakeP2PClient {
             blocks: blocks.clone(),
+            no_txn_at: None,
         };
 
         let storage = StorageBuilder::in_memory().unwrap();
@@ -960,9 +967,128 @@ mod tests {
         }
     }
 
+    #[test_log::test(tokio::test)]
+    async fn regression_recover_from_no_transactions() {
+        const N: usize = 10;
+        let blocks = fake::init::with_n_blocks_and_config(
+            N,
+            Config {
+                calculate_block_hash: Box::new(|header: &BlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_header(header))
+                }),
+                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
+                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                calculate_event_commitment: Box::new(calculate_event_commitment),
+            },
+        );
+
+        let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
+        let latest = (number, hash);
+
+        const ERR_AT_BLOCK: i64 = 5;
+
+        let p2p: FakeP2PClient = FakeP2PClient {
+            blocks: blocks.clone(),
+            no_txn_at: Some(Arc::new(ERR_AT_BLOCK.into())),
+        };
+
+        let storage = StorageBuilder::in_memory().unwrap();
+
+        let sync = Sync {
+            latest: futures::stream::iter(vec![latest]),
+            p2p: p2p.clone(),
+            storage: storage.clone(),
+            chain: Chain::SepoliaTestnet,
+            chain_id: ChainId::SEPOLIA_TESTNET,
+            public_key: PublicKey::default(),
+        };
+
+        let sync2 = Sync {
+            latest: futures::stream::iter(vec![latest]),
+            p2p,
+            storage: storage.clone(),
+            chain: Chain::SepoliaTestnet,
+            chain_id: ChainId::SEPOLIA_TESTNET,
+            public_key: PublicKey::default(),
+        };
+
+        let r = sync
+            .run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
+            .await;
+        eprintln!("1st sync: {:?}", r);
+
+        let h = &blocks[ERR_AT_BLOCK as usize].header.header;
+        let start = h.number;
+        let parent_hash = h.parent_hash;
+        let r = sync2.run(start, parent_hash, FakeFgw).await;
+
+        eprintln!("2nd sync: {:?}", r);
+        r.expect("2nd sync to succeed");
+
+        let mut db = storage.connection().unwrap();
+        let db = db.transaction().unwrap();
+        for mut expected in blocks {
+            // TODO p2p sync does not update class and storage tries yet
+            expected.header.header.class_commitment = ClassCommitment::ZERO;
+            expected.header.header.storage_commitment = StorageCommitment::ZERO;
+
+            let block_number = expected.header.header.number;
+            let block_id = block_number.into();
+            let header = db.block_header(block_id).unwrap().unwrap();
+            let signature = db.signature(block_id).unwrap().unwrap();
+            let transaction_data = db.transaction_data_for_block(block_id).unwrap().unwrap();
+            let state_update_data: StateUpdateData =
+                db.state_update(block_id).unwrap().unwrap().into();
+            let declared = db.declared_classes_at(block_id).unwrap().unwrap();
+
+            let mut cairo_defs = HashMap::new();
+            let mut sierra_defs = HashMap::new();
+
+            for class_hash in declared {
+                let class = db.class_definition(class_hash).unwrap().unwrap();
+                match db.casm_hash(class_hash).unwrap() {
+                    Some(casm_hash) => {
+                        let casm = db.casm_definition(class_hash).unwrap().unwrap();
+                        sierra_defs.insert(SierraHash(class_hash.0), (class, casm));
+                    }
+                    None => {
+                        cairo_defs.insert(class_hash, class);
+                    }
+                }
+            }
+
+            pretty_assertions_sorted::assert_eq!(header, expected.header.header);
+            pretty_assertions_sorted::assert_eq!(signature, expected.header.signature);
+            pretty_assertions_sorted::assert_eq!(
+                header.state_diff_commitment,
+                expected.header.header.state_diff_commitment
+            );
+            pretty_assertions_sorted::assert_eq!(
+                header.state_diff_length,
+                expected.header.header.state_diff_length
+            );
+            pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
+            pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                cairo_defs,
+                expected.cairo_defs.into_iter().collect::<HashMap<_, _>>()
+            );
+            pretty_assertions_sorted::assert_eq!(
+                sierra_defs,
+                expected
+                    .sierra_defs
+                    .into_iter()
+                    // All sierra fixtures are not compile-able
+                    .map(|(h, s, _)| (h, (s, b"I'm from the fgw!".to_vec())))
+                    .collect::<HashMap<_, _>>()
+            );
+        }
+    }
+
     #[derive(Clone)]
     struct FakeP2PClient {
         pub blocks: Vec<Block>,
+        pub no_txn_at: Option<Arc<AtomicI64>>,
     }
 
     impl HeaderStream for FakeP2PClient {
@@ -973,12 +1099,13 @@ mod tests {
             reverse: bool,
         ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send {
             assert!(!reverse);
-            assert_eq!(start, self.blocks.first().unwrap().header.header.number);
-            assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
+            // assert_eq!(start, self.blocks.first().unwrap().header.header.number);
+            // assert_eq!(stop, self.blocks.last().unwrap().header.header.number);
 
             stream::iter(
                 self.blocks
                     .into_iter()
+                    .skip_while(move |x| x.header.header.number < start)
                     .map(|block| PeerData::for_tests(block.header)),
             )
         }
@@ -992,6 +1119,13 @@ mod tests {
             PeerId,
             impl Stream<Item = anyhow::Result<(TransactionVariant, P2PReceipt)>> + Send,
         )> {
+            if let Some(no_txn_at) = self.no_txn_at.as_ref() {
+                if no_txn_at.load(Ordering::Relaxed) == block.get() as i64 {
+                    no_txn_at.store(-1, Ordering::Relaxed);
+                    return Some((PeerId::random(), stream::iter(vec![])));
+                }
+            }
+
             let tr = self
                 .blocks
                 .iter()
