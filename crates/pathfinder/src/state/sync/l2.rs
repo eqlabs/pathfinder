@@ -164,7 +164,7 @@ where
 
         let t_block = std::time::Instant::now();
 
-        let (block, commitments, state_update) = loop {
+        let (block, commitments, state_update, state_diff_commitment) = loop {
             match download_block(
                 next,
                 chain,
@@ -175,8 +175,8 @@ where
             )
             .await?
             {
-                DownloadBlock::Block(block, commitments, state_update) => {
-                    break (block, commitments, state_update)
+                DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
+                    break (block, commitments, state_update, state_diff_commitment)
                 }
                 DownloadBlock::AtHead => {
                     // Wait for the latest block to change.
@@ -314,14 +314,6 @@ where
             BlockValidationMode::AllowMismatch => (signature, state_update),
         };
 
-        // Always compute the state diff commitment from the state update.
-        let (computed_state_diff_commitment, state_update) =
-            tokio::task::spawn_blocking(move || {
-                let commitment = state_update.compute_state_diff_commitment();
-                (commitment, state_update)
-            })
-            .await?;
-
         head = Some((next, block.block_hash, state_update.state_commitment));
         blocks.push(next, block.block_hash, state_update.state_commitment);
 
@@ -336,7 +328,7 @@ where
                 (block, commitments),
                 state_update,
                 Box::new(signature),
-                Box::new(computed_state_diff_commitment),
+                Box::new(state_diff_commitment),
                 timings,
             ))
             .await
@@ -465,6 +457,7 @@ enum DownloadBlock {
         Box<Block>,
         (TransactionCommitment, EventCommitment, ReceiptCommitment),
         Box<StateUpdate>,
+        StateDiffCommitment,
     ),
     AtHead,
     Reorg,
@@ -511,16 +504,21 @@ async fn download_block(
                     chain_id,
                 )
                 .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, state_update, verify_result))
+                Ok((block, state_update, state_diff_commitment, verify_result))
             });
-            let (block, state_update, verify_result) =
+            let (block, state_update, state_diff_commitment, verify_result) =
                 verify_hash.await.context("Verify block hash")??;
             match (block.status, verify_result, mode) {
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Match(commitments),
                     _,
-                ) => Ok(DownloadBlock::Block(block, commitments, state_update)),
+                ) => Ok(DownloadBlock::Block(
+                    block,
+                    commitments,
+                    state_update,
+                    state_diff_commitment,
+                )),
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Mismatch,
@@ -529,6 +527,7 @@ async fn download_block(
                     block,
                     Default::default(),
                     state_update,
+                    state_diff_commitment,
                 )),
                 (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
                     Err(anyhow!("Block hash mismatch"))
@@ -573,7 +572,7 @@ async fn download_block(
     };
 
     match result {
-        Ok(DownloadBlock::Block(block, commitments, state_update)) => {
+        Ok(DownloadBlock::Block(block, commitments, state_update, state_diff_commitment)) => {
             use rayon::prelude::*;
 
             let (send, recv) = tokio::sync::oneshot::channel();
@@ -596,7 +595,12 @@ async fn download_block(
 
             let block = recv.await.expect("Panic on rayon thread")?;
 
-            Ok(DownloadBlock::Block(block, commitments, state_update))
+            Ok(DownloadBlock::Block(
+                block,
+                commitments,
+                state_update,
+                state_diff_commitment,
+            ))
         }
         Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
     }
@@ -1131,7 +1135,7 @@ async fn reorg(
         .await
         .with_context(|| format!("Download block {previous_block_number} from sequencer"))?
         {
-            DownloadBlock::Block(block, _, _) if block.block_hash == previous.0 => {
+            DownloadBlock::Block(block, _, _, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}
