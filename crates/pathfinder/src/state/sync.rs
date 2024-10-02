@@ -990,7 +990,7 @@ async fn l2_update(
                 return Ok(());
             }
             if sender.l2_blocks.receiver_count() > 0 {
-                if let Err(e) = sender.l2_blocks.send(block.into()) {
+                if let Err(e) = sender.l2_blocks.send(block.clone().into()) {
                     tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
                     *websocket_txs = None;
                     return Ok(());
@@ -1001,6 +1001,12 @@ async fn l2_update(
         notifications
             .block_headers
             .send(header.into())
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+        notifications
+            .l2_blocks
+            .send(block.into())
             // Ignore errors in case nobody is listening. New listeners may subscribe in the
             // future.
             .ok();

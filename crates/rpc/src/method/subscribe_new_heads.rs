@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::Reorg;
 
 pub struct SubscribeNewHeads;
@@ -19,7 +19,7 @@ pub struct Params {
 impl crate::dto::DeserializeForVersion for Option<Params> {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         if value.is_null() {
-            // It is OK to omit the params.
+            // Params are optional.
             return Ok(None);
         }
         value.deserialize_map(|value| {
@@ -67,7 +67,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         _params: &Self::Params,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError> {
+    ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let storage = state.storage.clone();
         let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
@@ -76,7 +76,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         })
         .await
         .map_err(|e| RpcError::InternalError(e.into()))??;
-        Ok(headers
+        let messages: Vec<_> = headers
             .into_iter()
             .map(|header| {
                 let block_number = header.number;
@@ -86,7 +86,12 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
                     subscription_name: SUBSCRIPTION_NAME,
                 }
             })
-            .collect())
+            .collect();
+        let last_block = messages.last().map(|m| m.block_number);
+        Ok(CatchUp {
+            messages,
+            last_block,
+        })
     }
 
     async fn subscribe(
@@ -159,7 +164,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter, CATCH_UP_BATCH_SIZE};
     use crate::pending::PendingWatcher;
     use crate::v02::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
@@ -171,12 +176,14 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_no_batching() {
-        happy_path_test(10).await;
+        happy_path_test(CATCH_UP_BATCH_SIZE - 5).await;
     }
 
     #[tokio::test]
-    async fn happy_path_with_historic_blocks_batching_edge_case() {
-        happy_path_test(128).await;
+    async fn happy_path_with_historic_blocks_batching_edge_cases() {
+        happy_path_test(2 * CATCH_UP_BATCH_SIZE).await;
+        happy_path_test(2 * (CATCH_UP_BATCH_SIZE - 1)).await;
+        happy_path_test(2 * (CATCH_UP_BATCH_SIZE + 1)).await;
     }
 
     #[tokio::test]
@@ -589,7 +596,7 @@ mod tests {
                     "block_number": block_number,
                     "l1_da_mode": "CALLDATA",
                     "l1_data_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
-                    "l1_gas_price":{ "price_in_fri": "0x0", "price_in_wei": "0x0" },
+                    "l1_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
                     "new_root": "0x0",
                     "parent_hash": "0x0",
                     "sequencer_address": "0x0",

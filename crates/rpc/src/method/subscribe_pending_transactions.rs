@@ -6,7 +6,7 @@ use pathfinder_common::{BlockId, BlockNumber, ContractAddress, TransactionHash};
 use tokio::sync::mpsc;
 
 use crate::context::RpcContext;
-use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 
 pub struct SubscribePendingTransactions;
 
@@ -64,7 +64,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
     type Notification = Notification;
 
     fn starting_block(_params: &Self::Params) -> BlockId {
-        // Rollback is not supported.
+        // Catch-up is not supported.
         BlockId::Latest
     }
 
@@ -73,8 +73,9 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
         _params: &Self::Params,
         _from: BlockNumber,
         _to: BlockNumber,
-    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError> {
-        Ok(vec![])
+    ) -> Result<CatchUp<Self::Notification>, RpcError> {
+        // Catch-up is not supported.
+        Ok(Default::default())
     }
 
     async fn subscribe(
@@ -84,7 +85,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
     ) {
         let params = params.unwrap_or_default();
         let mut pending_data = state.pending_data.0.clone();
-        // Last block sent to the subscriber. Initial value doesn't really matter
+        // Last block sent to the subscriber. Initial value doesn't really matter.
         let mut last_block = BlockNumber::GENESIS;
         // Hashes of transactions that have already been sent to the subscriber, as part
         // of `last_block` block. It is necessary to keep track of this because the

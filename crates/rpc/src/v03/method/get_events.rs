@@ -8,6 +8,7 @@ use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
+use crate::method::get_events::{EVENT_KEY_FILTER_LIMIT, EVENT_PAGE_SIZE_LIMIT};
 use crate::pending::PendingData;
 
 #[derive(Debug)]
@@ -113,11 +114,14 @@ pub async fn get_events(
         None => None,
     };
 
-    if request.keys.len() > pathfinder_storage::EVENT_KEY_FILTER_LIMIT {
+    if request.keys.len() > EVENT_KEY_FILTER_LIMIT {
         return Err(GetEventsError::TooManyKeysInFilter {
-            limit: pathfinder_storage::EVENT_KEY_FILTER_LIMIT,
+            limit: EVENT_KEY_FILTER_LIMIT,
             requested: request.keys.len(),
         });
+    }
+    if request.chunk_size > EVENT_PAGE_SIZE_LIMIT {
+        return Err(GetEventsError::PageSizeTooBig);
     }
 
     let storage = context.storage.clone();
@@ -182,8 +186,6 @@ pub async fn get_events(
                 context.config.get_events_max_uncached_bloom_filters_to_load,
             )
             .map_err(|e| match e {
-                EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
-                EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
                 EventFilterError::Internal(e) => GetEventsError::Internal(e),
                 EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
             })?;
@@ -515,9 +517,9 @@ mod types {
         pub data: Vec<EventData>,
         pub keys: Vec<EventKey>,
         pub from_address: ContractAddress,
-        /// [None] for pending events.
+        /// [`None`] for pending events.
         pub block_hash: Option<BlockHash>,
-        /// [None] for pending events.
+        /// [`None`] for pending events.
         pub block_number: Option<BlockNumber>,
         pub transaction_hash: TransactionHash,
     }
@@ -766,7 +768,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
+        let limit = EVENT_KEY_FILTER_LIMIT;
 
         let keys = [vec![event_key!("01")]]
             .iter()

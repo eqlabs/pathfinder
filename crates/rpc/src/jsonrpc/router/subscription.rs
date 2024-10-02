@@ -16,6 +16,8 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
+pub const CATCH_UP_BATCH_SIZE: u64 = 64;
+
 /// See [`RpcSubscriptionFlow`].
 #[axum::async_trait]
 pub(super) trait RpcSubscriptionEndpoint: Send + Sync {
@@ -66,6 +68,12 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// The notification type to be sent to the client.
     type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
 
+    /// Validate the subscription parameters. If the parameters are invalid,
+    /// return an error.
+    fn validate_params(_params: &Self::Params) -> Result<(), RpcError> {
+        Ok(())
+    }
+
     /// The block to start streaming from. If the subscription endpoint does not
     /// support catching up, this method should always return
     /// [`BlockId::Latest`].
@@ -73,13 +81,15 @@ pub trait RpcSubscriptionFlow: Send + Sync {
 
     /// Fetch historical data from the `from` block to the `to` block. The
     /// range is inclusive on both ends. If there is no historical data in the
-    /// range, return an empty vec.
+    /// range, return an empty vec. If the subscription endpoint does not
+    /// support catching up, this method should always return
+    /// `Ok(CatchUp::default())`.
     async fn catch_up(
         state: &RpcContext,
         params: &Self::Params,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError>;
+    ) -> Result<CatchUp<Self::Notification>, RpcError>;
 
     /// Subscribe to active updates.
     async fn subscribe(
@@ -87,6 +97,26 @@ pub trait RpcSubscriptionFlow: Send + Sync {
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     );
+}
+
+pub struct CatchUp<T> {
+    pub messages: Vec<SubscriptionMessage<T>>,
+    /// [`SubscriptionMessage`] already contains a `block_number` field, but
+    /// `messages` can be empty (e.g. due to some filtering logic), so the last
+    /// block caught up to must be sent separately.
+    ///
+    /// If there are no blocks in the block range given to
+    /// [`RpcSubscriptionFlow::catch_up`], this field should be [`None`].
+    pub last_block: Option<BlockNumber>,
+}
+
+impl<T> Default for CatchUp<T> {
+    fn default() -> Self {
+        Self {
+            messages: Default::default(),
+            last_block: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -118,8 +148,11 @@ where
             lock,
         }: InvokeParams,
     ) -> Result<tokio::task::JoinHandle<()>, RpcError> {
-        let req = T::Params::deserialize(crate::dto::Value::new(input, router.version))
+        let params = T::Params::deserialize(crate::dto::Value::new(input, router.version))
             .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+
+        T::validate_params(&params)?;
+
         let tx = SubscriptionSender {
             subscription_id,
             subscriptions,
@@ -128,9 +161,9 @@ where
             _phantom: Default::default(),
         };
 
-        let first_block = T::starting_block(&req);
+        let first_block = T::starting_block(&params);
 
-        let mut current_block = match &first_block {
+        let mut current_block = match first_block {
             BlockId::Pending => {
                 return Err(RpcError::InvalidParams(
                     "Pending block not supported".to_string(),
@@ -138,14 +171,14 @@ where
             }
             BlockId::Latest => {
                 // No need to catch up. The code below will subscribe to new blocks.
-                BlockNumber::MAX
+                None
             }
-            BlockId::Number(_) | BlockId::Hash(_) => {
+            first_block @ (BlockId::Number(_) | BlockId::Hash(_)) => {
                 // Load the first block number, return an error if it's invalid.
                 let first_block = pathfinder_storage::BlockId::try_from(first_block)
                     .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
                 let storage = router.context.storage.clone();
-                tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+                let current_block = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
                     let mut conn = storage.connection().map_err(RpcError::InternalError)?;
                     let db = conn.transaction().map_err(RpcError::InternalError)?;
                     db.block_number(first_block)
@@ -153,7 +186,8 @@ where
                         .ok_or_else(|| ApplicationError::BlockNotFound.into())
                 })
                 .await
-                .map_err(|e| RpcError::InternalError(e.into()))??
+                .map_err(|e| RpcError::InternalError(e.into()))??;
+                Some(current_block)
             }
         };
 
@@ -163,49 +197,54 @@ where
             let _guard = lock.read().await;
 
             // Catch up to the latest block in batches of BATCH_SIZE.
-            const BATCH_SIZE: u64 = 64;
-            loop {
-                let messages = match T::catch_up(
-                    &router.context,
-                    &req,
-                    current_block,
-                    current_block + BATCH_SIZE,
-                )
-                .await
-                {
-                    Ok(messages) => messages,
-                    Err(e) => {
-                        tx.send_err(e, req_id.clone())
+            if let Some(current_block) = current_block.as_mut() {
+                loop {
+                    // -1 because the end is inclusive, otherwise we get batches of
+                    // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
+                    // matter, but it's misleading.
+                    let end = *current_block + CATCH_UP_BATCH_SIZE - 1;
+                    let catch_up =
+                        match T::catch_up(&router.context, &params, *current_block, end).await {
+                            Ok(messages) => messages,
+                            Err(e) => {
+                                tx.send_err(e, req_id.clone())
+                                    .await
+                                    // Could error if the subscription is closing.
+                                    .ok();
+                                return;
+                            }
+                        };
+                    let last_block = match catch_up.last_block {
+                        Some(last_block) => last_block,
+                        None => {
+                            // `None` means that there were no messages for the given block range.
+                            break;
+                        }
+                    };
+                    for msg in catch_up.messages {
+                        if tx
+                            .send(msg.notification, msg.subscription_name)
                             .await
-                            // Could error if the subscription is closing.
-                            .ok();
-                        return;
+                            .is_err()
+                        {
+                            // Subscription closing.
+                            return;
+                        }
                     }
-                };
-                if messages.is_empty() {
-                    // Caught up.
-                    break;
-                }
-                for msg in messages {
-                    if tx
-                        .send(msg.notification, msg.subscription_name)
-                        .await
-                        .is_err()
-                    {
-                        // Subscription closing.
-                        return;
+                    // Increment by 1 because the catch_up range is inclusive.
+                    *current_block = last_block + 1;
+                    if last_block < end {
+                        // This was the last batch.
+                        break;
                     }
-                    current_block = msg.block_number;
                 }
-                // Increment the current block by 1 because the catch_up range is inclusive.
-                current_block += 1;
             }
 
             // Subscribe to new blocks. Receive the first subscription message.
             let (tx1, mut rx1) = mpsc::channel::<SubscriptionMessage<T::Notification>>(1024);
             {
-                let req = req.clone();
-                tokio::spawn(T::subscribe(router.context.clone(), req, tx1));
+                let params = params.clone();
+                tokio::spawn(T::subscribe(router.context.clone(), params, tx1));
             }
             let first_msg = match rx1.recv().await {
                 Some(msg) => msg,
@@ -218,28 +257,35 @@ where
             // Catch up from the latest block that we already caught up to, to the first
             // block that will be streamed from the subscription. This way we don't miss any
             // blocks. Because the catch_up range is inclusive, we need to subtract 1 from
-            // the block number.
-            if let Some(block_number) = first_msg.block_number.parent() {
-                let messages =
-                    match T::catch_up(&router.context, &req, current_block, block_number).await {
-                        Ok(messages) => messages,
-                        Err(e) => {
-                            tx.send_err(e, req_id.clone())
-                                .await
-                                // Could error if the subscription is closing.
-                                .ok();
+            // the block number (i.e. take its parent).
+            let end = first_msg.block_number.parent();
+            match (current_block, end) {
+                (Some(current_block), Some(end)) if current_block <= end => {
+                    let catch_up =
+                        match T::catch_up(&router.context, &params, current_block, end).await {
+                            Ok(messages) => messages,
+                            Err(e) => {
+                                tx.send_err(e, req_id.clone())
+                                    .await
+                                    // Could error if the subscription is closing.
+                                    .ok();
+                                return;
+                            }
+                        };
+                    for msg in catch_up.messages {
+                        if tx
+                            .send(msg.notification, msg.subscription_name)
+                            .await
+                            .is_err()
+                        {
+                            // Subscription closing.
                             return;
                         }
-                    };
-                for msg in messages {
-                    if tx
-                        .send(msg.notification, msg.subscription_name)
-                        .await
-                        .is_err()
-                    {
-                        // Subscription closing.
-                        return;
                     }
+                }
+                _ => {
+                    // Either the range is empty or catch-up is not supported by
+                    // the endpoint (`current_block` is `None`).
                 }
             }
 

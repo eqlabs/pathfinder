@@ -23,7 +23,7 @@ pub use transaction::DataAvailabilityMode;
 
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: BlockHash,
