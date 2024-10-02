@@ -25,6 +25,7 @@ mod main_loop;
 mod peer_data;
 mod peers;
 mod secret;
+mod short_id;
 mod sync;
 #[cfg(test)]
 mod test_utils;
@@ -60,8 +61,9 @@ pub struct Config {
     pub eviction_timeout: Duration,
     pub ip_whitelist: Vec<IpNet>,
     /// If the number of peers is below the low watermark, the node will attempt
-    /// periodic bootstrapping at this interval.
-    pub bootstrap_period: Duration,
+    /// periodic bootstrapping at this interval. If `None`, periodic bootstrap
+    /// is disabled and only automatic bootstrap remains.
+    pub bootstrap_period: Option<Duration>,
     pub inbound_connections_rate_limit: RateLimit,
     /// Custom protocol name for Kademlia
     pub kad_name: Option<String>,

@@ -25,11 +25,13 @@ This includes any documentation issues, feature requests and bugs that you may e
 
 For help or to submit bug reports or feature requests, please open an issue or alternatively visit the Starknet [discord channel](https://discord.com/invite/QypNMzkHbc).
 
-## Database compatibility
+## Hardware Requirements
 
-**pathfinder 0.9.0 contains a change in our Merkle tree storage implementation that makes it impossible to use database files produced by earlier versions.**
+Pathfinder hardware requirements depend greatly on your use case. The _recommended_ configuration that allows for fast syncing and JSON-RPC queries (with limited concurrency) is:
 
-This means that upgrading to 0.9.0 will require either a full re-sync _or_ downloading a [database snapshot](#database-snapshots).
+- 4 CPU cores
+- 8 GiB RAM
+- 250 GiB SSD storage  
 
 ## Running with Docker
 
@@ -80,7 +82,7 @@ sudo docker stop pathfinder
 When pathfinder detects there has been a new release, it will log a message similar to:
 
 ```
-WARN New pathfinder release available! Please consider updating your node! release=0.4.5
+WARN New pathfinder release available! Please consider updating your node! release=0.14.3
 ```
 
 You can try pulling the latest docker image to update it:
@@ -158,7 +160,7 @@ acl = private
 You can then download a compressed database using the command:
 
 ```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_47191.sqlite.zst .
+rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst .
 ```
 
 ### Uncompressing database snapshots
@@ -168,7 +170,7 @@ rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_
 We're storing database snapshots as SQLite database files compressed with [zstd](https://github.com/facebook/zstd). You can uncompress the files you've downloaded using the following command:
 
 ```shell
-zstd -T0 -d sepolia-testnet_0.13.0_74494_pruned.sqlite.zst -o testnet-sepolia.sqlite
+zstd -T0 -d sepolia-testnet_0.14.0_209745_pruned.sqlite.zst -o testnet-sepolia.sqlite
 ```
 
 This produces uncompressed database file `testnet-sepolia.sqlite` that can then be used by pathfinder.
@@ -177,13 +179,10 @@ This produces uncompressed database file `testnet-sepolia.sqlite` that can then 
 
 | Network         | Block  | Pathfinder version required | Mode    | Filename                                           | Download URL                                                                                                     | Compressed size | SHA2-256 checksum of compressed file                               |
 | --------------- | ------ | --------------------------- | ------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Sepolia testnet | 74494  | >= 0.13.0                   | archive | `sepolia-testnet_0.13.0_74494_archive.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.13.0_74494_archive.sqlite.zst)  | 5.83 GB         | `03faf036e24e31cad0d5bd6c32fdeb2d52329c86cb90eb1b3b1fef91173ca63c` |
-| Sepolia testnet | 74494  | >= 0.13.0                   | pruned  | `sepolia-testnet_0.13.0_74494_pruned.sqlite.zst`   | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.13.0_74494_pruned.sqlite.zst)   | 2.22 GB         | `0a74d47739939b43090f44f852ef14c48a8d4b303b03186d2e5ef74b1093b3f7` |
-| Sepolia testnet | 121145 | >= 0.14.0                   | archive | `sepolia-testnet_0.14.0_121145_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_121145_archive.sqlite.zst) | 11.98 GB        | `6ff4e1a3d6e91edaceac35c8b17c42d3f3d0a93bd29954bb0fafa250c6e74071` |
-| Sepolia testnet | 121057 | >= 0.14.0                   | pruned  | `sepolia-testnet_0.14.0_121057_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_121057_pruned.sqlite.zst)  | 4.05 GB         | `f38c486a76699250c21a3fd7e7bcb695a7bc094387903b4137094a68d9371065` |
-| Mainnet         | 649680 | >= 0.13.0                   | archive | `mainnet_0.13.0_649680_archive.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_archive.sqlite.zst)         | 400.08 GB       | `d01766380fff47f3c08199d0e5c7039ea6fc412081bac026ca99d24f52e6a923` |
-| Mainnet         | 649680 | >= 0.13.0                   | pruned  | `mainnet_0.13.0_649680_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.13.0_649680_pruned.sqlite.zst)          | 64.85 GB        | `fd68a09672abcc37068ecf892ecd028e08456744a6e636027878f65bd801b991` |
-| Mainnet         | 670000 | >= 0.14.0                   | pruned  | `mainnet_0.14.0_670000_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_670000_pruned.sqlite.zst)          | 68.58 GB        | `b859ae1a7c6a996b3cf1666f7a13bec2fc0450829cdda5d3198e1ef2af4bc8e1` |
+| Mainnet         | 751397 | >= 0.14.0                   | pruned  | `mainnet_0.14.0_751397_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751397_pruned.sqlite.zst)          | 71.03 GB        | `2f9aa8b98086c12a1ce14e89ddfe02ebf320a7ba47e63829056a405866568113` |
+| Mainnet         | 751250 | >= 0.14.0                   | archive | `mainnet_0.14.0_751250_archive.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751250_archive.sqlite.zst)         | 433.13 GB       | `3540087b326b58437fd12bcf427eaeb6323f3efc3def56816b7e5fc06d2633ae` |
+| Sepolia testnet | 209745 | >= 0.14.0                   | pruned  | `sepolia-testnet_0.14.0_209745_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst)  | 5.71 GB         | `5cc9a13079a36ee09c04824f6b30b5ce16cd2d26039b23c7c7937f57a76ba19b` |
+| Sepolia testnet | 209758 | >= 0.14.0                   | archive | `sepolia-testnet_0.14.0_209758_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_209758_archive.sqlite.zst) | 18.93 GB        | `3c24a6e9e5294d738f5976e2c949ebac42ed3fc4865a21893df44897fe803686` |
 
 ## Configuration
 
@@ -276,11 +275,9 @@ This can be used to interact with a custom Starknet gateway, or to use a gateway
 
 You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently, pathfinder supports `v0.4`, `v0.5`, `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
+Currently, pathfinder supports `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
-- the `v0.4.0` API is exposed on the `/rpc/v0.4` and `/rpc/v0_4` path
-- the `v0.5.1` API is exposed on the `/`, `/rpc/v0.5` and `/rpc/v0_5` path
 - the `v0.6.0` API is exposed on the `/rpc/v0_6` path via HTTP and on `/ws/rpc/v0_6` via Websocket
 - the `v0.7.0` API is exposed on the `/rpc/v0_7` path via HTTP and on `/ws/rpc/v0_7` via Websocket
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1` and `/rpc/pathfinder/v0_1` via HTTP and `/ws/rpc/pathfinder/v0_1` via Websocket.
@@ -316,6 +313,10 @@ This endpoint is useful for Docker nodes which only want to present themselves a
 ### Metrics
 
 `/metrics` provides a [Prometheus](https://prometheus.io/) metrics scrape endpoint. Currently the following metrics are available:
+
+#### Process metrics
+
+- `process_start_time_seconds` provides the unix timestamp at which pathfinder started
 
 #### RPC related counters
 

@@ -1083,8 +1083,7 @@ mod tests {
             serde_json::from_str(v0_13_2::state_update::SEPOLIA_INTEGRATION_35748).unwrap();
         let state_update: pathfinder_common::StateUpdate = state_update.into();
         let state_diff_length = state_update.state_diff_length();
-        let state_diff_commitment =
-            state_update.compute_state_diff_commitment(StarknetVersion::new(0, 13, 2, 0));
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         assert_eq!(state_diff_length, block.state_diff_length.unwrap());
         assert_eq!(state_diff_commitment, block.state_diff_commitment.unwrap());

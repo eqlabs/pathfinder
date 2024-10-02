@@ -15,9 +15,8 @@ use crate::prelude::*;
 use crate::ReorgCounter;
 
 pub const PAGE_SIZE_LIMIT: usize = 1_024;
-pub const KEY_FILTER_LIMIT: usize = 16;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct EventFilter {
     pub from_block: Option<BlockNumber>,
     pub to_block: Option<BlockNumber>,
@@ -41,12 +40,8 @@ pub struct EmittedEvent {
 pub enum EventFilterError {
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
-    #[error("requested page size is too big, supported maximum is {0}")]
-    PageSizeTooBig(usize),
     #[error("requested page size is too small, supported minimum is 1")]
     PageSizeTooSmall,
-    #[error("Event query too broad. Reduce the block range or add more keys.")]
-    TooManyMatches,
 }
 
 impl From<rusqlite::Error> for EventFilterError {
@@ -89,6 +84,75 @@ impl Transaction<'_> {
         Ok(())
     }
 
+    /// Return all of the events in the given block range, filtered by the given
+    /// keys and contract address. Along with the events, return the last
+    /// block number that was scanned, which may be smaller than `to_block`
+    /// if there are no more blocks in the database.
+    pub fn events_in_range(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<Vec<EventKey>>,
+    ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
+        let key_filter_is_empty = keys.iter().flatten().count() == 0;
+        let reorg_counter = self.reorg_counter()?;
+        let mut emitted_events = Vec::new();
+        let mut block_number = from_block;
+        let filter = EventFilter {
+            contract_address,
+            keys,
+            page_size: usize::MAX - 1,
+            ..Default::default()
+        };
+        loop {
+            // Stop if we're past the last block.
+            if block_number > to_block {
+                return Ok((emitted_events, Some(to_block)));
+            }
+
+            // Check bloom filter
+            if !key_filter_is_empty || contract_address.is_some() {
+                let bloom = self.load_bloom(reorg_counter, block_number)?;
+                match bloom {
+                    Filter::Missing => {}
+                    Filter::Cached(bloom) => {
+                        if !bloom.check_filter(&filter) {
+                            tracing::trace!("Bloom filter did not match");
+                            block_number += 1;
+                            continue;
+                        }
+                    }
+                    Filter::Loaded(bloom) => {
+                        if !bloom.check_filter(&filter) {
+                            tracing::trace!("Bloom filter did not match");
+                            block_number += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            match self.scan_block_into(
+                block_number,
+                &filter,
+                key_filter_is_empty,
+                0,
+                &mut emitted_events,
+            )? {
+                BlockScanResult::NoSuchBlock if block_number == from_block => {
+                    return Ok((emitted_events, None));
+                }
+                BlockScanResult::NoSuchBlock => {
+                    return Ok((emitted_events, Some(block_number.parent().unwrap())));
+                }
+                BlockScanResult::Done { .. } => {}
+            }
+
+            block_number += 1;
+        }
+    }
+
     #[tracing::instrument(skip(self))]
     pub fn events(
         &self,
@@ -96,10 +160,6 @@ impl Transaction<'_> {
         max_blocks_to_scan: NonZeroUsize,
         max_uncached_bloom_filters_to_load: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
-        if filter.page_size > PAGE_SIZE_LIMIT {
-            return Err(EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT));
-        }
-
         if filter.page_size < 1 {
             return Err(EventFilterError::PageSizeTooSmall);
         }
@@ -381,7 +441,6 @@ enum Filter {
 mod tests {
     use std::sync::LazyLock;
 
-    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{transaction as common, BlockHeader, BlockTimestamp, EntryPoint, Fee};
@@ -881,40 +940,6 @@ mod tests {
                 events: vec![],
                 continuation_token: None,
             }
-        );
-    }
-
-    #[test]
-    fn get_events_with_invalid_page_size() {
-        let (storage, _) = test_utils::setup_test_storage();
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: vec![],
-            page_size: 0,
-            offset: 0,
-        };
-        let result = tx.events(&filter, *MAX_BLOCKS_TO_SCAN, *MAX_BLOOM_FILTERS_TO_LOAD);
-        assert!(result.is_err());
-        assert_matches!(result.unwrap_err(), EventFilterError::PageSizeTooSmall);
-
-        let filter = EventFilter {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: vec![],
-            page_size: PAGE_SIZE_LIMIT + 1,
-            offset: 0,
-        };
-        let result = tx.events(&filter, *MAX_BLOCKS_TO_SCAN, *MAX_BLOOM_FILTERS_TO_LOAD);
-        assert!(result.is_err());
-        assert_matches!(
-            result.unwrap_err(),
-            EventFilterError::PageSizeTooBig(PAGE_SIZE_LIMIT)
         );
     }
 

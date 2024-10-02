@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::Context;
+pub use bloom::EVENT_KEY_FILTER_LIMIT;
 pub use connection::*;
 use pathfinder_common::{BlockHash, BlockNumber};
 use r2d2::Pool;

@@ -89,22 +89,18 @@ impl<T> FetchCommitmentFromDb<T> {
 impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     const NAME: &'static str = "StateDiff::FetchCommitmentFromDb";
     type Input = (T, BlockNumber);
-    type Output = (T, BlockNumber, StarknetVersion, StateDiffCommitment);
+    type Output = (T, BlockNumber, StateDiffCommitment);
 
     fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
         let mut db = self
             .db
             .transaction()
             .context("Creating database transaction")?;
-        let version = db
-            .block_version(block_number)
-            .context("Fetching starknet version")?
-            .ok_or(SyncError2::StarknetVersionNotFound)?;
         let commitment = db
             .state_diff_commitment(block_number)
             .context("Fetching state diff commitment")?
             .ok_or(SyncError2::StateDiffCommitmentNotFound)?;
-        Ok((data, block_number, version, commitment))
+        Ok((data, block_number, commitment))
     }
 }
 
@@ -112,17 +108,12 @@ pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
     const NAME: &'static str = "StateDiff::Verify";
-    type Input = (
-        StateUpdateData,
-        BlockNumber,
-        StarknetVersion,
-        StateDiffCommitment,
-    );
+    type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
     type Output = StateUpdateData;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let (state_diff, block_number, version, expected_commitment) = input;
-        let actual_commitment = state_diff.compute_state_diff_commitment(version);
+        let (state_diff, block_number, expected_commitment) = input;
+        let actual_commitment = state_diff.compute_state_diff_commitment();
 
         if actual_commitment != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");

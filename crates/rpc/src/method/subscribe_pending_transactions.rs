@@ -6,27 +6,30 @@ use pathfinder_common::{BlockId, BlockNumber, ContractAddress, TransactionHash};
 use tokio::sync::mpsc;
 
 use crate::context::RpcContext;
-use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 
 pub struct SubscribePendingTransactions;
 
-#[derive(Debug, Clone)]
-pub struct Request {
+#[derive(Debug, Clone, Default)]
+pub struct Params {
     transaction_details: Option<bool>,
     sender_address: Option<HashSet<ContractAddress>>,
 }
 
-impl crate::dto::DeserializeForVersion for Request {
+impl crate::dto::DeserializeForVersion for Option<Params> {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        if value.is_null() {
+            return Ok(None);
+        }
         value.deserialize_map(|value| {
-            Ok(Self {
+            Ok(Some(Params {
                 transaction_details: value.deserialize_optional_serde("transaction_details")?,
                 sender_address: value
                     .deserialize_optional_array("sender_address", |addr| {
                         Ok(ContractAddress(addr.deserialize()?))
                     })?
                     .map(|addrs| addrs.into_iter().collect()),
-            })
+            }))
         })
     }
 }
@@ -57,30 +60,32 @@ const SUBSCRIPTION_NAME: &str = "starknet_subscriptionPendingTransactions";
 
 #[async_trait]
 impl RpcSubscriptionFlow for SubscribePendingTransactions {
-    type Request = Request;
+    type Params = Option<Params>;
     type Notification = Notification;
 
-    fn starting_block(_req: &Self::Request) -> BlockId {
-        // Rollback is not supported.
+    fn starting_block(_params: &Self::Params) -> BlockId {
+        // Catch-up is not supported.
         BlockId::Latest
     }
 
     async fn catch_up(
         _state: &RpcContext,
-        _req: &Self::Request,
+        _params: &Self::Params,
         _from: BlockNumber,
         _to: BlockNumber,
-    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError> {
-        Ok(vec![])
+    ) -> Result<CatchUp<Self::Notification>, RpcError> {
+        // Catch-up is not supported.
+        Ok(Default::default())
     }
 
     async fn subscribe(
         state: RpcContext,
-        req: Self::Request,
+        params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) {
+        let params = params.unwrap_or_default();
         let mut pending_data = state.pending_data.0.clone();
-        // Last block sent to the subscriber. Initial value doesn't really matter
+        // Last block sent to the subscriber. Initial value doesn't really matter.
         let mut last_block = BlockNumber::GENESIS;
         // Hashes of transactions that have already been sent to the subscriber, as part
         // of `last_block` block. It is necessary to keep track of this because the
@@ -98,7 +103,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                     continue;
                 }
                 // Filter the transactions by sender address.
-                if let Some(sender_address) = &req.sender_address {
+                if let Some(sender_address) = &params.sender_address {
                     use pathfinder_common::transaction::TransactionVariant::*;
                     let address = match &transaction.variant {
                         DeclareV0(tx) => tx.sender_address,
@@ -118,7 +123,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                         continue;
                     }
                 }
-                let notification = match req.transaction_details {
+                let notification = match params.transaction_details {
                     Some(true) => Notification::Transaction(transaction.clone().into()),
                     Some(false) | None => Notification::TransactionHash(transaction.hash),
                 };
@@ -181,7 +186,6 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "method": "starknet_subscribePendingTransactions",
-                "params": {}
             })
             .to_string(),
         )))

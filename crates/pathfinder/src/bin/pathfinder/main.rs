@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -448,7 +449,7 @@ async fn start_p2p(
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
             max_outbound_peers: config.max_outbound_connections,
             ip_whitelist: config.ip_whitelist,
-            bootstrap_period: Duration::from_secs(2 * 60),
+            bootstrap_period: Some(Duration::from_secs(2 * 60)),
             eviction_timeout: config.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,
@@ -641,6 +642,11 @@ async fn spawn_monitoring(
         .context("Creating Prometheus recorder")?;
 
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
+
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => metrics::gauge!("process_start_time_seconds", duration.as_secs() as f64),
+        Err(err) => tracing::error!("Failed to read system time: {:?}", err),
+    }
 
     let (_, handle) =
         monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await?;

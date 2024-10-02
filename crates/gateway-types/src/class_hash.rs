@@ -55,45 +55,6 @@ fn parse_contract_definition(
         })
 }
 
-/// Sibling functionality to only [`compute_class_hash`], returning also the
-/// ABI, and bytecode parts as json bytes.
-///
-/// NOTE: This function is deprecated. We no longer store ABI and bytecode in
-/// the database, and this function is only used by _old_ database migration
-/// steps.
-pub fn extract_abi_code_hash(
-    contract_definition_dump: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
-    let contract_definition = parse_contract_definition(contract_definition_dump)
-        .context("Failed to parse contract definition")?;
-
-    match contract_definition {
-        json::ContractDefinition::Sierra(contract_definition) => {
-            let abi = serde_json::to_vec(&contract_definition.abi)
-                .context("Serialize contract_definition.abi")?;
-            let code = serde_json::to_vec(&contract_definition.sierra_program)
-                .context("Serialize contract_definition.sierra_program")?;
-
-            let hash =
-                compute_sierra_class_hash(contract_definition).context("Compute class hash")?;
-
-            Ok((abi, code, hash))
-        }
-        json::ContractDefinition::Cairo(contract_definition) => {
-            // just in case we'd accidentally modify these in the compute_class_hash0
-            let abi = serde_json::to_vec(&contract_definition.abi)
-                .context("Serialize contract_definition.abi")?;
-            let code = serde_json::to_vec(&contract_definition.program.data)
-                .context("Serialize contract_definition.program.data")?;
-
-            let hash =
-                compute_cairo_class_hash(contract_definition).context("Compute class hash")?;
-
-            Ok((abi, code, hash))
-        }
-    }
-}
-
 pub mod from_parts {
     use std::collections::HashMap;
 

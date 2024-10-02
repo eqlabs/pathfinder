@@ -2,14 +2,20 @@
 
 use std::sync::Arc;
 
-use pathfinder_common::{EventKey, TransactionHash};
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    ContractAddress,
+    EventData,
+    EventKey,
+    TransactionHash,
+};
 use serde::ser::Error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
-use crate::method::get_events::types::EmittedEvent;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
@@ -94,6 +100,20 @@ pub(super) enum ResponseEvent {
     Event(SubscriptionItem<Arc<EmittedEvent>>),
     TransactionStatus(SubscriptionItem<Arc<TransactionStatusUpdate>>),
     RpcError(RpcError),
+}
+
+/// Describes an emitted event returned by starknet_getEvents
+#[serde_with::skip_serializing_none]
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct EmittedEvent {
+    pub data: Vec<EventData>,
+    pub keys: Vec<EventKey>,
+    pub from_address: ContractAddress,
+    /// [`None`] for pending events.
+    pub block_hash: Option<BlockHash>,
+    /// [`None`] for pending events.
+    pub block_number: Option<BlockNumber>,
+    pub transaction_hash: TransactionHash,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]

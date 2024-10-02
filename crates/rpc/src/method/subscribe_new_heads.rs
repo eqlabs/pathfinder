@@ -6,22 +6,26 @@ use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::Reorg;
 
 pub struct SubscribeNewHeads;
 
 #[derive(Debug, Clone)]
-pub struct Request {
+pub struct Params {
     block: Option<BlockId>,
 }
 
-impl crate::dto::DeserializeForVersion for Request {
+impl crate::dto::DeserializeForVersion for Option<Params> {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        if value.is_null() {
+            // Params are optional.
+            return Ok(None);
+        }
         value.deserialize_map(|value| {
-            Ok(Self {
+            Ok(Some(Params {
                 block: value.deserialize_optional_serde("block")?,
-            })
+            }))
         })
     }
 }
@@ -48,19 +52,22 @@ const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewHeads";
 
 #[async_trait]
 impl RpcSubscriptionFlow for SubscribeNewHeads {
-    type Request = Request;
+    type Params = Option<Params>;
     type Notification = Notification;
 
-    fn starting_block(req: &Self::Request) -> BlockId {
-        req.block.unwrap_or(BlockId::Latest)
+    fn starting_block(params: &Self::Params) -> BlockId {
+        params
+            .as_ref()
+            .and_then(|req| req.block)
+            .unwrap_or(BlockId::Latest)
     }
 
     async fn catch_up(
         state: &RpcContext,
-        _req: &Self::Request,
+        _params: &Self::Params,
         from: BlockNumber,
         to: BlockNumber,
-    ) -> Result<Vec<SubscriptionMessage<Self::Notification>>, RpcError> {
+    ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let storage = state.storage.clone();
         let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
@@ -69,7 +76,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         })
         .await
         .map_err(|e| RpcError::InternalError(e.into()))??;
-        Ok(headers
+        let messages: Vec<_> = headers
             .into_iter()
             .map(|header| {
                 let block_number = header.number;
@@ -79,12 +86,17 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
                     subscription_name: SUBSCRIPTION_NAME,
                 }
             })
-            .collect())
+            .collect();
+        let last_block = messages.last().map(|m| m.block_number);
+        Ok(CatchUp {
+            messages,
+            last_block,
+        })
     }
 
     async fn subscribe(
         state: RpcContext,
-        _req: Self::Request,
+        _params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) {
         let mut headers = state.notifications.block_headers.subscribe();
@@ -152,7 +164,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RequestId, RpcError, RpcResponse, RpcRouter};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter, CATCH_UP_BATCH_SIZE};
     use crate::pending::PendingWatcher;
     use crate::v02::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
@@ -164,12 +176,14 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_no_batching() {
-        happy_path_test(10).await;
+        happy_path_test(CATCH_UP_BATCH_SIZE - 5).await;
     }
 
     #[tokio::test]
-    async fn happy_path_with_historic_blocks_batching_edge_case() {
-        happy_path_test(128).await;
+    async fn happy_path_with_historic_blocks_batching_edge_cases() {
+        happy_path_test(2 * CATCH_UP_BATCH_SIZE).await;
+        happy_path_test(2 * (CATCH_UP_BATCH_SIZE - 1)).await;
+        happy_path_test(2 * (CATCH_UP_BATCH_SIZE + 1)).await;
     }
 
     #[tokio::test]
@@ -308,7 +322,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invalid_subscription() {
+    async fn subscribe_no_params() {
         let router = setup(0).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -324,24 +338,39 @@ mod tests {
             )))
             .await
             .unwrap();
-        let res = sender_rx.recv().await.unwrap();
-        let res = match res {
-            Ok(_) => panic!("Expected Err, got Ok"),
-            Err(e) => e,
-        };
-        assert_eq!(
-            res,
-            RpcResponse {
-                output: Err(RpcError::InvalidParams(
-                    "expected object or array".to_string()
-                )),
-                id: RequestId::Number(1),
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].as_u64().unwrap()
             }
-        );
+            _ => panic!("Expected text message"),
+        };
+        for i in 0..10 {
+            retry(|| {
+                router
+                    .context
+                    .notifications
+                    .block_headers
+                    .send(sample_header(i).into())
+            })
+            .await
+            .unwrap();
+            let expected = sample_new_heads_message(i, subscription_id);
+            let header = sender_rx.recv().await.unwrap().unwrap();
+            let json: serde_json::Value = match header {
+                Message::Text(json) => serde_json::from_str(&json).unwrap(),
+                _ => panic!("Expected text message"),
+            };
+            assert_eq!(json, expected);
+        }
+        assert!(sender_rx.is_empty());
     }
 
     #[tokio::test]
-    async fn subscribe_no_params() {
+    async fn subscribe_empty_params() {
         let router = setup(0).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -351,8 +380,8 @@ mod tests {
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": 1,
+                    "params": {},
                     "method": "starknet_subscribeNewHeads",
-                    "params": {}
                 })
                 .to_string(),
             )))
@@ -567,7 +596,7 @@ mod tests {
                     "block_number": block_number,
                     "l1_da_mode": "CALLDATA",
                     "l1_data_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
-                    "l1_gas_price":{ "price_in_fri": "0x0", "price_in_wei": "0x0" },
+                    "l1_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
                     "new_root": "0x0",
                     "parent_hash": "0x0",
                     "sequencer_address": "0x0",

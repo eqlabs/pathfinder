@@ -52,6 +52,10 @@ impl Value {
         self.data.is_string()
     }
 
+    pub fn is_null(&self) -> bool {
+        self.data.is_null()
+    }
+
     pub fn deserialize<T: DeserializeForVersion>(self) -> Result<T, serde_json::Error> {
         T::deserialize(self)
     }
