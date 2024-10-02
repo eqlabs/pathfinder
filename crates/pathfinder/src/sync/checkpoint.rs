@@ -19,6 +19,7 @@ use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, Transacti
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -63,6 +64,7 @@ pub struct Sync {
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub verify_tree_hashes: bool,
+    pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
 impl Sync {
@@ -88,6 +90,7 @@ impl Sync {
             chain_id,
             public_key,
             verify_tree_hashes,
+            block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(chain)),
         }
     }
 
@@ -168,6 +171,7 @@ impl Sync {
                 self.chain,
                 self.chain_id,
                 self.public_key,
+                self.block_hash_db.clone(),
                 self.storage.clone(),
             )
             .await?;
@@ -299,13 +303,14 @@ async fn handle_header_stream(
     chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
+    block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     storage: Storage,
 ) -> Result<(), SyncError> {
     InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
-            headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
+            headers::VerifyHashAndSignature::new(chain, chain_id, public_key, block_hash_db),
             10,
         )
         .try_chunks(1024, 10)
@@ -699,12 +704,16 @@ mod tests {
             BlockHash,
             BlockHeader,
             BlockTimestamp,
+            ClassCommitment,
             EventCommitment,
+            GasPrice,
+            L1DataAvailabilityMode,
             ReceiptCommitment,
             SequencerAddress,
             StarknetVersion,
             StateCommitment,
             StateDiffCommitment,
+            StorageCommitment,
             TransactionCommitment,
         };
         use pathfinder_storage::fake::{self as fake_storage, Block};
@@ -724,7 +733,7 @@ mod tests {
         }
 
         #[serde_as]
-        #[derive(Clone, Copy, Debug, Deserialize)]
+        #[derive(Clone, Debug, Deserialize)]
         pub struct Fixture {
             pub block_hash: BlockHash,
             pub block_number: BlockNumber,
@@ -738,10 +747,15 @@ mod tests {
             pub event_count: usize,
             pub signature: [BlockCommitmentSignatureElem; 2],
             pub state_diff_commitment: StateDiffCommitment,
+            pub state_diff_length: u64,
+            pub receipt_commitment: ReceiptCommitment,
+            pub starknet_version: String,
+            pub eth_l1_gas_price: GasPrice,
         }
 
         impl From<Fixture> for SignedBlockHeader {
             fn from(dto: Fixture) -> Self {
+                let starknet_version: StarknetVersion = dto.starknet_version.parse().unwrap();
                 Self {
                     header: BlockHeader {
                         hash: dto.block_hash,
@@ -755,7 +769,16 @@ mod tests {
                         event_commitment: dto.event_commitment,
                         event_count: dto.event_count,
                         state_diff_commitment: dto.state_diff_commitment,
-                        ..Default::default()
+                        state_diff_length: dto.state_diff_length,
+                        receipt_commitment: dto.receipt_commitment,
+                        starknet_version,
+                        eth_l1_gas_price: dto.eth_l1_gas_price,
+                        eth_l1_data_gas_price: GasPrice(1),
+                        strk_l1_gas_price: GasPrice(0),
+                        strk_l1_data_gas_price: GasPrice(1),
+                        l1_da_mode: L1DataAvailabilityMode::Calldata,
+                        class_commitment: ClassCommitment::ZERO,
+                        storage_commitment: StorageCommitment::ZERO,
                     },
                     signature: BlockCommitmentSignature {
                         r: dto.signature[0],
@@ -807,6 +830,9 @@ mod tests {
                 Chain::SepoliaTestnet,
                 ChainId::SEPOLIA_TESTNET,
                 public_key,
+                Some(pathfinder_block_hashes::BlockHashDb::new(
+                    Chain::SepoliaTestnet,
+                )),
                 storage.clone(),
             )
             .await
@@ -851,6 +877,9 @@ mod tests {
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
+                    Some(pathfinder_block_hashes::BlockHashDb::new(
+                        Chain::SepoliaTestnet
+                    )),
                     storage.clone(),
                 )
                 .await,
@@ -876,6 +905,7 @@ mod tests {
                     Chain::Mainnet,
                     ChainId::MAINNET,
                     public_key,
+                    None,
                     storage.clone(),
                 )
                 .await,
@@ -933,6 +963,9 @@ mod tests {
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
+                    Some(pathfinder_block_hashes::BlockHashDb::new(
+                        Chain::SepoliaTestnet
+                    )),
                     storage.clone(),
                 )
                 .await,
@@ -976,7 +1009,11 @@ mod tests {
                                 .map(|(t, _, _)| t.clone())
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                            block.header.header.starknet_version,
+                            block
+                                .header
+                                .header
+                                .starknet_version
+                                .max(StarknetVersion::V_0_13_2),
                         )
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
@@ -1318,7 +1355,6 @@ mod tests {
 
         use super::super::handle_class_stream;
         use super::*;
-        use crate::state::block_hash::calculate_event_commitment;
 
         const SIERRA0_HASH: SierraHash =
             sierra_hash!("0x04e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c");
@@ -1547,7 +1583,7 @@ mod tests {
         use p2p::libp2p::PeerId;
         use pathfinder_common::event::Event;
         use pathfinder_common::transaction::TransactionVariant;
-        use pathfinder_common::TransactionHash;
+        use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::{fake as fake_storage, StorageBuilder};
 
@@ -1598,7 +1634,11 @@ mod tests {
                                 .iter()
                                 .map(|(tx, _, events)| (tx.hash, events.as_slice()))
                                 .collect::<Vec<_>>(),
-                            block.header.header.starknet_version,
+                            block
+                                .header
+                                .header
+                                .starknet_version
+                                .max(StarknetVersion::V_0_13_2),
                         )
                         .unwrap();
                     }

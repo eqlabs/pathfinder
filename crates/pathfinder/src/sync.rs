@@ -92,6 +92,7 @@ impl Sync {
                 chain_id: self.chain_id,
                 public_key: self.public_key,
                 verify_tree_hashes: self.verify_tree_hashes,
+                block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
             }
             .run(checkpoint)
             .await;
@@ -127,6 +128,7 @@ impl Sync {
             chain: self.chain,
             chain_id: self.chain_id,
             public_key: self.public_key,
+            block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
         }
         .run(next, parent_hash, self.fgw_client.clone())
         .await;

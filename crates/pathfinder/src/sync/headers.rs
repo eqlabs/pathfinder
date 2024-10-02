@@ -12,12 +12,13 @@ use pathfinder_common::{
     ClassCommitment,
     PublicKey,
     SignedBlockHeader,
+    StarknetVersion,
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
-use crate::state::block_hash::{verify_block_hash, BlockHeaderData, VerifyResult};
+use crate::state::block_hash::{BlockHeaderData, VerifyResult};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -160,6 +161,7 @@ pub struct VerifyHashAndSignature {
     chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
+    block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
 impl ForwardContinuity {
@@ -242,49 +244,58 @@ impl ProcessStage for VerifyHashAndSignature {
 }
 
 impl VerifyHashAndSignature {
-    pub fn new(chain: Chain, chain_id: ChainId, public_key: PublicKey) -> Self {
+    pub fn new(
+        chain: Chain,
+        chain_id: ChainId,
+        public_key: PublicKey,
+        block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
+    ) -> Self {
         Self {
             chain,
             chain_id,
             public_key,
+            block_hash_db,
         }
     }
 
     fn verify_hash(&self, header: &BlockHeader) -> bool {
-        let result = verify_block_hash(
-            BlockHeaderData {
-                hash: header.hash,
-                parent_hash: header.parent_hash,
-                number: header.number,
-                timestamp: header.timestamp,
-                sequencer_address: header.sequencer_address,
-                state_commitment: header.state_commitment,
-                transaction_commitment: header.transaction_commitment,
-                transaction_count: header
-                    .transaction_count
-                    .try_into()
-                    .expect("ptr size is 64 bits"),
-                event_commitment: header.event_commitment,
-                event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
-                state_diff_commitment: header.state_diff_commitment,
-                state_diff_length: header.state_diff_length,
-                starknet_version: header.starknet_version,
-                starknet_version_str: header.starknet_version.to_string(),
-                eth_l1_gas_price: header.eth_l1_gas_price,
-                strk_l1_gas_price: header.strk_l1_gas_price,
-                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-                receipt_commitment: header.receipt_commitment,
-                l1_da_mode: header.l1_da_mode,
-            },
-            self.chain,
-            self.chain_id,
-        );
-        match result {
-            Ok(VerifyResult::Match) => true,
-            Ok(VerifyResult::Mismatch) => {
-                tracing::debug!(block_number=%header.number, expected_block_hash=%header.hash, "Block hash mismatch");
-                false
+        let expected_hash = self
+            .block_hash_db
+            .as_ref()
+            .and_then(|db| db.block_hash(header.number))
+            .unwrap_or(header.hash);
+        match crate::state::block_hash::compute_final_hash(&BlockHeaderData {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            sequencer_address: header.sequencer_address,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header
+                .transaction_count
+                .try_into()
+                .expect("ptr size is 64 bits"),
+            event_commitment: header.event_commitment,
+            event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
+            state_diff_commitment: header.state_diff_commitment,
+            state_diff_length: header.state_diff_length,
+            starknet_version: header.starknet_version,
+            starknet_version_str: header.starknet_version.to_string(),
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            receipt_commitment: header.receipt_commitment,
+            l1_da_mode: header.l1_da_mode,
+        }) {
+            Ok(block_hash) => {
+                if block_hash == expected_hash {
+                    true
+                } else {
+                    tracing::debug!(block_number=%header.number, expected_block_hash=%expected_hash, actual_block_hash=%block_hash, "Block hash mismatch");
+                    false
+                }
             }
             Err(e) => {
                 tracing::debug!(block_number=%header.number, error = ?e, "Failed to verify block hash");

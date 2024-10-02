@@ -7250,6 +7250,7 @@ dependencies = [
  "mockall",
  "p2p",
  "p2p_proto",
+ "pathfinder-block-hashes",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-crypto",

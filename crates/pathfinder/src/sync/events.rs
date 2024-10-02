@@ -92,7 +92,7 @@ pub(super) async fn verify_commitment(
                 .iter()
                 .map(|(tx_hash, events)| (*tx_hash, events.as_slice()))
                 .collect::<Vec<_>>(),
-            header.starknet_version,
+            header.starknet_version.max(StarknetVersion::V_0_13_2),
         )
         .context("Calculating commitment")?;
         if computed != header.event_commitment {
@@ -169,7 +169,8 @@ impl ProcessStage for VerifyCommitment {
             tracing::debug!(expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
             return Err(SyncError2::EventsTransactionsMismatch);
         }
-        let actual = calculate_event_commitment(&ordered_events, version)?;
+        let actual =
+            calculate_event_commitment(&ordered_events, version.max(StarknetVersion::V_0_13_2))?;
         if actual != event_commitment {
             tracing::debug!(expected=%event_commitment, actual=%actual, "Event commitment mismatch");
             return Err(SyncError2::EventCommitmentMismatch);
