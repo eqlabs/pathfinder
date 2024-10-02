@@ -2,13 +2,13 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::EventFilterError;
+use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use serde::Deserialize;
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
-use crate::method::get_events::{EVENT_KEY_FILTER_LIMIT, EVENT_PAGE_SIZE_LIMIT};
+use crate::method::get_events::EVENT_PAGE_SIZE_LIMIT;
 use crate::pending::PendingData;
 
 #[derive(Debug)]

@@ -10,7 +10,7 @@ use pathfinder_common::{
     EventKey,
     TransactionHash,
 };
-use pathfinder_storage::EventFilterError;
+use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
@@ -19,7 +19,6 @@ use crate::dto::serialize::{self, SerializeForVersion, Serializer};
 use crate::dto::{self};
 use crate::pending::PendingData;
 
-pub const EVENT_KEY_FILTER_LIMIT: usize = 16;
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
 
 #[derive(Debug)]

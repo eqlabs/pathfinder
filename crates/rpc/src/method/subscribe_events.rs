@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use axum::async_trait;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
+use pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
 use tokio::sync::mpsc;
 
-use super::get_events::EVENT_KEY_FILTER_LIMIT;
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
