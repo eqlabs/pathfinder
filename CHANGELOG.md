@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.4] - 2024-10-03
+
+### Fixed
+
+- Pathfinder stops syncing Sepolia testnet at block 218484 because of a block hash mismatch.
+
 ## [0.14.3] - 2024-09-23
 
 ### Fixed
