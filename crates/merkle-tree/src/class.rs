@@ -1,5 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::hash::PoseidonHash;
+use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockNumber,
     ClassCommitment,
@@ -70,6 +71,28 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
         let commitment = ClassCommitment(update.root_commitment);
         Ok((commitment, update))
+    }
+
+    /// Generates a proof for a given `key`
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        class_hash: ClassHash,
+    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+        let root = tx
+            .class_root_index(block)
+            .context("Querying class root index")?;
+
+        let Some(root) = root else {
+            return Ok(None);
+        };
+
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
     }
 }
 

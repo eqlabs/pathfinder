@@ -3,8 +3,8 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
-use serde::Serialize;
+use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
+use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
@@ -16,6 +16,12 @@ pub struct GetProofInput {
     pub keys: Vec<StorageAddress>,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+pub struct GetClassProofInput {
+    pub block_id: BlockId,
+    pub class_hash: ClassHash,
+}
+
 impl crate::dto::DeserializeForVersion for GetProofInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
@@ -24,6 +30,17 @@ impl crate::dto::DeserializeForVersion for GetProofInput {
                 contract_address: ContractAddress(value.deserialize("contract_address")?),
                 keys: value
                     .deserialize_array("keys", |value| Ok(StorageAddress(value.deserialize()?)))?,
+            })
+        })
+    }
+}
+
+impl crate::dto::DeserializeForVersion for GetClassProofInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                class_hash: ClassHash(value.deserialize("class_hash")?),
             })
         })
     }
@@ -164,6 +181,18 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
+#[derive(Debug, Serialize)]
+#[skip_serializing_none]
+pub struct GetClassProofOutput {
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
+    /// Membership / Non-membership proof for the queried contract classes
+    class_proof: ProofNodes,
+}
+
 /// Returns all the necessary data to trustlessly verify storage slots for a
 /// particular contract.
 pub async fn get_proof(
@@ -285,6 +314,61 @@ pub async fn get_proof(
             class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
+        })
+    });
+
+    jh.await.context("Database read panic or shutting down")?
+}
+
+/// Returns all the necessary data to trustlessly verify class changes for a
+/// particular contract.
+pub async fn get_proof_class(
+    context: RpcContext,
+    input: GetClassProofInput,
+) -> Result<GetClassProofOutput, GetProofError> {
+    let block_id = match input.block_id {
+        BlockId::Pending => {
+            return Err(GetProofError::Internal(anyhow!(
+                "'pending' is not currently supported by this method!"
+            )))
+        }
+        other => other.try_into().expect("Only pending cast should fail"),
+    };
+
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
+
+    let jh = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut db = storage
+            .connection()
+            .context("Opening database connection")?;
+
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        // Use internal error to indicate that the process of querying for a particular
+        // block failed, which is not the same as being sure that the block is
+        // not in the db.
+        let header = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .ok_or(GetProofError::BlockNotFound)?;
+
+        let class_commitment = match header.class_commitment {
+            ClassCommitment::ZERO => None,
+            other => Some(other),
+        };
+
+        // Generate a proof for this class. If the class does not exist, this will
+        // be a "non membership" proof.
+        let class_proof = ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash)
+            .context("Creating class proof")?
+            .ok_or(GetProofError::ProofMissing)?;
+        let class_proof = ProofNodes(class_proof);
+
+        Ok(GetClassProofOutput {
+            class_commitment,
+            class_proof,
         })
     });
 

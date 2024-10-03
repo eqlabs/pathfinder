@@ -3,7 +3,7 @@ pub mod merkle_node;
 pub mod storage;
 pub mod tree;
 
-mod class;
+pub mod class;
 mod contract;
 mod transaction;
 
