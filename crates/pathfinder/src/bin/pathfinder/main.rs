@@ -599,6 +599,7 @@ fn start_feeder_gateway_sync(
         gossiper,
         sequencer_public_key: gateway_public_key,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
+        fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))

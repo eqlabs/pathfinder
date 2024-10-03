@@ -291,6 +291,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
     )]
     custom_versioned_constants_path: Option<PathBuf>,
+
+    #[arg(
+        long = "sync.fetch-casm-from-fgw",
+        long_help = "Do not compile classes locally, instead fetch them from the feeder gateway",
+        env = "PATHFINDER_SYNC_FETCH_CASM_FROM_FGW",
+        default_value = "false",
+        action=ArgAction::Set
+    )]
+    fetch_casm_from_fgw: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -697,6 +706,7 @@ pub struct Config {
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 pub struct Ethereum {
@@ -989,6 +999,7 @@ impl Config {
             custom_versioned_constants: cli
                 .custom_versioned_constants_path
                 .map(parse_versioned_constants_or_exit),
+            fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
         }
     }
 }
