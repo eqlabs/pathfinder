@@ -631,7 +631,13 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         TransactionVariant::InvokeV3(tx) => tx.signature.as_slice(),
         TransactionVariant::DeployV0(_)
         | TransactionVariant::DeployV1(_)
-        | TransactionVariant::L1Handler(_) => &[TransactionSignatureElem::ZERO],
+        | TransactionVariant::L1Handler(_) => &[],
+    };
+
+    let signature = if signature.is_empty() {
+        &[TransactionSignatureElem::ZERO]
+    } else {
+        signature
     };
 
     let mut hasher = PoseidonHasher::new();
