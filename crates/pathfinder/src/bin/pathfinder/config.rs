@@ -150,6 +150,15 @@ Examples:
     color: Color,
 
     #[arg(
+        long = "log-output-json",
+        long_help = "This flag controls when to use colors in the output logs.",
+        default_value = "false",
+        env = "PATHFINDER_LOG_OUTPUT_JSON",
+        value_name = "BOOL"
+    )]
+    log_output_json: bool,
+
+    #[arg(
         long = "disable-version-update-check",
         long_help = "Disable the periodic version update check.",
         default_value = "false",
@@ -682,6 +691,7 @@ pub struct Config {
     pub poll_interval: std::time::Duration,
     pub l1_poll_interval: std::time::Duration,
     pub color: Color,
+    pub log_output_json: bool,
     pub disable_version_update_check: bool,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
@@ -971,6 +981,7 @@ impl Config {
             poll_interval: Duration::from_secs(cli.poll_interval.get()),
             l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
+            log_output_json: cli.log_output_json,
             disable_version_update_check: cli.disable_version_update_check,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),

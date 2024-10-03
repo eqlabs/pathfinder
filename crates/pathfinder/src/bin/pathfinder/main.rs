@@ -51,7 +51,11 @@ async fn async_main() -> anyhow::Result<()> {
 
     let mut config = config::Config::parse();
 
-    setup_tracing(config.color, config.debug.pretty_log);
+    setup_tracing(
+        config.color,
+        config.debug.pretty_log,
+        config.log_output_json,
+    );
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -335,7 +339,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 }
 
 #[cfg(feature = "tokio-console")]
-fn setup_tracing(color: config::Color, pretty_log: bool) {
+fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
     use tracing_subscriber::prelude::*;
 
     // EnvFilter isn't really a Filter, so this we need this ugly workaround for
@@ -347,7 +351,12 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
     let filter =
         tracing_subscriber::filter::dynamic_filter_fn(move |m, c| env_filter.enabled(m, c.clone()));
 
-    if pretty_log {
+    if json_log {
+        tracing_subscriber::registry()
+            .with(fmt_layer.json().flatten_event(true).with_filter(filter))
+            .with(console_subscriber::spawn())
+            .init();
+    } else if pretty_log {
         tracing_subscriber::registry()
             .with(fmt_layer.pretty().with_filter(filter))
             .with(console_subscriber::spawn())
@@ -361,7 +370,7 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
 }
 
 #[cfg(not(feature = "tokio-console"))]
-fn setup_tracing(color: config::Color, pretty_log: bool) {
+fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
     use time::macros::format_description;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
@@ -373,10 +382,14 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled());
 
-    if pretty_log {
-        subscriber.pretty().init();
+    if json_log {
+        subscriber.json().flatten_event(true).init();
     } else {
-        subscriber.compact().init();
+        if pretty_log {
+            subscriber.pretty().init();
+        } else {
+            subscriber.compact().init();
+        }
     }
 }
 
