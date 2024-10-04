@@ -7,6 +7,7 @@ use crate::method::subscribe_pending_transactions::SubscribePendingTransactions;
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V08)
         .register("starknet_syncing",                      crate::method::syncing)
+        .register("starknet_getTransactionStatus",         crate::method::get_transaction_status)
         .register("starknet_subscribeNewHeads",            SubscribeNewHeads)
         .register("starknet_subscribePendingTransactions", SubscribePendingTransactions)
         .register("starknet_subscribeEvents",              SubscribeEvents)

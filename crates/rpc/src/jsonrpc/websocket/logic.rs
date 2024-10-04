@@ -505,7 +505,7 @@ async fn transaction_status_subscription(
         match gateway.transaction(transaction_hash).await {
             Ok(tx_status) => {
                 num_consecutive_errors = 0;
-                let update = match (tx_status.finality_status, tx_status.execution_status) {
+                let update = match (tx_status.finality_status, &tx_status.execution_status) {
                     (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                     (FinalityStatus::NotReceived, _) => {
                         // "NOT_RECEIVED" status is never sent to the client.
@@ -1206,26 +1206,36 @@ mod tests {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                 ]
                 .into_iter()
@@ -1291,26 +1301,36 @@ mod tests {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
                         execution_status: ExecutionStatus::Reverted,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                 ]
                 .into_iter()
@@ -1376,26 +1396,36 @@ mod tests {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Received,
                         finality_status: FinalityStatus::Received,
                         execution_status: ExecutionStatus::Succeeded,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                     TransactionStatus {
                         status: Status::Rejected,
                         finality_status: FinalityStatus::NotReceived,
                         execution_status: ExecutionStatus::Rejected,
+                        transaction_failure_reason: None,
+                        revert_error: None,
                     },
                 ]
                 .into_iter()
