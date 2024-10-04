@@ -190,7 +190,6 @@ pub mod call {
 /// Please note that this does not have to be backwards compatible:
 /// since we only ever use it to deserialize replies from the Starknet
 /// feeder gateway.
-#[serde_as]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct TransactionStatus {
     pub status: Status,
