@@ -554,7 +554,7 @@ impl CheckpointAnalysis {
                     %checkpoint, %anchor,
                     "Ethereum checkpoint is older than the local anchor. This indicates a serious inconsistency in the Ethereum source used by this sync and the previous sync."
                 );
-                anyhow::bail!("Ethereum checkpoint hash did not match local anchor.");
+                anyhow::bail!("Ethereum checkpoint is older than the local anchor.");
             }
             CheckpointAnalysis::ExceedsLocalChain {
                 local,
@@ -595,8 +595,14 @@ impl CheckpointAnalysis {
 }
 
 struct LocalState {
+    /// The highest header in our local storage.
     latest_header: Option<(BlockNumber, BlockHash)>,
+    /// The highest L1 state update __in our local storage__.
+    ///
+    /// An L1 state update is Starknet's block number, hash and state root as
+    /// recorded on Ethereum.
     anchor: Option<EthereumStateUpdate>,
+    /// The highest L1 state update __fetched from Ethereum at the moment__.
     checkpoint: Option<(BlockNumber, BlockHash)>,
 }
 
