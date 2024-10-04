@@ -92,7 +92,13 @@ impl Sync {
     }
 
     /// Syncs using p2p until the given Ethereum checkpoint.
-    pub async fn run(&self, checkpoint: EthereumStateUpdate) -> Result<(), SyncError> {
+    ///
+    /// Returns the block number and its parent hash where tracking sync is
+    /// expected to continue.
+    pub async fn run(
+        &self,
+        checkpoint: EthereumStateUpdate,
+    ) -> Result<(BlockNumber, BlockHash), SyncError> {
         use pathfinder_ethereum::EthereumApi;
 
         let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
@@ -129,7 +135,15 @@ impl Sync {
         self.sync_class_definitions(head).await?;
         self.sync_events(head).await?;
 
-        Ok(())
+        let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
+            .await
+            .context("Querying local state after checkpoint sync")?;
+        let (next_block_number, last_block_hash) = local_state
+            .latest_header
+            .map(|(number, hash)| (number + 1, hash))
+            .unwrap_or((BlockNumber::GENESIS, BlockHash::ZERO));
+
+        Ok((next_block_number, last_block_hash))
     }
 
     /// Syncs all headers in reverse chronological order, from the anchor point

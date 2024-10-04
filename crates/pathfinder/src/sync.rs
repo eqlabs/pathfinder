@@ -81,7 +81,7 @@ impl Sync {
     async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await?;
 
-        loop {
+        Ok(loop {
             let result = checkpoint::Sync {
                 storage: self.storage.clone(),
                 p2p: self.p2p.clone(),
@@ -97,10 +97,13 @@ impl Sync {
             .await;
 
             // Handle the error
-            if let Err(err) = result {
-                self.handle_error(err).await;
-                continue;
-            }
+            let continue_from = match result {
+                Ok(continue_from) => continue_from,
+                Err(err) => {
+                    self.handle_error(err).await;
+                    continue;
+                }
+            };
 
             // Initial sync might take so long, that the latest checkpoint is actually far
             // ahead again. Repeat until we are within some margin of L1.
@@ -110,10 +113,8 @@ impl Sync {
                 continue;
             }
 
-            break;
-        }
-
-        Ok((checkpoint.block_number + 1, checkpoint.block_hash))
+            break continue_from;
+        })
     }
 
     /// Run the track sync until it completes successfully, requires the
