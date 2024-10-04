@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
         let result = verify_block_hash(bhd, chain, chain_id)?;
 
         match result {
-            VerifyResult::Match(_) => {}
+            VerifyResult::Match => {}
             VerifyResult::Mismatch => {
                 println!(
                     "Block hash mismatch at block number {block_number} hash {}",

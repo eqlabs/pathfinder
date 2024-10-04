@@ -461,6 +461,8 @@ impl StarknetVersion {
         let [a, b, c, d] = version.to_le_bytes();
         StarknetVersion(a, b, c, d)
     }
+
+    pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
 }
 
 impl FromStr for StarknetVersion {

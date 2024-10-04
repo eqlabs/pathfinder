@@ -16,6 +16,7 @@ use pathfinder_common::{
     PublicKey,
     ReceiptCommitment,
     SierraHash,
+    StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
@@ -28,7 +29,13 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
+use crate::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+    verify_block_hash,
+    BlockHeaderData,
+};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 
@@ -158,7 +165,7 @@ where
 
         let t_block = std::time::Instant::now();
 
-        let (block, commitments, state_update) = loop {
+        let (block, commitments, state_update, state_diff_commitment) = loop {
             match download_block(
                 next,
                 chain,
@@ -169,8 +176,8 @@ where
             )
             .await?
             {
-                DownloadBlock::Block(block, commitments, state_update) => {
-                    break (block, commitments, state_update)
+                DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
+                    break (block, commitments, state_update, state_diff_commitment)
                 }
                 DownloadBlock::AtHead => {
                     // Wait for the latest block to change.
@@ -308,14 +315,6 @@ where
             BlockValidationMode::AllowMismatch => (signature, state_update),
         };
 
-        // Always compute the state diff commitment from the state update.
-        let (computed_state_diff_commitment, state_update) =
-            tokio::task::spawn_blocking(move || {
-                let commitment = state_update.compute_state_diff_commitment();
-                (commitment, state_update)
-            })
-            .await?;
-
         head = Some((next, block.block_hash, state_update.state_commitment));
         blocks.push(next, block.block_hash, state_update.state_commitment);
 
@@ -330,7 +329,7 @@ where
                 (block, commitments),
                 state_update,
                 Box::new(signature),
-                Box::new(computed_state_diff_commitment),
+                Box::new(state_diff_commitment),
                 timings,
             ))
             .await
@@ -459,6 +458,7 @@ enum DownloadBlock {
         Box<Block>,
         (TransactionCommitment, EventCommitment, ReceiptCommitment),
         Box<StateUpdate>,
+        StateDiffCommitment,
     ),
     AtHead,
     Reorg,
@@ -481,13 +481,33 @@ async fn download_block(
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
+    use rayon::prelude::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.state_update_with_block(block_number).await;
-
-    let result = match result {
+    match sequencer.state_update_with_block(block_number).await {
         Ok((block, state_update)) => {
             let block = Box::new(block);
+
+            // Verify that transaction hashes match transaction contents.
+            // Block hash is verified using these transaction hashes so we have to make
+            // sure these are correct first.
+            let (send, recv) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
+                let result = block
+                    .transactions
+                    .par_iter()
+                    .enumerate()
+                    .try_for_each(|(i, txn)| {
+                        if !txn.verify_hash(chain_id) {
+                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
+                        };
+                        Ok(())
+                    })
+                    .map(|_| block);
+
+                let _ = send.send(result);
+            });
+            let block = recv.await.expect("Panic on rayon thread")?;
 
             // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
@@ -505,16 +525,22 @@ async fn download_block(
                     chain_id,
                 )
                 .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, state_update, verify_result))
+                Ok((block, state_update, state_diff_commitment, verify_result))
             });
-            let (block, state_update, verify_result) =
+            let (block, state_update, state_diff_commitment, verify_result) =
                 verify_hash.await.context("Verify block hash")??;
+
             match (block.status, verify_result, mode) {
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Match(commitments),
                     _,
-                ) => Ok(DownloadBlock::Block(block, commitments, state_update)),
+                ) => Ok(DownloadBlock::Block(
+                    block,
+                    commitments,
+                    state_update,
+                    state_diff_commitment,
+                )),
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Mismatch,
@@ -523,6 +549,7 @@ async fn download_block(
                     block,
                     Default::default(),
                     state_update,
+                    state_diff_commitment,
                 )),
                 (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
                     Err(anyhow!("Block hash mismatch"))
@@ -564,35 +591,6 @@ async fn download_block(
             }
         }
         Err(other) => Err(other).context("Download block from sequencer"),
-    };
-
-    match result {
-        Ok(DownloadBlock::Block(block, commitments, state_update)) => {
-            use rayon::prelude::*;
-
-            let (send, recv) = tokio::sync::oneshot::channel();
-
-            rayon::spawn(move || {
-                let result = block
-                    .transactions
-                    .par_iter()
-                    .enumerate()
-                    .try_for_each(|(i, txn)| {
-                        if !txn.verify_hash(chain_id) {
-                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
-                        };
-                        Ok(())
-                    })
-                    .map(|_| block);
-
-                let _ = send.send(result);
-            });
-
-            let block = recv.await.expect("Panic on rayon thread")?;
-
-            Ok(DownloadBlock::Block(block, commitments, state_update))
-        }
-        Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
     }
 }
 
@@ -1011,6 +1009,109 @@ fn verify_signature(
     }
 }
 
+enum VerifyResult {
+    Match((TransactionCommitment, EventCommitment, ReceiptCommitment)),
+    Mismatch,
+}
+
+/// Verify that the block hash matches the actual contents.
+fn verify_gateway_block_commitments_and_hash(
+    block: &Block,
+    state_diff_commitment: StateDiffCommitment,
+    state_diff_length: u64,
+    chain: Chain,
+    chain_id: ChainId,
+) -> anyhow::Result<VerifyResult> {
+    let mut bhd =
+        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+
+    let computed_transaction_commitment =
+        calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
+
+    // Older blocks on mainnet don't carry a precalculated transaction commitment.
+    if block.transaction_commitment == TransactionCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != bhd.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    let receipts = block
+        .transaction_receipts
+        .iter()
+        .map(|(r, _)| r.clone())
+        .collect::<Vec<_>>();
+    let computed_receipt_commitment = calculate_receipt_commitment(receipts.as_slice())?;
+
+    // Older blocks on mainnet don't carry a precalculated receipt commitment.
+    if let Some(receipt_commitment) = block.receipt_commitment {
+        if computed_receipt_commitment != receipt_commitment {
+            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
+            return Ok(VerifyResult::Mismatch);
+        }
+    } else {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.receipt_commitment = computed_receipt_commitment;
+    }
+
+    let events_with_tx_hashes = block
+        .transaction_receipts
+        .iter()
+        .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
+        .collect::<Vec<_>>();
+    let event_commitment =
+        calculate_event_commitment(&events_with_tx_hashes, block.starknet_version)?;
+
+    // Older blocks on mainnet don't carry a precalculated event
+    // commitment.
+    if block.event_commitment == EventCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.event_commitment = event_commitment;
+    } else if event_commitment != block.event_commitment {
+        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    Ok(match verify_block_hash(bhd, chain, chain_id)? {
+        crate::state::block_hash::VerifyResult::Match => {
+            // For pre-0.13.2 blocks we actually have to re-compute some commitments: after
+            // we've verified that the block hash is correct we no longer need
+            // the legacy commitments. The P2P protocol requires that all
+            // commitments in block headers are the 0.13.2 variants for legacy
+            // blocks.
+            let (transaction_commitment, event_commitment, receipt_commitment) = if block
+                .starknet_version
+                < StarknetVersion::V_0_13_2
+            {
+                let transaction_commitment = calculate_transaction_commitment(
+                    &block.transactions,
+                    StarknetVersion::V_0_13_2,
+                )?;
+                let event_commitment =
+                    calculate_event_commitment(&events_with_tx_hashes, StarknetVersion::V_0_13_2)?;
+                (
+                    transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            } else {
+                (
+                    computed_transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            };
+
+            VerifyResult::Match((transaction_commitment, event_commitment, receipt_commitment))
+        }
+        crate::state::block_hash::VerifyResult::Mismatch => VerifyResult::Mismatch,
+    })
+}
+
 async fn reorg(
     head: &(BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
@@ -1045,7 +1146,7 @@ async fn reorg(
         .await
         .with_context(|| format!("Download block {previous_block_number} from sequencer"))?
         {
-            DownloadBlock::Block(block, _, _) if block.block_hash == previous.0 => {
+            DownloadBlock::Block(block, _, _, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}

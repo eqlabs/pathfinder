@@ -57,6 +57,7 @@ pub struct Sync<L, P> {
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
+    pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
 impl<L, P> Sync<L, P> {
@@ -88,7 +89,12 @@ impl<L, P> Sync<L, P> {
         .spawn()
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
         .pipe(
-            headers::VerifyHashAndSignature::new(self.chain, self.chain_id, self.public_key),
+            headers::VerifyHashAndSignature::new(
+                self.chain,
+                self.chain_id,
+                self.public_key,
+                self.block_hash_db,
+            ),
             100,
         );
 
@@ -886,6 +892,7 @@ mod tests {
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::default(),
+            block_hash_db: None,
         };
 
         sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)

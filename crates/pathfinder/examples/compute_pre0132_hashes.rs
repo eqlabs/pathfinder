@@ -18,7 +18,7 @@ use pathfinder_lib::state::block_hash::{
     BlockHeaderData,
 };
 
-const VERSION_CUTOFF: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
+const VERSION_CUTOFF: StarknetVersion = StarknetVersion::V_0_13_2;
 
 /// Computes block hashes for all blocks under the 0.13.2 cutoff in 0.13.2 style
 /// and stores them in a CSV file "block_hashes.csv" with the format:
@@ -48,7 +48,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     // Open a file where we'll save the computed hashes
-    let mut file = std::fs::File::create("block_hashes.csv")?;
+    let mut csv_file = std::fs::File::create("block_hashes.csv")?;
+    let mut binary_file = std::fs::File::create("block_hashes.bin")?;
 
     // Iterate through all pre-0.13.2 blocks
     for block_number in 0..latest_block_number.get() {
@@ -63,6 +64,12 @@ fn main() -> anyhow::Result<()> {
             .block_header(block_id)
             .context("Fetching block header")?
             .context("Block header missing")?;
+
+        // As soon as we reach blocks in 0.13.2 we're done
+        if header.starknet_version == VERSION_CUTOFF {
+            println!("\rBlock {}. Done!", block_number);
+            break;
+        }
 
         // Load block tx's (to compute receipt commitment)
         let txn_data_for_block = tx
@@ -122,14 +129,15 @@ fn main() -> anyhow::Result<()> {
         let new_block_hash = compute_final_hash(&header_data).context("Computing block hash")?;
 
         // Write to the CSV file
-        writeln!(file, "{},{}", block_number, new_block_hash)?;
+        writeln!(csv_file, "{},{}", block_number, new_block_hash)?;
 
-        // As soon as we reach blocks in 0.13.2 we're done
-        if header.starknet_version == VERSION_CUTOFF {
-            println!("\rBlock {}. Done!", block_number);
-            break;
-        }
+        // Write to the binary file
+        binary_file
+            .write_all(new_block_hash.0.as_be_bytes())
+            .context("Writing block hash to binary file")?;
     }
+
+    println!("\nResults are in `block_hashes.csv` and `block_hashes.bin`");
 
     Ok(())
 }

@@ -7250,6 +7250,7 @@ dependencies = [
  "mockall",
  "p2p",
  "p2p_proto",
+ "pathfinder-block-hashes",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-crypto",
@@ -7288,6 +7289,14 @@ dependencies = [
  "warp",
  "zeroize",
  "zstd 0.13.2",
+]
+
+[[package]]
+name = "pathfinder-block-hashes"
+version = "0.14.4"
+dependencies = [
+ "pathfinder-common",
+ "pathfinder-crypto",
 ]
 
 [[package]]

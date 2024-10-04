@@ -222,7 +222,7 @@ pub mod init {
 
         for i in 0..n {
             let mut header: BlockHeader = Faker.fake_with_rng(rng);
-            header.starknet_version = StarknetVersion::new(0, 13, 2, 0);
+            header.starknet_version = StarknetVersion::V_0_13_2;
             header.number =
                 BlockNumber::new_or_panic(i.try_into().expect("u64 is at least as wide as usize"));
             header.storage_commitment = Default::default();
