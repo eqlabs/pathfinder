@@ -101,6 +101,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 pub async fn sync<GatewayClient>(
@@ -132,6 +133,7 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency: _,
+        fetch_casm_from_fgw,
     } = context;
 
     // Start polling head of chain
@@ -235,9 +237,14 @@ where
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        let downloaded_classes = download_new_classes(&state_update, &sequencer, storage.clone())
-            .await
-            .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        let downloaded_classes = download_new_classes(
+            &state_update,
+            &sequencer,
+            storage.clone(),
+            fetch_casm_from_fgw,
+        )
+        .await
+        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         emit_events_for_downloaded_classes(
             &tx_event,
             downloaded_classes,
@@ -379,6 +386,7 @@ pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     storage: Storage,
+    fetch_casm_from_fgw: bool,
 ) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
         .contract_updates
@@ -432,7 +440,7 @@ pub async fn download_new_classes(
 
     let futures = require_downloading.into_iter().map(|class_hash| {
         async move {
-            download_class(sequencer, class_hash)
+            download_class(sequencer, class_hash, fetch_casm_from_fgw)
                 .await
                 .with_context(|| format!("Downloading class {}", class_hash.0))
         }
@@ -606,6 +614,7 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency,
+        fetch_casm_from_fgw,
     } = context;
 
     let mut start = match head {
@@ -703,11 +712,12 @@ where
                     .context("Verifying block contents")?;
 
                 let t_declare = std::time::Instant::now();
-                let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
-                    .await
-                    .with_context(|| {
-                        format!("Handling newly declared classes for block {block_number:?}")
-                    })?;
+                let downloaded_classes =
+                    download_new_classes(&state_update, &sequencer, storage, fetch_casm_from_fgw)
+                        .await
+                        .with_context(|| {
+                            format!("Handling newly declared classes for block {block_number:?}")
+                        })?;
                 let t_declare = t_declare.elapsed();
 
                 let timings = Timings {
@@ -1229,6 +1239,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                fetch_casm_from_fgw: false,
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -1256,6 +1267,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+                fetch_casm_from_fgw: false,
             };
 
             tokio::spawn(async move {
@@ -1734,6 +1746,7 @@ mod tests {
                     storage: StorageBuilder::in_memory().unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                    fetch_casm_from_fgw: false,
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 

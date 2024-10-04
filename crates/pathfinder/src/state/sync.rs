@@ -92,6 +92,7 @@ pub struct SyncContext<G, E> {
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -121,6 +122,7 @@ where
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
             fetch_concurrency: value.fetch_concurrency,
+            fetch_casm_from_fgw: value.fetch_casm_from_fgw,
         }
     }
 }
@@ -201,6 +203,7 @@ where
         gossiper,
         sequencer_public_key: _,
         fetch_concurrency: _,
+        fetch_casm_from_fgw,
     } = context;
 
     let mut db_conn = storage
@@ -284,6 +287,7 @@ where
         storage.clone(),
         rx_latest.clone(),
         rx_current.clone(),
+        fetch_casm_from_fgw,
     ));
 
     /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
@@ -305,6 +309,7 @@ where
                     storage.clone(),
                     rx_latest.clone(),
                     rx_current.clone(),
+                    fetch_casm_from_fgw,
                 ));
             },
             _ = &mut latest_handle => {
