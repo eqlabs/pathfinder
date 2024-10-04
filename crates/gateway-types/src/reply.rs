@@ -187,17 +187,18 @@ pub mod call {
 
 /// Used to deserialize replies to Starknet transaction requests.
 ///
-/// We only care about the statuses so we ignore other fields.
 /// Please note that this does not have to be backwards compatible:
 /// since we only ever use it to deserialize replies from the Starknet
 /// feeder gateway.
 #[serde_as]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct TransactionStatus {
     pub status: Status,
     pub finality_status: transaction_status::FinalityStatus,
     #[serde(default)]
     pub execution_status: transaction_status::ExecutionStatus,
+    pub transaction_failure_reason: Option<transaction_status::TransactionFailureReason>,
+    pub revert_error: Option<String>,
 }
 
 /// Types used when deserializing get_transaction replies.
@@ -223,6 +224,12 @@ pub mod transaction_status {
         Succeeded,
         Reverted,
         Rejected,
+    }
+
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    pub struct TransactionFailureReason {
+        pub code: String,
+        pub error_message: String,
     }
 }
 
