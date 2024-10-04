@@ -280,24 +280,33 @@ pub async fn get_proof(
             .context("Querying contract's nonce")?
             .unwrap_or_default();
 
+        let root = tx
+            .contract_root_index(header.number, input.contract_address)
+            .context("Querying contract root index")?;
+
         let mut storage_proofs = Vec::new();
         for k in &input.keys {
-            let proof = ContractsStorageTree::get_proof(
-                &tx,
-                input.contract_address,
-                header.number,
-                k.view_bits(),
-            )
-            .context("Get proof from contract state tree")?
-            .ok_or_else(|| {
-                let e = anyhow!(
-                    "Storage proof missing for key {:?}, but should be present",
-                    k
-                );
-                tracing::warn!("{e}");
-                e
-            })?;
-            storage_proofs.push(ProofNodes(proof));
+            if let Some(root) = root {
+                let proof = ContractsStorageTree::get_proof(
+                    &tx,
+                    input.contract_address,
+                    header.number,
+                    k.view_bits(),
+                    root,
+                )
+                .context("Get proof from contract state tree")?
+                .ok_or_else(|| {
+                    let e = anyhow!(
+                        "Storage proof missing for key {:?}, but should be present",
+                        k
+                    );
+                    tracing::warn!("{e}");
+                    e
+                })?;
+                storage_proofs.push(ProofNodes(proof));
+            } else {
+                storage_proofs.push(ProofNodes(vec![]));
+            }
         }
 
         let contract_data = ContractData {
