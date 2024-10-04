@@ -3685,7 +3685,7 @@
     },
     "CONTRACT_EXECUTION_ERROR": {
         "description": "structured error that can later be processed by wallets or sdks",
-        "titel": "contract execution error",
+        "title": "contract execution error",
         "oneOf": [
           {
             "type": "object",
