@@ -178,7 +178,8 @@ Examples:
     debug: (),
 
     #[arg(
-        long = "sync.verify_tree_node_data",
+        long = "sync.verify-tree-node-data",
+        alias = "sync.verify_tree_node_data",
         long_help = r"When enabled, state tree node hashes are verified when loaded from disk.
 
 This can be used to identify tree node data corruption which is useful when debugging a state commitment mismatch.
