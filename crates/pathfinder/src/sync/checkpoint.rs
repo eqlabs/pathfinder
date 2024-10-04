@@ -535,7 +535,7 @@ impl CheckpointAnalysis {
                     %checkpoint, %anchor,
                     "Ethereum checkpoint is older than the local anchor. This indicates a serious inconsistency in the Ethereum source used by this sync and the previous sync."
                 );
-                anyhow::bail!("Ethereum checkpoint hash did not match local anchor.");
+                anyhow::bail!("Ethereum checkpoint is older than the local anchor.");
             }
             CheckpointAnalysis::ExceedsLocalChain {
                 local,
