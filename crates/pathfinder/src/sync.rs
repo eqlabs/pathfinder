@@ -24,6 +24,8 @@ use stream::ProcessStage;
 use tokio::sync::watch::{self, Receiver};
 use tokio_stream::wrappers::WatchStream;
 
+use crate::state::RESET_DELAY_ON_FAILURE;
+
 mod checkpoint;
 mod class_definitions;
 mod error;
@@ -52,7 +54,7 @@ pub struct Sync {
 
 impl Sync {
     pub async fn run(self) -> anyhow::Result<()> {
-        let (next, parent_hash) = self.checkpoint_sync().await?;
+        let (next, parent_hash) = self.checkpoint_sync().await;
 
         // TODO: depending on how this is implemented, we might want to loop around it.
         self.track_sync(next, parent_hash).await
@@ -63,25 +65,37 @@ impl Sync {
         tracing::debug!(?err, "Log and punish as appropriate");
     }
 
-    async fn get_checkpoint(&self) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
+    /// Retry forever until a valid L1 checkpoint is retrieved
+    ///
+    /// ### Important
+    ///
+    /// We assume that the L1 endpoint is configured correctly and any L1 API
+    /// errors are transient. We cannot proceed without a checkpoint, so we
+    /// retry until we get one.
+    async fn get_checkpoint(&self) -> pathfinder_ethereum::EthereumStateUpdate {
         use pathfinder_ethereum::EthereumApi;
-        match &self.l1_checkpoint_override {
-            Some(checkpoint) => Ok(*checkpoint),
-            None => self
-                .eth_client
-                .get_starknet_state(&self.eth_address)
-                .await
-                .context("Fetching latest L1 checkpoint"),
+        if let Some(forced) = &self.l1_checkpoint_override {
+            return *forced;
+        }
+
+        loop {
+            match self.eth_client.get_starknet_state(&self.eth_address).await {
+                Ok(latest) => return latest,
+                Err(error) => {
+                    tracing::warn!(%error, "Failed to get L1 checkpoint, retrying");
+                    tokio::time::sleep(RESET_DELAY_ON_FAILURE);
+                }
+            }
         }
     }
 
     /// Run checkpoint sync until it completes successfully, and we are within
     /// some margin of the latest L1 block. Returns the next block number to
     /// sync and its parent hash.
-    async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
-        let mut checkpoint = self.get_checkpoint().await?;
+    async fn checkpoint_sync(&self) -> (BlockNumber, BlockHash) {
+        let mut checkpoint = self.get_checkpoint().await;
 
-        Ok(loop {
+        loop {
             let result = checkpoint::Sync {
                 storage: self.storage.clone(),
                 p2p: self.p2p.clone(),
@@ -106,16 +120,16 @@ impl Sync {
                 }
             };
 
-            // Initial sync might take so long, that the latest checkpoint is actually far
+            // Initial sync might take so long that the latest checkpoint is actually far
             // ahead again. Repeat until we are within some margin of L1.
-            let latest_checkpoint = self.get_checkpoint().await?;
+            let latest_checkpoint = self.get_checkpoint().await;
             if checkpoint.block_number + CHECKPOINT_MARGIN < latest_checkpoint.block_number {
                 checkpoint = latest_checkpoint;
                 continue;
             }
 
             break continue_from;
-        })
+        }
     }
 
     /// Run the track sync until it completes successfully, requires the
