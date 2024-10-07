@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::async_trait;
+use pathfinder_common::receipt::ExecutionStatus;
 use pathfinder_common::{BlockId, BlockNumber, TransactionHash};
 use reply::transaction_status as status;
 use starknet_gateway_client::GatewayApi;
@@ -40,18 +41,12 @@ pub enum Notification {
     Reorg(Arc<Reorg>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalityStatus {
     Received,
     AcceptedOnL2,
     AcceptedOnL1,
-    Rejected,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecutionStatus {
-    Succeeded,
-    Reverted,
+    Rejected { reason: Option<String> },
 }
 
 impl crate::dto::serialize::SerializeForVersion for Notification {
@@ -66,8 +61,8 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
                 serializer.serialize_field(
                     "status",
                     &TransactionStatus {
-                        finality_status: *finality_status,
-                        execution_status: *execution_status,
+                        finality_status,
+                        execution_status,
                     },
                 )?;
                 serializer.end()
@@ -75,12 +70,12 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
             Notification::Reorg(reorg) => reorg.serialize(serializer),
         };
 
-        struct TransactionStatus {
-            finality_status: FinalityStatus,
-            execution_status: Option<ExecutionStatus>,
+        struct TransactionStatus<'a> {
+            finality_status: &'a FinalityStatus,
+            execution_status: &'a Option<ExecutionStatus>,
         }
 
-        impl crate::dto::serialize::SerializeForVersion for TransactionStatus {
+        impl crate::dto::serialize::SerializeForVersion for TransactionStatus<'_> {
             fn serialize(
                 &self,
                 serializer: crate::dto::serialize::Serializer,
@@ -92,7 +87,7 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
                         FinalityStatus::Received => "RECEIVED",
                         FinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
                         FinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
-                        FinalityStatus::Rejected => "REJECTED",
+                        FinalityStatus::Rejected { .. } => "REJECTED",
                     },
                 )?;
                 if let Some(execution_status) = self.execution_status {
@@ -100,9 +95,21 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
                         "execution_status",
                         &match execution_status {
                             ExecutionStatus::Succeeded => "SUCCEEDED",
-                            ExecutionStatus::Reverted => "REVERTED",
+                            ExecutionStatus::Reverted { .. } => "REVERTED",
                         },
                     )?;
+                }
+                match (self.finality_status, self.execution_status) {
+                    (
+                        FinalityStatus::Rejected {
+                            reason: Some(reason),
+                        },
+                        _,
+                    )
+                    | (_, Some(ExecutionStatus::Reverted { reason })) => {
+                        serializer.serialize_field("failure_reason", reason)?;
+                    }
+                    _ => {}
                 }
                 serializer.end()
             }
@@ -174,14 +181,13 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                             }
                         }
                     }
-                    let execution_status = if receipt.is_reverted() {
-                        Some(ExecutionStatus::Reverted)
-                    } else {
-                        Some(ExecutionStatus::Succeeded)
-                    };
                     if first_block <= block_number {
                         if sender
-                            .send(block_number, FinalityStatus::AcceptedOnL2, execution_status)
+                            .send(
+                                block_number,
+                                FinalityStatus::AcceptedOnL2,
+                                Some(receipt.execution_status.clone()),
+                            )
                             .await
                             .is_err()
                         {
@@ -195,7 +201,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 .send(
                                     l1_state.block_number,
                                     FinalityStatus::AcceptedOnL1,
-                                    execution_status,
+                                    Some(receipt.execution_status.clone()),
                                 )
                                 .await
                                 .is_err()
@@ -238,7 +244,9 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 if status.execution_status == status::ExecutionStatus::Rejected {
                                     // Transaction has been rejected.
                                     sender
-                                        .send(BlockNumber::GENESIS, FinalityStatus::Rejected, None)
+                                        .send(BlockNumber::GENESIS, FinalityStatus::Rejected {
+                                            reason: status.transaction_failure_reason.map(|reason| reason.error_message)
+                                        }, None)
                                         .await
                                         .ok();
                                     // No more updates needed. Even in case of reorg, the transaction will
@@ -306,11 +314,6 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                     receipt.transaction_hash == tx_hash
                                 });
                                 if let Some((receipt, _)) = receipt {
-                                    let execution_status = if receipt.is_reverted() {
-                                        Some(ExecutionStatus::Reverted)
-                                    } else {
-                                        Some(ExecutionStatus::Succeeded)
-                                    };
                                     // Send both received and accepted updates.
                                     if sender
                                         .send(l2_block.block_number, FinalityStatus::Received, None)
@@ -321,7 +324,11 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         break;
                                     }
                                     if sender
-                                        .send(l2_block.block_number, FinalityStatus::AcceptedOnL2, execution_status)
+                                        .send(
+                                            l2_block.block_number,
+                                            FinalityStatus::AcceptedOnL2,
+                                            Some(receipt.execution_status.clone())
+                                        )
                                         .await
                                         .is_err()
                                     {
@@ -345,7 +352,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                             .send(
                                                 l1_state.block_number,
                                                 FinalityStatus::AcceptedOnL1,
-                                                sender.last_execution_status,
+                                                sender.last_execution_status.clone(),
                                             )
                                             .await
                                             .is_err()
@@ -387,14 +394,14 @@ impl Sender<'_> {
         finality_status: FinalityStatus,
         execution_status: Option<ExecutionStatus>,
     ) -> Result<(), mpsc::error::SendError<()>> {
-        if let Some(last_finality_status) = self.last_finality_status {
-            if finality_status <= last_finality_status {
+        if let Some(last_finality_status) = &self.last_finality_status {
+            if finality_status.as_num() <= last_finality_status.as_num() {
                 // Transaction status has not progressed.
                 return Ok(());
             }
         }
-        self.last_finality_status = Some(finality_status);
-        self.last_execution_status = execution_status;
+        self.last_finality_status = Some(finality_status.clone());
+        self.last_execution_status = execution_status.clone();
         self.last_block_number = block_number;
         self.tx
             .send(SubscriptionMessage {
@@ -409,5 +416,16 @@ impl Sender<'_> {
             .await
             .map_err(|_| mpsc::error::SendError(()))?;
         Ok(())
+    }
+}
+
+impl FinalityStatus {
+    pub fn as_num(&self) -> u8 {
+        match self {
+            FinalityStatus::Received => 0,
+            FinalityStatus::AcceptedOnL2 => 1,
+            FinalityStatus::AcceptedOnL1 => 2,
+            FinalityStatus::Rejected { .. } => 3,
+        }
     }
 }
