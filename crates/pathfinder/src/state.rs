@@ -10,4 +10,5 @@ pub use sync::{
     Gossiper,
     StarknetStateUpdate,
     SyncContext,
+    RESET_DELAY_ON_FAILURE,
 };
