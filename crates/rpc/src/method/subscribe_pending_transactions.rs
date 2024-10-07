@@ -2,11 +2,11 @@ use std::collections::HashSet;
 
 use axum::async_trait;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockId, BlockNumber, ContractAddress, TransactionHash};
+use pathfinder_common::{BlockNumber, ContractAddress, TransactionHash};
 use tokio::sync::mpsc;
 
 use crate::context::RpcContext;
-use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 
 pub struct SubscribePendingTransactions;
 
@@ -63,26 +63,11 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
     type Params = Option<Params>;
     type Notification = Notification;
 
-    fn starting_block(_params: &Self::Params) -> BlockId {
-        // Catch-up is not supported.
-        BlockId::Latest
-    }
-
-    async fn catch_up(
-        _state: &RpcContext,
-        _params: &Self::Params,
-        _from: BlockNumber,
-        _to: BlockNumber,
-    ) -> Result<CatchUp<Self::Notification>, RpcError> {
-        // Catch-up is not supported.
-        Ok(Default::default())
-    }
-
     async fn subscribe(
         state: RpcContext,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
-    ) {
+    ) -> Result<(), RpcError> {
         let params = params.unwrap_or_default();
         let mut pending_data = state.pending_data.0.clone();
         // Last block sent to the subscriber. Initial value doesn't really matter.
@@ -138,12 +123,12 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                     .is_err()
                 {
                     // Subscription has been closed.
-                    return;
+                    return Ok(());
                 }
             }
             if pending_data.changed().await.is_err() {
                 tracing::debug!("Pending data channel closed, stopping subscription");
-                break;
+                return Ok(());
             }
         }
     }
