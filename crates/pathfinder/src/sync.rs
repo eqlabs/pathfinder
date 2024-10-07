@@ -1,12 +1,14 @@
 #![allow(dead_code, unused)]
 
 use core::panic;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use error::SyncError2;
+use error::{SyncError, SyncError2};
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::PeerData;
 use pathfinder_common::{
     block_hash,
     BlockHash,
@@ -54,13 +56,13 @@ pub struct Sync {
 
 impl Sync {
     pub async fn run(self) -> anyhow::Result<()> {
-        let (next, parent_hash) = self.checkpoint_sync().await;
+        let (next, parent_hash) = self.checkpoint_sync().await?;
 
         // TODO: depending on how this is implemented, we might want to loop around it.
         self.track_sync(next, parent_hash).await
     }
 
-    async fn handle_error(&self, err: error::SyncError) {
+    async fn handle_recoverable_error(&self, err: error::SyncError) {
         // TODO
         tracing::debug!(?err, "Log and punish as appropriate");
     }
@@ -92,7 +94,13 @@ impl Sync {
     /// Run checkpoint sync until it completes successfully, and we are within
     /// some margin of the latest L1 block. Returns the next block number to
     /// sync and its parent hash.
-    async fn checkpoint_sync(&self) -> (BlockNumber, BlockHash) {
+    ///
+    /// ### Important
+    ///
+    /// Sync is restarted on recoverable errors and only fatal errors (e.g.:
+    /// database failure, runtime failure, etc.) cause this function to exit
+    /// with an error.
+    async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await;
 
         loop {
@@ -114,8 +122,9 @@ impl Sync {
             // Handle the error
             let continue_from = match result {
                 Ok(continue_from) => continue_from,
+                Err(SyncError::Other(err)) => return Err(err),
                 Err(err) => {
-                    self.handle_error(err).await;
+                    self.handle_recoverable_error(err).await;
                     continue;
                 }
             };
@@ -128,29 +137,58 @@ impl Sync {
                 continue;
             }
 
-            break continue_from;
+            break Ok(continue_from);
         }
     }
 
-    /// Run the track sync until it completes successfully, requires the
-    /// number and parent hash of the first block to sync
-    async fn track_sync(&self, next: BlockNumber, parent_hash: BlockHash) -> anyhow::Result<()> {
-        let result = track::Sync {
-            latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
-            p2p: self.p2p.clone(),
-            storage: self.storage.clone(),
-            chain: self.chain,
-            chain_id: self.chain_id,
-            public_key: self.public_key,
-            block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
-            verify_tree_hashes: self.verify_tree_hashes,
+    /// Run the track sync forever, requires the number and parent hash of the
+    /// first block to sync.
+    ///
+    /// ### Important
+    ///
+    /// Sync is restarted on recoverable errors and only fatal errors (e.g.:
+    /// database failure, runtime failure, etc.) cause this function to exit
+    /// with an error.
+    async fn track_sync(
+        &self,
+        mut next: BlockNumber,
+        mut parent_hash: BlockHash,
+    ) -> anyhow::Result<()> {
+        loop {
+            let mut result = track::Sync {
+                latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
+                p2p: self.p2p.clone(),
+                storage: self.storage.clone(),
+                chain: self.chain,
+                chain_id: self.chain_id,
+                public_key: self.public_key,
+                block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
+                verify_tree_hashes: self.verify_tree_hashes,
+            }
+            .run(next, parent_hash, self.fgw_client.clone())
+            .await;
+
+            match &mut result {
+                Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
+                Err(PeerData {
+                    data: SyncError2::Other(fatal),
+                    ..
+                }) => {
+                    let error = if let Some(e) = Arc::get_mut(fatal) {
+                        let mut taken = anyhow::Error::msg("");
+                        std::mem::swap(e, &mut taken);
+                        taken
+                    } else {
+                        anyhow::Error::msg(fatal.root_cause().to_string())
+                    };
+                    tracing::error!(%error, "Stopping track sync");
+                    return Err(error);
+                }
+                Err(PeerData { data: error, .. }) => {
+                    tracing::debug!(%error, "Restarting track sync")
+                }
+            }
         }
-        .run(next, parent_hash, self.fgw_client.clone())
-        .await;
-
-        tracing::info!("Track sync completed: {result:#?}");
-
-        Ok(())
     }
 }
 
