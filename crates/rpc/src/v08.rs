@@ -12,4 +12,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_subscribePendingTransactions", SubscribePendingTransactions)
         .register("starknet_subscribeEvents",              SubscribeEvents)
         .register("starknet_specVersion",                  || "0.8.0-rc0")
+
+        .register("pathfinder_getProof",                   crate::pathfinder::methods::get_proof)
 }

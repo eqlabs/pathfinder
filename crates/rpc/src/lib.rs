@@ -869,6 +869,43 @@ mod tests {
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
+    #[case::v0_8_api  ("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[
+        "starknet_getBlockWithTxHashes",
+        "starknet_getBlockWithTxs",
+        "starknet_getBlockWithReceipts",
+        "starknet_getStateUpdate",
+        "starknet_getStorageAt",
+        "starknet_getMessagesStatus",
+        "starknet_getTransactionByHash",
+        "starknet_getTransactionByBlockIdAndIndex",
+        "starknet_getTransactionReceipt",
+        "starknet_getClass",
+        "starknet_getClassHashAt",
+        "starknet_getClassAt",
+        "starknet_getBlockTransactionCount",
+        "starknet_call",
+        "starknet_estimateFee",
+        "starknet_estimateMessageFee",
+        "starknet_blockNumber",
+        "starknet_blockHashAndNumber",
+        "starknet_chainId",
+        "starknet_getEvents",
+        "starknet_getNonce",
+        "starknet_getStorageProof",
+    ])]
+    #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[
+        "starknet_traceTransaction",
+        "starknet_simulateTransactions",
+        "starknet_traceBlockTransactions"
+    ])]
+    #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[
+        "starknet_addInvokeTransaction",
+        "starknet_addDeclareTransaction",
+        "starknet_addDeployAccountTransaction"
+    ])]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::v0_8_pathfinder("/rpc/v0_8", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
+
     #[case::v0_7_api  ("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[])]
     #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[])]
     #[case::v0_7_write("/rpc/v0_7", "v07/starknet_write_api.json", &[])]
