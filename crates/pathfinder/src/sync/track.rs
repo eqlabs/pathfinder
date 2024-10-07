@@ -33,6 +33,7 @@ use pathfinder_common::{
     SierraHash,
     SignedBlockHeader,
     StarknetVersion,
+    StateCommitment,
     StateDiffCommitment,
     StateUpdate,
     StorageCommitment,
@@ -45,6 +46,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
+use crate::state::{update_starknet_state, StarknetStateUpdate};
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -58,6 +60,7 @@ pub struct Sync<L, P> {
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
+    pub verify_tree_hashes: bool,
 }
 
 impl<L, P> Sync<L, P> {
@@ -167,7 +170,14 @@ impl<L, P> Sync<L, P> {
             classes,
         }
         .spawn()
-        .pipe(StoreBlock::new(storage_connection), 10)
+        .pipe(
+            StoreBlock::new(
+                storage_connection,
+                self.storage.clone(),
+                self.verify_tree_hashes,
+            ),
+            10,
+        )
         .into_stream()
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
@@ -721,11 +731,24 @@ struct BlockData {
 
 struct StoreBlock {
     connection: pathfinder_storage::Connection,
+    // We need this so that we can create extra read-only transactions for parallel contract state
+    // updates
+    storage: Storage,
+    // Verify trie node hashes when loading tries from DB.
+    verify_tree_hashes: bool,
 }
 
 impl StoreBlock {
-    pub fn new(connection: pathfinder_storage::Connection) -> Self {
-        Self { connection }
+    pub fn new(
+        connection: pathfinder_storage::Connection,
+        storage: pathfinder_storage::Storage,
+        verify_tree_hashes: bool,
+    ) -> Self {
+        Self {
+            connection,
+            storage,
+            verify_tree_hashes,
+        }
     }
 }
 
@@ -760,10 +783,12 @@ impl ProcessStage for StoreBlock {
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
-            class_commitment: ClassCommitment::ZERO, // TODO update class tries
+            // Class commitment is updated after the class tries are updated.
+            class_commitment: ClassCommitment::ZERO,
             event_commitment: header.event_commitment,
             state_commitment: header.state_commitment,
-            storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
+            // Storage commitment is updated after the storage tries are updated.
+            storage_commitment: StorageCommitment::ZERO,
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
@@ -788,6 +813,33 @@ impl ProcessStage for StoreBlock {
         db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
 
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db,
+            StarknetStateUpdate {
+                contract_updates: &state_diff.contract_updates,
+                system_contract_updates: &state_diff.system_contract_updates,
+                declared_sierra_classes: &state_diff.declared_sierra_classes,
+            },
+            self.verify_tree_hashes,
+            block_number,
+            self.storage.clone(),
+        )
+        .context("Updating Starknet state")?;
+
+        // Ensure that roots match.
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let expected_state_commitment = header.state_commitment;
+        if state_commitment != expected_state_commitment {
+            tracing::debug!(
+                    actual_storage_commitment=%storage_commitment,
+                    actual_class_commitment=%class_commitment,
+                    actual_state_commitment=%state_commitment,
+                    "State root mismatch");
+            return Err(SyncError2::StateRootMismatch);
+        }
+
+        db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
+            .context("Updating storage and class commitments")?;
         db.insert_state_update_data(block_number, &state_diff)
             .context("Inserting state update data")?;
 
@@ -893,6 +945,7 @@ mod tests {
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::default(),
             block_hash_db: None,
+            verify_tree_hashes: false,
         };
 
         sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
