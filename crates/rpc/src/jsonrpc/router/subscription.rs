@@ -75,28 +75,30 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     }
 
     /// The block to start streaming from. If the subscription endpoint does not
-    /// support catching up, this method should always return
-    /// [`BlockId::Latest`].
-    fn starting_block(params: &Self::Params) -> BlockId;
+    /// support catching up, leave this method unimplemented.
+    fn starting_block(_params: &Self::Params) -> BlockId {
+        BlockId::Latest
+    }
 
     /// Fetch historical data from the `from` block to the `to` block. The
     /// range is inclusive on both ends. If there is no historical data in the
     /// range, return an empty vec. If the subscription endpoint does not
-    /// support catching up, this method should always return
-    /// `Ok(CatchUp::default())`.
+    /// support catching up, leave this method unimplemented.
     async fn catch_up(
-        state: &RpcContext,
-        params: &Self::Params,
-        from: BlockNumber,
-        to: BlockNumber,
-    ) -> Result<CatchUp<Self::Notification>, RpcError>;
+        _state: &RpcContext,
+        _params: &Self::Params,
+        _from: BlockNumber,
+        _to: BlockNumber,
+    ) -> Result<CatchUp<Self::Notification>, RpcError> {
+        Ok(Default::default())
+    }
 
     /// Subscribe to active updates.
     async fn subscribe(
         state: RpcContext,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
-    );
+    ) -> Result<(), RpcError>;
 }
 
 pub struct CatchUp<T> {
@@ -242,10 +244,17 @@ where
 
             // Subscribe to new blocks. Receive the first subscription message.
             let (tx1, mut rx1) = mpsc::channel::<SubscriptionMessage<T::Notification>>(1024);
-            {
+            tokio::spawn({
                 let params = params.clone();
-                tokio::spawn(T::subscribe(router.context.clone(), params, tx1));
-            }
+                let context = router.context.clone();
+                let req_id = req_id.clone();
+                let tx = tx.clone();
+                async move {
+                    if let Err(e) = T::subscribe(context, params, tx1).await {
+                        tx.send_err(e, req_id).await.ok();
+                    }
+                }
+            });
             let first_msg = match rx1.recv().await {
                 Some(msg) => msg,
                 None => {

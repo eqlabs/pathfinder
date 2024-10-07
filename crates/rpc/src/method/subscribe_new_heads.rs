@@ -98,7 +98,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         state: RpcContext,
         _params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
-    ) {
+    ) -> Result<(), RpcError> {
         let mut headers = state.notifications.block_headers.subscribe();
         let mut reorgs = state.notifications.reorgs.subscribe();
         loop {
@@ -149,6 +149,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
                 }
             }
         }
+        Ok(())
     }
 }
 
