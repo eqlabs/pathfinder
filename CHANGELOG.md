@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--disable-version-update-check` CLI option has been added to disable the periodic checking for a new version.
 - Add `pathfinder_getClassProof` endpoint to retrieve the Merkle proof of any class hash in the class trie.
 - add `process_start_time_seconds` metric showing the unix timestamp when the process started.
+- `--log-output-json` CLI option has been added to output the Pathfinder log in line-delimited JSON.
 
 ### Changed
 

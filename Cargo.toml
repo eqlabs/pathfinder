@@ -137,7 +137,7 @@ tokio-tungstenite = "0.21"
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
 tracing = "0.1.37"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = { version = "0.3.18", features = ["json"] }
 unsigned-varint = "0.8.0"
 url = "2.4.1"
 vergen = { version = "8", default-features = false }
