@@ -9,6 +9,7 @@ use error::{SyncError, SyncError2};
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
+use pathfinder_common::error::AnyhowExt;
 use pathfinder_common::{
     block_hash,
     BlockHash,
@@ -171,18 +172,12 @@ impl Sync {
             match &mut result {
                 Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
                 Err(PeerData {
-                    data: SyncError2::Other(fatal),
+                    data: SyncError2::Other(error),
                     ..
                 }) => {
-                    let error = if let Some(e) = Arc::get_mut(fatal) {
-                        let mut taken = anyhow::Error::msg("");
-                        std::mem::swap(e, &mut taken);
-                        taken
-                    } else {
-                        anyhow::Error::msg(fatal.root_cause().to_string())
-                    };
                     tracing::error!(%error, "Stopping track sync");
-                    return Err(error);
+                    use pathfinder_common::error::AnyhowExt;
+                    return Err(error.take_or_deep_clone());
                 }
                 Err(PeerData { data: error, .. }) => {
                     tracing::debug!(%error, "Restarting track sync")

@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod class_definition;
 pub mod consts;
+pub mod error;
 pub mod event;
 pub mod hash;
 mod header;
