@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use pathfinder_common::Chain;
-use pathfinder_ethereum::{EthereumApi, EthereumEvent};
+use pathfinder_ethereum::EthereumApi;
 use primitive_types::H160;
 use tokio::sync::mpsc;
 
@@ -35,24 +35,14 @@ where
         poll_interval,
     } = context;
 
-    // Fetch the current Starknet state from Ethereum
-    let state_update = ethereum.get_starknet_state(&core_address).await?;
-    let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
+    let tx_event = std::sync::Arc::new(tx_event);
 
     // Subscribe to subsequent state updates and message logs
-    let tx_event = std::sync::Arc::new(tx_event);
     ethereum
-        .listen(&core_address, poll_interval, move |event| {
+        .sync_and_listen(&core_address, poll_interval, move |state_update| {
             let tx_event = tx_event.clone();
             async move {
-                match event {
-                    EthereumEvent::StateUpdate(state_update) => {
-                        let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
-                    }
-                    EthereumEvent::MessageLog(log) => {
-                        let _ = tx_event.send(SyncEvent::L1ToL2Message(log)).await;
-                    }
-                }
+                let _ = tx_event.send(SyncEvent::L1Update(state_update)).await;
             }
         })
         .await?;

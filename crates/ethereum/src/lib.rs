@@ -2,14 +2,27 @@ use std::collections::BTreeMap;
 use std::future::Future;
 use std::time::Duration;
 
-use alloy::eips::{BlockId, BlockNumberOrTag, RpcBlockHash};
-use alloy::primitives::{Address, B256};
+use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::primitives::{Address, TxHash};
 use alloy::providers::{Provider, ProviderBuilder, WsConnect};
-use alloy::rpc::types::Log;
+use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
 use futures::StreamExt;
-use pathfinder_common::{BlockHash, BlockNumber, EthereumChain, L1ToL2MessageLog, StateCommitment};
-use primitive_types::{H160, H256, U256};
+use pathfinder_common::transaction::L1HandlerTransaction;
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    CallParam,
+    ContractAddress,
+    EntryPoint,
+    EthereumChain,
+    L1BlockNumber,
+    L1TransactionHash,
+    StateCommitment,
+    TransactionNonce,
+};
+use pathfinder_crypto::Felt;
+use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};
 use starknet::StarknetCoreContract;
 use tokio::select;
@@ -36,13 +49,6 @@ pub mod core_addr {
         Decoder::Hex.decode(b"4737c0c1B4D5b1A687B42610DdabEE781152359c");
 }
 
-/// Events that can be emitted by the Ethereum client
-#[derive(Debug)]
-pub enum EthereumEvent {
-    StateUpdate(EthereumStateUpdate),
-    MessageLog(L1ToL2MessageLog),
-}
-
 /// State update from Ethereum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EthereumStateUpdate {
@@ -56,14 +62,19 @@ pub struct EthereumStateUpdate {
 pub trait EthereumApi {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate>;
     async fn get_chain(&self) -> anyhow::Result<EthereumChain>;
-    async fn listen<F, Fut>(
+    async fn get_l1_handler_txs(
+        &self,
+        address: &H160,
+        tx_hash: &L1TransactionHash,
+    ) -> anyhow::Result<Vec<L1HandlerTransaction>>;
+    async fn sync_and_listen<F, Fut>(
         &mut self,
         address: &H160,
         poll_interval: Duration,
         callback: F,
     ) -> anyhow::Result<()>
     where
-        F: Fn(EthereumEvent) -> Fut + Send + 'static,
+        F: Fn(EthereumStateUpdate) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static;
 }
 
@@ -71,7 +82,7 @@ pub trait EthereumApi {
 #[derive(Clone, Debug)]
 pub struct EthereumClient {
     url: Url,
-    pending_state_updates: BTreeMap<u64, EthereumStateUpdate>,
+    pending_state_updates: BTreeMap<L1BlockNumber, EthereumStateUpdate>,
 }
 
 impl EthereumClient {
@@ -91,20 +102,16 @@ impl EthereumClient {
         Self::new(url)
     }
 
-    /// Returns the hash of the last finalized block
-    async fn get_finalized_block_hash(&self) -> anyhow::Result<H256> {
+    /// Returns the block number of the last finalized block
+    async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().on_ws(ws).await?;
-
-        // Fetch the finalized block hash
+        // Fetch the finalized block number
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized, false)
             .await?
-            .map(|block| {
-                let block_hash: [u8; 32] = block.header.hash.into();
-                H256::from(block_hash)
-            })
+            .map(|block| L1BlockNumber::new_or_panic(block.header.number))
             .context("Failed to fetch finalized block hash")
     }
 }
@@ -114,29 +121,27 @@ impl EthereumApi for EthereumClient {
     /// Listens for Ethereum events and notifies the caller using the provided
     /// callback. State updates will only be emitted once they belong to a
     /// finalized block.
-    async fn listen<F, Fut>(
+    async fn sync_and_listen<F, Fut>(
         &mut self,
         address: &H160,
         poll_interval: Duration,
         callback: F,
     ) -> anyhow::Result<()>
     where
-        F: Fn(EthereumEvent) -> Fut + Send + 'static,
+        F: Fn(EthereumStateUpdate) -> Fut + Send + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
         let provider = ProviderBuilder::new().on_ws(ws).await?;
 
-        // Create the StarknetCoreContract instance
-        let address = Address::new((*address).into());
-        let core_contract = StarknetCoreContract::new(address, provider.clone());
+        // Fetch the current Starknet state from Ethereum
+        let state_update = self.get_starknet_state(address).await?;
+        let _ = callback(state_update).await;
 
-        // Listen for L1 to L2 message events
-        let mut logs = provider
-            .subscribe_logs(&core_contract.LogMessageToL2_filter().filter)
-            .await?
-            .into_stream();
+        // Create the StarknetCoreContract instance
+        let core_address = Address::new((*address).into());
+        let core_contract = StarknetCoreContract::new(core_address, provider.clone());
 
         // Listen for state update events
         let mut state_updates = provider
@@ -147,7 +152,7 @@ impl EthereumApi for EthereumClient {
         // Poll regularly for finalized block number
         let provider_clone = provider.clone();
         let (finalized_block_tx, mut finalized_block_rx) =
-            tokio::sync::mpsc::channel::<BlockNumber>(1);
+            tokio::sync::mpsc::channel::<L1BlockNumber>(1);
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
@@ -156,18 +161,20 @@ impl EthereumApi for EthereumClient {
                     .get_block_by_number(BlockNumberOrTag::Finalized, false)
                     .await
                 {
-                    let block_number = BlockNumber::new_or_panic(finalized_block.header.number);
+                    let block_number = L1BlockNumber::new_or_panic(finalized_block.header.number);
                     let _ = finalized_block_tx.send(block_number).await.unwrap();
                 }
             }
         });
 
-        // Add the finalized block stream to the select! macro
+        // Process incoming events
         loop {
             select! {
                 Some(state_update) = state_updates.next() => {
                     // Decode the state update
-                    let eth_block = state_update.block_number.expect("missing eth block number");
+                    let eth_block = L1BlockNumber::new_or_panic(
+                        state_update.block_number.expect("missing eth block number")
+                    );
                     let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
                     let block_number = get_block_number(state_update.inner.blockNumber);
                     // Add or remove to/from pending state updates accordingly
@@ -182,31 +189,88 @@ impl EthereumApi for EthereumClient {
                         self.pending_state_updates.remove(&eth_block);
                     }
                 }
-                Some(log) = logs.next() => {
-                    // Decode the message
-                    let log: Log<StarknetCoreContract::LogMessageToL2> = log.log_decode()?;
-                    // Create L1ToL2MessageHash from the log data
-                    let msg = L1ToL2MessageLog {
-                        message_hash: H256::from(log.inner.message_hash().to_be_bytes()),
-                        l1_tx_hash: log.transaction_hash.map(|hash| H256::from(hash.0)).unwrap_or_default(),
-                    };
-                    // Emit the message log
-                    callback(EthereumEvent::MessageLog(msg)).await;
-                }
                 Some(block_number) = finalized_block_rx.recv() => {
                     // Collect all state updates up to (and including) the finalized block
                     let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
-                        .range(..=block_number.get())
+                        .range(..=block_number)
                         .map(|(_, &update)| update)
                         .collect();
                     // Remove emitted updates from the map
-                    self.pending_state_updates.retain(|&k, _| k > block_number.get());
+                    self.pending_state_updates.retain(|&k, _| k > block_number);
                     // Emit the state updates
                     for state_update in pending_state_updates {
-                        callback(EthereumEvent::StateUpdate(state_update)).await;
+                        let _ = callback(state_update).await;
                     }
                 }
             }
+        }
+    }
+
+    async fn get_l1_handler_txs(
+        &self,
+        address: &H160,
+        tx_hash: &L1TransactionHash,
+    ) -> anyhow::Result<Vec<L1HandlerTransaction>> {
+        // Create a WebSocket connection
+        let ws = WsConnect::new(self.url.clone());
+        let provider = ProviderBuilder::new().on_ws(ws).await?;
+
+        let core_address = Address::new((*address).into());
+        let core_contract = StarknetCoreContract::new(core_address, provider.clone());
+        let filter = FilteredParams::new(Some(core_contract.LogMessageToL2_filter().filter));
+
+        let tx_hash = TxHash::from_slice(tx_hash.as_bytes());
+        if let Some(receipt) = provider.get_transaction_receipt(tx_hash).await? {
+            let logs: Vec<Log<StarknetCoreContract::LogMessageToL2>> = receipt
+                .inner
+                .logs()
+                .iter()
+                .filter(|log| {
+                    filter.filter_address(&log.address()) && filter.filter_topics(log.topics())
+                })
+                .filter_map(|log| {
+                    log.log_decode::<StarknetCoreContract::LogMessageToL2>()
+                        .ok()
+                })
+                .collect();
+
+            let mut l1_handler_txs = Vec::new();
+            for log in logs {
+                let nonce: [u8; 32] = log.inner.nonce.to_be_bytes();
+                let to_addr: [u8; 32] = log.inner.toAddress.to_be_bytes();
+                let from_addr: [u8; 20] = log.inner.fromAddress.0.into();
+                let selector: [u8; 32] = log.inner.selector.to_be_bytes();
+
+                let felt_nonce = Felt::from(nonce);
+                let felt_to_addr = Felt::from(to_addr);
+                let felt_from_addr = Felt::from_be_slice(&from_addr)?;
+                let felt_selector = Felt::from(selector);
+
+                let payload: Vec<CallParam> = log
+                    .inner
+                    .payload
+                    .iter()
+                    .map(|p| p.to_be_bytes::<32>())
+                    .map(Felt::from)
+                    .map(CallParam)
+                    .collect();
+
+                let mut call_data: Vec<CallParam> = vec![CallParam(felt_from_addr)];
+                call_data.extend(payload);
+
+                // Create the L1HandlerTransaction
+                let tx = L1HandlerTransaction {
+                    contract_address: ContractAddress(felt_to_addr),
+                    entry_point_selector: EntryPoint(felt_selector),
+                    nonce: TransactionNonce(felt_nonce),
+                    calldata: call_data,
+                };
+                l1_handler_txs.push(tx);
+            }
+
+            Ok(l1_handler_txs)
+        } else {
+            Err(anyhow::anyhow!("Transaction not found"))
         }
     }
 
@@ -221,9 +285,8 @@ impl EthereumApi for EthereumClient {
         let contract = StarknetCoreContract::new(address, provider);
 
         // Get the finalized block hash
-        let finalized_block_hash = self.get_finalized_block_hash().await?;
-        let block_hash = B256::from(finalized_block_hash.0);
-        let block_id = BlockId::Hash(RpcBlockHash::from_hash(block_hash, None));
+        let finalized_block_number = self.get_finalized_block_number().await?;
+        let block_id = BlockId::Number(BlockNumberOrTag::Number(finalized_block_number.get()));
 
         // Call the contract methods
         let state_root = contract.stateRoot().block(block_id).call().await?;
