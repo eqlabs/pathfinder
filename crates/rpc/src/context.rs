@@ -2,6 +2,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use pathfinder_common::ChainId;
+use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 
@@ -32,6 +33,7 @@ pub struct RpcContext {
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
     pub notifications: Notifications,
+    pub ethereum: EthereumClient,
     pub config: RpcConfig,
 }
 
@@ -45,6 +47,7 @@ impl RpcContext {
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<PendingData>,
         notifications: Notifications,
+        ethereum: EthereumClient,
         config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
@@ -58,6 +61,7 @@ impl RpcContext {
             sequencer,
             websocket: None,
             notifications,
+            ethereum,
             config,
         }
     }
@@ -109,6 +113,9 @@ impl RpcContext {
             custom_versioned_constants: None,
         };
 
+        let ethereum =
+            EthereumClient::new("wss://eth-sepolia.g.alchemy.com/v2/just-for-tests").unwrap();
+
         Self::new(
             storage.clone(),
             storage,
@@ -117,6 +124,7 @@ impl RpcContext {
             sequencer.disable_retry_for_tests(),
             rx,
             Notifications::default(),
+            ethereum,
             config,
         )
     }
