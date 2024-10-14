@@ -114,6 +114,7 @@ pub enum EstimateFeeError {
     TransactionExecutionError {
         transaction_index: usize,
         error: String,
+        error_stack: pathfinder_executor::ErrorStack,
     },
 }
 
@@ -130,9 +131,11 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateFeeError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -157,9 +160,11 @@ impl From<EstimateFeeError> for ApplicationError {
             EstimateFeeError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => ApplicationError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
             EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateFeeError::Custom(e) => ApplicationError::Custom(e),

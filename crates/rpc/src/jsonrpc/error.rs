@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use serde_json::{json, Value};
 
 use crate::dto::serialize;
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub enum RpcError {
@@ -53,7 +54,7 @@ impl RpcError {
         }
     }
 
-    pub fn data(&self) -> Option<Value> {
+    pub fn data(&self, version: RpcVersion) -> Option<Value> {
         match self {
             RpcError::WebsocketSubscriptionClosed {
                 subscription_id,
@@ -62,7 +63,7 @@ impl RpcError {
                 "id": subscription_id,
                 "reason": reason,
             })),
-            RpcError::ApplicationError(e) => e.data(),
+            RpcError::ApplicationError(e) => e.data(version),
             RpcError::InternalError(_) => None,
             RpcError::MethodNotFound => None,
             RpcError::ParseError(e) | RpcError::InvalidRequest(e) | RpcError::InvalidParams(e) => {
@@ -83,7 +84,7 @@ impl serialize::SerializeForVersion for RpcError {
         obj.serialize_field("code", &self.code())?;
         obj.serialize_field("message", &self.message())?;
 
-        if let Some(data) = self.data() {
+        if let Some(data) = self.data(serializer.version) {
             obj.serialize_field("data", &data)?;
         }
 

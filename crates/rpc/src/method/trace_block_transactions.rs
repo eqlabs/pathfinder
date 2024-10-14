@@ -560,6 +560,7 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
                 "Transaction execution failed at index {}: {}",
                 transaction_index,

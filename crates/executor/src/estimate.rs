@@ -37,10 +37,12 @@ pub fn estimate(
         match tx_info {
             Ok(tx_info) => {
                 if let Some(revert_error) = tx_info.revert_error {
-                    tracing::debug!(%revert_error, "Transaction reverted");
+                    let revert_string = revert_error.to_string();
+                    tracing::debug!(revert_error=%revert_string, "Transaction reverted");
                     return Err(TransactionExecutionError::ExecutionError {
                         transaction_index: transaction_idx,
-                        error: revert_error,
+                        error: revert_string,
+                        error_stack: revert_error.into(),
                     });
                 }
 

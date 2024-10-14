@@ -118,6 +118,7 @@ pub enum SimulateTransactionError {
     TransactionExecutionError {
         transaction_index: usize,
         error: String,
+        error_stack: pathfinder_executor::ErrorStack,
     },
 }
 
@@ -136,9 +137,11 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
             SimulateTransactionError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
         }
     }
@@ -151,9 +154,11 @@ impl From<TransactionExecutionError> for SimulateTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),

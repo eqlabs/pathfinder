@@ -56,6 +56,7 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack: Default::default(),
             },
         }
     }
@@ -68,6 +69,7 @@ impl From<TransactionExecutionError> for SimulateTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,

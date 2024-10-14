@@ -55,6 +55,7 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateFeeError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
@@ -85,6 +86,7 @@ impl From<EstimateFeeError> for ApplicationError {
             } => ApplicationError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack: Default::default(),
             },
             EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateFeeError::Custom(e) => ApplicationError::Custom(e),

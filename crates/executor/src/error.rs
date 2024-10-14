@@ -3,14 +3,17 @@ use blockifier::execution::errors::{
     EntryPointExecutionError as BlockifierEntryPointExecutionError,
     PreExecutionError,
 };
+use blockifier::execution::stack_trace::gen_transaction_execution_error_trace;
 use blockifier::state::errors::StateError;
 use blockifier::transaction::errors::TransactionExecutionError as BlockifierTransactionExecutionError;
+
+use crate::error_stack::ErrorStack;
 
 #[derive(Debug)]
 pub enum CallError {
     ContractNotFound,
     InvalidMessageSelector,
-    ContractError(anyhow::Error),
+    ContractError(anyhow::Error, ErrorStack),
     Internal(anyhow::Error),
     Custom(anyhow::Error),
 }
@@ -18,36 +21,58 @@ pub enum CallError {
 impl From<BlockifierTransactionExecutionError> for CallError {
     fn from(value: BlockifierTransactionExecutionError) -> Self {
         use BlockifierTransactionExecutionError::*;
+
+        let error_stack = gen_transaction_execution_error_trace(&value);
+
         match value {
             ContractConstructorExecutionFailed(
                 ConstructorEntryPointExecutionError::ExecutionError { error, .. },
-            )
-            | ExecutionError { error, .. }
-            | ValidateTransactionError { error, .. } => match error {
+            ) => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::EntryPointNotFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
                 ) => Self::ContractNotFound,
-                _ => Self::Custom(error.into()),
+                _ => Self::ContractError(error.into(), error_stack.into()),
             },
-            e => Self::Custom(e.into()),
+            ExecutionError { error, .. } => match error {
+                BlockifierEntryPointExecutionError::PreExecutionError(
+                    PreExecutionError::EntryPointNotFound(_),
+                ) => Self::InvalidMessageSelector,
+                BlockifierEntryPointExecutionError::PreExecutionError(
+                    PreExecutionError::UninitializedStorageAddress(_),
+                ) => Self::ContractNotFound,
+                _ => Self::ContractError(error.into(), error_stack.into()),
+            },
+            ValidateTransactionError { error, .. } => match error {
+                BlockifierEntryPointExecutionError::PreExecutionError(
+                    PreExecutionError::EntryPointNotFound(_),
+                ) => Self::InvalidMessageSelector,
+                BlockifierEntryPointExecutionError::PreExecutionError(
+                    PreExecutionError::UninitializedStorageAddress(_),
+                ) => Self::ContractNotFound,
+                _ => Self::ContractError(error.into(), error_stack.into()),
+            },
+            e => Self::ContractError(e.into(), error_stack.into()),
         }
     }
 }
 
-impl From<BlockifierEntryPointExecutionError> for CallError {
-    fn from(e: BlockifierEntryPointExecutionError) -> Self {
-        match e {
-            BlockifierEntryPointExecutionError::PreExecutionError(
-                PreExecutionError::EntryPointNotFound(_),
-            ) => Self::InvalidMessageSelector,
-            BlockifierEntryPointExecutionError::PreExecutionError(
-                PreExecutionError::UninitializedStorageAddress(_),
-            ) => Self::ContractNotFound,
-            _ => Self::ContractError(e.into()),
-        }
+impl CallError {
+    pub fn from_entry_point_execution_error(
+        error: BlockifierEntryPointExecutionError,
+        contract_address: &starknet_api::core::ContractAddress,
+        class_hash: &starknet_api::core::ClassHash,
+        entry_point: &starknet_api::core::EntryPointSelector,
+    ) -> Self {
+        let error = BlockifierTransactionExecutionError::ExecutionError {
+            error,
+            class_hash: *class_hash,
+            storage_address: *contract_address,
+            selector: *entry_point,
+        };
+        error.into()
     }
 }
 
@@ -77,6 +102,7 @@ pub enum TransactionExecutionError {
     ExecutionError {
         transaction_index: usize,
         error: String,
+        error_stack: ErrorStack,
     },
     Internal(anyhow::Error),
     Custom(anyhow::Error),
@@ -105,9 +131,12 @@ impl From<anyhow::Error> for TransactionExecutionError {
 
 impl TransactionExecutionError {
     pub fn new(transaction_index: usize, error: BlockifierTransactionExecutionError) -> Self {
+        let error_stack = gen_transaction_execution_error_trace(&error);
+
         Self::ExecutionError {
             transaction_index,
             error: error.to_string(),
+            error_stack: error_stack.into(),
         }
     }
 }
