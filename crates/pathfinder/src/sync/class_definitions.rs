@@ -237,6 +237,53 @@ impl ProcessStage for ComputeHash {
 }
 
 pub(super) async fn compute_hash(
+    peer_data: Vec<PeerData<ClassWithLayout>>,
+) -> Result<Vec<PeerData<Class>>, SyncError> {
+    use rayon::prelude::*;
+    let (tx, rx) = oneshot::channel();
+    rayon::spawn(move || {
+        let res = peer_data
+            .into_par_iter()
+            .map(|PeerData { peer, data }| {
+                let ClassWithLayout {
+                    block_number,
+                    definition,
+                    layout,
+                } = data;
+
+                let hash = match layout {
+                    GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
+                        c.abi.as_ref().get().as_bytes(),
+                        c.program.as_ref().get().as_bytes(),
+                        c.entry_points_by_type.external,
+                        c.entry_points_by_type.l1_handler,
+                        c.entry_points_by_type.constructor,
+                    ),
+                    GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
+                        c.abi.as_ref(),
+                        c.sierra_program,
+                        c.contract_class_version.as_ref(),
+                        c.entry_points_by_type,
+                    ),
+                }
+                .expect("todo fixme add error type");
+
+                Ok(PeerData::new(
+                    peer,
+                    Class {
+                        block_number,
+                        definition,
+                        hash,
+                    },
+                ))
+            })
+            .collect::<Result<Vec<PeerData<Class>>, SyncError>>();
+        tx.send(res);
+    });
+    rx.await.expect("Sender not to be dropped")
+}
+
+pub(super) async fn compute_hash0(
     peer_data: PeerData<ClassWithLayout>,
 ) -> Result<PeerData<Class>, SyncError> {
     let PeerData { peer, data } = peer_data;
@@ -334,8 +381,8 @@ impl ProcessStage for VerifyDeclaredAt {
 /// This function ingests two streams:
 /// - `expected_declarations` which is a stream of expected class declarations
 ///   at each block,
-/// - `classes` which is a stream of class definitions for each block as
-///   received from other peers,
+/// - `classes` which is a stream of chunked class definitions as received from
+///   other peers,
 ///
 /// producing a stream of class definitions that we are sure are declared at the
 /// expected blocks.
@@ -354,9 +401,11 @@ pub(super) fn verify_declared_at(
         'static,
         anyhow::Result<(BlockNumber, HashSet<ClassHash>)>,
     >,
-    mut classes: BoxStream<'static, Result<PeerData<Class>, SyncError>>,
+    mut classes: BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
     make_stream::from_future(move |tx| async move {
+        let mut dechunker = ClassDechunker::new();
+
         while let Some(expected) = expected_declarations.next().await {
             let (declared_at, mut declared) = match expected {
                 Ok(x) => x,
@@ -374,7 +423,7 @@ pub(super) fn verify_declared_at(
                     break;
                 }
 
-                let Some(maybe_class) = classes.next().await else {
+                let Some(maybe_class) = dechunker.next(&mut classes).await else {
                     // `classes` stream has terminated
                     return;
                 };
@@ -403,6 +452,31 @@ pub(super) fn verify_declared_at(
             }
         }
     })
+}
+
+struct ClassDechunker(VecDeque<PeerData<Class>>);
+
+impl ClassDechunker {
+    fn new() -> Self {
+        Self(Default::default())
+    }
+
+    /// Caller must guarantee: chunks in `classes` are never empty.
+    async fn next(
+        &mut self,
+        classes: &mut BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
+    ) -> Option<Result<PeerData<Class>, SyncError>> {
+        if self.0.is_empty() {
+            classes.next().await.map(|x| {
+                x.map(|chunk| {
+                    self.0.extend(chunk);
+                    self.0.pop_front().expect("Chunk not to be empty")
+                })
+            })
+        } else {
+            self.0.pop_front().map(Ok)
+        }
+    }
 }
 
 #[derive(Debug, Default)]

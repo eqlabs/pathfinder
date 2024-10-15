@@ -399,8 +399,9 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .map_err(|e| e.data.into())
         // .co() set concurrency limit = num cores
         .and_then(class_definitions::verify_layout)
-        // try_chunks(num cores)
-        .and_then(class_definitions::compute_hash /* TODO rayonize */)
+        .try_chunks(available_parallelism)
+        .map_err(|e| e.1)
+        .and_then(class_definitions::compute_hash)
         .boxed();
 
     class_definitions::verify_declared_at(expected_declarations.boxed(), a)
