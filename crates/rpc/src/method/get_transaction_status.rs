@@ -88,7 +88,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
     use starknet_gateway_client::GatewayApi;
     context
         .sequencer
-        .transaction(input.transaction_hash)
+        .transaction_status(input.transaction_hash)
         .await
         .context("Fetching transaction from gateway")
         .map_err(Error::Internal)
@@ -98,7 +98,9 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
                 FinalityStatus as GatewayFinalityStatus,
             };
 
-            match (tx.finality_status, tx.execution_status) {
+            let execution_status = tx.execution_status.unwrap_or_default();
+
+            match (tx.finality_status, execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => Err(Error::TxnHashNotFound),
                 (_, GatewayExecutionStatus::Rejected) => Ok(Output::Rejected {
                     error_message: tx

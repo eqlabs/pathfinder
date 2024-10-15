@@ -16,6 +16,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getNonce",                            crate::method::get_nonce)
         .register("starknet_getStateUpdate",                      crate::method::get_state_update)
         .register("starknet_getStorageAt",                        crate::method::get_storage_at)
+        .register("starknet_getStorageProof",                     crate::method::get_storage_proof)
         .register("starknet_syncing",                             crate::method::syncing)
         .register("starknet_getTransactionReceipt",               crate::method::get_transaction_receipt)
         .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
