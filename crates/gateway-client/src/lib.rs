@@ -615,7 +615,11 @@ mod tests {
             )]);
             let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
             assert_eq!(
-                client.transaction_status(INVALID_TX_HASH).await.unwrap().tx_status,
+                client
+                    .transaction_status(INVALID_TX_HASH)
+                    .await
+                    .unwrap()
+                    .tx_status,
                 Status::NotReceived,
             );
         }

@@ -103,14 +103,12 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
             match (tx.finality_status, execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => Err(Error::TxnHashNotFound),
                 (_, GatewayExecutionStatus::Rejected) => Ok(Output::Rejected {
-                    error_message: tx
-                        .transaction_failure_reason
-                        .map(|reason| reason.error_message),
+                    error_message: tx.tx_failure_reason.map(|reason| reason.error_message),
                 }),
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Reverted {
-                        reason: tx.revert_error,
+                        reason: tx.tx_revert_reason,
                     }))
                 }
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => {
@@ -118,7 +116,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
                 }
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => {
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
-                        reason: tx.revert_error,
+                        reason: tx.tx_revert_reason,
                     }))
                 }
                 (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => {
@@ -235,6 +233,18 @@ mod tests {
         let status = get_transaction_status(context, input).await.unwrap();
 
         assert_eq!(status, Output::AcceptedOnL2(TxnExecutionStatus::Succeeded));
+    }
+
+    #[tokio::test]
+    async fn not_received() {
+        let input = Input {
+            // Transaction hash known to have `NOT_RECEIVED` status.
+            transaction_hash: transaction_hash!("0x6e6f6e2d6578697374656e74"),
+        };
+        let context = RpcContext::for_tests();
+        let status = get_transaction_status(context, input).await;
+
+        assert_matches!(status, Err(Error::TxnHashNotFound));
     }
 
     #[tokio::test]
