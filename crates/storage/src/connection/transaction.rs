@@ -377,24 +377,6 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
-    pub fn transaction_block_number(
-        &self,
-        hash: TransactionHash,
-    ) -> anyhow::Result<Option<BlockNumber>> {
-        self.inner()
-            .query_row(
-                r"
-                SELECT block_headers.number FROM transaction_hashes
-                JOIN block_headers ON transaction_hashes.block_number = block_headers.number
-                WHERE transaction_hashes.hash = ?
-                ",
-                params![&hash],
-                |row| row.get_block_number(0),
-            )
-            .optional()
-            .map_err(|e| e.into())
-    }
-
     fn query_transactions_by_block(
         &self,
         block_number: BlockNumber,
