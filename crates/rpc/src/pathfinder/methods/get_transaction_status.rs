@@ -77,10 +77,10 @@ pub async fn get_transaction_status(
     use starknet_gateway_client::GatewayApi;
     context
         .sequencer
-        .transaction(input.transaction_hash)
+        .transaction_status(input.transaction_hash)
         .await
-        .context("Fetching transaction from gateway")
-        .map(|tx| tx.status.into())
+        .context("Fetching transaction status from gateway")
+        .map(|tx| tx.tx_status.into())
         .map_err(GetGatewayTransactionError::Internal)
 }
 

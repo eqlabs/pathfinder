@@ -502,10 +502,13 @@ async fn transaction_status_subscription(
     let mut poll_interval = tokio::time::interval(Duration::from_millis(500));
     let mut num_consecutive_errors = 0;
     loop {
-        match gateway.transaction(transaction_hash).await {
+        match gateway.transaction_status(transaction_hash).await {
             Ok(tx_status) => {
                 num_consecutive_errors = 0;
-                let update = match (tx_status.finality_status, &tx_status.execution_status) {
+
+                let execution_status = tx_status.execution_status.unwrap_or_default();
+
+                let update = match (tx_status.finality_status, execution_status) {
                     (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                     (FinalityStatus::NotReceived, _) => {
                         // "NOT_RECEIVED" status is never sent to the client.
@@ -555,7 +558,7 @@ async fn transaction_status_subscription(
                         break;
                     }
                 }
-                if tx_status.execution_status == ExecutionStatus::Rejected
+                if execution_status == ExecutionStatus::Rejected
                     || tx_status.finality_status == FinalityStatus::AcceptedOnL1
                     || tx_status.finality_status == FinalityStatus::AcceptedOnL2
                 {
@@ -1186,7 +1189,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1203,39 +1206,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::AcceptedOnL1,
+                        tx_status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()
@@ -1281,7 +1284,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1298,39 +1301,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::AcceptedOnL1,
+                        tx_status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
-                        execution_status: ExecutionStatus::Reverted,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Reverted),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()
@@ -1376,7 +1379,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1393,39 +1396,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Rejected,
+                        tx_status: Status::Rejected,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Rejected,
-                        transaction_failure_reason: None,
-                        revert_error: None,
+                        execution_status: Some(ExecutionStatus::Rejected),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()

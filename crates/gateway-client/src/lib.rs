@@ -50,7 +50,7 @@ pub trait GatewayApi: Sync {
         unimplemented!();
     }
 
-    async fn transaction(
+    async fn transaction_status(
         &self,
         transaction_hash: TransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
@@ -144,11 +144,11 @@ impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
         self.as_ref().pending_casm_by_hash(class_hash).await
     }
 
-    async fn transaction(
+    async fn transaction_status(
         &self,
         transaction_hash: TransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
-        self.as_ref().transaction(transaction_hash).await
+        self.as_ref().transaction_status(transaction_hash).await
     }
 
     async fn state_update_with_block(
@@ -387,14 +387,14 @@ impl GatewayApi for Client {
             .await
     }
 
-    /// Gets transaction by hash.
+    /// Gets transaction status by transaction hash.
     #[tracing::instrument(skip(self))]
-    async fn transaction(
+    async fn transaction_status(
         &self,
         transaction_hash: TransactionHash,
     ) -> Result<reply::TransactionStatus, SequencerError> {
         self.feeder_gateway_request()
-            .get_transaction()
+            .get_transaction_status()
             .transaction_hash(transaction_hash)
             .retry(self.retry)
             .get()
@@ -605,17 +605,21 @@ mod tests {
         async fn invalid_hash() {
             let (_jh, url) = setup([(
                 format!(
-                    "/feeder_gateway/get_transaction?transactionHash={}",
+                    "/feeder_gateway/get_transaction_status?transactionHash={}",
                     INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (
-                    r#"{"status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED"}"#,
+                    r#"{"tx_status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED", "execution_status": null}"#,
                     200,
                 ),
             )]);
             let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
             assert_eq!(
-                client.transaction(INVALID_TX_HASH).await.unwrap().status,
+                client
+                    .transaction_status(INVALID_TX_HASH)
+                    .await
+                    .unwrap()
+                    .tx_status,
                 Status::NotReceived,
             );
         }
