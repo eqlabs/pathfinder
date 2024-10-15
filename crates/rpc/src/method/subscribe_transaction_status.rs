@@ -239,13 +239,13 @@ impl RpcSubscriptionFlow for SubscribeEvents {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        match state.sequencer.transaction(params.transaction_hash).await {
+                        match state.sequencer.transaction_status(params.transaction_hash).await {
                             Ok(status) => {
-                                if status.execution_status == status::ExecutionStatus::Rejected {
+                                if matches!(status.execution_status, Some(status::ExecutionStatus::Rejected)) {
                                     // Transaction has been rejected.
                                     sender
                                         .send(BlockNumber::GENESIS, FinalityStatus::Rejected {
-                                            reason: status.transaction_failure_reason.map(|reason| reason.error_message)
+                                            reason: status.tx_failure_reason.map(|reason| reason.error_message)
                                         }, None)
                                         .await
                                         .ok();
