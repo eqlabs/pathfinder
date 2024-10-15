@@ -13,6 +13,7 @@ pub use subscription::{handle_json_rpc_socket, CatchUp, RpcSubscriptionFlow, Sub
 use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;
+use crate::dto::serialize;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::RpcRequest;
 use crate::jsonrpc::response::RpcResponse;
@@ -28,7 +29,7 @@ pub struct RpcRouter {
     pub context: RpcContext,
     method_endpoints: &'static HashMap<&'static str, Box<dyn RpcMethodEndpoint>>,
     subscription_endpoints: &'static HashMap<&'static str, Box<dyn RpcSubscriptionEndpoint>>,
-    version: RpcVersion,
+    pub version: RpcVersion,
 }
 
 pub struct RpcRouterBuilder {
@@ -107,7 +108,7 @@ impl RpcRouter {
         let request = match serde_json::from_str::<RpcRequest<'_>>(request) {
             Ok(request) => request,
             Err(e) => {
-                return Some(RpcResponse::invalid_request(e.to_string()));
+                return Some(RpcResponse::invalid_request(e.to_string(), self.version));
             }
         };
 
@@ -121,7 +122,7 @@ impl RpcRouter {
         let Some((&method_name, method)) =
             self.method_endpoints.get_key_value(request.method.as_ref())
         else {
-            return Some(RpcResponse::method_not_found(request.id));
+            return Some(RpcResponse::method_not_found(request.id, self.version));
         };
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
@@ -146,6 +147,7 @@ impl RpcRouter {
         Some(RpcResponse {
             output,
             id: request.id,
+            version: self.version,
         })
     }
 }
@@ -189,7 +191,7 @@ pub async fn rpc_handler(
 ) -> impl axum::response::IntoResponse {
     match ws {
         Some(ws) => ws.on_upgrade(|ws| async move {
-            let (ws_tx, ws_rx) = split_ws(ws);
+            let (ws_tx, ws_rx) = split_ws(ws, state.version);
             handle_json_rpc_socket(state, ws_tx, ws_rx);
         }),
         None => {
@@ -207,12 +209,23 @@ pub async fn rpc_handler(
                     RpcResponses::Empty => ().into_response(),
                     RpcResponses::Single(response) => response.into_response(),
                     RpcResponses::Multiple(responses) => {
-                        serde_json::to_string(&responses).unwrap().into_response()
+                        use serialize::SerializeForVersion;
+                        let values = responses
+                            .into_iter()
+                            .map(|response| {
+                                response
+                                    .serialize(serialize::Serializer::new(state.version))
+                                    .unwrap()
+                            })
+                            .collect::<Vec<_>>();
+                        serde_json::to_string(&values).unwrap().into_response()
                     }
                 },
-                Err(RpcRequestError::ParseError(e)) => RpcResponse::parse_error(e).into_response(),
+                Err(RpcRequestError::ParseError(e)) => {
+                    RpcResponse::parse_error(e, state.version).into_response()
+                }
                 Err(RpcRequestError::InvalidRequest(e)) => {
-                    RpcResponse::invalid_request(e).into_response()
+                    RpcResponse::invalid_request(e, state.version).into_response()
                 }
             };
 
@@ -238,15 +251,17 @@ pub(super) enum RpcResponses {
     Multiple(Vec<RpcResponse>),
 }
 
-impl serde::ser::Serialize for RpcResponses {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl serialize::SerializeForVersion for RpcResponses {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
         match self {
-            Self::Empty => serde::ser::Serialize::serialize(&(), serializer),
-            Self::Single(response) => serde::ser::Serialize::serialize(response, serializer),
-            Self::Multiple(responses) => serde::ser::Serialize::serialize(responses, serializer),
+            Self::Empty => serializer.serialize(&()),
+            Self::Single(response) => serializer.serialize(response),
+            Self::Multiple(responses) => {
+                serializer.serialize_iter(responses.len(), &mut responses.iter())
+            }
         }
     }
 }
