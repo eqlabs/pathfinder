@@ -326,8 +326,29 @@ impl ProcessStage for VerifyDeclaredAt {
     }
 }
 
-/// This function relies on the guarantee that the block numbers in the stream
-/// are correct.
+/// This function makes sure that the classes we receive from other peers are
+/// really declared at the expected blocks.
+///
+/// ### Details
+///
+/// This function ingests two streams:
+/// - `expected_declarations` which is a stream of expected class declarations
+///   at each block,
+/// - `classes` which is a stream of class definitions for each block as
+///   received from other peers,
+///
+/// producing a stream of class definitions that we are sure are declared at the
+/// expected blocks.
+///
+/// Any mismatch between the expected and received class definitions will result
+/// in an error and termination of the resulting stream.
+///
+/// ### Important
+///
+/// - The caller guarantees that the block numbers in both input streams are
+///   correct.
+/// - This function does not care if `expected_declarations` skips empty blocks
+///   or not.
 pub(super) fn verify_declared_at(
     mut expected_declarations: BoxStream<
         'static,
@@ -336,8 +357,8 @@ pub(super) fn verify_declared_at(
     mut classes: BoxStream<'static, Result<PeerData<Class>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
     make_stream::from_future(move |tx| async move {
-        while let Some(declared) = expected_declarations.next().await {
-            let (declared_at, mut declared) = match declared {
+        while let Some(expected) = expected_declarations.next().await {
+            let (declared_at, mut declared) = match expected {
                 Ok(x) => x,
                 Err(e) => {
                     _ = tx.send(Err(e.into()));
@@ -345,25 +366,37 @@ pub(super) fn verify_declared_at(
                 }
             };
 
-            // Some blocks may have no declared classes.
-            if declared.is_empty() {
-                continue;
-            }
+            loop {
+                // `expected_declarations` skips empty blocks but the current set can still be
+                // empty because it has just been exhausted and we need to fetch the
+                // expectations for the next block.
+                if declared.is_empty() {
+                    break;
+                }
 
-            while let Some(maybe_class) = classes.next().await {
+                let Some(maybe_class) = classes.next().await else {
+                    // `classes` stream has terminated
+                    return;
+                };
+
                 let res = maybe_class.and_then(|class| {
+                    // Check if the class is declared at the expected block
                     if declared_at != class.data.block_number {
+                        tracing::error!(%declared_at, %class.data.block_number, %class.data.hash, ?declared, "Unexpected class 1");
                         return Err(SyncError::UnexpectedClass(class.peer));
                     }
 
                     if declared.remove(&class.data.hash) {
                         Ok(class)
                     } else {
+                        tracing::error!(%declared_at, %class.data.block_number, %class.data.hash, ?declared, "Unexpected class 2");
                         Err(SyncError::UnexpectedClass(class.peer))
                     }
                 });
                 let bail = res.is_err();
-                _ = tx.send(res).await;
+                // Send the result to the next stage
+                tx.send(res).await.expect("Receiver not to be dropped");
+                // Short-circuit on error
                 if bail {
                     return;
                 }
@@ -466,9 +499,12 @@ pub(super) fn expected_declarations_stream(
                 .and_then(|x| x.context("Block header not found"))
                 .map_err(Into::into)
                 .map(|x| (start, x.into_iter().collect::<HashSet<_>>()));
-            let bail = res.is_err();
-            _ = tx.blocking_send(res);
-            if bail {
+            let is_err = res.is_err();
+            let is_empty = res.as_ref().map(|(_, x)| x.is_empty()).unwrap_or(false);
+            if !is_empty {
+                tx.blocking_send(res);
+            }
+            if is_err {
                 return;
             }
 
