@@ -13,7 +13,7 @@ use crate::context::RpcContext;
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::DeserializeForVersion;
 use crate::error::ApplicationError;
-use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcResponse};
+use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
 pub const CATCH_UP_BATCH_SIZE: u64 = 64;
@@ -30,7 +30,6 @@ pub(super) struct InvokeParams {
     input: serde_json::Value,
     subscription_id: SubscriptionId,
     subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
-    req_id: RequestId,
     ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
     lock: Arc<RwLock<()>>,
 }
@@ -145,7 +144,6 @@ where
             input,
             subscription_id,
             subscriptions,
-            req_id,
             ws_tx,
             lock,
         }: InvokeParams,
@@ -158,7 +156,7 @@ where
         let tx = SubscriptionSender {
             subscription_id,
             subscriptions,
-            tx: ws_tx.clone(),
+            tx: ws_tx,
             version: router.version,
             _phantom: Default::default(),
         };
@@ -209,7 +207,7 @@ where
                         match T::catch_up(&router.context, &params, *current_block, end).await {
                             Ok(messages) => messages,
                             Err(e) => {
-                                tx.send_err(e, req_id.clone())
+                                tx.send_err(e)
                                     .await
                                     // Could error if the subscription is closing.
                                     .ok();
@@ -247,11 +245,10 @@ where
             tokio::spawn({
                 let params = params.clone();
                 let context = router.context.clone();
-                let req_id = req_id.clone();
                 let tx = tx.clone();
                 async move {
                     if let Err(e) = T::subscribe(context, params, tx1).await {
-                        tx.send_err(e, req_id).await.ok();
+                        tx.send_err(e).await.ok();
                     }
                 }
             });
@@ -274,7 +271,7 @@ where
                         match T::catch_up(&router.context, &params, current_block, end).await {
                             Ok(messages) => messages,
                             Err(e) => {
-                                tx.send_err(e, req_id.clone())
+                                tx.send_err(e)
                                     .await
                                     // Could error if the subscription is closing.
                                     .ok();
@@ -609,7 +606,6 @@ async fn handle_request(
             input: params,
             subscription_id,
             subscriptions: subscriptions.clone(),
-            req_id: req_id.clone(),
             ws_tx: ws_tx.clone(),
             lock,
         })
@@ -692,16 +688,24 @@ impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
             .map_err(|_| mpsc::error::SendError(()))
     }
 
-    pub async fn send_err(
-        &self,
-        err: RpcError,
-        req_id: RequestId,
-    ) -> Result<(), mpsc::error::SendError<()>> {
+    pub async fn send_err(&self, err: RpcError) -> Result<(), mpsc::error::SendError<()>> {
+        if !self.subscriptions.contains_key(&self.subscription_id) {
+            // Race condition due to the subscription ending.
+            return Ok(());
+        }
+        let notification = RpcNotification {
+            jsonrpc: "2.0",
+            method: "pathfinder_subscriptionError",
+            params: SubscriptionResult {
+                subscription_id: self.subscription_id,
+                result: err,
+            },
+        }
+        .serialize(crate::dto::serialize::Serializer::new(self.version))
+        .unwrap();
+        let data = serde_json::to_string(&notification).unwrap();
         self.tx
-            .send(Err(RpcResponse {
-                output: Err(err),
-                id: req_id,
-            }))
+            .send(Ok(Message::Text(data)))
             .await
             .map_err(|_| mpsc::error::SendError(()))
     }
@@ -748,5 +752,243 @@ where
         serializer.serialize_field("subscription_id", &self.subscription_id)?;
         serializer.serialize_field("result", &self.result)?;
         serializer.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use axum::async_trait;
+    use axum::extract::ws::Message;
+    use pathfinder_common::{BlockHash, BlockHeader, BlockId, BlockNumber, ChainId};
+    use pathfinder_crypto::Felt;
+    use pathfinder_storage::StorageBuilder;
+    use starknet_gateway_client::Client;
+    use tokio::sync::mpsc;
+
+    use super::RpcSubscriptionEndpoint;
+    use crate::context::{RpcConfig, RpcContext};
+    use crate::dto::DeserializeForVersion;
+    use crate::jsonrpc::{
+        handle_json_rpc_socket,
+        CatchUp,
+        RpcRouter,
+        RpcSubscriptionFlow,
+        SubscriptionMessage,
+    };
+    use crate::pending::PendingWatcher;
+    use crate::v02::types::syncing::Syncing;
+    use crate::{Notifications, SyncState};
+
+    #[tokio::test]
+    async fn test_error_returned_from_catch_up() {
+        struct ErrorFromCatchUp;
+
+        #[async_trait]
+        impl RpcSubscriptionFlow for ErrorFromCatchUp {
+            type Params = Params;
+            type Notification = serde_json::Value;
+
+            fn starting_block(_params: &Self::Params) -> BlockId {
+                BlockId::Number(BlockNumber::GENESIS)
+            }
+
+            async fn catch_up(
+                _state: &RpcContext,
+                _params: &Self::Params,
+                _from: BlockNumber,
+                _to: BlockNumber,
+            ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
+                Err(crate::jsonrpc::RpcError::InternalError(anyhow::anyhow!(
+                    "error from catch_up"
+                )))
+            }
+
+            async fn subscribe(
+                _state: RpcContext,
+                _params: Self::Params,
+                _tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+            ) -> Result<(), crate::jsonrpc::RpcError> {
+                Ok(())
+            }
+        }
+
+        let router = setup(5, ErrorFromCatchUp).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "test",
+                    "params": {}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].as_u64().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let msg = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match msg {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_subscriptionError",
+                "params": {
+                    "result": { "code": -32603, "message": "Internal error" },
+                    "subscription_id": subscription_id
+                }
+            })
+        )
+    }
+
+    #[tokio::test]
+    async fn test_error_returned_from_subscribe() {
+        struct ErrorFromSubscribe;
+
+        #[async_trait]
+        impl RpcSubscriptionFlow for ErrorFromSubscribe {
+            type Params = Params;
+            type Notification = serde_json::Value;
+
+            fn starting_block(_params: &Self::Params) -> BlockId {
+                BlockId::Number(BlockNumber::GENESIS)
+            }
+
+            async fn catch_up(
+                _state: &RpcContext,
+                _params: &Self::Params,
+                _from: BlockNumber,
+                _to: BlockNumber,
+            ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
+                Ok(Default::default())
+            }
+
+            async fn subscribe(
+                _state: RpcContext,
+                _params: Self::Params,
+                _tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+            ) -> Result<(), crate::jsonrpc::RpcError> {
+                Err(crate::jsonrpc::RpcError::InternalError(anyhow::anyhow!(
+                    "error from catch_up"
+                )))
+            }
+        }
+
+        let router = setup(5, ErrorFromSubscribe).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "test",
+                    "params": {}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].as_u64().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let msg = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match msg {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_subscriptionError",
+                "params": {
+                    "result": { "code": -32603, "message": "Internal error" },
+                    "subscription_id": subscription_id
+                }
+            })
+        )
+    }
+
+    #[derive(Debug, Clone)]
+    struct Params;
+
+    impl DeserializeForVersion for Params {
+        fn deserialize(_: crate::dto::Value) -> Result<Self, serde_json::Error> {
+            Ok(Self)
+        }
+    }
+
+    async fn setup(num_blocks: u64, endpoint: impl RpcSubscriptionEndpoint + 'static) -> RpcRouter {
+        let storage = StorageBuilder::in_memory().unwrap();
+        tokio::task::spawn_blocking({
+            let storage = storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                for i in 0..num_blocks {
+                    let header = BlockHeader {
+                        hash: BlockHash(Felt::from_u64(i)),
+                        number: BlockNumber::new_or_panic(i),
+                        parent_hash: BlockHash::ZERO,
+                        ..Default::default()
+                    };
+                    db.insert_block_header(&header).unwrap();
+                }
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let (_, pending_data) = tokio::sync::watch::channel(Default::default());
+        let notifications = Notifications::default();
+        let ctx = RpcContext {
+            cache: Default::default(),
+            storage,
+            execution_storage: StorageBuilder::in_memory().unwrap(),
+            pending_data: PendingWatcher::new(pending_data),
+            sync_status: SyncState {
+                status: Syncing::False(false).into(),
+            }
+            .into(),
+            chain_id: ChainId::MAINNET,
+            sequencer: Client::mainnet(Duration::from_secs(10)),
+            websocket: None,
+            notifications,
+            config: RpcConfig {
+                batch_concurrency_limit: 1.try_into().unwrap(),
+                get_events_max_blocks_to_scan: 1.try_into().unwrap(),
+                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
+                custom_versioned_constants: None,
+            },
+        };
+        RpcRouter::builder(crate::RpcVersion::V08)
+            .register("test", endpoint)
+            .build(ctx)
     }
 }
