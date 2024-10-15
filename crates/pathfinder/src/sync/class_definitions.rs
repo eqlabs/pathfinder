@@ -12,6 +12,7 @@ use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefin
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
 use pathfinder_storage::Storage;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::class_hash::from_parts::{
@@ -20,7 +21,7 @@ use starknet_gateway_types::class_hash::from_parts::{
 };
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
 use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -530,57 +531,64 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     }
 }
 
-pub(super) async fn compile_sierra_to_casm_or_fetch<SequencerClient: GatewayApi + Clone + Send>(
-    peer_data: PeerData<Class>,
+pub(super) async fn compile_sierra_to_casm_or_fetch<
+    SequencerClient: GatewayApi + Clone + Send + 'static,
+>(
+    peer_data: Vec<PeerData<Class>>,
     fgw: SequencerClient,
-) -> Result<PeerData<CompiledClass>, SyncError> {
-    let PeerData {
-        peer,
-        data: Class {
-            block_number,
-            hash,
-            definition,
-        },
-    } = peer_data;
+    tokio_handle: tokio::runtime::Handle,
+) -> Result<Vec<PeerData<CompiledClass>>, SyncError> {
+    use rayon::prelude::*;
+    let (tx, rx) = oneshot::channel();
+    rayon::spawn(move || {
+        let res = peer_data
+            .into_par_iter()
+            .map(|x| {
+                let PeerData {
+                    peer,
+                    data:
+                        Class {
+                            block_number,
+                            hash,
+                            definition,
+                        },
+                } = x;
 
-    let definition = match definition {
-        ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
-        ClassDefinition::Sierra(sierra_definition) => {
-            let (casm_definition, sierra_definition) =
-                tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-                    (
-                        pathfinder_compiler::compile_to_casm(&sierra_definition)
-                            .context("Compiling Sierra class"),
-                        sierra_definition,
-                    )
-                })
-                .await
-                .context("Joining blocking task")?;
+                let definition = match definition {
+                    ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
+                    ClassDefinition::Sierra(sierra_definition) => {
+                        let casm_definition =
+                            pathfinder_compiler::compile_to_casm(&sierra_definition)
+                                .context("Compiling Sierra class");
 
-            let casm_definition = match casm_definition {
-                Ok(x) => x,
-                Err(_) => fgw
-                    .pending_casm_by_hash(hash)
-                    .await
-                    .context("Fetching casm definition from gateway")?
-                    .to_vec(),
-            };
+                        let casm_definition = match casm_definition {
+                            Ok(x) => x,
+                            Err(_) => tokio_handle
+                                .block_on(fgw.pending_casm_by_hash(hash))
+                                .context("Fetching casm definition from gateway")?
+                                .to_vec(),
+                        };
 
-            CompiledClassDefinition::Sierra {
-                sierra_definition,
-                casm_definition,
-            }
-        }
-    };
+                        CompiledClassDefinition::Sierra {
+                            sierra_definition,
+                            casm_definition,
+                        }
+                    }
+                };
 
-    Ok(PeerData::new(
-        peer,
-        CompiledClass {
-            block_number,
-            hash,
-            definition,
-        },
-    ))
+                Ok(PeerData::new(
+                    peer,
+                    CompiledClass {
+                        block_number,
+                        hash,
+                        definition,
+                    },
+                ))
+            })
+            .collect::<Result<Vec<PeerData<CompiledClass>>, SyncError>>();
+        tx.send(res);
+    });
+    rx.await.expect("Sender not to be dropped")
 }
 
 pub struct Store(pub pathfinder_storage::Connection);

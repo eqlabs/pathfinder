@@ -267,8 +267,6 @@ impl Sync {
             self.storage.clone(),
             self.fgw_client.clone(),
             expected_declarations,
-            start,
-            stop,
         )
         .await?;
 
@@ -384,27 +382,37 @@ async fn handle_state_diff_stream(
     Ok(())
 }
 
-async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send>(
+async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
     class_definitions: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
     storage: Storage,
     fgw: SequencerClient,
     expected_declarations: impl Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
         + Send
         + 'static,
-    start: BlockNumber,
-    stop: BlockNumber,
 ) -> Result<(), SyncError> {
+    // TODO set concurrency to number of cores
+    let available_parallelism = std::thread::available_parallelism()
+        .context("Getting available parallelism")?
+        .get();
+
     let a = class_definitions
         .map_err(|e| e.data.into())
+        // .co() set concurrency limit = num cores
         .and_then(class_definitions::verify_layout)
-        .and_then(class_definitions::compute_hash)
+        // try_chunks(num cores)
+        .and_then(class_definitions::compute_hash /* TODO rayonize */)
         .boxed();
 
-    let b = class_definitions::verify_declared_at(expected_declarations.boxed(), a);
-
-    b.and_then(|x| class_definitions::compile_sierra_to_casm_or_fetch(x, fgw.clone()))
-        .try_chunks(10)
+    class_definitions::verify_declared_at(expected_declarations.boxed(), a)
+        .try_chunks(available_parallelism)
         .map_err(|e| e.1)
+        .and_then(|x| {
+            class_definitions::compile_sierra_to_casm_or_fetch(
+                x,
+                fgw.clone(),
+                tokio::runtime::Handle::current(),
+            )
+        })
         .and_then(|x| class_definitions::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
@@ -1519,8 +1527,6 @@ mod tests {
                 storage.clone(),
                 FakeFgw,
                 declared_classes.to_stream(),
-                BlockNumber::GENESIS,
-                BlockNumber::GENESIS + 1,
             )
             .await
             .unwrap();
@@ -1577,8 +1583,6 @@ mod tests {
                     storage,
                     FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream(),
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS,
                 )
                 .await,
                 Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
@@ -1610,8 +1614,6 @@ mod tests {
                     storage,
                     FakeFgw,
                     declared_classes.to_stream(),
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + 1,
                 )
                 .await,
                 Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
@@ -1627,8 +1629,6 @@ mod tests {
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream(),
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS
                 )
                 .await,
                 Err(SyncError::Other(_))
