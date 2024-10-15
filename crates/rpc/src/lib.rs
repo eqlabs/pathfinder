@@ -870,27 +870,12 @@ mod tests {
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
     #[case::v0_8_api  ("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[
-        "starknet_getBlockWithTxHashes",
-        "starknet_getBlockWithTxs",
         "starknet_getBlockWithReceipts",
-        "starknet_getStateUpdate",
-        "starknet_getStorageAt",
         "starknet_getMessagesStatus",
-        "starknet_getTransactionByHash",
-        "starknet_getTransactionByBlockIdAndIndex",
         "starknet_getTransactionReceipt",
-        "starknet_getClass",
-        "starknet_getClassHashAt",
-        "starknet_getClassAt",
-        "starknet_getBlockTransactionCount",
         "starknet_call",
         "starknet_estimateFee",
         "starknet_estimateMessageFee",
-        "starknet_blockNumber",
-        "starknet_blockHashAndNumber",
-        "starknet_chainId",
-        "starknet_getEvents",
-        "starknet_getNonce",
         "starknet_getStorageProof",
     ])]
     #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[
