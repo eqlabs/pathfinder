@@ -395,7 +395,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .context("Getting available parallelism")?
         .get();
 
-    let a = class_definitions
+    let classes_with_hashes = class_definitions
         .map_err(|e| e.data.into())
         // .co() set concurrency limit = num cores
         .and_then(class_definitions::verify_layout)
@@ -404,7 +404,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .and_then(class_definitions::compute_hash)
         .boxed();
 
-    class_definitions::verify_declared_at(expected_declarations.boxed(), a)
+    class_definitions::verify_declared_at(expected_declarations.boxed(), classes_with_hashes)
         .try_chunks(available_parallelism)
         .map_err(|e| e.1)
         .and_then(|x| {

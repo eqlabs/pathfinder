@@ -416,8 +416,8 @@ pub(super) fn verify_declared_at(
             };
 
             loop {
-                // `expected_declarations` skips empty blocks but the current set can still be
-                // empty because it has just been exhausted and we need to fetch the
+                // even if `expected_declarations` skips empty blocks the current set can still
+                // be empty because it has just been exhausted and we need to fetch the
                 // expectations for the next block.
                 if declared.is_empty() {
                     break;
