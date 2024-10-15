@@ -605,11 +605,11 @@ mod tests {
         async fn invalid_hash() {
             let (_jh, url) = setup([(
                 format!(
-                    "/feeder_gateway/get_transaction?transactionHash={}",
+                    "/feeder_gateway/get_transaction_status?transactionHash={}",
                     INVALID_TX_HASH.0.to_hex_str()
                 ),
                 (
-                    r#"{"status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED"}"#,
+                    r#"{"tx_status": "NOT_RECEIVED", "finality_status": "NOT_RECEIVED", "execution_status": null}"#,
                     200,
                 ),
             )]);
