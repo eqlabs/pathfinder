@@ -131,7 +131,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         state: RpcContext,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
-    ) {
+    ) -> Result<(), RpcError> {
         let mut blocks = state.notifications.l2_blocks.subscribe();
         let mut reorgs = state.notifications.reorgs.subscribe();
         let params = params.unwrap_or_default();
@@ -217,6 +217,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 }
             }
         }
+        Ok(())
     }
 }
 
