@@ -26,7 +26,7 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
-futures = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }

@@ -108,6 +108,48 @@ pub(super) fn declared_class_counts_stream(
     storage_adapters::counts_stream(storage, start, stop, batch_size, get_counts)
 }
 
+pub(super) async fn verify_layout(
+    peer_data: PeerData<P2PClassDefinition>,
+) -> Result<PeerData<ClassWithLayout>, SyncError> {
+    let PeerData { peer, data } = peer_data;
+    match data {
+        P2PClassDefinition::Cairo {
+            block_number,
+            definition,
+        } => {
+            let layout = GwClassDefinition::Cairo(
+                serde_json::from_slice::<Cairo<'_>>(&definition)
+                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+            );
+            Ok(PeerData::new(
+                peer,
+                ClassWithLayout {
+                    block_number,
+                    definition: ClassDefinition::Cairo(definition),
+                    layout,
+                },
+            ))
+        }
+        P2PClassDefinition::Sierra {
+            block_number,
+            sierra_definition,
+        } => {
+            let layout = GwClassDefinition::Sierra(
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
+                    .map_err(|e| SyncError::BadClassLayout(peer))?,
+            );
+            Ok(PeerData::new(
+                peer,
+                ClassWithLayout {
+                    block_number,
+                    definition: ClassDefinition::Sierra(sierra_definition),
+                    layout,
+                },
+            ))
+        }
+    }
+}
+
 pub struct VerifyLayout;
 
 impl ProcessStage for VerifyLayout {
@@ -193,6 +235,45 @@ impl ProcessStage for ComputeHash {
     }
 }
 
+pub(super) async fn compute_hash(
+    peer_data: PeerData<ClassWithLayout>,
+) -> Result<PeerData<Class>, SyncError> {
+    let PeerData { peer, data } = peer_data;
+    let ClassWithLayout {
+        block_number,
+        definition,
+        layout,
+    } = data;
+
+    let hash = tokio::task::spawn_blocking(move || match layout {
+        GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
+            c.abi.as_ref().get().as_bytes(),
+            c.program.as_ref().get().as_bytes(),
+            c.entry_points_by_type.external,
+            c.entry_points_by_type.l1_handler,
+            c.entry_points_by_type.constructor,
+        ),
+        GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
+            c.abi.as_ref(),
+            c.sierra_program,
+            c.contract_class_version.as_ref(),
+            c.entry_points_by_type,
+        ),
+    })
+    .await
+    .context("Joining blocking task")?
+    .context("Computing class hash")?;
+
+    Ok(PeerData::new(
+        peer,
+        Class {
+            block_number,
+            definition,
+            hash,
+        },
+    ))
+}
+
 pub struct VerifyDeclaredAt {
     expectation_source: Receiver<ExpectedDeclarations>,
     current: ExpectedDeclarations,
@@ -242,6 +323,52 @@ impl ProcessStage for VerifyDeclaredAt {
             Err(SyncError2::UnexpectedClass)
         }
     }
+}
+
+/// This function relies on the guarantee that the block numbers in the stream
+/// are correct.
+pub(super) fn verify_declared_at(
+    mut expected_declarations: BoxStream<
+        'static,
+        anyhow::Result<(BlockNumber, HashSet<ClassHash>)>,
+    >,
+    mut classes: BoxStream<'static, Result<PeerData<Class>, SyncError>>,
+) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
+    make_stream::from_future(move |tx| async move {
+        while let Some(declared) = expected_declarations.next().await {
+            let (declared_at, mut declared) = match declared {
+                Ok(x) => x,
+                Err(e) => {
+                    _ = tx.send(Err(e.into()));
+                    return;
+                }
+            };
+
+            // Some blocks may have no declared classes.
+            if declared.is_empty() {
+                continue;
+            }
+
+            while let Some(maybe_class) = classes.next().await {
+                let res = maybe_class.and_then(|class| {
+                    if declared_at != class.data.block_number {
+                        return Err(SyncError::UnexpectedClass(class.peer));
+                    }
+
+                    if declared.remove(&class.data.hash) {
+                        Ok(class)
+                    } else {
+                        Err(SyncError::UnexpectedClass(class.peer))
+                    }
+                });
+                let bail = res.is_err();
+                _ = tx.send(res).await;
+                if bail {
+                    return;
+                }
+            }
+        }
+    })
 }
 
 #[derive(Debug, Default)]
@@ -308,6 +435,47 @@ impl ExpectedDeclarationsSource {
     }
 }
 
+/// Returns a stream of sets of class hashes declared at each block in the range
+/// `start..=stop`.
+pub(super) fn expected_declarations_stream(
+    storage: Storage,
+    mut start: BlockNumber,
+    stop: BlockNumber,
+) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
+    make_stream::from_blocking(move |tx| {
+        let mut db = match storage.connection().context("Creating database connection") {
+            Ok(x) => x,
+            Err(e) => {
+                tx.blocking_send(Err(e.into()));
+                return;
+            }
+        };
+        let db = match db.transaction().context("Creating database transaction") {
+            Ok(x) => x,
+            Err(e) => {
+                tx.blocking_send(Err(e.into()));
+                return;
+            }
+        };
+
+        while start <= stop {
+            let res = db
+                .declared_classes_at(start.into())
+                .context("Querying declared classes at block")
+                .and_then(|x| x.context("Block header not found"))
+                .map_err(Into::into)
+                .map(|x| (start, x.into_iter().collect::<HashSet<_>>()));
+            let bail = res.is_err();
+            _ = tx.blocking_send(res);
+            if bail {
+                return;
+            }
+
+            start += 1;
+        }
+    })
+}
+
 pub struct CompileSierraToCasm<T> {
     fgw: T,
     tokio_handle: tokio::runtime::Handle,
@@ -362,6 +530,59 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     }
 }
 
+pub(super) async fn compile_sierra_to_casm_or_fetch<SequencerClient: GatewayApi + Clone + Send>(
+    peer_data: PeerData<Class>,
+    fgw: SequencerClient,
+) -> Result<PeerData<CompiledClass>, SyncError> {
+    let PeerData {
+        peer,
+        data: Class {
+            block_number,
+            hash,
+            definition,
+        },
+    } = peer_data;
+
+    let definition = match definition {
+        ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
+        ClassDefinition::Sierra(sierra_definition) => {
+            let (casm_definition, sierra_definition) =
+                tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
+                    (
+                        pathfinder_compiler::compile_to_casm(&sierra_definition)
+                            .context("Compiling Sierra class"),
+                        sierra_definition,
+                    )
+                })
+                .await
+                .context("Joining blocking task")?;
+
+            let casm_definition = match casm_definition {
+                Ok(x) => x,
+                Err(_) => fgw
+                    .pending_casm_by_hash(hash)
+                    .await
+                    .context("Fetching casm definition from gateway")?
+                    .to_vec(),
+            };
+
+            CompiledClassDefinition::Sierra {
+                sierra_definition,
+                casm_definition,
+            }
+        }
+    };
+
+    Ok(PeerData::new(
+        peer,
+        CompiledClass {
+            block_number,
+            hash,
+            definition,
+        },
+    ))
+}
+
 pub struct Store(pub pathfinder_storage::Connection);
 
 impl ProcessStage for Store {
@@ -410,6 +631,62 @@ impl ProcessStage for Store {
 
         Ok(block_number)
     }
+}
+
+pub(super) async fn persist(
+    storage: Storage,
+    classes: Vec<PeerData<CompiledClass>>,
+) -> Result<BlockNumber, SyncError> {
+    tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        let tail = classes
+            .last()
+            .map(|x| x.data.block_number)
+            .context("No class definitions to persist")?;
+
+        for CompiledClass {
+            block_number: _,
+            definition,
+            hash,
+        } in classes.into_iter().map(|x| x.data)
+        {
+            match definition {
+                CompiledClassDefinition::Cairo(definition) => {
+                    transaction
+                        .update_cairo_class(hash, &definition)
+                        .context("Updating cairo class definition")?;
+                }
+                CompiledClassDefinition::Sierra {
+                    sierra_definition,
+                    casm_definition,
+                } => {
+                    let casm_hash = transaction
+                        .casm_hash(hash)
+                        .context("Getting casm hash for sierra class")?
+                        .context("Casm hash not found")?;
+
+                    transaction
+                        .update_sierra_class(
+                            &SierraHash(hash.0),
+                            &sierra_definition,
+                            &casm_hash,
+                            &casm_definition,
+                        )
+                        .context("Updating sierra class definition")?;
+                }
+            }
+        }
+        transaction.commit().context("Committing db transaction")?;
+
+        Ok(tail)
+    })
+    .await
+    .context("Joining blocking task")?
 }
 
 pub struct VerifyClassHashes {
