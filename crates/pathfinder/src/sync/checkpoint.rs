@@ -425,11 +425,15 @@ async fn handle_event_stream(
     stream: impl Stream<Item = StreamItem<EventsForBlockByTransaction>>,
     storage: Storage,
 ) -> Result<(), SyncError> {
+    let available_parallelism = std::thread::available_parallelism()
+        .context("Getting available parallelism")?
+        .get();
+
     stream
         .map_err(|e| e.data.into())
-        .and_then(|x| events::verify_commitment(x, storage.clone()))
-        .try_chunks(100)
+        .try_chunks(available_parallelism)
         .map_err(|e| e.1)
+        .and_then(|x| events::verify_commitment(x, storage.clone()))
         .and_then(|x| events::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::debug!(tail=%x, "Events chunk synced"))
         // Drive stream to completion.

@@ -7,6 +7,7 @@ use pathfinder_common::{
     BlockHeader,
     BlockNumber,
     ClassCommitment,
+    EventCommitment,
     GasPrice,
     StarknetVersion,
     StateCommitment,
@@ -594,6 +595,60 @@ impl Transaction<'_> {
             .context("Querying for transaction commitment")?;
 
         Ok(transaction_commitment)
+    }
+
+    pub fn event_commitment(&self, start: BlockNumber) -> anyhow::Result<Option<EventCommitment>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached("SELECT event_commitment FROM block_headers WHERE number = ?")
+            .context("Preparing event commitment query")?;
+
+        let event_commitment = stmt
+            .query_row(params![&start], |row| {
+                row.get_event_commitment("event_commitment")
+            })
+            .optional()
+            .context("Querying for event commitment")?;
+
+        Ok(event_commitment)
+    }
+
+    /// Returns an error if `start + batch_size - 1` is greater than the highest
+    /// block number in the db.
+    pub fn event_commitments(
+        &self,
+        start: BlockNumber,
+        batch_size: NonZeroUsize,
+    ) -> anyhow::Result<Vec<EventCommitment>> {
+        let mut stmt = self
+            .inner()
+            .prepare_cached(
+                "SELECT event_commitment FROM block_headers WHERE number >= ? ORDER BY number ASC \
+                 LIMIT ?",
+            )
+            .context("Preparing get event commitments statement")?;
+
+        let limit = u64::try_from(batch_size.get()).expect("ptr size is 64 bits");
+        let mut rows = stmt
+            .query_map(params![&start, &limit], |row| row.get_event_commitment(0))
+            .context("Querying event commitments")?;
+
+        let mut ret = Vec::new();
+
+        while let Some(ec) = rows
+            .next()
+            .transpose()
+            .context("Iterating over rows of event commitments")?
+        {
+            ret.push(ec);
+        }
+
+        anyhow::ensure!(
+            ret.len() == batch_size.get(),
+            "Not enough event commitments, batch reaches beyond the highest block"
+        );
+
+        Ok(ret)
     }
 }
 

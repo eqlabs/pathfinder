@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
+use futures::channel::oneshot;
 use p2p::client::types::EventsForBlockByTransaction;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
@@ -15,6 +16,7 @@ use pathfinder_common::{
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use rayon::iter::IntoParallelRefIterator;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
@@ -68,10 +70,14 @@ pub(super) fn counts_stream(
     storage_adapters::counts_stream(storage, start, stop, batch_size, get_counts)
 }
 
-pub(super) async fn verify_commitment(
+pub(super) async fn verify_commitment0(
     events: PeerData<EventsForBlockByTransaction>,
     storage: Storage,
 ) -> Result<PeerData<EventsForBlockByTransaction>, SyncError> {
+    // TODO
+    // 1. ingest n blocks
+    // 2. get expected commitments for those blocks
+    // 3. rayonize the verification
     let PeerData {
         peer,
         data: (block_number, events),
@@ -104,6 +110,61 @@ pub(super) async fn verify_commitment(
     .context("Joining blocking task")??;
 
     Ok(PeerData::new(peer, (block_number, events)))
+}
+
+pub(super) async fn verify_commitment(
+    events: Vec<PeerData<EventsForBlockByTransaction>>,
+    storage: Storage,
+) -> Result<Vec<PeerData<EventsForBlockByTransaction>>, SyncError> {
+    use rayon::prelude::*;
+
+    let start = events
+        .first()
+        .map(|x| x.data.0)
+        .expect("Input contains at least one element");
+    let batch_size = NonZeroUsize::new(events.len()).expect("Input contains at least one element");
+    let expected = tokio::task::spawn_blocking(move || {
+        let mut connection = storage
+            .connection()
+            .context("Creating database connection")?;
+        let transaction = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        transaction
+            .event_commitments(start, batch_size)
+            .context("Querying event commitments")
+    })
+    .await
+    .context("Joining blocking task")??;
+
+    let (tx, rx) = oneshot::channel();
+    rayon::spawn(move || {
+        let result = events
+            .par_iter()
+            .zip(expected)
+            .try_for_each(|(events_for_block, expected)| {
+                let PeerData {
+                    peer,
+                    data: (_, events),
+                } = events_for_block;
+                let computed = calculate_event_commitment(
+                    &events
+                        .iter()
+                        .map(|(tx_hash, events)| (*tx_hash, events.as_slice()))
+                        .collect::<Vec<_>>(),
+                    // TODO FIXME header.starknet_version.max(StarknetVersion::V_0_13_2),
+                    StarknetVersion::V_0_13_2,
+                )
+                .context("Calculating event commitment")?;
+                if computed != expected {
+                    return Err(SyncError::EventCommitmentMismatch(*peer));
+                }
+                Ok(())
+            })
+            .map(|_| events);
+        tx.send(result).expect("Receiver not to be dropped");
+    });
+    rx.await.expect("Sender not to be dropped")
 }
 
 pub(super) async fn persist(
