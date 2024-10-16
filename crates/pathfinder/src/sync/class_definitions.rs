@@ -6,6 +6,7 @@ use anyhow::Context;
 use futures::pin_mut;
 use futures::stream::{BoxStream, StreamExt};
 use p2p::client::types::ClassDefinition as P2PClassDefinition;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::transaction;
 use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
@@ -113,42 +114,9 @@ pub(super) async fn verify_layout(
     peer_data: PeerData<P2PClassDefinition>,
 ) -> Result<PeerData<ClassWithLayout>, SyncError> {
     let PeerData { peer, data } = peer_data;
-    match data {
-        P2PClassDefinition::Cairo {
-            block_number,
-            definition,
-        } => {
-            let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
-            );
-            Ok(PeerData::new(
-                peer,
-                ClassWithLayout {
-                    block_number,
-                    definition: ClassDefinition::Cairo(definition),
-                    layout,
-                },
-            ))
-        }
-        P2PClassDefinition::Sierra {
-            block_number,
-            sierra_definition,
-        } => {
-            let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition)
-                    .map_err(|e| SyncError::BadClassLayout(peer))?,
-            );
-            Ok(PeerData::new(
-                peer,
-                ClassWithLayout {
-                    block_number,
-                    definition: ClassDefinition::Sierra(sierra_definition),
-                    layout,
-                },
-            ))
-        }
-    }
+    verify_layout_impl(data)
+        .map(|x| PeerData::new(peer, x))
+        .map_err(|_| SyncError::BadClassLayout(peer))
 }
 
 pub struct VerifyLayout;
@@ -160,39 +128,41 @@ impl ProcessStage for VerifyLayout {
     type Output = ClassWithLayout;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        match input {
-            P2PClassDefinition::Cairo {
+        verify_layout_impl(input).map_err(|_| SyncError2::BadClassLayout)
+    }
+}
+
+fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout> {
+    match def {
+        P2PClassDefinition::Cairo {
+            block_number,
+            definition,
+        } => {
+            let layout = GwClassDefinition::Cairo(
+                serde_json::from_slice::<Cairo<'_>>(&definition).inspect_err(
+                    |e| tracing::debug!(%block_number, error=%e, "Bad class layout"),
+                )?,
+            );
+            Ok(ClassWithLayout {
                 block_number,
-                definition,
-            } => {
-                let layout = GwClassDefinition::Cairo(
-                    serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|e| {
-                        tracing::debug!(%block_number, error=%e, "Bad class layout");
-                        SyncError2::BadClassLayout
-                    })?,
-                );
-                Ok(ClassWithLayout {
-                    block_number,
-                    definition: ClassDefinition::Cairo(definition),
-                    layout,
-                })
-            }
-            P2PClassDefinition::Sierra {
+                definition: ClassDefinition::Cairo(definition),
+                layout,
+            })
+        }
+        P2PClassDefinition::Sierra {
+            block_number,
+            sierra_definition,
+        } => {
+            let layout = GwClassDefinition::Sierra(
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).inspect_err(
+                    |e| tracing::debug!(%block_number, error=%e, "Bad class layout"),
+                )?,
+            );
+            Ok(ClassWithLayout {
                 block_number,
-                sierra_definition,
-            } => {
-                let layout = GwClassDefinition::Sierra(
-                    serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|e| {
-                        tracing::debug!(%block_number, error=%e, "Bad class layout");
-                        SyncError2::BadClassLayout
-                    })?,
-                );
-                Ok(ClassWithLayout {
-                    block_number,
-                    definition: ClassDefinition::Sierra(sierra_definition),
-                    layout,
-                })
-            }
+                definition: ClassDefinition::Sierra(sierra_definition),
+                layout,
+            })
         }
     }
 }
