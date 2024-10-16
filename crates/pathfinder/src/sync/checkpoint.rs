@@ -390,15 +390,14 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         + Send
         + 'static,
 ) -> Result<(), SyncError> {
-    // TODO set concurrency to number of cores
     let available_parallelism = std::thread::available_parallelism()
         .context("Getting available parallelism")?
         .get();
 
     let classes_with_hashes = class_definitions
         .map_err(|e| e.data.into())
-        // .co() set concurrency limit = num cores
-        .and_then(class_definitions::verify_layout)
+        .map_ok(class_definitions::verify_layout)
+        .try_buffered(available_parallelism)
         .try_chunks(available_parallelism)
         .map_err(|e| e.1)
         .and_then(class_definitions::compute_hash)
