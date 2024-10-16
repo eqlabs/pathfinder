@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pathfinder stops syncing Sepolia testnet at block 218484 because of a block hash mismatch.
+- `starknet_getBlockWithTxs` works with empty blocks`
 
 ## [0.14.3] - 2024-09-23
 
