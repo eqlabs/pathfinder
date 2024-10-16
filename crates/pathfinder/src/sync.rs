@@ -63,7 +63,7 @@ impl Sync {
         self.track_sync(next, parent_hash).await
     }
 
-    async fn handle_recoverable_error(&self, err: error::SyncError) {
+    async fn handle_recoverable_error(&self, err: &PeerData<error::SyncError2>) {
         // TODO
         tracing::debug!(?err, "Log and punish as appropriate");
     }
@@ -122,10 +122,17 @@ impl Sync {
 
             // Handle the error
             let continue_from = match result {
-                Ok(continue_from) => continue_from,
-                Err(SyncError::Other(err)) => return Err(err),
-                Err(err) => {
-                    self.handle_recoverable_error(err).await;
+                Ok(continue_from) => {
+                    tracing::debug!(?continue_from, "Checkpoint sync complete");
+                    continue_from
+                }
+                Err(SyncError::Other(error)) => {
+                    tracing::error!(%error, "Stopping checkpoint sync");
+                    return Err(error);
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "Restarting checkpoint sync");
+                    self.handle_recoverable_error(&error.into_v2()).await;
                     continue;
                 }
             };
@@ -135,6 +142,10 @@ impl Sync {
             let latest_checkpoint = self.get_checkpoint().await;
             if checkpoint.block_number + CHECKPOINT_MARGIN < latest_checkpoint.block_number {
                 checkpoint = latest_checkpoint;
+                tracing::debug!(
+                    local_checkpoint=%checkpoint.block_number, latest_checkpoint=%latest_checkpoint.block_number,
+                    "Restarting checkpoint sync: L1 checkpoint has advanced"
+                );
                 continue;
             }
 
@@ -179,8 +190,9 @@ impl Sync {
                     use pathfinder_common::error::AnyhowExt;
                     return Err(error.take_or_deep_clone());
                 }
-                Err(PeerData { data: error, .. }) => {
-                    tracing::debug!(%error, "Restarting track sync")
+                Err(error) => {
+                    tracing::debug!(error=%error.data, "Restarting track sync");
+                    self.handle_recoverable_error(error).await;
                 }
             }
         }
