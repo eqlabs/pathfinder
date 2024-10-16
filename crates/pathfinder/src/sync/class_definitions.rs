@@ -11,7 +11,7 @@ use p2p_proto::transaction;
 use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, Transaction};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
@@ -721,29 +721,7 @@ impl ProcessStage for Store {
             .transaction()
             .context("Creating database transaction")?;
 
-        match definition {
-            CompiledClassDefinition::Cairo(definition) => {
-                db.update_cairo_class(hash, &definition)
-                    .context("Updating cairo class definition")?;
-            }
-            CompiledClassDefinition::Sierra {
-                sierra_definition,
-                casm_definition,
-            } => {
-                let casm_hash = db
-                    .casm_hash(hash)
-                    .context("Getting casm hash for sierra class")?
-                    .context("Casm hash not found")?;
-
-                db.update_sierra_class(
-                    &SierraHash(hash.0),
-                    &sierra_definition,
-                    &casm_hash,
-                    &casm_definition,
-                )
-                .context("Updating sierra class definition")?;
-            }
-        }
+        persist_impl(&db, hash, definition)?;
 
         db.commit().context("Committing db transaction")?;
 
@@ -756,12 +734,10 @@ pub(super) async fn persist(
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
     tokio::task::spawn_blocking(move || {
-        let mut connection = storage
+        let mut db = storage
             .connection()
             .context("Creating database connection")?;
-        let transaction = connection
-            .transaction()
-            .context("Creating database transaction")?;
+        let db = db.transaction().context("Creating database transaction")?;
         let tail = classes
             .last()
             .map(|x| x.data.block_number)
@@ -773,38 +749,46 @@ pub(super) async fn persist(
             hash,
         } in classes.into_iter().map(|x| x.data)
         {
-            match definition {
-                CompiledClassDefinition::Cairo(definition) => {
-                    transaction
-                        .update_cairo_class(hash, &definition)
-                        .context("Updating cairo class definition")?;
-                }
-                CompiledClassDefinition::Sierra {
-                    sierra_definition,
-                    casm_definition,
-                } => {
-                    let casm_hash = transaction
-                        .casm_hash(hash)
-                        .context("Getting casm hash for sierra class")?
-                        .context("Casm hash not found")?;
-
-                    transaction
-                        .update_sierra_class(
-                            &SierraHash(hash.0),
-                            &sierra_definition,
-                            &casm_hash,
-                            &casm_definition,
-                        )
-                        .context("Updating sierra class definition")?;
-                }
-            }
+            persist_impl(&db, hash, definition)?;
         }
-        transaction.commit().context("Committing db transaction")?;
+        db.commit().context("Committing db transaction")?;
 
         Ok(tail)
     })
     .await
     .context("Joining blocking task")?
+}
+
+fn persist_impl(
+    db: &Transaction<'_>,
+    hash: ClassHash,
+    definition: CompiledClassDefinition,
+) -> anyhow::Result<()> {
+    match definition {
+        CompiledClassDefinition::Cairo(definition) => {
+            db.update_cairo_class(hash, &definition)
+                .context("Updating cairo class definition")?;
+        }
+        CompiledClassDefinition::Sierra {
+            sierra_definition,
+            casm_definition,
+        } => {
+            let casm_hash = db
+                .casm_hash(hash)
+                .context("Getting casm hash for sierra class")?
+                .context("Casm hash not found")?;
+
+            db.update_sierra_class(
+                &SierraHash(hash.0),
+                &sierra_definition,
+                &casm_hash,
+                &casm_definition,
+            )
+            .context("Updating sierra class definition")?;
+        }
+    }
+
+    Ok(())
 }
 
 pub struct VerifyClassHashes {
