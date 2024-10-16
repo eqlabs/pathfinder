@@ -605,39 +605,8 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     type Output = CompiledClass;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let Class {
-            block_number,
-            hash,
-            definition,
-        } = input;
-
-        let definition = match definition {
-            ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
-            ClassDefinition::Sierra(sierra_definition) => {
-                let casm_definition = pathfinder_compiler::compile_to_casm(&sierra_definition)
-                    .context("Compiling Sierra class");
-
-                let casm_definition = match casm_definition {
-                    Ok(x) => x,
-                    Err(_) => self
-                        .tokio_handle
-                        .block_on(self.fgw.pending_casm_by_hash(hash))
-                        .context("Fetching casm definition from gateway")?
-                        .to_vec(),
-                };
-
-                CompiledClassDefinition::Sierra {
-                    sierra_definition,
-                    casm_definition,
-                }
-            }
-        };
-
-        Ok(CompiledClass {
-            block_number,
-            hash,
-            definition,
-        })
+        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)?;
+        Ok(compiled)
     }
 }
 
@@ -654,51 +623,53 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<
         let res = peer_data
             .into_par_iter()
             .map(|x| {
-                let PeerData {
-                    peer,
-                    data:
-                        Class {
-                            block_number,
-                            hash,
-                            definition,
-                        },
-                } = x;
-
-                let definition = match definition {
-                    ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
-                    ClassDefinition::Sierra(sierra_definition) => {
-                        let casm_definition =
-                            pathfinder_compiler::compile_to_casm(&sierra_definition)
-                                .context("Compiling Sierra class");
-
-                        let casm_definition = match casm_definition {
-                            Ok(x) => x,
-                            Err(_) => tokio_handle
-                                .block_on(fgw.pending_casm_by_hash(hash))
-                                .context("Fetching casm definition from gateway")?
-                                .to_vec(),
-                        };
-
-                        CompiledClassDefinition::Sierra {
-                            sierra_definition,
-                            casm_definition,
-                        }
-                    }
-                };
-
-                Ok(PeerData::new(
-                    peer,
-                    CompiledClass {
-                        block_number,
-                        hash,
-                        definition,
-                    },
-                ))
+                let PeerData { peer, data } = x;
+                let compiled = compile_or_fetch_impl(data, &fgw, &tokio_handle)?;
+                Ok(PeerData::new(peer, compiled))
             })
             .collect::<Result<Vec<PeerData<CompiledClass>>, SyncError>>();
         tx.send(res);
     });
     rx.await.expect("Sender not to be dropped")
+}
+
+fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
+    class: Class,
+    fgw: &SequencerClient,
+    tokio_handle: &tokio::runtime::Handle,
+) -> anyhow::Result<CompiledClass> {
+    let Class {
+        block_number,
+        hash,
+        definition,
+    } = class;
+
+    let definition = match definition {
+        ClassDefinition::Cairo(c) => CompiledClassDefinition::Cairo(c),
+        ClassDefinition::Sierra(sierra_definition) => {
+            let casm_definition = pathfinder_compiler::compile_to_casm(&sierra_definition)
+                .context("Compiling Sierra class");
+
+            let casm_definition = match casm_definition {
+                Ok(x) => x,
+                Err(_) => tokio_handle
+                    .block_on(fgw.pending_casm_by_hash(hash))
+                    .context("Fetching casm definition from gateway")?
+                    .to_vec(),
+            };
+
+            CompiledClassDefinition::Sierra {
+                sierra_definition,
+                casm_definition,
+            }
+        }
+    };
+
+    Ok(CompiledClass {
+        block_number,
+        hash,
+        definition,
+    })
 }
 
 pub struct Store(pub pathfinder_storage::Connection);
