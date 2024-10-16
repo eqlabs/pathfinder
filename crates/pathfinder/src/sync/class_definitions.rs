@@ -206,34 +206,7 @@ impl ProcessStage for ComputeHash {
     type Output = Class;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let ClassWithLayout {
-            block_number,
-            definition,
-            layout,
-        } = input;
-
-        let hash = match layout {
-            GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
-                c.abi.as_ref().get().as_bytes(),
-                c.program.as_ref().get().as_bytes(),
-                c.entry_points_by_type.external,
-                c.entry_points_by_type.l1_handler,
-                c.entry_points_by_type.constructor,
-            ),
-            GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
-                c.abi.as_ref(),
-                c.sierra_program,
-                c.contract_class_version.as_ref(),
-                c.entry_points_by_type,
-            ),
-        }
-        .map_err(|_| SyncError2::ClassHashComputationError)?;
-
-        Ok(Class {
-            block_number,
-            definition,
-            hash,
-        })
+        compute_hash_impl(input).map_err(|_| SyncError2::ClassHashComputationError)
     }
 }
 
@@ -246,42 +219,44 @@ pub(super) async fn compute_hash(
         let res = peer_data
             .into_par_iter()
             .map(|PeerData { peer, data }| {
-                let ClassWithLayout {
-                    block_number,
-                    definition,
-                    layout,
-                } = data;
-
-                let hash = match layout {
-                    GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
-                        c.abi.as_ref().get().as_bytes(),
-                        c.program.as_ref().get().as_bytes(),
-                        c.entry_points_by_type.external,
-                        c.entry_points_by_type.l1_handler,
-                        c.entry_points_by_type.constructor,
-                    ),
-                    GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
-                        c.abi.as_ref(),
-                        c.sierra_program,
-                        c.contract_class_version.as_ref(),
-                        c.entry_points_by_type,
-                    ),
-                }
-                .map_err(|_| SyncError::ClassHashComputationError(peer))?;
-
-                Ok(PeerData::new(
-                    peer,
-                    Class {
-                        block_number,
-                        definition,
-                        hash,
-                    },
-                ))
+                let compiled = compute_hash_impl(data)
+                    .map_err(|_| SyncError::ClassHashComputationError(peer))?;
+                Ok(PeerData::new(peer, compiled))
             })
             .collect::<Result<Vec<PeerData<Class>>, SyncError>>();
         tx.send(res);
     });
     rx.await.expect("Sender not to be dropped")
+}
+
+fn compute_hash_impl(input: ClassWithLayout) -> anyhow::Result<Class> {
+    let ClassWithLayout {
+        block_number,
+        definition,
+        layout,
+    } = input;
+
+    let hash = match layout {
+        GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
+            c.abi.as_ref().get().as_bytes(),
+            c.program.as_ref().get().as_bytes(),
+            c.entry_points_by_type.external,
+            c.entry_points_by_type.l1_handler,
+            c.entry_points_by_type.constructor,
+        ),
+        GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
+            c.abi.as_ref(),
+            c.sierra_program,
+            c.contract_class_version.as_ref(),
+            c.entry_points_by_type,
+        ),
+    }?;
+
+    Ok(Class {
+        block_number,
+        definition,
+        hash,
+    })
 }
 
 pub struct VerifyDeclaredAt {
