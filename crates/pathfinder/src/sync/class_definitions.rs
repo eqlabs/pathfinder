@@ -226,7 +226,8 @@ impl ProcessStage for ComputeHash {
                 c.contract_class_version.as_ref(),
                 c.entry_points_by_type,
             ),
-        }?;
+        }
+        .map_err(|_| SyncError2::ClassHashComputationError)?;
 
         Ok(Class {
             block_number,
@@ -265,7 +266,8 @@ pub(super) async fn compute_hash(
                         c.contract_class_version.as_ref(),
                         c.entry_points_by_type,
                     ),
-                }?;
+                }
+                .map_err(|_| SyncError::ClassHashComputationError(peer))?;
 
                 Ok(PeerData::new(
                     peer,

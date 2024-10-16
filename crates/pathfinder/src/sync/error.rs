@@ -18,6 +18,8 @@ pub(super) enum SyncError {
     StateDiffCommitmentMismatch(PeerId),
     #[error("Invalid class definition layout")]
     BadClassLayout(PeerId),
+    #[error("Class hash computation failed")]
+    ClassHashComputationError(PeerId),
     #[error("Unexpected class definition")]
     UnexpectedClass(PeerId),
     #[error("Event commitment mismatch")]
@@ -44,6 +46,9 @@ impl SyncError {
                 PeerData::new(x, SyncError2::StateDiffCommitmentMismatch)
             }
             SyncError::BadClassLayout(x) => PeerData::new(x, SyncError2::BadClassLayout),
+            SyncError::ClassHashComputationError(x) => {
+                PeerData::new(x, SyncError2::ClassHashComputationError)
+            }
             SyncError::UnexpectedClass(x) => PeerData::new(x, SyncError2::UnexpectedClass),
             SyncError::EventCommitmentMismatch(x) => {
                 PeerData::new(x, SyncError2::EventCommitmentMismatch)
@@ -64,6 +69,7 @@ impl SyncError {
             SyncError2::Discontinuity => SyncError::Discontinuity(peer),
             SyncError2::StateDiffCommitmentMismatch => SyncError::StateDiffCommitmentMismatch(peer),
             SyncError2::BadClassLayout => SyncError::BadClassLayout(peer),
+            SyncError2::ClassHashComputationError => SyncError::ClassHashComputationError(peer),
             SyncError2::UnexpectedClass => SyncError::UnexpectedClass(peer),
             SyncError2::EventCommitmentMismatch => SyncError::EventCommitmentMismatch(peer),
             SyncError2::TransactionCommitmentMismatch => {
@@ -88,6 +94,8 @@ pub(super) enum SyncError2 {
     StateDiffCommitmentMismatch,
     #[error("Invalid class definition layout")]
     BadClassLayout,
+    #[error("Class hash computation failed")]
+    ClassHashComputationError,
     #[error("Unexpected class definition")]
     UnexpectedClass,
     #[error("Event commitment mismatch")]
@@ -137,6 +145,7 @@ impl PartialEq for SyncError2 {
                 true
             }
             (SyncError2::BadClassLayout, SyncError2::BadClassLayout) => true,
+            (SyncError2::ClassHashComputationError, SyncError2::ClassHashComputationError) => true,
             (SyncError2::UnexpectedClass, SyncError2::UnexpectedClass) => true,
             (SyncError2::EventCommitmentMismatch, SyncError2::EventCommitmentMismatch) => true,
             _ => false,
