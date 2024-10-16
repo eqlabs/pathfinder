@@ -265,8 +265,7 @@ pub(super) async fn compute_hash(
                         c.contract_class_version.as_ref(),
                         c.entry_points_by_type,
                     ),
-                }
-                .expect("todo fixme add error type");
+                }?;
 
                 Ok(PeerData::new(
                     peer,
@@ -281,45 +280,6 @@ pub(super) async fn compute_hash(
         tx.send(res);
     });
     rx.await.expect("Sender not to be dropped")
-}
-
-pub(super) async fn compute_hash0(
-    peer_data: PeerData<ClassWithLayout>,
-) -> Result<PeerData<Class>, SyncError> {
-    let PeerData { peer, data } = peer_data;
-    let ClassWithLayout {
-        block_number,
-        definition,
-        layout,
-    } = data;
-
-    let hash = tokio::task::spawn_blocking(move || match layout {
-        GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
-            c.abi.as_ref().get().as_bytes(),
-            c.program.as_ref().get().as_bytes(),
-            c.entry_points_by_type.external,
-            c.entry_points_by_type.l1_handler,
-            c.entry_points_by_type.constructor,
-        ),
-        GwClassDefinition::Sierra(c) => compute_sierra_class_hash(
-            c.abi.as_ref(),
-            c.sierra_program,
-            c.contract_class_version.as_ref(),
-            c.entry_points_by_type,
-        ),
-    })
-    .await
-    .context("Joining blocking task")?
-    .context("Computing class hash")?;
-
-    Ok(PeerData::new(
-        peer,
-        Class {
-            block_number,
-            definition,
-            hash,
-        },
-    ))
 }
 
 pub struct VerifyDeclaredAt {
