@@ -554,14 +554,14 @@ pub(super) fn expected_declarations_stream(
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
-                tx.blocking_send(Err(e.into()));
+                tx.blocking_send(Err(e));
                 return;
             }
         };
         let db = match db.transaction().context("Creating database transaction") {
             Ok(x) => x,
             Err(e) => {
-                tx.blocking_send(Err(e.into()));
+                tx.blocking_send(Err(e));
                 return;
             }
         };
