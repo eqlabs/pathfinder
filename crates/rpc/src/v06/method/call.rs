@@ -12,7 +12,10 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError {
+        revert_error: String,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
 }
 
 impl From<anyhow::Error> for CallError {
@@ -27,8 +30,9 @@ impl From<pathfinder_executor::CallError> for CallError {
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            ContractError(error, _) => Self::ContractError {
+            ContractError(error, error_stack) => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
+                revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -51,8 +55,12 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
-            CallError::ContractError { revert_error } => ApplicationError::ContractError {
+            CallError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => ApplicationError::ContractError {
                 revert_error: Some(revert_error),
+                revert_error_stack,
             },
             CallError::Internal(e) => ApplicationError::Internal(e),
             CallError::Custom(e) => ApplicationError::Custom(e),

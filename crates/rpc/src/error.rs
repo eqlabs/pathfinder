@@ -44,7 +44,10 @@ pub enum ApplicationError {
     #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Contract error")]
-    ContractError { revert_error: Option<String> },
+    ContractError {
+        revert_error: Option<String>,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
     #[error("Invalid contract class")]
     InvalidContractClass,
     #[error("Class already declared")]
@@ -218,9 +221,20 @@ impl ApplicationError {
             ApplicationError::NoTraceAvailable(error) => Some(json!({
                 "error": error,
             })),
-            ApplicationError::ContractError { revert_error } => Some(json!({
-                "revert_error": revert_error
-            })),
+            ApplicationError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => match version {
+                RpcVersion::V08 => {
+                    let revert_error_stack = error_stack_frames_to_json(&revert_error_stack.0);
+                    Some(json!({
+                        "revert_error": revert_error_stack
+                    }))
+                }
+                _ => Some(json!({
+                    "revert_error": revert_error
+                })),
+            },
             ApplicationError::TooManyKeysInFilter { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
