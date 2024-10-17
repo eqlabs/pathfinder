@@ -396,8 +396,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
 
     let classes_with_hashes = class_definitions
         .map_err(|e| e.data.into())
-        .map_ok(class_definitions::verify_layout)
-        .try_buffered(available_parallelism)
+        .and_then(class_definitions::verify_layout)
         .try_chunks(available_parallelism)
         .map_err(|e| e.1)
         .and_then(class_definitions::compute_hash)
