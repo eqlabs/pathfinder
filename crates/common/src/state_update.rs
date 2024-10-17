@@ -35,6 +35,14 @@ pub struct StateUpdateData {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct MultiBlockStateUpdateData {
+    pub contract_updates: HashMap<ContractAddress, MultiBlockContractUpdate>,
+    pub system_contract_updates: HashMap<ContractAddress, MultiBlockSystemContractUpdate>,
+    pub declared_cairo_classes: HashSet<ClassHash>,
+    pub declared_sierra_classes: HashMap<SierraHash, CasmHash>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct ContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
     /// The class associated with this update as the result of either a deploy
@@ -44,11 +52,30 @@ pub struct ContractUpdate {
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct MultiBlockContractUpdate {
+    pub storage: Vec<(StorageAddress, StorageValue)>,
+    /// The class associated with this update as the result of either a deploy
+    /// or class replacement transaction.
+    ///
+    /// TODO DOC: the is the LAST (ie. highest) class update in the batch of
+    /// blocks
+    pub class: Option<ContractClassUpdate>,
+    /// TODO DOC: the is the LAST (ie. highest) nonce update in the batch of
+    /// blocks
+    pub nonce: Option<ContractNonce>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
 pub struct SystemContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Dummy)]
+#[derive(Default, Debug, Clone, PartialEq, Dummy)]
+pub struct MultiBlockSystemContractUpdate {
+    pub storage: Vec<(StorageAddress, StorageValue)>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Dummy)]
 pub enum ContractClassUpdate {
     Deploy(ClassHash),
     Replace(ClassHash),

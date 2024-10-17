@@ -7,6 +7,7 @@ pub use sync::{
     revert,
     sync,
     update_starknet_state,
+    update_starknet_state_multi_block,
     Gossiper,
     StarknetStateUpdate,
     SyncContext,

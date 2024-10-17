@@ -3,19 +3,31 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::PeerData;
-use pathfinder_common::state_update::{self, ContractClassUpdate, ContractUpdate, StateUpdateData};
+use pathfinder_common::state_update::{
+    self,
+    ContractClassUpdate,
+    ContractUpdate,
+    MultiBlockStateUpdateData,
+    StateUpdateData,
+    SystemContractUpdate,
+};
 use pathfinder_common::{
+    class_hash,
     BlockHash,
     BlockHeader,
     BlockNumber,
+    CasmHash,
     ClassCommitment,
+    ClassHash,
+    ContractAddress,
+    SierraHash,
     StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
     StorageCommitment,
 };
-use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
+use pathfinder_merkle_tree::contract_state::ContractStateUpdateResult;
 use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::sync::mpsc;
@@ -23,7 +35,7 @@ use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
-use crate::state::{update_starknet_state, StarknetStateUpdate};
+use crate::state::{update_starknet_state, update_starknet_state_multi_block, StarknetStateUpdate};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
 
@@ -122,6 +134,108 @@ impl ProcessStage for VerifyCommitment {
 
         Ok(state_diff)
     }
+}
+
+pub struct VerifyCommitment2;
+
+impl ProcessStage for VerifyCommitment2 {
+    const NAME: &'static str = "StateDiff::Verify2";
+    type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
+    type Output = (StateUpdateData, BlockNumber);
+
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let (state_diff, block_number, expected_commitment) = input;
+        let actual_commitment = state_diff.compute_state_diff_commitment();
+
+        if actual_commitment != expected_commitment {
+            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
+            return Err(SyncError2::StateDiffCommitmentMismatch);
+        }
+
+        Ok((state_diff, block_number))
+    }
+}
+
+pub fn merge_state_updates_with_duplicate_keys(
+    state_updates: Vec<(StateUpdateData, BlockNumber)>,
+) -> MultiBlockStateUpdateData {
+    let mut merged = MultiBlockStateUpdateData::default();
+    state_updates.into_iter().map(|(sud, _)| sud).for_each(|x| {
+        x.contract_updates.into_iter().for_each(|(k, v)| {
+            let e = merged.contract_updates.entry(k).or_default();
+            e.storage.extend(v.storage);
+            e.nonce = v.nonce.or(e.nonce);
+            e.class = v.class.or(e.class);
+        });
+        x.system_contract_updates.into_iter().for_each(|(k, v)| {
+            let e = merged.system_contract_updates.entry(k).or_default();
+            e.storage.extend(v.storage);
+        });
+        merged
+            .declared_sierra_classes
+            .extend(x.declared_sierra_classes);
+        merged
+            .declared_cairo_classes
+            .extend(x.declared_cairo_classes);
+    });
+
+    merged
+}
+
+pub async fn update_starknet_state7(
+    storage: pathfinder_storage::Storage,
+    verify_tree_hashes: bool,
+    state_updates: Vec<(StateUpdateData, BlockNumber)>,
+) -> Result<BlockNumber, SyncError2> {
+    tokio::task::spawn_blocking(move || {
+        let mut db = storage
+            .connection()
+            .context("Creating database connection")?;
+        let db = db.transaction().context("Creating database transaction")?;
+
+        let tail = state_updates.last().unwrap().1;
+
+        for (state_update, block_number) in &state_updates {
+            db.insert_state_update_data(*block_number, state_update)
+                .context("Inserting state update data")?;
+        }
+
+        let merged = merge_state_updates_with_duplicate_keys(state_updates);
+
+        let (storage_commitment, class_commitment) = update_starknet_state_multi_block(
+            &db,
+            merged,
+            verify_tree_hashes,
+            tail,
+            storage.clone(),
+        )
+        .context("Updating Starknet state")?;
+
+        // Ensure that roots match.
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let expected_state_commitment = db
+            .state_commitment(tail.into())
+            .context("Querying state commitment")?
+            .context("State commitment not found")?;
+        if state_commitment != expected_state_commitment {
+            tracing::debug!(
+            %tail,
+            actual_storage_commitment=%storage_commitment,
+            actual_class_commitment=%class_commitment,
+            actual_state_commitment=%state_commitment,
+            %expected_state_commitment,
+            "State root mismatch");
+            return Err(SyncError2::StateRootMismatch);
+        }
+
+        db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
+            .context("Updating storage and class commitments")?;
+        db.commit().context("Committing db transaction")?;
+
+        Ok(tail)
+    })
+    .await
+    .context("Joining blocking task")?
 }
 
 pub struct UpdateStarknetState {
