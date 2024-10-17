@@ -478,7 +478,7 @@ impl Transaction<'_> {
                         .map(|e| e.into_iter().map(Into::into).collect())
                         .collect()
                 })
-                .unwrap_or(vec![]),
+                .unwrap_or_default(),
         ))
     }
 
