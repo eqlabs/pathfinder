@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
-use serde::Serialize;
 use serde_json::{json, Value};
+
+use crate::dto::serialize;
 
 #[derive(Debug)]
 pub enum RpcError {
@@ -73,19 +74,17 @@ impl RpcError {
     }
 }
 
-impl Serialize for RpcError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-
-        let mut obj = serializer.serialize_map(Some(2))?;
-        obj.serialize_entry("code", &self.code())?;
-        obj.serialize_entry("message", &self.message())?;
+impl serialize::SerializeForVersion for RpcError {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("code", &self.code())?;
+        obj.serialize_field("message", &self.message())?;
 
         if let Some(data) = self.data() {
-            obj.serialize_entry("data", &data)?;
+            obj.serialize_field("data", &data)?;
         }
 
         obj.end()

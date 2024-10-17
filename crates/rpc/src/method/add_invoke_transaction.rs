@@ -252,6 +252,7 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::serialize::{self, SerializeForVersion};
         use crate::dto::DeserializeForVersion;
 
         #[test]
@@ -340,7 +341,9 @@ mod tests {
             let error = AddInvokeTransactionError::from(starknet_error);
             let error = crate::error::ApplicationError::from(error);
             let error = crate::jsonrpc::RpcError::from(error);
-            let error = serde_json::to_value(error).unwrap();
+            let error = error
+                .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+                .unwrap();
 
             let expected = json!({
                 "code": 63,

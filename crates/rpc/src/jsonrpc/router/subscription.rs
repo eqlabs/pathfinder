@@ -10,7 +10,7 @@ use tracing::Instrument;
 
 use super::{run_concurrently, RpcRouter};
 use crate::context::RpcContext;
-use crate::dto::serialize::SerializeForVersion;
+use crate::dto::serialize::{self, SerializeForVersion};
 use crate::dto::DeserializeForVersion;
 use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
@@ -333,7 +333,7 @@ type WsReceiver = mpsc::Receiver<Result<Message, axum::Error>>;
 /// serves to allow easier testing. The sender sends `Result<_, RpcResponse>`
 /// purely for convenience, and the [`RpcResponse`] will be encoded into a
 /// [`Message::Text`].
-pub fn split_ws(ws: WebSocket) -> (WsSender, WsReceiver) {
+pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     let (mut ws_sender, mut ws_receiver) = ws.split();
     // Send messages to the websocket using an MPSC channel.
     let (sender_tx, mut sender_rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
@@ -347,7 +347,12 @@ pub fn split_ws(ws: WebSocket) -> (WsSender, WsReceiver) {
                 }
                 Err(e) => {
                     if ws_sender
-                        .send(Message::Text(serde_json::to_string(&e).unwrap()))
+                        .send(Message::Text(
+                            serde_json::to_string(
+                                &e.serialize(serialize::Serializer::new(version)).unwrap(),
+                            )
+                            .unwrap(),
+                        ))
                         .await
                         .is_err()
                     {
@@ -385,7 +390,7 @@ pub fn handle_json_rpc_socket(
                     Ok(msg) => msg,
                     Err(e) => {
                         if ws_tx
-                            .send(Err(RpcResponse::parse_error(e.to_string())))
+                            .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
                             .is_err()
                         {
@@ -426,7 +431,7 @@ pub fn handle_json_rpc_socket(
                     Ok(raw_value) => raw_value,
                     Err(e) => {
                         if ws_tx
-                            .send(Err(RpcResponse::parse_error(e.to_string())))
+                            .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
                             .is_err()
                         {
@@ -447,7 +452,14 @@ pub fn handle_json_rpc_socket(
                 {
                     Ok(Some(response)) | Err(response) => {
                         if ws_tx
-                            .send(Ok(Message::Text(serde_json::to_string(&response).unwrap())))
+                            .send(Ok(Message::Text(
+                                serde_json::to_string(
+                                    &response
+                                        .serialize(serialize::Serializer::new(state.version))
+                                        .unwrap(),
+                                )
+                                .unwrap(),
+                            )))
                             .await
                             .is_err()
                         {
@@ -466,7 +478,7 @@ pub fn handle_json_rpc_socket(
                     Ok(requests) => requests,
                     Err(e) => {
                         if ws_tx
-                            .send(Err(RpcResponse::parse_error(e.to_string())))
+                            .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
                             .is_err()
                         {
@@ -482,6 +494,7 @@ pub fn handle_json_rpc_socket(
                     if ws_tx
                         .send(Err(RpcResponse::invalid_request(
                             "A batch request must contain at least one request".to_owned(),
+                            state.version,
                         )))
                         .await
                         .is_err()
@@ -521,10 +534,17 @@ pub fn handle_json_rpc_socket(
                     continue;
                 }
 
+                let values = responses
+                    .into_iter()
+                    .map(|response| {
+                        response
+                            .serialize(serialize::Serializer::new(state.version))
+                            .unwrap()
+                    })
+                    .collect::<Vec<_>>();
+
                 if ws_tx
-                    .send(Ok(Message::Text(
-                        serde_json::to_string(&responses).unwrap(),
-                    )))
+                    .send(Ok(Message::Text(serde_json::to_string(&values).unwrap())))
                     .await
                     .is_err()
                 {
@@ -547,7 +567,7 @@ async fn handle_request(
     lock: Arc<RwLock<()>>,
 ) -> Result<Option<RpcResponse>, RpcResponse> {
     let rpc_request = serde_json::from_str::<RpcRequest<'_>>(raw_request.get())
-        .map_err(|e| RpcResponse::invalid_request(e.to_string()))?;
+        .map_err(|e| RpcResponse::invalid_request(e.to_string(), state.version))?;
     let req_id = rpc_request.id;
 
     // Ignore notification requests.
@@ -570,39 +590,47 @@ async fn handle_request(
             RpcResponse::invalid_params(
                 req_id.clone(),
                 "Missing params for starknet_unsubscribe".to_string(),
+                state.version,
             )
         })?;
-        let params = serde_json::from_str::<StarknetUnsubscribeParams>(params.get())
-            .map_err(|e| RpcResponse::invalid_params(req_id.clone(), e.to_string()))?;
+        let params =
+            serde_json::from_str::<StarknetUnsubscribeParams>(params.get()).map_err(|e| {
+                RpcResponse::invalid_params(req_id.clone(), e.to_string(), state.version)
+            })?;
         let (_, handle) = subscriptions
             .remove(&params.subscription_id)
             .ok_or_else(|| {
-                RpcResponse::invalid_params(req_id.clone(), "Subscription not found".to_string())
+                RpcResponse::invalid_params(
+                    req_id.clone(),
+                    "Subscription not found".to_string(),
+                    state.version,
+                )
             })?;
         handle.abort();
         metrics::increment_counter!("rpc_method_calls_total", "method" => "starknet_unsubscribe", "version" => state.version.to_str());
         return Ok(Some(RpcResponse {
             output: Ok(true.into()),
             id: req_id,
+            version: state.version,
         }));
     }
 
     let (&method_name, endpoint) = state
         .subscription_endpoints
         .get_key_value(rpc_request.method.as_ref())
-        .ok_or_else(|| RpcResponse::method_not_found(req_id.clone()))?;
+        .ok_or_else(|| RpcResponse::method_not_found(req_id.clone(), state.version))?;
     metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => state.version.to_str());
 
     let params = serde_json::to_value(rpc_request.params)
-        .map_err(|e| RpcResponse::invalid_params(req_id.clone(), e.to_string()))?;
+        .map_err(|e| RpcResponse::invalid_params(req_id.clone(), e.to_string(), state.version))?;
 
     // Start the subscription.
-    let state = state.clone();
+    let router = state.clone();
     let subscription_id = SubscriptionId::next();
     let ws_tx = ws_tx.clone();
     match endpoint
         .invoke(InvokeParams {
-            router: state,
+            router,
             input: params,
             subscription_id,
             subscriptions: subscriptions.clone(),
@@ -620,11 +648,13 @@ async fn handle_request(
                     serde_json::to_value(&SubscriptionIdResult { subscription_id }).unwrap(),
                 ),
                 id: req_id,
+                version: state.version,
             }))
         }
         Err(e) => Err(RpcResponse {
             output: Err(e),
             id: req_id,
+            version: state.version,
         }),
     }
 }

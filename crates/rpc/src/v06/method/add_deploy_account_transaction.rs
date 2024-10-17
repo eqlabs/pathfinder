@@ -217,6 +217,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::dto::serialize::{self, SerializeForVersion};
     use crate::v02::types::request::BroadcastedDeployAccountTransactionV3;
     use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
@@ -271,7 +272,9 @@ mod tests {
         let error = AddDeployAccountTransactionError::from(starknet_error);
         let error = crate::error::ApplicationError::from(error);
         let error = crate::jsonrpc::RpcError::from(error);
-        let error = serde_json::to_value(error).unwrap();
+        let error = error
+            .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         let expected = serde_json::json!({
             "code": 63,

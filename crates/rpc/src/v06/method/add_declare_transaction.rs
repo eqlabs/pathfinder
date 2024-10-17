@@ -351,6 +351,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
+            use crate::dto::serialize::{self, SerializeForVersion};
             use crate::v02::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {
@@ -427,7 +428,9 @@ mod tests {
                 let error = AddDeclareTransactionError::from(starknet_error);
                 let error = crate::error::ApplicationError::from(error);
                 let error = crate::jsonrpc::RpcError::from(error);
-                let error = serde_json::to_value(error).unwrap();
+                let error = error
+                    .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+                    .unwrap();
 
                 let expected = json!({
                     "code": 63,

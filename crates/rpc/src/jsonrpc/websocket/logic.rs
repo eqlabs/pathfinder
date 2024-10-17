@@ -24,6 +24,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
 use super::{EmittedEvent, Params, TransactionStatusUpdate};
+use crate::dto::serialize::{self, SerializeForVersion};
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -34,7 +35,7 @@ use crate::jsonrpc::websocket::data::{
     SubscriptionItem,
 };
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
-use crate::{BlockHeader, PendingData};
+use crate::{BlockHeader, PendingData, RpcVersion};
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
@@ -89,6 +90,7 @@ async fn handle_socket(socket: WebSocket, router: RpcRouter) {
         ws_sender,
         response_receiver,
         websocket_context.socket_buffer_capacity,
+        router.version,
     ));
     tokio::spawn(read(ws_receiver, response_sender, router));
 }
@@ -97,10 +99,11 @@ async fn write(
     sender: SplitSink<WebSocket, Message>,
     mut response_receiver: mpsc::Receiver<ResponseEvent>,
     buffer_capacity: NonZeroUsize,
+    version: RpcVersion,
 ) {
     let mut sender = sender.buffer(buffer_capacity.get());
     while let Some(response) = response_receiver.recv().await {
-        if let ControlFlow::Break(()) = send_response(&mut sender, &response).await {
+        if let ControlFlow::Break(()) = send_response(&mut sender, &response, version).await {
             break;
         }
     }
@@ -109,8 +112,13 @@ async fn write(
 async fn send_response(
     sender: &mut Buffer<SplitSink<WebSocket, Message>, Message>,
     response: &ResponseEvent,
+    version: RpcVersion,
 ) -> ControlFlow<()> {
-    let message = match serde_json::to_string(&response) {
+    let message = match serde_json::to_string(
+        &response
+            .serialize(serialize::Serializer::new(version))
+            .unwrap(),
+    ) {
         Ok(x) => x,
         Err(e) => {
             tracing::warn!(error=%e, kind=response.kind(), "Encoding websocket message failed");
@@ -711,6 +719,7 @@ mod tests {
                     "EOF while parsing a value at line 1 column 0".to_owned(),
                 )),
                 id: RequestId::Null,
+                version: RpcVersion::V07,
             })
             .await;
 
@@ -734,7 +743,9 @@ mod tests {
 
         let expected_subscription_id = 0;
         client
-            .expect_response(&successful_response(&expected_subscription_id, req_id).unwrap())
+            .expect_response(
+                &successful_response(&expected_subscription_id, req_id, RpcVersion::V07).unwrap(),
+            )
             .await;
 
         // Do this a bunch of times to ensure the test reception timeout is long enough.
@@ -764,7 +775,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         // Now make sure we don't receive it. This is why testing the timeout was
@@ -794,6 +805,7 @@ mod tests {
             .expect_response(&RpcResponse {
                 output: Ok(json!("0x534e5f5345504f4c4941")),
                 id: RequestId::Number(1),
+                version: RpcVersion::V07,
             })
             .await;
 
@@ -817,7 +829,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -882,7 +894,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         let req_id = RequestId::Number(38);
@@ -900,7 +912,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&1, req_id).unwrap())
+            .expect_response(&successful_response(&1, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -933,7 +945,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         let req_id = RequestId::Number(39);
@@ -949,7 +961,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&2, req_id).unwrap())
+            .expect_response(&successful_response(&2, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -1164,7 +1176,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client
@@ -1487,7 +1499,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         tokio::time::sleep(Duration::from_secs(15)).await;
@@ -1689,7 +1701,7 @@ mod tests {
 
         async fn expect_response<R>(&mut self, response: &R)
         where
-            R: Serialize,
+            R: SerializeForVersion,
         {
             let message = timeout(Duration::from_secs(2), self.receiver.next())
                 .await
@@ -1702,7 +1714,9 @@ mod tests {
 
             // Deserialize it to a generic value to avoid field ordering issues.
             let received: Value = serde_json::from_str(&raw_text).unwrap();
-            let expected = serde_json::to_value(response).unwrap();
+            let expected = response
+                .serialize(serialize::Serializer::new(RpcVersion::V07))
+                .unwrap();
             assert_eq!(received, expected);
         }
 
