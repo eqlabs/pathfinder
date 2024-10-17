@@ -82,7 +82,7 @@ fn get_block_transactions(
     let txs = db_tx
         .transaction_data_for_block(block_number.into())
         .context("Reading transactions from database")?
-        .unwrap_or(vec![])
+        .context("Transaction data missing for block")?
         .into_iter()
         .map(|(tx, _rx, _ev)| tx.into())
         .collect();
