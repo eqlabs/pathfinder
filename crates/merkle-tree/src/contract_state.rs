@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::format;
 
 use anyhow::Context;
 use pathfinder_common::state_update::ReverseContractUpdate;
@@ -99,7 +100,13 @@ pub fn update_contract_state(
         transaction
             .contract_class_hash(block.into(), contract_address)
             .context("Querying contract's class hash")?
-            .context("Contract's class hash is missing")?
+            // .context("Contract's class hash is missing")?
+            .with_context(|| {
+                format!(
+                    "Contract's class hash is missing, block: {block}, contract_address: \
+                     {contract_address}"
+                )
+            })?
     };
 
     let nonce = if let Some(nonce) = new_nonce {
