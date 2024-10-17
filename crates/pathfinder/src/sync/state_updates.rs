@@ -144,6 +144,30 @@ impl ProcessStage for VerifyCommitment2 {
     }
 }
 
+pub async fn merge_state_updates(
+    state_updates: Vec<PeerData<(StateUpdateData, BlockNumber)>>,
+) -> Result<PeerData<(StateUpdateData, BlockNumber)>, SyncError2> {
+    let last_block = state_updates.last().unwrap().data.1;
+    let last_peer = state_updates.last().unwrap().peer;
+
+    let merged = state_updates
+        .into_iter()
+        .reduce(|x, y| {
+            let mut x = x.data.0;
+            let y = y.data.0;
+
+            x.contract_updates.extend(y.contract_updates);
+            x.system_contract_updates.extend(y.system_contract_updates);
+            x.declared_sierra_classes.extend(y.declared_sierra_classes);
+            x.declared_cairo_classes.extend(y.declared_cairo_classes);
+
+            PeerData::new(last_peer, (x, last_block))
+        })
+        .unwrap();
+
+    Ok(merged)
+}
+
 pub async fn update_starknet_state1(
     storage: pathfinder_storage::Storage,
     current_block: BlockNumber,

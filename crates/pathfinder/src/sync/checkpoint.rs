@@ -375,18 +375,30 @@ async fn handle_state_diff_stream(
         //     10,
         // )
         .into_stream()
-        // .try_chunks(100)
-        // .map_err(|e| e.1)
+        .try_chunks(100)
+        .map_err(|e| e.1)
+        .map_err(|e| e.data)
+        .and_then(|x| state_updates::merge_state_updates(x))
+        // .and_then(|mut x| async move {
+        //     // TODO
+        //     let a = x.swap_remove(0);
+        //     Result::<_, SyncError2>::Ok(a)
+        // })
         .and_then(|x| {
-            state_updates::update_starknet_state1(storage, x.data.1, verify_tree_hashes, x.data.0)
+            state_updates::update_starknet_state1(
+                storage.clone(),
+                x.data.1,
+                verify_tree_hashes,
+                x.data.0,
+            )
 
             // TODO
             // async { Ok(PeerData::for_tests(BlockNumber::GENESIS)) }
         })
-        .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diff synced"))
+        .inspect_ok(|x| tracing::debug!(tail=%x, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
+        .map_err(|e| SyncError::from_v2(PeerData::for_tests(e)))?;
     Ok(())
 }
 
