@@ -10,6 +10,7 @@ members = [
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
     "crates/gateway-types",
+    "crates/make-stream",
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_proto",

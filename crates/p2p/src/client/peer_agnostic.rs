@@ -37,7 +37,6 @@ use pathfinder_common::{
     TransactionIndex,
 };
 use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod fixtures;
@@ -641,8 +640,7 @@ mod header_stream {
 
         tracing::trace!(?start, ?stop, ?dir, "Streaming headers");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             // Loop which refreshes peer set once we exhaust it.
             loop {
                 'next_peer: for peer in get_peers().await {
@@ -672,9 +670,7 @@ mod header_stream {
                     // with i.e. don't let them drip feed us etc.
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     async fn handle_response(
@@ -775,8 +771,7 @@ mod transaction_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming Transactions");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut counts_and_commitments_stream = Box::pin(counts_stream);
 
             let cnt = match try_next(&mut counts_and_commitments_stream).await {
@@ -839,9 +834,7 @@ mod transaction_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     /// ### Important
@@ -956,8 +949,7 @@ mod state_diff_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming state diffs");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut length_stream = Box::pin(length_stream);
 
             let cnt = match try_next(&mut length_stream).await {
@@ -1018,9 +1010,7 @@ mod state_diff_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     /// ### Important
@@ -1176,8 +1166,7 @@ mod class_definition_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming classes");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut declared_class_counts_stream = Box::pin(counts_stream);
 
             let cnt = match try_next(&mut declared_class_counts_stream).await {
@@ -1240,9 +1229,7 @@ mod class_definition_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> ClassesRequest {
@@ -1361,8 +1348,7 @@ mod event_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming events");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut counts_stream = Box::pin(counts_stream);
 
             let Some(Ok(cnt)) = counts_stream.next().await else {
@@ -1427,9 +1413,7 @@ mod event_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> EventsRequest {

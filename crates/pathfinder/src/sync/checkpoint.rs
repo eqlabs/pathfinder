@@ -259,12 +259,14 @@ impl Sync {
             ),
         );
 
+        let expected_declarations =
+            class_definitions::expected_declarations_stream(self.storage.clone(), start, stop);
+
         handle_class_stream(
             class_stream,
             self.storage.clone(),
             self.fgw_client.clone(),
-            start,
-            stop,
+            expected_declarations,
         )
         .await?;
 
@@ -381,34 +383,41 @@ async fn handle_state_diff_stream(
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
-    stream: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
+    class_definitions: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
     storage: Storage,
     fgw: SequencerClient,
-    start: BlockNumber,
-    stop: BlockNumber,
+    expected_declarations: impl Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
+        + Send
+        + 'static,
 ) -> Result<(), SyncError> {
-    let expectation_source =
-        class_definitions::ExpectedDeclarationsSource::new(storage.connection()?, start, stop)
-            .spawn()?;
+    // Increasing the chunk size above num cpus improves performance even more.
+    let chunk_size = std::thread::available_parallelism()
+        .context("Getting available parallelism")?
+        .get()
+        * 8;
 
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
-        .spawn()
-        .pipe(class_definitions::VerifyLayout, 10)
-        .pipe(class_definitions::ComputeHash, 10)
-        .pipe(
-            class_definitions::VerifyDeclaredAt::new(expectation_source),
-            10,
-        )
-        .pipe(
-            class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
-            10,
-        )
-        .pipe(class_definitions::Store(storage.connection()?), 10)
-        .into_stream()
-        // Drive stream to completion.
+    let classes_with_hashes = class_definitions
+        .map_err(|e| e.data.into())
+        .and_then(class_definitions::verify_layout)
+        .try_chunks(chunk_size)
+        .map_err(|e| e.1)
+        .and_then(class_definitions::compute_hash)
+        .boxed();
+
+    class_definitions::verify_declared_at(expected_declarations.boxed(), classes_with_hashes)
+        .try_chunks(chunk_size)
+        .map_err(|e| e.1)
+        .and_then(|x| {
+            class_definitions::compile_sierra_to_casm_or_fetch(
+                x,
+                fgw.clone(),
+                tokio::runtime::Handle::current(),
+            )
+        })
+        .and_then(|x| class_definitions::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await
-        .map_err(SyncError::from_v2)?;
+        .await?;
 
     Ok(())
 }
@@ -1380,8 +1389,40 @@ mod tests {
             }
         }
 
+        #[derive(Clone, Copy, Debug, Dummy)]
+        struct DeclaredClass {
+            pub block: BlockNumber,
+            pub class: ClassHash,
+        }
+
+        #[derive(Clone, Debug)]
+        struct DeclaredClasses(Vec<DeclaredClass>);
+
+        impl DeclaredClasses {
+            pub fn to_stream(
+                &self,
+            ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
+            {
+                let mut all = HashMap::<_, HashSet<ClassHash>>::new();
+                self.0
+                    .iter()
+                    .copied()
+                    .for_each(|DeclaredClass { block, class }| {
+                        all.entry(block).or_default().insert(class);
+                    });
+                stream::iter(all.into_iter().map(Ok))
+            }
+        }
+
+        impl<T> Dummy<T> for DeclaredClasses {
+            fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
+                DeclaredClasses(fake::vec![DeclaredClass; 1..10])
+            }
+        }
+
         struct Setup {
             pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>,
+            pub declared_classes: DeclaredClasses,
             pub expected_defs: HashMap<ClassHash, Vec<u8>>,
             pub storage: Storage,
         }
@@ -1438,6 +1479,21 @@ mod tests {
                     })),
                 ];
 
+                let declared_classes = DeclaredClasses(vec![
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: cairo_hash,
+                    },
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: ClassHash(sierra0_hash.0),
+                    },
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: ClassHash(sierra2_hash.0),
+                    },
+                ]);
+
                 let expected_defs = [
                     (cairo_hash, CAIRO.to_vec()),
                     (ClassHash(sierra0_hash.0), SIERRA0.to_vec()),
@@ -1449,6 +1505,7 @@ mod tests {
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_classes,
+                    declared_classes,
                     expected_defs,
                     storage,
                 }
@@ -1461,6 +1518,7 @@ mod tests {
         async fn happy_path() {
             let Setup {
                 streamed_classes,
+                declared_classes,
                 expected_defs,
                 storage,
             } = setup(true).await;
@@ -1469,8 +1527,7 @@ mod tests {
                 stream::iter(streamed_classes),
                 storage.clone(),
                 FakeFgw,
-                BlockNumber::GENESIS,
-                BlockNumber::GENESIS + 1,
+                declared_classes.to_stream(),
             )
             .await
             .unwrap();
@@ -1526,8 +1583,7 @@ mod tests {
                     stream::once(std::future::ready(Ok(data))),
                     storage,
                     FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS,
+                    Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,
                 Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
@@ -1537,6 +1593,7 @@ mod tests {
         async fn unexpected_class() {
             let Setup {
                 mut streamed_classes,
+                declared_classes,
                 storage,
                 ..
             } = setup(true).await;
@@ -1557,8 +1614,7 @@ mod tests {
                     stream::iter(streamed_classes),
                     storage,
                     FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + 1,
+                    declared_classes.to_stream(),
                 )
                 .await,
                 Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
@@ -1573,8 +1629,7 @@ mod tests {
                     )))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS
+                    Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,
                 Err(SyncError::Other(_))

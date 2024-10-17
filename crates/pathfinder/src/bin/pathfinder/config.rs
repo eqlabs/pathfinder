@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs::File;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -94,7 +94,7 @@ Examples:
                      number of CPU cores available.",
         env = "PATHFINDER_RPC_EXECUTION_CONCURRENCY"
     )]
-    execution_concurrency: Option<std::num::NonZeroU32>,
+    execution_concurrency: Option<NonZeroU32>,
 
     #[arg(
         long = "monitor-address",
