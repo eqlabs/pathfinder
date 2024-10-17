@@ -364,7 +364,7 @@ async fn handle_state_diff_stream(
             state_updates::FetchCommitmentFromDb::new(storage.connection()?),
             10,
         )
-        .pipe(state_updates::VerifyCommitment, 10)
+        .pipe(state_updates::VerifyCommitment2, 10)
         // .pipe(
         //     state_updates::UpdateStarknetState {
         //         storage: storage.clone(),
@@ -375,11 +375,13 @@ async fn handle_state_diff_stream(
         //     10,
         // )
         .into_stream()
-        .try_chunks(100)
-        .map_err(|e| e.1)
+        // .try_chunks(100)
+        // .map_err(|e| e.1)
         .and_then(|x| {
+            state_updates::update_starknet_state1(storage, x.data.1, verify_tree_hashes, x.data.0)
+
             // TODO
-            async { Ok(PeerData::for_tests(BlockNumber::GENESIS)) }
+            // async { Ok(PeerData::for_tests(BlockNumber::GENESIS)) }
         })
         .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
