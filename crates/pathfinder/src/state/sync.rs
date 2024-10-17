@@ -4,14 +4,13 @@ pub mod l2;
 mod pending;
 pub mod revert;
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
+use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
@@ -871,11 +870,7 @@ async fn l2_update(
             .context("Create database transaction")?;
         let (storage_commitment, class_commitment) = update_starknet_state(
             &transaction,
-            StarknetStateUpdate {
-                contract_updates: &state_update.contract_updates,
-                system_contract_updates: &state_update.system_contract_updates,
-                declared_sierra_classes: &state_update.declared_sierra_classes,
-            },
+            (&state_update).into(),
             verify_tree_hashes,
             block.block_number,
             storage,
@@ -1126,15 +1121,9 @@ async fn l2_reorg(
     })
 }
 
-pub struct StarknetStateUpdate<'a> {
-    pub contract_updates: &'a HashMap<ContractAddress, ContractUpdate>,
-    pub system_contract_updates: &'a HashMap<ContractAddress, SystemContractUpdate>,
-    pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
-}
-
 pub fn update_starknet_state(
     transaction: &Transaction<'_>,
-    state_update: StarknetStateUpdate<'_>,
+    state_update: StateUpdateRef<'_>,
     verify_hashes: bool,
     block: BlockNumber,
     // we need this so that we can create extra read-only transactions for
@@ -1169,9 +1158,9 @@ pub fn update_starknet_state(
                         };
                         let transaction = connection.transaction()?;
                         update_contract_state(
-                            *contract_address,
-                            &update.storage,
-                            update.nonce,
+                            **contract_address,
+                            update.storage,
+                            *update.nonce,
                             update.class.as_ref().map(|x| x.class_hash()),
                             &transaction,
                             verify_hashes,
@@ -1201,7 +1190,7 @@ pub fn update_starknet_state(
     for (contract, update) in state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
-            &update.storage,
+            update.storage,
             None,
             None,
             transaction,

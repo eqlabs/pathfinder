@@ -354,7 +354,7 @@ pub mod test_utils {
         // Update block 0
         let update_results = update_contract_state(
             contract0_addr,
-            &contract0_update,
+            (&contract0_update).into(),
             Some(contract_nonce!("0x1")),
             Some(class0_hash),
             &db_txn,
@@ -397,7 +397,7 @@ pub mod test_utils {
             .unwrap();
         let update_results = update_contract_state(
             contract1_addr,
-            &contract1_update1,
+            (&contract1_update1).into(),
             None,
             Some(class1_hash),
             &db_txn,
@@ -438,7 +438,7 @@ pub mod test_utils {
             StorageCommitmentTree::load(&db_txn, BlockNumber::GENESIS + 1).unwrap();
         let update_results = update_contract_state(
             contract1_addr,
-            &contract1_update2,
+            (&contract1_update2).into(),
             Some(contract_nonce!("0x10")),
             None,
             &db_txn,
@@ -483,7 +483,7 @@ pub mod test_utils {
 
         let update_results = update_contract_state(
             contract2_addr,
-            &HashMap::new(),
+            (&HashMap::new()).into(),
             Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
             &db_txn,

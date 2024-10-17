@@ -26,6 +26,8 @@ pub(super) enum SyncError {
     EventCommitmentMismatch(PeerId),
     #[error("Transaction commitment mismatch")]
     TransactionCommitmentMismatch(PeerId),
+    #[error("State root mismatch")]
+    StateRootMismatch(PeerId),
 }
 
 impl PartialEq for SyncError {
@@ -56,6 +58,7 @@ impl SyncError {
             SyncError::TransactionCommitmentMismatch(x) => {
                 PeerData::new(x, SyncError2::TransactionCommitmentMismatch)
             }
+            SyncError::StateRootMismatch(x) => PeerData::new(x, SyncError2::StateRootMismatch),
         }
     }
 
@@ -75,6 +78,7 @@ impl SyncError {
             SyncError2::TransactionCommitmentMismatch => {
                 SyncError::TransactionCommitmentMismatch(peer)
             }
+            SyncError2::StateRootMismatch => SyncError::StateRootMismatch(peer),
             other => SyncError::Other(other.into()),
         }
     }
