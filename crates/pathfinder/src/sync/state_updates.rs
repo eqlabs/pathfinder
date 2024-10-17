@@ -124,6 +124,8 @@ impl ProcessStage for VerifyCommitment {
     }
 }
 
+async fn update_starknet_state0() {}
+
 pub struct UpdateStarknetState {
     pub storage: pathfinder_storage::Storage,
     pub connection: pathfinder_storage::Connection,
