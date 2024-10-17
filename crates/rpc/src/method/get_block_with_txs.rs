@@ -85,7 +85,7 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
         let transactions = transaction
             .transactions_for_block(header.number.into())
             .context("Reading transactions from database")?
-            .context("Transaction data missing for block")?
+            .context("Transaction data missing")?
             .into_iter()
             .map(Into::into)
             .collect();
