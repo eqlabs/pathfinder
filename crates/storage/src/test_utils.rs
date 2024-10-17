@@ -125,6 +125,7 @@ pub(crate) fn create_transactions_and_receipts(
                     l1_gas: i as u128 + 333,
                     l1_data_gas: i as u128 + 666,
                 },
+                l2_gas: Default::default(),
             },
             transaction_hash: tx.hash,
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
