@@ -36,6 +36,13 @@ use tokio::sync::watch::Sender as WatchSender;
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
 
+/// Delay before restarting L1 or L2 tasks if they fail. This delay helps
+/// prevent DoS if these tasks are crashing.
+#[cfg(not(test))]
+pub const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
+#[cfg(test)]
+pub const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::ZERO;
+
 #[derive(Debug)]
 pub enum SyncEvent {
     L1Update(EthereumStateUpdate),
@@ -289,13 +296,6 @@ where
         rx_current.clone(),
         fetch_casm_from_fgw,
     ));
-
-    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
-    /// prevent DoS if these tasks are crashing.
-    #[cfg(not(test))]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
-    #[cfg(test)]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::ZERO;
 
     loop {
         tokio::select! {
