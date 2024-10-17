@@ -36,7 +36,6 @@ pub enum TraceTransactionError {
     Custom(anyhow::Error),
     TxnHashNotFound,
     NoTraceAvailable(TraceError),
-    ContractError { revert_error: String },
 }
 
 impl From<ExecutionStateError> for TraceTransactionError {
@@ -96,11 +95,6 @@ impl From<TraceTransactionError> for ApplicationError {
             TraceTransactionError::TxnHashNotFound => ApplicationError::TxnHashNotFound,
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
-            }
-            TraceTransactionError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
             }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
             TraceTransactionError::Custom(e) => ApplicationError::Custom(e),
