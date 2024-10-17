@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Ethereum RPC API now requires Websocket endpoints (prev. HTTP). If an HTTP url is provided instead, Pathfinder will attempt to connect vía Websocket protocol at that same url.
+- JSON-RPC API version 0.7 is now served by default on the `/` path.
 
 ## [0.14.4] - 2024-10-03
 

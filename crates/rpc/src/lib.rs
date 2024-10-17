@@ -830,7 +830,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
             .spawn()
             .await
             .unwrap();
@@ -939,7 +939,7 @@ mod tests {
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
             .spawn()
             .await
             .unwrap();
