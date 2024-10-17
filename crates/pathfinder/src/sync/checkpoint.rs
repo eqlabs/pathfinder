@@ -390,20 +390,22 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         + Send
         + 'static,
 ) -> Result<(), SyncError> {
-    let available_parallelism = std::thread::available_parallelism()
+    // Increasing the chunk size above num cpus improves performance even more.
+    let chunk_size = std::thread::available_parallelism()
         .context("Getting available parallelism")?
-        .get();
+        .get()
+        * 8;
 
     let classes_with_hashes = class_definitions
         .map_err(|e| e.data.into())
         .and_then(class_definitions::verify_layout)
-        .try_chunks(available_parallelism)
+        .try_chunks(chunk_size)
         .map_err(|e| e.1)
         .and_then(class_definitions::compute_hash)
         .boxed();
 
     class_definitions::verify_declared_at(expected_declarations.boxed(), classes_with_hashes)
-        .try_chunks(available_parallelism)
+        .try_chunks(chunk_size)
         .map_err(|e| e.1)
         .and_then(|x| {
             class_definitions::compile_sierra_to_casm_or_fetch(
