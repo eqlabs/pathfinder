@@ -846,6 +846,7 @@ pub(crate) mod dto {
                     },
                     _ => Default::default(),
                 },
+                l2_gas: Default::default(),
             }
         }
     }

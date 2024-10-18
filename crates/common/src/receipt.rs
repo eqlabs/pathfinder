@@ -44,6 +44,7 @@ pub struct ExecutionResources {
     pub n_memory_holes: u64,
     pub data_availability: L1Gas,
     pub total_gas_consumed: L1Gas,
+    pub l2_gas: L2Gas,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Dummy)]
@@ -51,6 +52,10 @@ pub struct L1Gas {
     pub l1_gas: u128,
     pub l1_data_gas: u128,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Dummy, serde::Serialize)]
+#[serde(transparent)]
+pub struct L2Gas(pub u128);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BuiltinCounters {
@@ -103,6 +108,7 @@ impl<T> Dummy<T> for ExecutionResources {
             data_availability: Faker.fake_with_rng(rng),
             // TODO fix this after total_gas_consumed is added to p2p messages
             total_gas_consumed: Default::default(),
+            l2_gas: Default::default(),
         }
     }
 }
