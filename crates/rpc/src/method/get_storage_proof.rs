@@ -97,7 +97,7 @@ impl DeserializeForVersion for Input {
     }
 }
 
-/// Wrapper around [`TrieNode`] to implement [`Serialize`].
+/// Wrapper around [`TrieNode`] to implement [`SerializeForVersion`].
 #[derive(Debug, PartialEq, Eq, Hash)]
 struct ProofNode(TrieNode);
 
