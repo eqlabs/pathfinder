@@ -265,7 +265,7 @@ pub mod test_utils {
         Receipt,
     };
     use pathfinder_common::transaction::*;
-    use pathfinder_merkle_tree::StorageCommitmentTree;
+    use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
     use pathfinder_storage::{BlockId, Storage, StorageBuilder};
     use starknet_gateway_types::reply::GasPrices;
 
@@ -330,6 +330,9 @@ pub mod test_utils {
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
+        let sierra_class = SierraHash(class2_hash.0);
+        let sierra_casm_hash = casm_hash_bytes!(b"non-existent");
+
         db_txn
             .insert_cairo_class(class0_hash, &class0_definition)
             .unwrap();
@@ -338,9 +341,9 @@ pub mod test_utils {
             .unwrap();
         db_txn
             .insert_sierra_class(
-                &SierraHash(class2_hash.0),
+                &sierra_class,
                 &sierra_class_definition,
-                &casm_hash_bytes!(b"non-existent"),
+                &sierra_casm_hash,
                 &[],
             )
             .unwrap();
@@ -449,6 +452,33 @@ pub mod test_utils {
             .unwrap();
         storage_commitment_tree
             .set(contract1_addr, contract_state_hash)
+            .unwrap();
+
+        let mut class_commitment_tree =
+            ClassCommitmentTree::load(&db_txn, BlockNumber::GENESIS + 2).unwrap();
+        let sierra_leaf_hash =
+            pathfinder_common::calculate_class_commitment_leaf_hash(sierra_casm_hash);
+
+        db_txn
+            .insert_class_commitment_leaf(
+                BlockNumber::GENESIS + 2,
+                &sierra_leaf_hash,
+                &sierra_casm_hash,
+            )
+            .unwrap();
+
+        class_commitment_tree
+            .set(sierra_class, sierra_leaf_hash)
+            .unwrap();
+
+        let (_, trie_update) = class_commitment_tree.commit().unwrap();
+
+        let class_root_idx = db_txn
+            .insert_class_trie(&trie_update, BlockNumber::GENESIS + 2)
+            .unwrap();
+
+        db_txn
+            .insert_class_root(BlockNumber::GENESIS + 2, class_root_idx)
             .unwrap();
 
         let update_results = update_contract_state(
@@ -876,7 +906,6 @@ mod tests {
         "starknet_call",
         "starknet_estimateFee",
         "starknet_estimateMessageFee",
-        "starknet_getStorageProof",
     ])]
     #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[
         "starknet_traceTransaction",

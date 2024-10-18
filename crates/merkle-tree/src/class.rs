@@ -18,7 +18,7 @@ use crate::tree::MerkleTree;
 ///
 /// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
 ///
-/// Tree data is persisted by a sqlite table 'tree_class'.
+/// Tree data is persisted by a sqlite table 'trie_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
     storage: ClassStorage<'tx>,
@@ -78,15 +78,8 @@ impl<'tx> ClassCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         class_hash: ClassHash,
+        root: u64,
     ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .class_root_index(block)
-            .context("Querying class root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
         let storage = ClassStorage {
             tx,
             block: Some(block),

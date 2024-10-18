@@ -91,6 +91,8 @@ pub enum ApplicationError {
     },
     #[error("Gateway is down")]
     SubscriptionGatewayDown { subscription_id: u32 },
+    #[error("The node doesn't support storage proofs for blocks that are too far in the past")]
+    StorageProofNotSupported,
     #[error("Proof is missing")]
     ProofMissing,
     /// Internal errors are errors whose details we don't want to show to the
@@ -125,6 +127,7 @@ impl ApplicationError {
             ApplicationError::TooManyKeysInFilter { .. } => 34,
             ApplicationError::ContractError { .. } => 40,
             ApplicationError::TransactionExecutionError { .. } => 41,
+            ApplicationError::StorageProofNotSupported { .. } => 42,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
             ApplicationError::InvalidTransactionNonce => 52,
@@ -216,6 +219,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
+            ApplicationError::StorageProofNotSupported => None,
             ApplicationError::ProofMissing => None,
             ApplicationError::SubscriptionTransactionHashNotFound {
                 subscription_id,
