@@ -69,6 +69,7 @@ pub fn blocks() -> [Block; 2] {
                     strk_l1_gas_price: GasPrice(0),
                     eth_l1_data_gas_price: GasPrice(1),
                     strk_l1_data_gas_price: GasPrice(1),
+                    l2_gas_price: GasPrice(3),
                     sequencer_address: Default::default(),
                     starknet_version: StarknetVersion::new(0, 0, 0, 0),
                     class_commitment: class_commitment!("0x0"),
@@ -1202,6 +1203,7 @@ pub fn blocks() -> [Block; 2] {
                     receipt_commitment: receipt_commitment!("0x00FB6833B56FCA428975B0DF7875F35B7EADBD26B517DAF1B9702E1D85665065"),
                     state_diff_commitment: state_diff_commitment!("0x05D83BBEEDF35B7D310A43B11F3623DD5D705FF09A7FBC8B634222E083433CAE"),
                     state_diff_length: 12,
+                    l2_gas_price: todo!(),
                 },
                 signature: BlockCommitmentSignature {
                     r: block_commitment_signature_elem!("0x05C328D673C07E530A45D6F12E569DF0D059D97BF920D978E44DAA54FB3DB655"),

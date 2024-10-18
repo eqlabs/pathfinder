@@ -796,6 +796,7 @@ impl ProcessStage for StoreBlock {
             receipt_commitment: header.receipt_commitment,
             state_diff_commitment: header.state_diff_commitment,
             state_diff_length: header.state_diff_length,
+            l2_gas_price: header.l2_gas_price,
         };
 
         db.insert_block_header(&header)

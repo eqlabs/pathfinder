@@ -23,8 +23,8 @@ impl Transaction<'_> {
         // Insert the header
         self.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment,  state_diff_commitment,  state_diff_length)
-            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment, :state_diff_commitment, :state_diff_length)",
+                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  l2_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment,  state_diff_commitment,  state_diff_length)
+            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :l2_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment, :state_diff_commitment, :state_diff_length)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -35,6 +35,7 @@ impl Transaction<'_> {
             ":strk_l1_gas_price": &header.strk_l1_gas_price.to_be_bytes().as_slice(),
             ":eth_l1_data_gas_price": &header.eth_l1_data_gas_price.to_be_bytes().as_slice(),
             ":strk_l1_data_gas_price": &header.strk_l1_data_gas_price.to_be_bytes().as_slice(),
+            ":l2_gas_price": &header.l2_gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
             ":version": &header.starknet_version.as_u32(),
             ":transaction_commitment": &header.transaction_commitment,
@@ -613,6 +614,9 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
     let strk_l1_data_gas_price = row
         .get_optional_gas_price("strk_l1_data_gas_price")?
         .unwrap_or(GasPrice::ZERO);
+    let l2_gas_price = row
+        .get_optional_gas_price("l2_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
     let sequencer_address = row.get_sequencer_address("sequencer_address")?;
     let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
     let event_commitment = row.get_event_commitment("event_commitment")?;
@@ -637,6 +641,7 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         strk_l1_gas_price,
         eth_l1_data_gas_price,
         strk_l1_data_gas_price,
+        l2_gas_price,
         sequencer_address,
         class_commitment,
         event_commitment,
@@ -688,6 +693,7 @@ mod tests {
             strk_l1_gas_price: GasPrice(33),
             eth_l1_data_gas_price: GasPrice(34),
             strk_l1_data_gas_price: GasPrice(35),
+            l2_gas_price: GasPrice(36),
             sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             class_commitment,
@@ -707,6 +713,7 @@ mod tests {
             .timestamp(BlockTimestamp::new_or_panic(12))
             .eth_l1_gas_price(GasPrice(34))
             .strk_l1_gas_price(GasPrice(35))
+            .l2_gas_price(GasPrice(36))
             .sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
             .event_commitment(event_commitment_bytes!(b"event commitment 1"))
             .class_commitment(class_commitment_bytes!(b"class commitment 1"))
@@ -721,6 +728,7 @@ mod tests {
             .child_builder()
             .eth_l1_gas_price(GasPrice(38))
             .strk_l1_gas_price(GasPrice(39))
+            .l2_gas_price(GasPrice(40))
             .timestamp(BlockTimestamp::new_or_panic(15))
             .sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
             .event_commitment(event_commitment_bytes!(b"event commitment 2"))
