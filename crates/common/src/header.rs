@@ -81,8 +81,8 @@ impl BlockHeaderBuilder {
         self
     }
 
-    pub fn state_commitment(mut self, state_commmitment: StateCommitment) -> Self {
-        self.0.state_commitment = state_commmitment;
+    pub fn state_commitment(mut self, state_commitment: StateCommitment) -> Self {
+        self.0.state_commitment = state_commitment;
         self
     }
 

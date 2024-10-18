@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-/// This trait is a workaround for [anyhow::Error] not being clonable.
+/// This trait is a workaround for [anyhow::Error] not being cloneable.
 ///
 /// Most of the time you can use `Arc<anyhow::Error>` instead of `anyhow::Error`
 /// to circumvent `anyhow::Error` not being `Clone`. However, in some cases, you

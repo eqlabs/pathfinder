@@ -518,7 +518,7 @@
                 "schema": {
                     "title": "Estimation",
                     "type": "array",
-                    "description": "a sequence of fee estimatione where the i'th estimate corresponds to the i'th transaction",
+                    "description": "a sequence of fee estimation where the i'th estimate corresponds to the i'th transaction",
                     "items": {
                         "$ref": "#/components/schemas/FEE_ESTIMATE"
                     }

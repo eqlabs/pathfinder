@@ -75,7 +75,7 @@
             ],
             "result": {
                 "name": "simulated_transactions",
-                "description": "The execution trace and consuemd resources of the required transactions",
+                "description": "The execution trace and consumed resources of the required transactions",
                 "schema": {
                     "type": "array",
                     "items": {
