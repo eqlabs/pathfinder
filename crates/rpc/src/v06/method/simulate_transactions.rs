@@ -591,6 +591,7 @@ pub mod dto {
 
     #[derive(Clone, Debug, Default, Serialize, Eq, PartialEq)]
     #[serde(untagged)]
+    #[allow(clippy::large_enum_variant)]
     pub enum ExecuteInvocation {
         #[default]
         Empty,
