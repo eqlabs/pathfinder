@@ -232,6 +232,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         pathfinder_context.gateway.clone(),
         rx_pending.clone(),
         notifications.clone(),
+        ethereum.client.clone(),
         rpc_config,
     );
 
@@ -384,12 +385,10 @@ fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
 
     if json_log {
         subscriber.json().flatten_event(true).init();
+    } else if pretty_log {
+        subscriber.pretty().init();
     } else {
-        if pretty_log {
-            subscriber.pretty().init();
-        } else {
-            subscriber.compact().init();
-        }
+        subscriber.compact().init();
     }
 }
 

@@ -15,7 +15,6 @@ use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
-    L1ToL2MessageLog,
     PublicKey,
     ReceiptCommitment,
     StateDiffCommitment,
@@ -75,8 +74,6 @@ pub enum SyncEvent {
     },
     /// A new L2 pending update was polled.
     Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
-    /// A new L1 to L2 message was finalized.
-    L1ToL2Message(L1ToL2MessageLog),
 }
 
 pub struct SyncContext<G, E> {
@@ -219,6 +216,7 @@ where
 
     let (event_sender, event_receiver) = mpsc::channel(8);
 
+    // Get the latest block from the database
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l2_head = tx
@@ -229,11 +227,13 @@ where
         Ok(l2_head)
     })?;
 
+    // Get the latest block from the sequencer
     let gateway_latest = sequencer
         .head()
         .await
         .context("Fetching latest block from gateway")?;
 
+    // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
     let mut latest_handle = tokio::spawn(l2::poll_latest(
         sequencer.clone(),
@@ -260,6 +260,7 @@ where
     // open even if the producer task fails.
     let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
+    // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
@@ -689,10 +690,6 @@ async fn consumer(
                     pending_data.send_replace(data);
                     tracing::debug!("Updated pending data");
                 }
-            }
-            L1ToL2Message(msg) => {
-                tracing::trace!("Got a new L1 to L2 message log: {:?}", msg);
-                // todo!()
             }
         }
     }

@@ -793,6 +793,7 @@ mod tests {
     use axum::extract::ws::Message;
     use pathfinder_common::{BlockHash, BlockHeader, BlockId, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
+    use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
@@ -1010,6 +1011,8 @@ mod tests {
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
+            ethereum: EthereumClient::new("wss://eth-sepolia.g.alchemy.com/v2/just-for-tests")
+                .unwrap(),
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
