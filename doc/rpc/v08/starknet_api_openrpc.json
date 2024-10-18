@@ -908,58 +908,68 @@
     },
     {
         "name": "starknet_getStorageProof",
-        "summary": "get merkle paths in one of the state tries: global state, classes, individual contract",
+        "summary": "Get merkle paths in one of the state tries: global state, classes, individual contract. A single request can query for any mix of the three types of storage proofs (classes, contracts, and storage).",
         "params": [
-          {
-            "name": "class_hashes",
-            "description": "a list of the class hashes for which we want to prove membership in the classes trie",
-            "required": false,
-            "schema": {
-              "title": "classes",
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/FELT"
-              }
-            }
-          },
-          {
-            "name": "contract_addresses",
-            "description": "a list of contracts for which we want to prove membership in the global state trie",
-            "required": false,
-            "schema": {
-              "title": "contracts",
-              "type": "array",
-              "items": {
-                "$ref": "#/components/schemas/ADDRESS"
-              }
-            }
-          },
-          {
-            "name": "contracts_storage_keys",
-            "description": "a list of (contract_address, storage_keys) pairs",
-            "required": false,
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "contract_address": {
-                    "$ref": "#/components/schemas/ADDRESS"
-                  },
-                  "storage_keys": {
+            {
+                "name": "block_id",
+                "description": "The hash of the requested block, or number (height) of the requested block, or a block tag",
+                "required": true,
+                "schema": {
+                    "title": "Block id",
+                    "$ref": "#/components/schemas/BLOCK_ID"
+                }
+            },
+            {
+                "name": "class_hashes",
+                "description": "a list of the class hashes for which we want to prove membership in the classes trie",
+                "required": false,
+                "schema": {
+                    "title": "classes",
+                    "type": "array",
+                        "items": {
+                        "$ref": "#/components/schemas/FELT"
+                    }
+                }
+            },
+            {
+                "name": "contract_addresses",
+                "description": "a list of contracts for which we want to prove membership in the global state trie",
+                "required": false,
+                "schema": {
+                    "title": "contracts",
+                    "type": "array",
+                        "items": {
+                        "$ref": "#/components/schemas/ADDRESS"
+                    }
+                }
+            },
+            {
+                "name": "contracts_storage_keys",
+                "description": "a list of (contract_address, storage_keys) pairs",
+                "required": false,
+                "schema": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/FELT"
+                        "type": "object",
+                        "properties": {
+                            "contract_address": {
+                                "$ref": "#/components/schemas/ADDRESS"
+                            },
+                            "storage_keys": {
+                                "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/FELT"
+                                    }
+                                }
+                        },
+                        "required": ["contract_address", "storage_keys"]
                     }
-                  }
                 }
-              }
             }
-          }
         ],
         "result": {
           "name": "result",
-          "description": "The contract's nonce at the requested state",
+          "description": "The requested storage proofs. Note that if a requested leaf has the default value, the path to it may end in an edge node whose path is not a prefix of the requested leaf, thus effecitvely proving non-membership",
           "schema": {
             "type": "object",
             "properties": {
@@ -967,16 +977,69 @@
                 "$ref": "#/components/schemas/NODE_HASH_TO_NODE_MAPPING"
               },
               "contracts_proof": {
-                "$ref": "#/components/schemas/NODE_HASH_TO_NODE_MAPPING"
+                "type": "object",
+                "properties": {
+                    "nodes": {
+                        "description": "The nodes in the union of the paths from the contracts tree root to the requested leaves",
+                        "$ref": "#/components/schemas/NODE_HASH_TO_NODE_MAPPING"
+                    },
+                    "contract_leaves_data": {
+                        "type": "array",
+                        "items": {
+                            "description": "The nonce and class hash for each requested contract address, in the order in which they appear in the request. These values are needed to construct the associated leaf node",
+                            "type": "object",
+                            "properties": {
+                                "nonce": {
+                                    "$ref": "#/components/schemas/FELT"
+                                },
+                                "class_hash": {
+                                    "$ref": "#/components/schemas/FELT"
+                                }
+                            },
+                            "required": ["nonce", "class_hash"] 
+                        }
+                    }
+                },
+                "required": ["nodes", "contract_leaves_data"]
               },
               "contracts_storage_proofs": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/NODE_HASH_TO_NODE_MAPPING"
                 }
+              },
+              "global_roots": {
+                "type": "object",
+                "properties": {
+                    "contracts_tree_root": {
+                        "$ref": "#/components/schemas/FELT"
+                    },
+                    "classes_tree_root": {
+                        "$ref": "#/components/schemas/FELT"
+                    },
+                    "block_hash": {
+                        "description": "the associated block hash (needed in case the caller used a block tag for the block_id parameter)",
+                        "$ref": "#/components/schemas/FELT"
+                    }
+                },
+                "required": ["contracts_tree_root", "classes_tree_root", "block_hash"]
               }
+            },
+            "required": [
+              "classes_proof",
+              "contracts_proof",
+              "contracts_storage_proofs",
+              "global_roots"
+            ]
+          },
+          "errors": [
+            {
+              "$ref": "#/components/errors/BLOCK_NOT_FOUND"
+            },
+            {
+              "$ref": "#/components/errors/STORAGE_PROOF_NOT_SUPPORTED"
             }
-          }
+          ]
         }
       }
   ],
@@ -3098,26 +3161,23 @@
       "TXN_STATUS_RESULT": {
         "title": "Transaction status result",
         "description": "Transaction status result, including finality status and execution status",
-        "schema": {
-          "title": "Transaction status result",
-          "type": "object",
-          "properties": {
-            "finality_status": {
-              "title": "finality status",
-              "$ref": "#/components/schemas/TXN_STATUS"
-            },
-            "execution_status": {
-              "title": "execution status",
-              "$ref": "#/components/schemas/TXN_EXECUTION_STATUS"
-            },
-            "failure_reason": {
-                "title": "failure reason",
-                "description": "the failure reason, only appears if finality_status is REJECTED or execution_status is REVERTED",
-                "type": "string"
-            }
+        "type": "object",
+        "properties": {
+          "finality_status": {
+            "title": "finality status",
+            "$ref": "#/components/schemas/TXN_STATUS"
           },
-          "required": ["finality_status"]
-        }
+          "execution_status": {
+            "title": "execution status",
+            "$ref": "#/components/schemas/TXN_EXECUTION_STATUS"
+          },
+          "failure_reason": {
+              "title": "failure reason",
+              "description": "the failure reason, only appears if finality_status is REJECTED or execution_status is REVERTED",
+              "type": "string"
+          }
+        },
+        "required": ["finality_status"]
       },
       "TXN_STATUS": {
         "title": "Transaction status",
@@ -3627,45 +3687,57 @@
             "description": "l2 gas consumed by this transaction, used for computation and calldata",
             "type": "integer"
           }
-        }
+        },
+        "required": ["l1_gas", "l1_data_gas", "l2_gas"]
       },
       "MERKLE_NODE": {
-        "type": "object",
-        "properties": {
-          "path": {
-            "type": "integer"
-          },
-          "length": {
-            "type": "integer"
-          },
-          "value": {
-            "$ref": "#/components/schemas/FELT"
-          },
-          "children_hashes": {
-            "type": "object",
-            "description": "the hash of the child nodes, if not present then the node is a leaf",
-            "properties": {
-              "left": {
-                "$ref": "#/components/schemas/FELT"
-              },
-              "right": {
-                "$ref": "#/components/schemas/FELT"
-              }
+        "title": "MP node",
+        "description": "a node in the Merkle-Patricia tree, can be a leaf, binary node, or an edge node",
+        "oneOf": [
+            {
+                "$ref": "#/components/schemas/BINARY_NODE"
             },
-            "required": [
-              "left",
-              "right"
-            ]
-          }
-        },
-        "required": [
-          "path",
-          "length",
-          "value"
+            {
+                "$ref": "#/components/schemas/EDGE_NODE"
+            }
         ]
       },
+      "BINARY_NODE": {
+        "type": "object",
+        "description": "an internal node whose both children are non-zero",
+        "properties": {
+            "left": {
+                "description": "the hash of the left child",
+                "$ref": "#/components/schemas/FELT"
+            },
+            "right": {
+                "description": "the hash of the right child",
+                "$ref": "#/components/schemas/FELT"
+            }
+        },
+        "required": ["left", "right"]
+      },
+      "EDGE_NODE": {
+        "type": "object",
+        "description": "represents a path to the highest non-zero descendant node",
+        "properties": {
+            "path": {
+                "description": "an integer whose binary representation represents the path from the current node to its highest non-zero descendant (bounded by 2^251)",
+                "$ref": "#/components/schemas/NUM_AS_HEX"
+            },
+            "length": {
+                "description": "the length of the path (bounded by 251)",
+                "type": "integer"
+            },
+            "child": {
+                "description": "the hash of the unique non-zero maximal-height descendant node",
+                "$ref": "#/components/schemas/FELT"
+            }
+        },
+        "required": ["path", "length", "child"]
+      },
       "NODE_HASH_TO_NODE_MAPPING": {
-        "description": "a node_hash -> node mapping of all the nodes in the union of the paths between the requested leaves and the root (for each node present, its sibling is also present)",
+        "description": "a node_hash -> node mapping of all the nodes in the union of the paths between the requested leaves and the root",
         "type": "array",
         "items": {
           "type": "object",
@@ -3704,7 +3776,8 @@
               "error": {
                 "$ref": "#/components/schemas/CONTRACT_EXECUTION_ERROR"
               }
-            }
+            },
+            "required": ["contract_address", "class_hash", "selector", "error"]
           },
           {
             "title": "error message",
@@ -3791,6 +3864,10 @@
           },
           "required": ["transaction_index", "execution_error"]
         }
+      },
+      "STORAGE_PROOF_NOT_SUPPORTED": {
+        "code": 42,
+        "message": "the node doesn't support storage proofs for blocks that are too far in the past"
       }
     }
   }
