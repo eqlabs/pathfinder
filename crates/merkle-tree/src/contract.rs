@@ -32,7 +32,7 @@ use crate::tree::{MerkleTree, Visit};
 /// It maps a contract's [storage addresses](StorageAddress) to their
 /// [values](StorageValue).
 ///
-/// Tree data is persisted by a sqlite table 'tree_contracts'.
+/// Tree data is persisted by a sqlite table 'trie_contracts'.
 pub struct ContractsStorageTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: ContractStorage<'tx>,
@@ -122,7 +122,7 @@ impl<'tx> ContractsStorageTree<'tx> {
 /// It maps each contract's [address](ContractAddress) to it's [state
 /// hash](ContractStateHash).
 ///
-/// Tree data is persisted by a sqlite table 'tree_global'.
+/// Tree data is persisted by a sqlite table 'trie_storage'.
 pub struct StorageCommitmentTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: StorageTrieStorage<'tx>,
@@ -187,15 +187,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         address: &ContractAddress,
+        root: u64,
     ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .storage_root_index(block)
-            .context("Querying storage root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
         let storage = StorageTrieStorage {
             tx,
             block: Some(block),

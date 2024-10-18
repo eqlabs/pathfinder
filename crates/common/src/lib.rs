@@ -513,7 +513,6 @@ macros::felt_newtypes!(
         CallResultValue,
         ClassCommitment,
         ClassCommitmentLeafHash,
-        ClassHash,
         ConstructorParam,
         ContractAddressSalt,
         ContractNonce,
@@ -541,9 +540,10 @@ macros::felt_newtypes!(
         TransactionSignatureElem,
     ];
     [
+        CasmHash,
+        ClassHash,
         ContractAddress,
         SierraHash,
-        CasmHash,
         StorageAddress,
     ]
 );

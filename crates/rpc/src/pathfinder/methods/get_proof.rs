@@ -244,12 +244,21 @@ pub async fn get_proof(
             other => Some(other),
         };
 
+        let storage_root_idx = tx
+            .storage_root_index(header.number)
+            .context("Querying storage root index")?
+            .ok_or(GetProofError::ProofMissing)?;
+
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
-        let contract_proof =
-            StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address)
-                .context("Creating contract proof")?
-                .ok_or(GetProofError::ProofMissing)?;
+        let contract_proof = StorageCommitmentTree::get_proof(
+            &tx,
+            header.number,
+            &input.contract_address,
+            storage_root_idx,
+        )
+        .context("Creating contract proof")?
+        .ok_or(GetProofError::ProofMissing)?;
         let contract_proof = ProofNodes(contract_proof);
 
         let contract_state_hash = tx
@@ -368,11 +377,17 @@ pub async fn get_proof_class(
             other => Some(other),
         };
 
+        let class_root_idx = tx
+            .class_root_index(header.number)
+            .context("Querying class root index")?
+            .ok_or(GetProofError::ProofMissing)?;
+
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
-        let class_proof = ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash)
-            .context("Creating class proof")?
-            .ok_or(GetProofError::ProofMissing)?;
+        let class_proof =
+            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)
+                .context("Creating class proof")?
+                .ok_or(GetProofError::ProofMissing)?;
         let class_proof = ProofNodes(class_proof);
 
         Ok(GetClassProofOutput {
