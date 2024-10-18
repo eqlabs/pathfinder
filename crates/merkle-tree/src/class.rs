@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::hash::{PedersenHash, PoseidonHash};
+use pathfinder_common::hash::PoseidonHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockNumber,
@@ -52,28 +52,6 @@ impl<'tx> ClassCommitmentTree<'tx> {
     pub fn with_verify_hashes(mut self, verify_hashes: bool) -> Self {
         self.tree = self.tree.with_verify_hashes(verify_hashes);
         self
-    }
-
-    /// Generates a proof for `key`. See [`MerkleTree::get_proof`].
-    pub fn get_proof(
-        tx: &'tx Transaction<'tx>,
-        block: BlockNumber,
-        key: &ClassHash,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .class_root_index(block)
-            .context("Querying class root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
-        let storage = ClassStorage {
-            tx,
-            block: Some(block),
-        };
-
-        MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key.view_bits())
     }
 
     /// Adds a leaf node for a Sierra -> CASM commitment.
