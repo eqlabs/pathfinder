@@ -153,6 +153,7 @@ pub struct DeployAccountTransactionTrace {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExecuteInvocation {
     FunctionInvocation(Option<FunctionInvocation>),
     RevertedReason(String),
