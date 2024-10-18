@@ -157,7 +157,7 @@ mod tests {
             "error": {
                 "code": parsing_err.code(),
                 "message": parsing_err.message(),
-                "data": parsing_err.data(),
+                "data": parsing_err.data(RpcVersion::V07),
             },
             "id": 1,
         });

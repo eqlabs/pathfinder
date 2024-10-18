@@ -23,7 +23,10 @@ pub enum EstimateMessageFeeError {
     Internal(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError {
+        revert_error: String,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
     Custom(anyhow::Error),
 }
 
@@ -37,8 +40,11 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateMessageFee
     fn from(c: pathfinder_executor::TransactionExecutionError) -> Self {
         use pathfinder_executor::TransactionExecutionError::*;
         match c {
-            ExecutionError { error, .. } => Self::ContractError {
+            ExecutionError {
+                error, error_stack, ..
+            } => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
+                revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -61,11 +67,13 @@ impl From<EstimateMessageFeeError> for ApplicationError {
         match value {
             EstimateMessageFeeError::BlockNotFound => ApplicationError::BlockNotFound,
             EstimateMessageFeeError::ContractNotFound => ApplicationError::ContractNotFound,
-            EstimateMessageFeeError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
-            }
+            EstimateMessageFeeError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => ApplicationError::ContractError {
+                revert_error: Some(revert_error),
+                revert_error_stack,
+            },
             EstimateMessageFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateMessageFeeError::Custom(e) => ApplicationError::Custom(e),
         }

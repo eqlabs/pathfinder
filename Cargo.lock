@@ -1549,8 +1549,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.8.0-rc.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fb99b6d20e12f5dff17a2b53e3e6cab54766357a638f90dafcb43c0ac933d4b"
+source = "git+https://github.com/eqlabs/sequencer?branch=eqlabs/main-v0.13.2#2e59ae0f7c0da559cd77bd9db794309a8e3fe99a"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -5217,7 +5216,7 @@ dependencies = [
  "httpdate",
  "itoa",
  "pin-project-lite",
- "socket2 0.5.7",
+ "socket2 0.4.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -9430,8 +9429,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.13.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b505c9c076d9fce854304bd743c93ea540ebea6b16ec96819b07343a3aa2c7c"
+source = "git+https://github.com/eqlabs/sequencer?branch=eqlabs/main-v0.13.2#2e59ae0f7c0da559cd77bd9db794309a8e3fe99a"
 dependencies = [
  "bitvec",
  "cairo-lang-starknet-classes",

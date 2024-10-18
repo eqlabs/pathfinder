@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use blockifier::context::TransactionContext;
 use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionContext};
+use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
 use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
@@ -29,6 +30,7 @@ pub fn call(
         .into_iter()
         .map(|param| param.0.into_starkfelt())
         .collect();
+    let class_hash = state.get_class_hash_at(contract_address)?;
 
     let call_entry_point = CallEntryPoint {
         storage_address: contract_address,
@@ -49,7 +51,16 @@ pub fn call(
         false,
     )?;
 
-    let call_info = call_entry_point.execute(&mut state, &mut resources, &mut context)?;
+    let call_info = call_entry_point
+        .execute(&mut state, &mut resources, &mut context)
+        .map_err(|e| {
+            CallError::from_entry_point_execution_error(
+                e,
+                &contract_address,
+                &class_hash,
+                &entry_point_selector,
+            )
+        })?;
 
     let result = call_info
         .execution

@@ -903,15 +903,8 @@ mod tests {
         "starknet_getBlockWithReceipts",
         "starknet_getMessagesStatus",
         "starknet_getTransactionReceipt",
-        "starknet_call",
-        "starknet_estimateFee",
-        "starknet_estimateMessageFee",
     ])]
-    #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[
-        "starknet_traceTransaction",
-        "starknet_simulateTransactions",
-        "starknet_traceBlockTransactions"
-    ])]
+    #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[])]
     #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[
         "starknet_addInvokeTransaction",
         "starknet_addDeclareTransaction",
