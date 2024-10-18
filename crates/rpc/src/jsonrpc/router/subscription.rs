@@ -155,7 +155,7 @@ where
 
         let tx = SubscriptionSender {
             subscription_id,
-            subscriptions,
+            subscriptions: subscriptions.clone(),
             tx: ws_tx,
             version: router.version,
             _phantom: Default::default(),
@@ -192,9 +192,13 @@ where
         };
 
         Ok(tokio::spawn(async move {
+            let _subscription_guard = SubscriptionsGuard {
+                subscription_id,
+                subscriptions,
+            };
             // This lock ensures that the streaming of subscriptions doesn't start before
             // the caller sends the success response for the subscription request.
-            let _guard = lock.read().await;
+            let _lock_guard = lock.read().await;
 
             // Catch up to the latest block in batches of BATCH_SIZE.
             if let Some(current_block) = current_block.as_mut() {
@@ -322,6 +326,19 @@ where
                 last_block = msg.block_number;
             }
         }))
+    }
+}
+
+/// A guard to ensure that the subscription handle is removed when the
+/// subscription task corresponding to that handle returns.
+struct SubscriptionsGuard {
+    subscription_id: SubscriptionId,
+    subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
+}
+
+impl Drop for SubscriptionsGuard {
+    fn drop(&mut self) {
+        self.subscriptions.remove(&self.subscription_id);
     }
 }
 

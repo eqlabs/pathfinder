@@ -16,7 +16,7 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::Reorg;
 
-pub struct SubscribeEvents;
+pub struct SubscribeTransactionStatus;
 
 #[derive(Debug, Clone, Default)]
 pub struct Params {
@@ -120,7 +120,7 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
 const SUBSCRIPTION_NAME: &str = "starknet_subscriptionTransactionsStatus";
 
 #[async_trait]
-impl RpcSubscriptionFlow for SubscribeEvents {
+impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     type Params = Params;
     type Notification = Notification;
 
@@ -347,7 +347,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                     Ok(l1_state)
                                 }).await.map_err(|e| RpcError::InternalError(e.into()))??;
                                 if let Some(l1_state) = l1_state {
-                                    if l1_state.block_number >= l2_block.block_number {
+                                    if l1_state.block_number >= sender.last_block_number && sender.last_execution_status.is_some() {
                                         if sender
                                             .send(
                                                 l1_state.block_number,
@@ -427,5 +427,747 @@ impl FinalityStatus {
             FinalityStatus::AcceptedOnL1 => 2,
             FinalityStatus::Rejected { .. } => 3,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use axum::extract::ws::Message;
+    use pathfinder_common::receipt::{ExecutionStatus, Receipt};
+    use pathfinder_common::transaction::Transaction;
+    use pathfinder_common::{
+        BlockHash,
+        BlockHeader,
+        BlockNumber,
+        ChainId,
+        TransactionHash,
+        TransactionIndex,
+    };
+    use pathfinder_crypto::Felt;
+    use pathfinder_ethereum::EthereumStateUpdate;
+    use pathfinder_storage::StorageBuilder;
+    use pretty_assertions_sorted::assert_eq;
+    use starknet_gateway_client::Client;
+    use starknet_gateway_types::reply::{Block, PendingBlock};
+    use tokio::sync::mpsc;
+
+    use crate::context::{RpcConfig, RpcContext};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
+    use crate::pending::PendingWatcher;
+    use crate::v02::types::syncing::Syncing;
+    use crate::{v08, Notifications, PendingData, Reorg, SubscriptionId, SyncState};
+
+    #[tokio::test]
+    async fn transaction_already_exists_in_db_accepted_on_l2_succeeded() {
+        let (router, mut rx, pending_sender, subscription_id) =
+            test_transaction_already_exists_in_db(
+                ExecutionStatus::Succeeded,
+                None,
+                |subscription_id| {
+                    vec![
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "method": "starknet_subscriptionTransactionsStatus",
+                            "params": {
+                                "result": {
+                                    "transaction_hash": "0x1",
+                                    "status": {
+                                        "finality_status": "RECEIVED",
+                                    }
+                                },
+                                "subscription_id": subscription_id
+                            }
+                        }),
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "method": "starknet_subscriptionTransactionsStatus",
+                            "params": {
+                                "result": {
+                                    "transaction_hash": "0x1",
+                                    "status": {
+                                        "finality_status": "ACCEPTED_ON_L2",
+                                        "execution_status": "SUCCEEDED",
+                                    }
+                                },
+                                "subscription_id": subscription_id
+                            }
+                        }),
+                    ]
+                },
+            )
+            .await;
+
+        // Test streaming updates after L2 update from DB.
+
+        // Irrelevant pending update.
+        pending_sender.send_modify(|pending| {
+            pending.number = BlockNumber::GENESIS + 1;
+        });
+
+        // No message expected.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(rx.try_recv().is_err());
+
+        // Irrelevant L2 update.
+        router
+            .context
+            .notifications
+            .l2_blocks
+            .send(
+                Block {
+                    block_number: BlockNumber::GENESIS + 1,
+                    block_hash: BlockHash(Felt::from_u64(1)),
+                    ..Default::default()
+                }
+                .into(),
+            )
+            .unwrap();
+
+        // No message expected.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(rx.try_recv().is_err());
+
+        // Update L1.
+        tokio::task::spawn_blocking({
+            let storage = router.context.storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                db.upsert_l1_state(&EthereumStateUpdate {
+                    state_root: Default::default(),
+                    block_number: BlockNumber::GENESIS + 2,
+                    block_hash: Default::default(),
+                })
+                .unwrap();
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        // Streaming update.
+        router
+            .context
+            .notifications
+            .l2_blocks
+            .send(
+                Block {
+                    block_number: BlockNumber::GENESIS + 2,
+                    block_hash: BlockHash(Felt::from_u64(2)),
+                    ..Default::default()
+                }
+                .into(),
+            )
+            .unwrap();
+        let status = rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match status {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "starknet_subscriptionTransactionsStatus",
+                "params": {
+                    "result": {
+                        "transaction_hash": "0x1",
+                        "status": {
+                            "finality_status": "ACCEPTED_ON_L1",
+                            "execution_status": "SUCCEEDED",
+                        }
+                    },
+                    "subscription_id": subscription_id,
+                }
+            })
+        );
+
+        // No more messages expected.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn transaction_already_exists_in_db_accepted_on_l2_reverted() {
+        test_transaction_already_exists_in_db(
+            ExecutionStatus::Reverted {
+                reason: "tx revert".to_string(),
+            },
+            None,
+            |subscription_id| {
+                vec![
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "REVERTED",
+                                    "failure_reason": "tx revert"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                ]
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_already_exists_in_db_accepted_on_l1_succeeded() {
+        test_transaction_already_exists_in_db(
+            ExecutionStatus::Succeeded,
+            Some(EthereumStateUpdate {
+                state_root: Default::default(),
+                block_number: BlockNumber::GENESIS + 1,
+                block_hash: Default::default(),
+            }),
+            |subscription_id| {
+                vec![
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L1",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                ]
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_already_exists_in_db_accepted_on_l1_reverted() {
+        test_transaction_already_exists_in_db(
+            ExecutionStatus::Reverted {
+                reason: "tx revert".to_string(),
+            },
+            Some(EthereumStateUpdate {
+                state_root: Default::default(),
+                block_number: BlockNumber::GENESIS + 1,
+                block_hash: Default::default(),
+            }),
+            |subscription_id| {
+                vec![
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "REVERTED",
+                                    "failure_reason": "tx revert"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionsStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L1",
+                                    "execution_status": "REVERTED",
+                                    "failure_reason": "tx revert"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    }),
+                ]
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_status_streaming() {
+        test_transaction_status_streaming(|subscription_id| {
+            vec![
+                TestEvent::Pending(PendingData {
+                    block: PendingBlock {
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(2)),
+                            variant: Default::default(),
+                        }],
+                        ..Default::default()
+                    }
+                    .into(),
+                    state_update: Default::default(),
+                    number: BlockNumber::GENESIS + 1,
+                }),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 1,
+                        block_hash: BlockHash(Felt::from_u64(1)),
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Pending(PendingData {
+                    block: PendingBlock {
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(1)),
+                            variant: Default::default(),
+                        }],
+                        ..Default::default()
+                    }
+                    .into(),
+                    state_update: Default::default(),
+                    number: BlockNumber::GENESIS + 2,
+                }),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 2,
+                        block_hash: BlockHash(Felt::from_u64(2)),
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TransactionHash(Felt::from_u64(1)),
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionsStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "RECEIVED",
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionsStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+                // Irrelevant block.
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 3,
+                        block_hash: BlockHash(Felt::from_u64(3)),
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TransactionHash(Felt::from_u64(5)),
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::L1State(EthereumStateUpdate {
+                    state_root: Default::default(),
+                    block_number: BlockNumber::GENESIS + 3,
+                    block_hash: Default::default(),
+                }),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 4,
+                        block_hash: BlockHash(Felt::from_u64(4)),
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TransactionHash(Felt::from_u64(5)),
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionsStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L1",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+                TestEvent::Reorg(Reorg {
+                    first_block_number: BlockNumber::GENESIS + 4,
+                    first_block_hash: BlockHash(Felt::from_u64(4)),
+                    last_block_number: BlockNumber::GENESIS + 5,
+                    last_block_hash: BlockHash(Felt::from_u64(5)),
+                }),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionReorg",
+                    "params": {
+                        "subscription_id": subscription_id,
+                        "result": {
+                            "first_block_number": 4,
+                            "first_block_hash": "0x4",
+                            "last_block_number": 5,
+                            "last_block_hash": "0x5",
+                        }
+                    }
+                })),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionsStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "RECEIVED",
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+            ]
+        })
+        .await;
+    }
+
+    async fn test_transaction_status_streaming(
+        events: impl FnOnce(serde_json::Value) -> Vec<TestEvent>,
+    ) {
+        let (router, pending_sender) = setup().await;
+        tokio::task::spawn_blocking({
+            let storage = router.context.storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                db.insert_block_header(&BlockHeader {
+                    hash: BlockHash::ZERO,
+                    number: BlockNumber::GENESIS,
+                    parent_hash: BlockHash::ZERO,
+                    ..Default::default()
+                })
+                .unwrap();
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let tx_hash = TransactionHash(Felt::from_u64(1));
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        let params = serde_json::json!(
+            {"block": {"block_number": 0}, "transaction_hash": tx_hash}
+        );
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeTransactionStatus",
+                    "params": params
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].take()
+            }
+            _ => panic!("Expected text message"),
+        };
+        for event in events(subscription_id) {
+            match event {
+                TestEvent::Pending(pending_data) => {
+                    pending_sender.send_modify(|pending| {
+                        *pending = pending_data;
+                    });
+                }
+                TestEvent::L2Block(block) => {
+                    tokio::task::spawn_blocking({
+                        let storage = router.context.storage.clone();
+                        let block = block.clone();
+                        move || {
+                            let mut conn = storage.connection().unwrap();
+                            let db = conn.transaction().unwrap();
+                            db.insert_block_header(&BlockHeader {
+                                hash: block.block_hash,
+                                number: block.block_number,
+                                parent_hash: BlockHash(block.block_hash.0 - Felt::from_u64(1)),
+                                ..Default::default()
+                            })
+                            .unwrap();
+                            db.commit().unwrap();
+                        }
+                    })
+                    .await
+                    .unwrap();
+                    router
+                        .context
+                        .notifications
+                        .l2_blocks
+                        .send(block.into())
+                        .unwrap();
+                }
+                TestEvent::Reorg(reorg) => {
+                    router
+                        .context
+                        .notifications
+                        .reorgs
+                        .send(reorg.into())
+                        .unwrap();
+                }
+                TestEvent::L1State(l1_state) => {
+                    tokio::task::spawn_blocking({
+                        let storage = router.context.storage.clone();
+                        move || {
+                            let mut conn = storage.connection().unwrap();
+                            let db = conn.transaction().unwrap();
+                            db.upsert_l1_state(&l1_state).unwrap();
+                            db.commit().unwrap();
+                        }
+                    })
+                    .await
+                    .unwrap();
+                }
+                TestEvent::Message(msg) => {
+                    let status = sender_rx.recv().await.unwrap().unwrap();
+                    let json: serde_json::Value = match status {
+                        Message::Text(json) => serde_json::from_str(&json).unwrap(),
+                        _ => panic!("Expected text message"),
+                    };
+                    assert_eq!(json, msg);
+                }
+            }
+        }
+        // No more messages expected.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(sender_rx.try_recv().is_err());
+    }
+
+    async fn test_transaction_already_exists_in_db(
+        execution_status: ExecutionStatus,
+        l1_state: Option<EthereumStateUpdate>,
+        expected: impl FnOnce(SubscriptionId) -> Vec<serde_json::Value>,
+    ) -> (
+        RpcRouter,
+        mpsc::Receiver<Result<Message, RpcResponse>>,
+        tokio::sync::watch::Sender<PendingData>,
+        SubscriptionId,
+    ) {
+        let (router, pending_sender) = setup().await;
+        let tx_hash = TransactionHash(Felt::from_u64(1));
+        let block_number = BlockNumber::new_or_panic(1);
+        tokio::task::spawn_blocking({
+            let storage = router.context.storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                db.insert_block_header(&BlockHeader {
+                    hash: BlockHash::ZERO,
+                    number: BlockNumber::GENESIS,
+                    parent_hash: BlockHash::ZERO,
+                    ..Default::default()
+                })
+                .unwrap();
+                db.insert_block_header(&BlockHeader {
+                    hash: BlockHash(Felt::from_u64(1)),
+                    number: block_number,
+                    parent_hash: BlockHash(Felt::from_u64(1)),
+                    ..Default::default()
+                })
+                .unwrap();
+                db.insert_transaction_data(
+                    block_number,
+                    &[(
+                        Transaction {
+                            hash: tx_hash,
+                            variant: Default::default(),
+                        },
+                        Receipt {
+                            transaction_hash: tx_hash,
+                            transaction_index: TransactionIndex::new_or_panic(0),
+                            execution_status,
+                            ..Default::default()
+                        },
+                    )],
+                    Some(&[vec![]]),
+                )
+                .unwrap();
+                if let Some(l1_state) = l1_state {
+                    db.upsert_l1_state(&l1_state).unwrap();
+                }
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        let params = serde_json::json!(
+            {"block": {"block_number": 0}, "transaction_hash": tx_hash}
+        );
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeTransactionStatus",
+                    "params": params
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"]["subscription_id"].take()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let subscription_id: SubscriptionId = serde_json::from_value(subscription_id).unwrap();
+        for msg in expected(subscription_id) {
+            let status = sender_rx.recv().await.unwrap().unwrap();
+            let json: serde_json::Value = match status {
+                Message::Text(json) => serde_json::from_str(&json).unwrap(),
+                _ => panic!("Expected text message"),
+            };
+            assert_eq!(json, msg);
+        }
+        // No more messages expected.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(sender_rx.try_recv().is_err());
+        (router, sender_rx, pending_sender, subscription_id)
+    }
+
+    #[derive(Debug)]
+    enum TestEvent {
+        Pending(PendingData),
+        L2Block(Box<Block>),
+        Reorg(Reorg),
+        L1State(EthereumStateUpdate),
+        Message(serde_json::Value),
+    }
+
+    async fn setup() -> (RpcRouter, tokio::sync::watch::Sender<PendingData>) {
+        let storage = StorageBuilder::in_memory().unwrap();
+        let (pending_data_sender, pending_data) = tokio::sync::watch::channel(Default::default());
+        let notifications = Notifications::default();
+        let ctx = RpcContext {
+            cache: Default::default(),
+            storage,
+            execution_storage: StorageBuilder::in_memory().unwrap(),
+            pending_data: PendingWatcher::new(pending_data),
+            sync_status: SyncState {
+                status: Syncing::False(false).into(),
+            }
+            .into(),
+            chain_id: ChainId::MAINNET,
+            sequencer: Client::mainnet(Duration::from_secs(10)),
+            websocket: None,
+            notifications,
+            config: RpcConfig {
+                batch_concurrency_limit: 1.try_into().unwrap(),
+                get_events_max_blocks_to_scan: 1.try_into().unwrap(),
+                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
+                custom_versioned_constants: None,
+            },
+        };
+        (v08::register_routes().build(ctx), pending_data_sender)
     }
 }
