@@ -353,9 +353,9 @@
                 }
               },
               "execution_resources": {
-                "title": "Computation resources",
-                "description": "Resources consumed by the internal call. This is named execution_resources for legacy reasons",
-                "$ref": "#/components/schemas/COMPUTATION_RESOURCES"
+                "title": "Execution resources",
+                "description": "Resources consumed by the internal call",
+                "$ref": "#/components/schemas/INNER_CALL_EXECUTION_RESOURCES"
               }
             },
             "required": [
@@ -420,6 +420,24 @@
           }
         ]
       },
+      "INNER_CALL_EXECUTION_RESOURCES": {
+        "type": "object",
+        "title": "Execution resources",
+        "description": "the resources consumed by an inner call (does not account for state diffs since data is squashed across the transaction)",
+        "properties": {
+          "l1_gas": {
+            "title": "L1Gas",
+            "description": "l1 gas consumed by this transaction, used for l2-->l1 messages and state updates if blobs are not used",
+            "type": "integer"
+          },
+          "l2_gas": {
+            "title": "L2Gas",
+            "description": "l2 gas consumed by this transaction, used for computation and calldata",
+            "type": "integer"
+          }
+        },
+        "required": ["l1_gas", "l2_gas"]
+      },
       "FELT": {
         "$ref": "./api/starknet_api_openrpc.json#/components/schemas/FELT"
       },
@@ -443,9 +461,6 @@
       },
       "STATE_DIFF": {
         "$ref": "./api/starknet_api_openrpc.json#/components/schemas/STATE_DIFF"
-      },
-      "COMPUTATION_RESOURCES": {
-        "$ref": "./api/starknet_api_openrpc.json#/components/schemas/COMPUTATION_RESOURCES"
       },
       "EXECUTION_RESOURCES": {
         "$ref": "./api/starknet_api_openrpc.json#/components/schemas/EXECUTION_RESOURCES"
