@@ -969,7 +969,7 @@
         ],
         "result": {
           "name": "result",
-          "description": "The requested storage proofs. Note that if a requested leaf has the default value, the path to it may end in an edge node whose path is not a prefix of the requested leaf, thus effecitvely proving non-membership",
+          "description": "The requested storage proofs. Note that if a requested leaf has the default value, the path to it may end in an edge node whose path is not a prefix of the requested leaf, thus effectively proving non-membership",
           "schema": {
             "type": "object",
             "properties": {
