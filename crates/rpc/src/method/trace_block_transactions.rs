@@ -428,10 +428,14 @@ fn map_gateway_function_invocation(
         result: invocation.result,
         computation_resources: map_gateway_computation_resources(invocation.execution_resources),
         execution_resources: InnerCallExecutionResources {
-            l1_gas: invocation.execution_resources.total_gas_consumed.map(|gas| gas.l1_gas).unwrap_or_default(),
+            l1_gas: invocation
+                .execution_resources
+                .total_gas_consumed
+                .map(|gas| gas.l1_gas)
+                .unwrap_or_default(),
             // TODO: Use proper l1_gas value for Starknet 0.13.3
             l2_gas: 0,
-        }
+        },
     })
 }
 
