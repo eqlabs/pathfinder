@@ -882,8 +882,26 @@ async fn l2_update(
         let (storage_commitment, class_commitment) = update_starknet_state(
             &transaction,
             StarknetStateUpdate {
-                contract_updates: state_update.contract_updates.par_iter(),
-                system_contract_updates: state_update.system_contract_updates.iter(),
+                contract_updates: state_update.contract_updates.par_iter().map(|(a, b)| {
+                    (
+                        a,
+                        StarknetContractUpdate {
+                            storage: b.storage.iter(),
+                            class: b.class,
+                            nonce: b.nonce,
+                        },
+                    )
+                }),
+                system_contract_updates: state_update.system_contract_updates.iter().map(
+                    |(a, b)| {
+                        (
+                            a,
+                            StarknetSystemContractUpdate {
+                                storage: b.storage.iter(),
+                            },
+                        )
+                    },
+                ),
                 declared_sierra_classes: &state_update.declared_sierra_classes,
             },
             verify_tree_hashes,
@@ -1134,10 +1152,142 @@ async fn l2_reorg(
     })
 }
 
-pub struct StarknetStateUpdate<'a, A, B>
+// fn fun<'a, A, B, C>(x: &'a StateUpdate) -> StarknetStateUpdate<'a, _, _, _>
+// where
+//     A: ParallelIterator<Item = (&'a ContractAddress,
+// StarknetContractUpdate<'a, C>)>,     B: Iterator<Item = (&'a ContractAddress,
+// StarknetSystemContractUpdate<'a, C>)>,     C: Iterator<Item = (&'a
+// StorageAddress, &'a StorageValue)>,
+// fn fun<'a>(x: &'a StateUpdate) -> StarknetStateUpdate<'a, _, _, _> {
+//     use rayon::prelude::*;
+
+//     StarknetStateUpdate {
+//         contract_updates: x.contract_updates.par_iter().map(|(a, b)| {
+//             (
+//                 a,
+//                 StarknetContractUpdate {
+//                     storage: b.storage.iter(),
+//                     class: b.class,
+//                     nonce: b.nonce,
+//                 },
+//             )
+//         }),
+//         system_contract_updates: x.system_contract_updates.iter().map(|(a,
+// b)| {             (
+//                 a,
+//                 StarknetSystemContractUpdate {
+//                     storage: b.storage.iter(),
+//                 },
+//             )
+//         }),
+//         declared_sierra_classes: &x.declared_sierra_classes,
+//     }
+// }
+
+// impl<'a, A, B, C> From<&'a StateUpdate> for StarknetStateUpdate<'a, A, B, C>
+// where
+//     A: ParallelIterator<Item = (&'a ContractAddress,
+// StarknetContractUpdate<'a, C>)>,     B: Iterator<Item = (&'a ContractAddress,
+// StarknetSystemContractUpdate<'a, C>)>,     C: Iterator<Item = (&'a
+// StorageAddress, &'a StorageValue)> + 'a, {
+// fn make<'a>(x: &'a StateUpdate) -> StarknetStateUpdate<'a, _, _, _> {
+//     use rayon::prelude::*;
+
+//     StarknetStateUpdate {
+//         contract_updates: x.contract_updates.par_iter().map(|(a, b)| {
+//             (
+//                 a,
+//                 StarknetContractUpdate {
+//                     storage: b.storage.iter(),
+//                     class: b.class,
+//                     nonce: b.nonce,
+//                 },
+//             )
+//         }),
+//         system_contract_updates: x.system_contract_updates.iter().map(|(a,
+// b)| {             (
+//                 a,
+//                 StarknetSystemContractUpdate {
+//                     storage: b.storage.iter(),
+//                 },
+//             )
+//         }),
+//         declared_sierra_classes: &x.declared_sierra_classes,
+//     }
+// }
+// }
+
+// impl<'a, A, B, C> From<&'a StateUpdate> for StarknetStateUpdate<'a, A, B, C>
+// where
+//     A: ParallelIterator<Item = (&'a ContractAddress,
+// StarknetContractUpdate<'a, C>)>,     B: Iterator<Item = (&'a ContractAddress,
+// StarknetSystemContractUpdate<'a, C>)>,     C: Iterator<Item = (&'a
+// StorageAddress, &'a StorageValue)> + 'a, {
+//     fn from(x: &'a StateUpdate) -> Self {
+//         use rayon::prelude::*;
+
+//         Self {
+//             contract_updates: x.contract_updates.par_iter().map(|(a, b)| {
+//                 (
+//                     a,
+//                     StarknetContractUpdate {
+//                         storage: b.storage.iter(),
+//                         class: b.class,
+//                         nonce: b.nonce,
+//                     },
+//                 )
+//             }),
+//             system_contract_updates:
+// x.system_contract_updates.iter().map(|(a, b)| {                 (
+//                     a,
+//                     StarknetSystemContractUpdate {
+//                         storage: b.storage.iter(),
+//                     },
+//                 )
+//             }),
+//             declared_sierra_classes: &x.declared_sierra_classes,
+//         }
+//     }
+// }
+
+// impl<'a, A, B, C> From<&'a MultiBlockStateUpdateData> for
+// StarknetStateUpdate<'a, A, B, C> where
+//     A: ParallelIterator<Item = (&'a ContractAddress,
+// StarknetContractUpdate<'a, C>)>,     B: Iterator<Item = (&'a ContractAddress,
+// StarknetSystemContractUpdate<'a, C>)>,     C: Iterator<Item = (&'a
+// StorageAddress, &'a StorageValue)> + 'a, {
+//     fn from(x: &'a MultiBlockStateUpdateData) -> Self {
+//         use rayon::prelude::*;
+
+//         Self {
+//             contract_updates: x.contract_updates.par_iter().map(|(a, b)| {
+//                 (
+//                     a,
+//                     StarknetContractUpdate {
+//                         storage: b.storage.iter().map(|(a, b)| (a, b)),
+//                         class: b.class,
+//                         nonce: b.nonce,
+//                     },
+//                 )
+//             }),
+//             system_contract_updates:
+// x.system_contract_updates.iter().map(|(a, b)| {                 (
+//                     a,
+//                     StarknetSystemContractUpdate {
+//                         storage: b.storage.iter(),
+//                     },
+//                 )
+//             }),
+//             declared_sierra_classes: &x.declared_sierra_classes,
+//         }
+//     }
+// }
+
+pub struct StarknetStateUpdate<'a, A, B, C>
 where
-    A: ParallelIterator<Item = (&'a ContractAddress, &'a ContractUpdate)>,
-    B: Iterator<Item = (&'a ContractAddress, &'a SystemContractUpdate)>,
+    A: ParallelIterator<Item = (&'a ContractAddress, StarknetContractUpdate<'a, C>)>,
+    B: Iterator<Item = (&'a ContractAddress, StarknetSystemContractUpdate<'a, C>)>,
+    C: Iterator<Item = (&'a StorageAddress, &'a StorageValue)> + 'a,
 {
     pub contract_updates: A,
     pub system_contract_updates: B,
@@ -1153,9 +1303,16 @@ where
     pub nonce: Option<ContractNonce>,
 }
 
-pub fn update_starknet_state<'a, A, B>(
+pub struct StarknetSystemContractUpdate<'a, A>
+where
+    A: Iterator<Item = (&'a StorageAddress, &'a StorageValue)>,
+{
+    pub storage: A,
+}
+
+pub fn update_starknet_state<'a, A, B, C>(
     transaction: &Transaction<'_>,
-    state_update: StarknetStateUpdate<'a, A, B>,
+    state_update: StarknetStateUpdate<'a, A, B, C>,
     verify_hashes: bool,
     block: BlockNumber,
     // we need this so that we can create extra read-only transactions for
@@ -1163,8 +1320,9 @@ pub fn update_starknet_state<'a, A, B>(
     storage: Storage,
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)>
 where
-    A: ParallelIterator<Item = (&'a ContractAddress, &'a ContractUpdate)>,
-    B: Iterator<Item = (&'a ContractAddress, &'a SystemContractUpdate)>,
+    A: ParallelIterator<Item = (&'a ContractAddress, StarknetContractUpdate<'a, C>)>,
+    B: Iterator<Item = (&'a ContractAddress, StarknetSystemContractUpdate<'a, C>)>,
+    C: Iterator<Item = (&'a StorageAddress, &'a StorageValue)> + ExactSizeIterator + 'a,
 {
     use rayon::prelude::*;
 
@@ -1194,7 +1352,7 @@ where
                         let transaction = connection.transaction()?;
                         update_contract_state(
                             *contract_address,
-                            update.storage.iter(),
+                            update.storage,
                             update.nonce,
                             update.class.as_ref().map(|x| x.class_hash()),
                             &transaction,
@@ -1225,7 +1383,7 @@ where
     for (contract, update) in state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
-            update.storage.iter(),
+            update.storage,
             None,
             None,
             transaction,

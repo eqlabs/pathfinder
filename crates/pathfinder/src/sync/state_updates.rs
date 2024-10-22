@@ -208,7 +208,7 @@ pub async fn batch_update_starknet_state(
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
             StarknetStateUpdate {
-                contract_updates: merged.contract_updates.par_iter(),
+                contract_updates: merged.contract_updates.par_iter().map(|(a, b)| StarknetContractUpdate {}),
                 system_contract_updates: merged.system_contract_updates.iter(),
                 declared_sierra_classes: &merged.declared_sierra_classes,
             },
