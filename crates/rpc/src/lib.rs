@@ -905,11 +905,7 @@ mod tests {
         "starknet_getTransactionReceipt",
     ])]
     #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[
-        "starknet_addInvokeTransaction",
-        "starknet_addDeclareTransaction",
-        "starknet_addDeployAccountTransaction"
-    ])]
+    #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[])]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_8_pathfinder("/rpc/v0_8", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
