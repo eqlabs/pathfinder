@@ -73,7 +73,8 @@ impl<'tx> ClassCommitmentTree<'tx> {
         Ok((commitment, update))
     }
 
-    /// Generates a proof for a given `key`
+    /// Generates a proof for a given `class_hash`.
+    /// See [`MerkleTree::get_proof`].
     pub fn get_proof(
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
@@ -86,6 +87,27 @@ impl<'tx> ClassCommitmentTree<'tx> {
         };
 
         MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
+    }
+
+    /// Generates a proof for the given list of `class_hashes`.
+    /// See [`MerkleTree::get_proofs`].
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        class_hashes: &[ClassHash],
+        root: u64,
+    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let keys = class_hashes
+            .iter()
+            .map(|hash| hash.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PoseidonHash, 251>::get_proofs(root, &storage, &keys)
     }
 }
 

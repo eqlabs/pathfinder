@@ -94,6 +94,29 @@ impl<'tx> ContractsStorageTree<'tx> {
         MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
     }
 
+    /// Generates a proof for the given list of `keys`.
+    /// See [`MerkleTree::get_proofs`].
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        contract: ContractAddress,
+        block: BlockNumber,
+        keys: &[StorageAddress],
+        root: u64,
+    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+        let storage = ContractStorage {
+            tx,
+            block: Some(block),
+            contract,
+        };
+
+        let keys = keys
+            .iter()
+            .map(|addr| addr.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
+    }
+
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
         let key = address.view_bits().to_owned();
         self.tree.set(&self.storage, key, value.0)
@@ -182,7 +205,8 @@ impl<'tx> StorageCommitmentTree<'tx> {
         Ok((commitment, update))
     }
 
-    /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
+    /// Generates a proof for the given `address`.
+    /// See [`MerkleTree::get_proof`].
     pub fn get_proof(
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
@@ -195,6 +219,27 @@ impl<'tx> StorageCommitmentTree<'tx> {
         };
 
         MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, address.view_bits())
+    }
+
+    /// Generates a proof for the given list of `addresses`.
+    /// See [`MerkleTree::get_proofs`].
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        addresses: &[ContractAddress],
+        root: u64,
+    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+        let storage = StorageTrieStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let keys = addresses
+            .iter()
+            .map(|addr| addr.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
     }
 
     /// See [`MerkleTree::dfs`]
