@@ -71,6 +71,13 @@ impl crate::dto::serialize::SerializeForVersion for BlockHeader<'_> {
             },
         )?;
         serializer.serialize_field(
+            "l2_gas_price",
+            &ResourcePrice {
+                price_in_wei: self.0.eth_l2_gas_price,
+                price_in_fri: self.0.strk_l2_gas_price,
+            },
+        )?;
+        serializer.serialize_field(
             "l1_da_mode",
             &match self.0.l1_da_mode {
                 L1DataAvailabilityMode::Blob => "BLOB",
@@ -106,6 +113,13 @@ impl crate::dto::serialize::SerializeForVersion for PendingBlockHeader<'_> {
             &ResourcePrice {
                 price_in_wei: self.0.l1_data_gas_price.price_in_wei,
                 price_in_fri: self.0.l1_data_gas_price.price_in_fri,
+            },
+        )?;
+        serializer.serialize_field(
+            "l2_gas_price",
+            &ResourcePrice {
+                price_in_wei: self.0.l2_gas_price.price_in_wei,
+                price_in_fri: self.0.l2_gas_price.price_in_fri,
             },
         )?;
         serializer.serialize_field(

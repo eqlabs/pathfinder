@@ -30,6 +30,8 @@ impl PendingData {
             strk_l1_gas_price: self.block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: self.block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: self.block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version,
             // Pending block does not know what these are yet.
@@ -79,6 +81,10 @@ impl PendingWatcher {
                     l1_data_gas_price: GasPrices {
                         price_in_wei: latest.eth_l1_data_gas_price,
                         price_in_fri: latest.strk_l1_data_gas_price,
+                    },
+                    l2_gas_price: GasPrices {
+                        price_in_wei: latest.eth_l2_gas_price,
+                        price_in_fri: latest.strk_l2_gas_price,
                     },
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,

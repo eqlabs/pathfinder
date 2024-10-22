@@ -160,6 +160,7 @@ mod tests {
             ..Default::default()
         },
         l1_data_gas_price: Default::default(),
+        l2_gas_price: Default::default(),
         parent_hash: NEXT_BLOCK.parent_block_hash,
         sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
         status: Status::Pending,

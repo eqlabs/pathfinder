@@ -916,6 +916,8 @@ async fn l2_update(
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             // Default value for Starknet <0.13.1 is zero
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),

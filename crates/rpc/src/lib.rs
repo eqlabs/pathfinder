@@ -780,6 +780,10 @@ pub mod test_utils {
                 price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
                 price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
             },
+            l2_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"l2 gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk l2gas price").unwrap(),
+            },
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,

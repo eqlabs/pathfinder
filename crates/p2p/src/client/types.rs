@@ -101,6 +101,8 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 strk_l1_gas_price: GasPrice(dto.gas_price_fri),
                 eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
                 strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
+                eth_l2_gas_price: GasPrice(dto.l2_gas_price_wei),
+                strk_l2_gas_price: GasPrice(dto.l2_gas_price_fri),
                 sequencer_address: SequencerAddress(dto.sequencer_address.0),
                 starknet_version: dto.protocol_version.parse()?,
                 event_commitment: EventCommitment(dto.events.root.0),

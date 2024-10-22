@@ -205,6 +205,10 @@ mod tests {
                 "price_in_fri": "0x7374726b20676173207072696365",
                 "price_in_wei": "0x676173207072696365",
             },
+            "l2_gas_price": {
+                "price_in_fri": "0x7374726b206c32676173207072696365",
+                "price_in_wei": "0x6c3220676173207072696365",
+            },
             "parent_hash": "0x6c6174657374",
             "sequencer_address": "0x70656e64696e672073657175656e6365722061646472657373",
             "starknet_version": "0.11.0",
@@ -358,6 +362,10 @@ mod tests {
             "l1_gas_price": {
                 "price_in_fri": "0x0",
                 "price_in_wei": "0x2",
+            },
+            "l2_gas_price": {
+                "price_in_fri": "0x0",
+                "price_in_wei": "0x0",
             },
             "new_root": "0x57b695c82af81429fdc8966088b0196105dfb5aa22b54cbc86fc95dc3b3ece1",
             "parent_hash": "0x626c6f636b2031",

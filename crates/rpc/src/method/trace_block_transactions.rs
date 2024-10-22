@@ -830,6 +830,10 @@ pub(crate) mod tests {
                     price_in_wei: GasPrice(2),
                     price_in_fri: GasPrice(2),
                 },
+                l2_gas_price: GasPrices {
+                    price_in_wei: GasPrice(3),
+                    price_in_fri: GasPrice(3),
+                },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,
