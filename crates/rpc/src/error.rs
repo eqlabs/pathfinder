@@ -54,8 +54,8 @@ pub enum ApplicationError {
     ClassAlreadyDeclared,
     #[error("Invalid transaction nonce")]
     InvalidTransactionNonce,
-    #[error("Max fee is smaller than the minimal transaction cost (validation plus fee transfer)")]
-    InsufficientMaxFee,
+    #[error("The transaction's resources don't cover validation or the minimal transaction fee")]
+    InsufficientResourcesForValidate,
     #[error("Account balance is smaller than the transaction's max_fee")]
     InsufficientAccountBalance,
     #[error("Account validation failed")]
@@ -135,7 +135,7 @@ impl ApplicationError {
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
             ApplicationError::InvalidTransactionNonce => 52,
-            ApplicationError::InsufficientMaxFee => 53,
+            ApplicationError::InsufficientResourcesForValidate => 53,
             ApplicationError::InsufficientAccountBalance => 54,
             ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
             ApplicationError::CompilationFailed => 56,
@@ -158,6 +158,19 @@ impl ApplicationError {
         }
     }
 
+    pub fn message(&self, version: RpcVersion) -> String {
+        match self {
+            ApplicationError::InsufficientResourcesForValidate => match version {
+                RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
+                                                      transaction cost (validation plus fee \
+                                                      transfer)"
+                    .to_string(),
+                _ => self.to_string(),
+            },
+            _ => self.to_string(),
+        }
+    }
+
     pub fn data(&self, version: RpcVersion) -> Option<serde_json::Value> {
         // We purposefully don't use a catch-all branch to force us to update
         // here whenever a new variant is added. This will prevent adding a stateful
@@ -177,7 +190,7 @@ impl ApplicationError {
             ApplicationError::InvalidContractClass => None,
             ApplicationError::ClassAlreadyDeclared => None,
             ApplicationError::InvalidTransactionNonce => None,
-            ApplicationError::InsufficientMaxFee => None,
+            ApplicationError::InsufficientResourcesForValidate => None,
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
             ApplicationError::CompilationFailed => None,

@@ -156,7 +156,7 @@ mod tests {
             "jsonrpc": "2.0",
             "error": {
                 "code": parsing_err.code(),
-                "message": parsing_err.message(),
+                "message": parsing_err.message(RpcVersion::V07),
                 "data": parsing_err.data(RpcVersion::V07),
             },
             "id": 1,

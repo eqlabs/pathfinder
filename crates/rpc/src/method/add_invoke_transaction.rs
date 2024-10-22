@@ -46,7 +46,7 @@ pub struct Output {
 #[derive(Debug)]
 pub enum AddInvokeTransactionError {
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     DuplicateTransaction,
@@ -59,7 +59,9 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     fn from(value: AddInvokeTransactionError) -> Self {
         match value {
             AddInvokeTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            AddInvokeTransactionError::InsufficientMaxFee => Self::InsufficientMaxFee,
+            AddInvokeTransactionError::InsufficientResourcesForValidate => {
+                Self::InsufficientResourcesForValidate
+            }
             AddInvokeTransactionError::InsufficientAccountBalance => {
                 Self::InsufficientAccountBalance
             }
@@ -93,7 +95,7 @@ impl From<SequencerError> for AddInvokeTransactionError {
                 AddInvokeTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddInvokeTransactionError::InsufficientMaxFee
+                AddInvokeTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddInvokeTransactionError::InvalidTransactionNonce

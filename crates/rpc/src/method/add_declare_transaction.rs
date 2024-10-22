@@ -14,7 +14,7 @@ use crate::v02::types::request::BroadcastedDeclareTransaction;
 pub enum AddDeclareTransactionError {
     ClassAlreadyDeclared,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     CompilationFailed,
@@ -32,7 +32,9 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
         match value {
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,
             AddDeclareTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            AddDeclareTransactionError::InsufficientMaxFee => Self::InsufficientMaxFee,
+            AddDeclareTransactionError::InsufficientResourcesForValidate => {
+                Self::InsufficientResourcesForValidate
+            }
             AddDeclareTransactionError::InsufficientAccountBalance => {
                 Self::InsufficientAccountBalance
             }
@@ -100,7 +102,7 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeclareTransactionError::InsufficientMaxFee
+                AddDeclareTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeclareTransactionError::InvalidTransactionNonce
