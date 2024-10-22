@@ -51,7 +51,7 @@ pub struct Output {
 pub enum AddDeployAccountTransactionError {
     ClassHashNotFound,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     DuplicateTransaction,
@@ -66,7 +66,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
         match value {
             ClassHashNotFound => Self::ClassHashNotFound,
             InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            InsufficientMaxFee => Self::InsufficientMaxFee,
+            InsufficientResourcesForValidate => Self::InsufficientResourcesForValidate,
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
             ValidationFailure(message) => Self::ValidationFailureV06(message),
             DuplicateTransaction => Self::DuplicateTransaction,
@@ -100,7 +100,7 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
                 AddDeployAccountTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeployAccountTransactionError::InsufficientMaxFee
+                AddDeployAccountTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeployAccountTransactionError::InvalidTransactionNonce

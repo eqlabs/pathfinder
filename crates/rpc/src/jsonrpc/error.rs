@@ -42,14 +42,14 @@ impl RpcError {
         }
     }
 
-    pub fn message(&self) -> Cow<'_, str> {
+    pub fn message(&self, version: RpcVersion) -> Cow<'_, str> {
         match self {
             RpcError::ParseError(..) => "Parse error".into(),
             RpcError::InvalidRequest(..) => "Invalid request".into(),
             RpcError::MethodNotFound { .. } => "Method not found".into(),
             RpcError::InvalidParams(..) => "Invalid params".into(),
             RpcError::InternalError(_) => "Internal error".into(),
-            RpcError::ApplicationError(e) => e.to_string().into(),
+            RpcError::ApplicationError(e) => e.message(version).into(),
             RpcError::WebsocketSubscriptionClosed { .. } => "Websocket subscription closed".into(),
         }
     }
@@ -82,7 +82,7 @@ impl serialize::SerializeForVersion for RpcError {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut obj = serializer.serialize_struct()?;
         obj.serialize_field("code", &self.code())?;
-        obj.serialize_field("message", &self.message())?;
+        obj.serialize_field("message", &self.message(serializer.version))?;
 
         if let Some(data) = self.data(serializer.version) {
             obj.serialize_field("data", &data)?;
