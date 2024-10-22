@@ -30,12 +30,13 @@ use pathfinder_common::{
 use pathfinder_merkle_tree::contract_state::ContractStateUpdateResult;
 use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
+use rayon::iter::IntoParallelRefIterator;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
-use crate::state::{update_starknet_state, update_starknet_state_multi_block, StarknetStateUpdate};
+use crate::state::{update_starknet_state, StarknetStateUpdate};
 use crate::sync::error::{SyncError, SyncError2};
 use crate::sync::stream::ProcessStage;
 
@@ -182,11 +183,13 @@ pub fn merge_state_updates_with_duplicate_keys(
     merged
 }
 
-pub async fn update_starknet_state7(
+pub async fn batch_update_starknet_state(
     storage: pathfinder_storage::Storage,
     verify_tree_hashes: bool,
     state_updates: Vec<(StateUpdateData, BlockNumber)>,
 ) -> Result<BlockNumber, SyncError2> {
+    use rayon::prelude::*;
+
     tokio::task::spawn_blocking(move || {
         let mut db = storage
             .connection()
@@ -202,9 +205,13 @@ pub async fn update_starknet_state7(
 
         let merged = merge_state_updates_with_duplicate_keys(state_updates);
 
-        let (storage_commitment, class_commitment) = update_starknet_state_multi_block(
+        let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
-            merged,
+            StarknetStateUpdate {
+                contract_updates: merged.contract_updates.par_iter(),
+                system_contract_updates: merged.system_contract_updates.iter(),
+                declared_sierra_classes: &merged.declared_sierra_classes,
+            },
             verify_tree_hashes,
             tail,
             storage.clone(),
@@ -252,6 +259,8 @@ impl ProcessStage for UpdateStarknetState {
     const NAME: &'static str = "StateDiff::UpdateStarknetState";
 
     fn map(&mut self, state_update: Self::Input) -> Result<Self::Output, SyncError2> {
+        use rayon::prelude::*;
+
         let mut db = self
             .connection
             .transaction()
@@ -262,8 +271,8 @@ impl ProcessStage for UpdateStarknetState {
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
             StarknetStateUpdate {
-                contract_updates: &state_update.contract_updates,
-                system_contract_updates: &state_update.system_contract_updates,
+                contract_updates: state_update.contract_updates.par_iter(),
+                system_contract_updates: state_update.system_contract_updates.iter(),
                 declared_sierra_classes: &state_update.declared_sierra_classes,
             },
             self.verify_tree_hashes,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Iter;
 
 use anyhow::Context;
 use pathfinder_common::state_update::ReverseContractUpdate;
@@ -51,17 +52,19 @@ impl ContractStateUpdateResult {
 
 /// Updates a contract's state with and returns the resulting
 /// [ContractStateHash].
-pub fn update_contract_state(
+pub fn update_contract_state<'a>(
     contract_address: ContractAddress,
-    updates: &HashMap<StorageAddress, StorageValue>,
+    updates: impl Iterator<Item = (&'a StorageAddress, &'a StorageValue)> + ExactSizeIterator,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
     transaction: &Transaction<'_>,
     verify_hashes: bool,
     block: BlockNumber,
 ) -> anyhow::Result<ContractStateUpdateResult> {
+    let updates_is_empty = updates.len() == 0;
+
     // Load the contract tree and insert the updates.
-    let (new_root, trie_update) = if !updates.is_empty() {
+    let (new_root, trie_update) = if updates_is_empty {
         let mut contract_tree = match block.parent() {
             Some(parent) => ContractsStorageTree::load(transaction, contract_address, parent)
                 .context("Loading contract storage tree")?
@@ -124,7 +127,7 @@ pub fn update_contract_state(
     Ok(ContractStateUpdateResult {
         contract_address,
         state_hash,
-        did_storage_updates: !updates.is_empty(),
+        did_storage_updates: !updates_is_empty,
         trie_update,
     })
 }

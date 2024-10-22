@@ -758,6 +758,8 @@ impl ProcessStage for StoreBlock {
     type Output = ();
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        use rayon::prelude::*;
+
         let BlockData {
             header: SignedBlockHeader { header, signature },
             mut events,
@@ -816,8 +818,8 @@ impl ProcessStage for StoreBlock {
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
             StarknetStateUpdate {
-                contract_updates: &state_diff.contract_updates,
-                system_contract_updates: &state_diff.system_contract_updates,
+                contract_updates: state_diff.contract_updates.par_iter(),
+                system_contract_updates: state_diff.system_contract_updates.iter(),
                 declared_sierra_classes: &state_diff.declared_sierra_classes,
             },
             self.verify_tree_hashes,

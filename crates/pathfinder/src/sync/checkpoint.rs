@@ -370,7 +370,7 @@ async fn handle_state_diff_stream(
         .map_err(|e| e.1)
         .map_err(|e| e.data)
         .and_then(|x| {
-            state_updates::update_starknet_state7(
+            state_updates::batch_update_starknet_state(
                 storage.clone(),
                 verify_tree_hashes,
                 x.into_iter().map(|x| x.data).collect::<Vec<_>>(),

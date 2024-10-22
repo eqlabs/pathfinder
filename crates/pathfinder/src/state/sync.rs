@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{
+    ContractClassUpdate,
     ContractUpdate,
     MultiBlockStateUpdateData,
     SystemContractUpdate,
@@ -35,6 +36,7 @@ use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
+use rayon::iter::ParallelIterator;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::{Block, PendingBlock};
 use tokio::sync::mpsc::{self, Receiver};
@@ -871,6 +873,8 @@ async fn l2_update(
     websocket_txs: &mut Option<TopicBroadcasters>,
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
+    use rayon::prelude::*;
+
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -878,8 +882,8 @@ async fn l2_update(
         let (storage_commitment, class_commitment) = update_starknet_state(
             &transaction,
             StarknetStateUpdate {
-                contract_updates: &state_update.contract_updates,
-                system_contract_updates: &state_update.system_contract_updates,
+                contract_updates: state_update.contract_updates.par_iter(),
+                system_contract_updates: state_update.system_contract_updates.iter(),
                 declared_sierra_classes: &state_update.declared_sierra_classes,
             },
             verify_tree_hashes,
@@ -1130,21 +1134,38 @@ async fn l2_reorg(
     })
 }
 
-pub struct StarknetStateUpdate<'a> {
-    pub contract_updates: &'a HashMap<ContractAddress, ContractUpdate>,
-    pub system_contract_updates: &'a HashMap<ContractAddress, SystemContractUpdate>,
+pub struct StarknetStateUpdate<'a, A, B>
+where
+    A: ParallelIterator<Item = (&'a ContractAddress, &'a ContractUpdate)>,
+    B: Iterator<Item = (&'a ContractAddress, &'a SystemContractUpdate)>,
+{
+    pub contract_updates: A,
+    pub system_contract_updates: B,
     pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
 }
 
-pub fn update_starknet_state(
+pub struct StarknetContractUpdate<'a, A>
+where
+    A: Iterator<Item = (&'a StorageAddress, &'a StorageValue)>,
+{
+    pub storage: A,
+    pub class: Option<ContractClassUpdate>,
+    pub nonce: Option<ContractNonce>,
+}
+
+pub fn update_starknet_state<'a, A, B>(
     transaction: &Transaction<'_>,
-    state_update: StarknetStateUpdate<'_>,
+    state_update: StarknetStateUpdate<'a, A, B>,
     verify_hashes: bool,
     block: BlockNumber,
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
-) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+) -> anyhow::Result<(StorageCommitment, ClassCommitment)>
+where
+    A: ParallelIterator<Item = (&'a ContractAddress, &'a ContractUpdate)>,
+    B: Iterator<Item = (&'a ContractAddress, &'a SystemContractUpdate)>,
+{
     use rayon::prelude::*;
 
     let mut storage_commitment_tree = match block.parent() {
@@ -1160,7 +1181,6 @@ pub fn update_starknet_state(
         s.spawn(|_| {
             let result: Result<Vec<_>, _> = state_update
                 .contract_updates
-                .par_iter()
                 .map_init(
                     || storage.clone().connection(),
                     |connection, (contract_address, update)| {
@@ -1174,7 +1194,7 @@ pub fn update_starknet_state(
                         let transaction = connection.transaction()?;
                         update_contract_state(
                             *contract_address,
-                            &update.storage,
+                            update.storage.iter(),
                             update.nonce,
                             update.class.as_ref().map(|x| x.class_hash()),
                             &transaction,
@@ -1205,7 +1225,7 @@ pub fn update_starknet_state(
     for (contract, update) in state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
-            &update.storage,
+            update.storage.iter(),
             None,
             None,
             transaction,
@@ -1253,143 +1273,6 @@ pub fn update_starknet_state(
 
         class_commitment_tree
             .set(*sierra, leaf_hash)
-            .context("Update class commitment tree")?;
-    }
-
-    // Apply all class commitment tree changes.
-    let (class_commitment, trie_update) = class_commitment_tree
-        .commit()
-        .context("Apply class commitment tree updates")?;
-
-    let class_root_idx = transaction
-        .insert_class_trie(&trie_update, block)
-        .context("Persisting class trie")?;
-
-    transaction
-        .insert_class_root(block, class_root_idx)
-        .context("Inserting class root index")?;
-
-    Ok((storage_commitment, class_commitment))
-}
-
-// TODO TEST WITH RAYONIZATION AFTER PROPER state update MERGING IS FIXED
-pub fn update_starknet_state_multi_block(
-    transaction: &Transaction<'_>,
-    state_update: MultiBlockStateUpdateData,
-    verify_hashes: bool,
-    block: BlockNumber,
-    // we need this so that we can create extra read-only transactions for
-    // parallel contract state updates
-    storage: Storage,
-) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    use rayon::prelude::*;
-
-    let mut storage_commitment_tree = match block.parent() {
-        Some(parent) => StorageCommitmentTree::load(transaction, parent)
-            .context("Loading storage commitment tree")?,
-        None => StorageCommitmentTree::empty(transaction),
-    }
-    .with_verify_hashes(verify_hashes);
-
-    let (send, recv) = std::sync::mpsc::channel();
-
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            let result: Result<Vec<_>, _> = state_update
-                .contract_updates
-                .par_iter()
-                .map_init(
-                    || storage.clone().connection(),
-                    |connection, (contract_address, update)| {
-                        let connection = match connection {
-                            Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
-                        };
-                        let transaction = connection.transaction()?;
-                        update_contract_state_multi_block(
-                            *contract_address,
-                            &update.storage,
-                            update.nonce,
-                            update.class.as_ref().map(|x| x.class_hash()),
-                            &transaction,
-                            verify_hashes,
-                            block,
-                        )
-                    },
-                )
-                .collect();
-            let _ = send.send(result);
-        })
-    });
-
-    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
-
-    for contract_update_result in contract_update_results.into_iter() {
-        storage_commitment_tree
-            .set(
-                contract_update_result.contract_address,
-                contract_update_result.state_hash,
-            )
-            .context("Updating storage commitment tree")?;
-        contract_update_result
-            .insert(block, transaction)
-            .context("Inserting contract update result")?;
-    }
-
-    for (contract, update) in state_update.system_contract_updates {
-        let update_result = update_contract_state_multi_block(
-            contract,
-            &update.storage,
-            None,
-            None,
-            transaction,
-            verify_hashes,
-            block,
-        )
-        .context("Update system contract state")?;
-
-        storage_commitment_tree
-            .set(contract, update_result.state_hash)
-            .context("Updating system contract storage commitment tree")?;
-
-        update_result
-            .insert(block, transaction)
-            .context("Persisting system contract trie updates")?;
-    }
-
-    // Apply storage commitment tree changes.
-    let (storage_commitment, trie_update) = storage_commitment_tree
-        .commit()
-        .context("Apply storage commitment tree updates")?;
-
-    let root_idx = transaction
-        .insert_storage_trie(&trie_update, block)
-        .context("Persisting storage trie")?;
-
-    transaction
-        .insert_storage_root(block, root_idx)
-        .context("Inserting storage root index")?;
-
-    // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree = match block.parent() {
-        Some(parent) => ClassCommitmentTree::load(transaction, parent)
-            .context("Loading class commitment tree")?,
-        None => ClassCommitmentTree::empty(transaction),
-    }
-    .with_verify_hashes(verify_hashes);
-
-    for (sierra, casm) in state_update.declared_sierra_classes {
-        let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(casm);
-
-        transaction
-            .insert_class_commitment_leaf(block, &leaf_hash, &casm)
-            .context("Adding class commitment leaf")?;
-
-        class_commitment_tree
-            .set(sierra, leaf_hash)
             .context("Update class commitment tree")?;
     }
 
