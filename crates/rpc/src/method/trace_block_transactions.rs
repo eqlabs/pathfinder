@@ -1,5 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::BlockId;
+use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
@@ -426,6 +427,15 @@ fn map_gateway_function_invocation(
             .collect(),
         result: invocation.result,
         computation_resources: map_gateway_computation_resources(invocation.execution_resources),
+        execution_resources: InnerCallExecutionResources {
+            l1_gas: invocation
+                .execution_resources
+                .total_gas_consumed
+                .map(|gas| gas.l1_gas)
+                .unwrap_or_default(),
+            // TODO: Use proper l1_gas value for Starknet 0.13.3
+            l2_gas: 0,
+        },
     })
 }
 

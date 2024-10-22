@@ -202,6 +202,7 @@ pub struct FunctionInvocation {
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
     pub computation_resources: ComputationResources,
+    pub execution_resources: InnerCallExecutionResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -210,6 +211,12 @@ pub struct MsgToL1 {
     pub payload: Vec<Felt>,
     pub to_address: Felt,
     pub from_address: Felt,
+}
+
+#[derive(Debug, Clone)]
+pub struct InnerCallExecutionResources {
+    pub l1_gas: u128,
+    pub l2_gas: u128,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -343,6 +350,11 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             messages,
             result,
             computation_resources: call_info.resources.into(),
+            execution_resources: InnerCallExecutionResources {
+                l1_gas: call_info.execution.gas_consumed.into(),
+                // TODO: Use proper l2_gas value for Starknet 0.13.3
+                l2_gas: 0,
+            },
         }
     }
 }
