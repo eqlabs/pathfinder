@@ -367,8 +367,7 @@ async fn handle_state_diff_stream(
         .pipe(state_updates::VerifyCommitment2, 10)
         .into_stream()
         .try_chunks(1000)
-        .map_err(|e| e.1)
-        .map_err(|e| SyncError::from_v2(e))
+        .map_err(|e| SyncError::from_v2(e.1))
         .and_then(|x| {
             state_updates::batch_update_starknet_state(storage.clone(), verify_tree_hashes, x)
         })
