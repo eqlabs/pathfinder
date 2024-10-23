@@ -429,6 +429,10 @@ mod tests {
                         price_in_fri: Default::default(),
                     },
                     l1_data_gas_price: Default::default(),
+                    l2_gas_price: GasPrices {
+                        price_in_wei: last_block_header.eth_l2_gas_price,
+                        price_in_fri: last_block_header.strk_l2_gas_price,
+                    },
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,

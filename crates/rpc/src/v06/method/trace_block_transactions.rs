@@ -570,6 +570,10 @@ pub(crate) mod tests {
                     price_in_wei: GasPrice(2),
                     price_in_fri: GasPrice(2),
                 },
+                l2_gas_price: GasPrices {
+                    price_in_wei: GasPrice(3),
+                    price_in_fri: GasPrice(3),
+                },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,
@@ -652,6 +656,8 @@ pub(crate) mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),

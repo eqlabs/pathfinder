@@ -781,6 +781,8 @@ impl ProcessStage for StoreBlock {
             strk_l1_gas_price: header.strk_l1_gas_price,
             eth_l1_data_gas_price: header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            eth_l2_gas_price: header.eth_l2_gas_price,
+            strk_l2_gas_price: header.strk_l2_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
             // Class commitment is updated after the class tries are updated.

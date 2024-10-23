@@ -132,6 +132,8 @@ impl ToDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
             gas_price_wei: self.header.eth_l1_gas_price.0,
             data_gas_price_fri: self.header.strk_l1_data_gas_price.0,
             data_gas_price_wei: self.header.eth_l1_data_gas_price.0,
+            l2_gas_price_fri: self.header.strk_l2_gas_price.0,
+            l2_gas_price_wei: self.header.eth_l2_gas_price.0,
             l1_data_availability_mode: self.header.l1_da_mode.to_dto(),
             signatures: vec![p2p_proto::common::ConsensusSignature {
                 r: self.signature.r.0,

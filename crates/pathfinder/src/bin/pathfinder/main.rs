@@ -384,12 +384,10 @@ fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
 
     if json_log {
         subscriber.json().flatten_event(true).init();
+    } else if pretty_log {
+        subscriber.pretty().init();
     } else {
-        if pretty_log {
-            subscriber.pretty().init();
-        } else {
-            subscriber.compact().init();
-        }
+        subscriber.compact().init();
     }
 }
 

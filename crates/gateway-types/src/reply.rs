@@ -73,6 +73,8 @@ pub struct Block {
 pub struct PendingBlock {
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    #[serde(default)] // TODO: Needed until the gateway provides the l2 gas price
+    pub l2_gas_price: GasPrices,
 
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,

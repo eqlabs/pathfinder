@@ -13,6 +13,8 @@ pub struct BlockHeader {
     pub strk_l1_gas_price: GasPrice,
     pub eth_l1_data_gas_price: GasPrice,
     pub strk_l1_data_gas_price: GasPrice,
+    pub eth_l2_gas_price: GasPrice,
+    pub strk_l2_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
     pub class_commitment: ClassCommitment,
@@ -106,6 +108,16 @@ impl BlockHeaderBuilder {
 
     pub fn strk_l1_gas_price(mut self, strk_l1_gas_price: GasPrice) -> Self {
         self.0.strk_l1_gas_price = strk_l1_gas_price;
+        self
+    }
+
+    pub fn eth_l2_gas_price(mut self, eth_l2_gas_price: GasPrice) -> Self {
+        self.0.eth_l2_gas_price = eth_l2_gas_price;
+        self
+    }
+
+    pub fn strk_l2_gas_price(mut self, strk_l2_gas_price: GasPrice) -> Self {
+        self.0.strk_l2_gas_price = strk_l2_gas_price;
         self
     }
 

@@ -598,6 +598,7 @@ mod tests {
                     "l1_da_mode": "CALLDATA",
                     "l1_data_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
                     "l1_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
+                    "l2_gas_price": { "price_in_fri": "0x0", "price_in_wei": "0x0" },
                     "new_root": "0x0",
                     "parent_hash": "0x0",
                     "sequencer_address": "0x0",
