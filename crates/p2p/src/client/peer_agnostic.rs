@@ -685,11 +685,14 @@ mod header_stream {
             Ok(BlockHeadersResponse::Header(hdr)) => match SignedBlockHeader::try_from_dto(*hdr) {
                 Ok(hdr) => {
                     if done(direction, *start, stop) {
-                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
+                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead, terminating");
                         return Action::TerminateStream;
                     }
 
-                    _ = tx.send(PeerData::new(peer, hdr)).await;
+                    if let Err(_) = tx.send(PeerData::new(peer, hdr)).await {
+                        tracing::debug!(%peer, "Failed to yield to stream, terminating");
+                        return Action::TerminateStream;
+                    }
 
                     *start = match direction {
                         Direction::Forward => *start + 1,
@@ -699,7 +702,7 @@ mod header_stream {
                     Action::NextResponse
                 }
                 Err(error) => {
-                    tracing::debug!(%peer, %error, "Header stream failed");
+                    tracing::debug!(%peer, %error, "Header stream failed, terminating");
                     if done(direction, *start, stop) {
                         return Action::TerminateStream;
                     }
@@ -716,7 +719,7 @@ mod header_stream {
                 Action::NextPeer
             }
             Err(error) => {
-                tracing::debug!(%peer, %error, "Header stream failed");
+                tracing::debug!(%peer, %error, "Header stream failed, terminating");
                 if done(direction, *start, stop) {
                     return Action::TerminateStream;
                 }
@@ -906,9 +909,13 @@ mod transaction_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "All transactions received for block");
 
-        _ = tx
+        if let Err(_) = tx
             .send(Ok(PeerData::new(peer, (transactions, *start))))
-            .await;
+            .await
+        {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
@@ -1125,7 +1132,10 @@ mod state_diff_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "State diff received for block");
 
-        _ = tx.send(Ok(PeerData::new(peer, (state_diff, *start)))).await;
+        if let Err(_) = tx.send(Ok(PeerData::new(peer, (state_diff, *start)))).await {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
@@ -1307,7 +1317,10 @@ mod class_definition_stream {
         tracing::trace!(block_number=%start, "All classes received for block");
 
         for class_definition in class_definitions {
-            _ = tx.send(Ok(PeerData::new(peer, class_definition))).await;
+            if let Err(_) = tx.send(Ok(PeerData::new(peer, class_definition))).await {
+                tracing::debug!(%peer, "Failed to yield to stream, terminating");
+                return true;
+            }
         }
 
         if *start == stop {
@@ -1489,7 +1502,10 @@ mod event_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "All events received for block");
 
-        _ = tx.send(Ok(PeerData::new(peer, (*start, events)))).await;
+        if let Err(_) = tx.send(Ok(PeerData::new(peer, (*start, events)))).await {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
