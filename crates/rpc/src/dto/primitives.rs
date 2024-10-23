@@ -1,4 +1,5 @@
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ContractAddress, L1TransactionHash};
+use primitive_types::H256;
 use serde::de::Error;
 
 use super::serialize::SerializeForVersion;
@@ -243,6 +244,16 @@ impl SerializeForVersion for U256Hex {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&<[u8; 32]>::from(
             self.0,
         )))
+    }
+}
+
+impl DeserializeForVersion for H256 {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        let hex_str: String = value.deserialize_serde()?;
+        let bytes = hex_str::bytes_from_hex_str_stripped::<32>(&hex_str).map_err(|e| {
+            serde_json::Error::custom(format!("failed to parse hex string as u256: {}", e))
+        })?;
+        Ok(H256(bytes))
     }
 }
 

@@ -20,8 +20,8 @@ pub mod error;
 pub mod event;
 pub mod hash;
 mod header;
+mod l1;
 mod macros;
-pub mod message;
 pub mod prelude;
 pub mod receipt;
 pub mod signature;
@@ -31,7 +31,7 @@ pub mod transaction;
 pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
-pub use message::L1ToL2MessageLog;
+pub use l1::{L1BlockNumber, L1TransactionHash};
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 

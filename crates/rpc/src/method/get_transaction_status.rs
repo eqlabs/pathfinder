@@ -10,6 +10,12 @@ pub struct Input {
     transaction_hash: TransactionHash,
 }
 
+impl Input {
+    pub fn new(transaction_hash: TransactionHash) -> Self {
+        Self { transaction_hash }
+    }
+}
+
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {

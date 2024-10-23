@@ -229,9 +229,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
+        pathfinder_context.l1_core_address,
         pathfinder_context.gateway.clone(),
         rx_pending.clone(),
         notifications.clone(),
+        ethereum.client.clone(),
         rpc_config,
     );
 
