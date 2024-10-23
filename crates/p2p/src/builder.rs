@@ -57,7 +57,7 @@ impl Builder {
             behaviour,
             local_peer_id,
             swarm::Config::with_tokio_executor()
-                .with_idle_connection_timeout(Duration::from_secs(3600 * 365)), // A YEAR
+                .with_idle_connection_timeout(Duration::from_secs(60)),
         );
 
         let (event_sender, event_receiver) = mpsc::channel(1);
