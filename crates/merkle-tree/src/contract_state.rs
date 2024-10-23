@@ -47,9 +47,9 @@ impl ContractStateUpdateResult {
 
 /// Updates a contract's state with and returns the resulting
 /// [ContractStateHash].
-pub fn update_contract_state<'a>(
+pub fn update_contract_state(
     contract_address: ContractAddress,
-    updates: StorageRef<'a>,
+    updates: StorageRef<'_>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
     transaction: &Transaction<'_>,
