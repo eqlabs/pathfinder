@@ -41,6 +41,7 @@ pub async fn get_headers(
     request: BlockHeadersRequest,
     tx: futures::channel::mpsc::Sender<BlockHeadersResponse>,
 ) -> anyhow::Result<()> {
+    tracing::error!("RCV sync_handlers::get_headers, {request:?}");
     spawn_blocking_get(request, storage, blocking::get_headers, tx).await
 }
 
@@ -85,6 +86,7 @@ pub(crate) mod blocking {
         request: BlockHeadersRequest,
         tx: mpsc::Sender<BlockHeadersResponse>,
     ) -> anyhow::Result<()> {
+        tracing::error!("RCV sync_handlers::blocking::get_headers, {request:?}");
         iterate(db_tx, request.iteration, get_header, tx)
     }
 
@@ -411,10 +413,14 @@ where
 {
     let span = tracing::Span::current();
 
+    tracing::error!("RCV sync_handlers::spawn_blocking_get START");
+
     let (sync_tx, mut rx) = mpsc::channel(1); // For backpressure
 
     let db_fut = async {
         tokio::task::spawn_blocking(move || {
+            tracing::error!("RCV sync_handlers::spawn_blocking_get START db_fut");
+
             let _g = span.enter();
             let mut connection = storage
                 .connection()
@@ -425,16 +431,26 @@ where
             getter(db_tx, request, sync_tx)
         })
         .await
+        .inspect(|_| tracing::error!("RCV sync_handlers::spawn_blocking_get STOP db_fut"))
         .context("Database read panic or shutting down")?
         .context("Database read")
     };
 
-    let fwd_fut = async move {
-        while let Some(x) = rx.recv().await {
-            tx.send(x).await.context("Sending item")?;
-        }
-        Ok::<_, anyhow::Error>(())
-    };
+    let fwd_fut =
+        async move {
+            tracing::error!("RCV sync_handlers::spawn_blocking_get START fwd_fut");
+
+            while let Some(x) = rx.recv().await.inspect(|_| {
+                tracing::error!("RCV sync_handlers::spawn_blocking_get RCVD in fwd_fut")
+            }) {
+                tx.send(x).await.context("Sending item").inspect(|_| {
+                    tracing::error!("RCV sync_handlers::spawn_blocking_get SENT in fwd_fut")
+                })?;
+            }
+
+            tracing::error!("RCV sync_handlers::spawn_blocking_get STOP fwd_fut with OK");
+            Ok::<_, anyhow::Error>(())
+        };
     // Bail out early, either when db fails or sending fails
     tokio::try_join!(db_fut, fwd_fut)?;
     Ok(())

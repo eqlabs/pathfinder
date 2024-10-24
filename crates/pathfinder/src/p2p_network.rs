@@ -131,6 +131,7 @@ async fn handle_p2p_event(
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
         } => {
+            tracing::error!("RCV InboundHeadersSyncRequest, {request:?}");
             get_headers(storage, request, channel).await?;
         }
         p2p::Event::InboundClassesSyncRequest {

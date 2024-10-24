@@ -155,8 +155,12 @@ where
         let recv_request_then_fwd_outgoing_responses = async move {
             let (rs_send, mut rs_recv) = mpsc::channel(0);
 
+            tracing::error!("RCV request read ..., id {:?}", request_id);
+
             let read = codec.read_request(&protocol, &mut stream);
             let request = read.await?;
+
+            tracing::error!("RCV request read OK, id {:?}", request_id);
 
             sender
                 .send((request_id, request, rs_send))
@@ -164,11 +168,20 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
+            tracing::error!("RCV start forwarding ..., id {:?}", request_id);
+
             // Keep on forwarding until the channel is closed
             while let Some(response) = rs_recv.next().await {
+                tracing::error!("RCV writing response ..., id {:?}", request_id);
+
+                // TODO FIXME what if this hangs???? we need a timeout here!
                 let write = codec.write_response(&protocol, &mut stream, response);
                 write.await?;
+
+                tracing::error!("RCV writing response OK, id {:?}", request_id);
             }
+
+            tracing::error!("RCV closing stream, id {:?}", request_id);
 
             stream.close().await?;
 
