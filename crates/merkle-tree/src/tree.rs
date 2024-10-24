@@ -66,6 +66,8 @@ use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
 use crate::storage::Storage;
 
+pub type TrieNodeWithHash = (TrieNode, Felt);
+
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
@@ -526,16 +528,15 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+    ) -> anyhow::Result<Option<Vec<TrieNodeWithHash>>> {
         Self::get_proofs(root, storage, &[key]).map(|mut proofs| proofs.pop().flatten())
     }
 
-    /// Generates merkle-proofs for a given list of `keys`.
-    ///
-    /// For each key, returns a vector of [`TrieNode`]s which form a chain from
-    /// the root to the key, if it exists, or down to the node which proves
-    /// that the key does not exist. If a node in the path is missing from
-    /// storage, `None` will be returned for that path.
+    /// For each key, returns a vector of [`(TrieNode, Felt)`](TrieNodeWithHash) pairs.
+    /// The second element of each pair is the node hash.
+    /// The nodes form a chain from the root to the key, if it exists, or down to the
+    /// node which proves that the key does not exist. If a node in the path is missing
+    /// from storage, `None` will be returned for that key.
     ///
     /// The nodes are added to the proof in order, root first.
     ///
@@ -544,13 +545,15 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///   2. the hashes are correct, and
     ///   3. the root hash matches the known root
     ///
-    /// Uses a cache to avoid repeated lookups.
+    /// Uses caching to avoid repeated lookups.
     pub fn get_proofs(
         root: u64,
         storage: &impl Storage,
         keys: &[&BitSlice<u8, Msb0>],
-    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+    ) -> anyhow::Result<Vec<Option<Vec<TrieNodeWithHash>>>> {
         let mut node_cache: HashMap<u64, StoredNode> = HashMap::new();
+        let mut node_hash_cache: HashMap<u64, Felt> = HashMap::new();
+
         let mut proofs = vec![];
 
         'key_loop: for key in keys {
@@ -642,7 +645,18 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     }
                 };
 
-                nodes.push(node);
+                let node_hash = match node_hash_cache.get(&index) {
+                    Some(&hash) => hash,
+                    None => {
+                        let hash = storage
+                            .hash(index)
+                            .context("Querying node hash")?
+                            .context("Node hash is missing")?;
+                        node_hash_cache.insert(index, hash);
+                        hash
+                    }
+                };
+                nodes.push((node, node_hash));
             }
 
             proofs.push(Some(nodes));
@@ -1996,7 +2010,7 @@ mod tests {
         use pathfinder_common::trie::TrieNode;
         use pathfinder_crypto::Felt;
 
-        use super::{Direction, TestStorage, TestTree};
+        use super::{Direction, TestStorage, TestTree, TrieNodeWithHash};
         use crate::tree::tests::commit_and_persist_with_pruning;
 
         #[derive(Debug, PartialEq, Eq)]
@@ -2033,7 +2047,7 @@ mod tests {
             root: Felt,
             key: &BitSlice<u8, Msb0>,
             value: Felt,
-            proofs: &[TrieNode],
+            proofs: &[TrieNodeWithHash],
         ) -> Option<Membership> {
             // Protect from ill-formed keys
             if key.len() != 251 {
@@ -2043,7 +2057,7 @@ mod tests {
             let mut expected_hash = root;
             let mut remaining_path: &BitSlice<u8, Msb0> = key;
 
-            for proof_node in proofs.iter() {
+            for (proof_node, _) in proofs.iter() {
                 // Hash mismatch? Return None.
                 if proof_node.hash::<PedersenHash>() != expected_hash {
                     return None;
@@ -2455,14 +2469,17 @@ mod tests {
             let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the left hash
-            let new_node = match &proofs[0].as_ref().unwrap()[0] {
-                TrieNode::Binary { right, .. } => TrieNode::Binary {
-                    left: felt!("0x42"),
-                    right: *right,
-                },
+            let new_node_with_hash = match &proofs[0].as_ref().unwrap()[0] {
+                (TrieNode::Binary { right, .. }, hash) => {
+                    let node = TrieNode::Binary {
+                        left: felt!("0x42"),
+                        right: *right,
+                    };
+                    (node, *hash)
+                }
                 _ => unreachable!(),
             };
-            proofs[0].as_mut().unwrap()[0] = new_node;
+            proofs[0].as_mut().unwrap()[0] = new_node_with_hash;
 
             let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
             assert!(verified.is_none());
@@ -2497,17 +2514,57 @@ mod tests {
             let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the child hash
-            let new_node = match &proofs[0].as_ref().unwrap()[1] {
-                TrieNode::Edge { path, .. } => TrieNode::Edge {
-                    child: felt!("0x42"),
-                    path: path.clone(),
-                },
+            let new_node_with_hash = match &proofs[0].as_ref().unwrap()[1] {
+                (TrieNode::Edge { path, .. }, hash) => {
+                    let node = TrieNode::Edge {
+                        child: felt!("0x42"),
+                        path: path.clone(),
+                    };
+                    (node, *hash)
+                }
                 _ => unreachable!(),
             };
-            proofs[0].as_mut().unwrap()[1] = new_node;
+            proofs[0].as_mut().unwrap()[1] = new_node_with_hash;
 
             let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
             assert!(verified.is_none());
+        }
+
+        #[test]
+        fn verify_simple_proof_with_correct_hashes() {
+            let mut uut = TestTree::empty();
+            let mut storage = TestStorage::default();
+
+            //  (251,0x00,0x99)
+            //       /
+            //      /
+            //   (0x99)
+
+            let key_1 = felt!("0x0"); // 0b00
+
+            let key1 = key_1.view_bits().to_owned();
+            let keys = vec![key1.as_bitslice()];
+
+            let value_1 = felt!("0xaa");
+
+            uut.set(&storage, key1.clone(), value_1).unwrap();
+
+            let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
+
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys)
+                .unwrap()
+                .into_iter()
+                .map(|proof| proof.unwrap())
+                .collect::<Vec<_>>();
+
+            for proof in proofs.iter() {
+                let verified_1 = verify_proof(root, &key1, value_1, proof).unwrap();
+                assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
+
+                for (node, hash) in proof.iter() {
+                    assert_eq!(node.hash::<PedersenHash>(), *hash);
+                }
+            }
         }
     }
 }
