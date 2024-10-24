@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use anyhow::{anyhow, Context};
-use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash,
@@ -129,16 +128,6 @@ impl SerializeForVersion for ProofNode {
 struct NodeHashToNodeMapping {
     node_hash: Felt,
     node: ProofNode,
-}
-
-impl From<TrieNode> for NodeHashToNodeMapping {
-    fn from(node: TrieNode) -> Self {
-        let node_hash = node.hash::<PedersenHash>();
-        Self {
-            node_hash,
-            node: ProofNode(node),
-        }
-    }
 }
 
 impl SerializeForVersion for &NodeHashToNodeMapping {
@@ -333,8 +322,13 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
                 proofs
                     .into_iter()
                     .flatten()
-                    .map(|node| node.into())
-                    .collect::<HashSet<_>>()
+                    .map(|(node, node_hash)| {
+                        Ok(NodeHashToNodeMapping {
+                            node_hash,
+                            node: ProofNode(node),
+                        })
+                    })
+                    .collect::<Result<HashSet<_>, Error>>()?
                     .into_iter()
                     .collect::<Vec<NodeHashToNodeMapping>>(),
             )
@@ -358,49 +352,53 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             Some(hash) => hash,
         };
 
-        let (contract_proof_nodes, contract_leaves_data) = if let Some(contract_addresses) =
-            input.contract_addresses
-        {
-            let proofs = StorageCommitmentTree::get_proofs(
-                &tx,
-                header.number,
-                &contract_addresses,
-                storage_root_idx,
-            )
-            .context("Get proofs from class tree")?
-            .into_iter()
-            .map(|proof| proof.ok_or(Error::ProofMissing))
-            .collect::<Result<Vec<_>, _>>()?;
-
-            let nodes: Vec<NodeHashToNodeMapping> = proofs
+        let (contract_proof_nodes, contract_leaves_data) =
+            if let Some(contract_addresses) = input.contract_addresses {
+                let proofs = StorageCommitmentTree::get_proofs(
+                    &tx,
+                    header.number,
+                    &contract_addresses,
+                    storage_root_idx,
+                )
+                .context("Get proofs from class tree")?
                 .into_iter()
-                .flatten()
-                .map(|node| node.into())
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect();
-
-            let contract_leaves_data = contract_addresses
-                .iter()
-                .map(|&address| {
-                    let class_hash = tx
-                        .contract_class_hash(header.number.into(), address)
-                        .context("Querying contract's class hash")?
-                        .unwrap_or_default();
-
-                    let nonce = tx
-                        .contract_nonce(address, header.number.into())
-                        .context("Querying contract's nonce")?
-                        .unwrap_or_default();
-
-                    Ok::<ContractLeafData, anyhow::Error>(ContractLeafData { nonce, class_hash })
-                })
+                .map(|proof| proof.ok_or(Error::ProofMissing))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            (NodeHashToNodeMappings(nodes), contract_leaves_data)
-        } else {
-            (NodeHashToNodeMappings(vec![]), vec![])
-        };
+                let nodes: Vec<NodeHashToNodeMapping> = proofs
+                    .into_iter()
+                    .flatten()
+                    .map(|(node, node_hash)| {
+                        Ok(NodeHashToNodeMapping {
+                            node_hash,
+                            node: ProofNode(node),
+                        })
+                    })
+                    .collect::<Result<HashSet<_>, Error>>()?
+                    .into_iter()
+                    .collect();
+
+                let contract_leaves_data = contract_addresses
+                    .iter()
+                    .map(|&address| {
+                        let class_hash = tx
+                            .contract_class_hash(header.number.into(), address)
+                            .context("Querying contract's class hash")?
+                            .unwrap_or_default();
+
+                        let nonce = tx
+                            .contract_nonce(address, header.number.into())
+                            .context("Querying contract's nonce")?
+                            .unwrap_or_default();
+
+                        Ok(ContractLeafData { nonce, class_hash })
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                (NodeHashToNodeMappings(nodes), contract_leaves_data)
+            } else {
+                (NodeHashToNodeMappings(vec![]), vec![])
+            };
 
         let contracts_storage_proofs = match input.contracts_storage_keys {
             None => vec![],
@@ -437,8 +435,13 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
                         let proof: Vec<NodeHashToNodeMapping> = contract_storage_proof
                             .into_iter()
                             .flatten()
-                            .map(|node| node.into())
-                            .collect::<HashSet<_>>()
+                            .map(|(node, node_hash)| {
+                                Ok(NodeHashToNodeMapping {
+                                    node_hash,
+                                    node: ProofNode(node),
+                                })
+                            })
+                            .collect::<Result<HashSet<_>, Error>>()?
                             .into_iter()
                             .collect();
 

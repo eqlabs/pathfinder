@@ -258,7 +258,11 @@ pub async fn get_proof(
             storage_root_idx,
         )
         .context("Creating contract proof")?
-        .ok_or(GetProofError::ProofMissing)?;
+        .ok_or(GetProofError::ProofMissing)?
+        .into_iter()
+        .map(|(node, _)| node)
+        .collect();
+
         let contract_proof = ProofNodes(contract_proof);
 
         let contract_state_hash = tx
@@ -311,7 +315,11 @@ pub async fn get_proof(
                     );
                     tracing::warn!("{e}");
                     e
-                })?;
+                })?
+                .into_iter()
+                .map(|(node, _)| node)
+                .collect();
+
                 storage_proofs.push(ProofNodes(proof));
             } else {
                 storage_proofs.push(ProofNodes(vec![]));
@@ -387,7 +395,11 @@ pub async fn get_proof_class(
         let class_proof =
             ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)
                 .context("Creating class proof")?
-                .ok_or(GetProofError::ProofMissing)?;
+                .ok_or(GetProofError::ProofMissing)?
+                .into_iter()
+                .map(|(node, _)| node)
+                .collect();
+
         let class_proof = ProofNodes(class_proof);
 
         Ok(GetClassProofOutput {
