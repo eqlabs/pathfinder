@@ -327,6 +327,8 @@ pub mod transaction {
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability.unwrap_or_default().into(),
                 total_gas_consumed: value.total_gas_consumed.unwrap_or_default().into(),
+                // TODO: Fix this when we have a way to get L2 gas from the gateway
+                l2_gas: Default::default(),
             }
         }
     }

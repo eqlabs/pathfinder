@@ -372,11 +372,17 @@ impl SerializeForVersion for ExecutionResources<'_> {
 
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.flatten(&ComputationResources(self.0))?;
-        serializer.serialize_field(
-            "data_availability",
-            &DataAvailability(&self.0.data_availability),
-        )?;
+        if serializer.version < RpcVersion::V08 {
+            serializer.flatten(&ComputationResources(self.0))?;
+            serializer.serialize_field(
+                "data_availability",
+                &DataAvailability(&self.0.data_availability),
+            )?;
+        } else {
+            serializer.serialize_field("l1_gas", &self.0.total_gas_consumed.l1_gas)?;
+            serializer.serialize_field("l1_data_gas", &self.0.total_gas_consumed.l1_data_gas)?;
+            serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
+        }
 
         serializer.end()
     }

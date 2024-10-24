@@ -740,6 +740,8 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                         )?
                         .0,
                     },
+                    // TODO: Fix this when we have a way to get L2 gas from the gateway
+                    l2_gas: Default::default(),
                 },
                 l2_to_l1_messages: common
                     .messages_sent
