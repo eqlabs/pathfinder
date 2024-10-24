@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use anyhow::Context;
-use pathfinder_common::state_update::ReverseContractUpdate;
+use pathfinder_common::state_update::{ReverseContractUpdate, StorageRef};
 use pathfinder_common::{
     BlockNumber,
     ClassHash,
@@ -9,8 +7,6 @@ use pathfinder_common::{
     ContractNonce,
     ContractRoot,
     ContractStateHash,
-    StorageAddress,
-    StorageValue,
 };
 use pathfinder_crypto::hash::pedersen_hash;
 use pathfinder_crypto::Felt;
@@ -53,7 +49,7 @@ impl ContractStateUpdateResult {
 /// [ContractStateHash].
 pub fn update_contract_state(
     contract_address: ContractAddress,
-    updates: &HashMap<StorageAddress, StorageValue>,
+    updates: StorageRef<'_>,
     new_nonce: Option<ContractNonce>,
     new_class_hash: Option<ClassHash>,
     transaction: &Transaction<'_>,
@@ -70,7 +66,7 @@ pub fn update_contract_state(
         }
         .with_verify_hashes(verify_hashes);
 
-        for (key, value) in updates {
+        for (key, value) in &updates {
             contract_tree
                 .set(*key, *value)
                 .context("Update contract storage tree")?;
@@ -99,7 +95,12 @@ pub fn update_contract_state(
         transaction
             .contract_class_hash(block.into(), contract_address)
             .context("Querying contract's class hash")?
-            .context("Contract's class hash is missing")?
+            .with_context(|| {
+                format!(
+                    "Contract's class hash is missing, block: {block}, contract_address: \
+                     {contract_address}"
+                )
+            })?
     };
 
     let nonce = if let Some(nonce) = new_nonce {
