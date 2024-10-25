@@ -194,6 +194,7 @@ fn get_classes_for_block(
                 Class::Cairo0 {
                     class: cairo_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
             ClassDefinition::Sierra {
@@ -205,6 +206,7 @@ fn get_classes_for_block(
                 Class::Cairo1 {
                     class: sierra_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
         };

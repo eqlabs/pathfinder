@@ -361,10 +361,10 @@ mod prop {
             let mut actual_sierra = Vec::new();
 
             responses.into_iter().for_each(|response| match response {
-                ClassesResponse::Class(Class::Cairo0 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash: _ }) => {
                     actual_cairo.push(CairoDefinition::try_from_dto(class).unwrap().0);
                 },
-                ClassesResponse::Class(Class::Cairo1 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash: _ }) => {
                     let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
                     actual_sierra.push(sierra);
                 },

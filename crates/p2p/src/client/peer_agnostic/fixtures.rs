@@ -25,6 +25,7 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
+use pathfinder_crypto::Felt;
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
@@ -275,10 +276,12 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
             ClassDefinition::Sierra(s) => Class::Cairo1 {
                 class: s.to_dto(),
                 domain: 0,
+                class_hash: Hash(Felt::default()),
             },
             ClassDefinition::Cairo(c) => Class::Cairo0 {
                 class: c.to_dto(),
                 domain: 0,
+                class_hash: Hash(Felt::default()),
             },
         }
     })
