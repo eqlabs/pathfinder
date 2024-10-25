@@ -290,6 +290,11 @@ impl VerifyHashAndSignature {
             l1_da_mode: header.l1_da_mode,
         }) {
             Ok(block_hash) => {
+                // if header.number == BlockNumber::GENESIS + 86000 {
+                //     tracing::error!("FORCED Block hash mismatch @86k");
+                //     return false;
+                // }
+
                 if block_hash == expected_hash {
                     true
                 } else {

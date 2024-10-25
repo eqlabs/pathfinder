@@ -252,6 +252,7 @@ impl Default for Config {
 }
 
 impl Config {
+    // TODO rename to substream timeout
     /// Sets the timeout for inbound and outbound requests.
     pub fn request_timeout(mut self, v: Duration) -> Self {
         self.request_timeout = v;

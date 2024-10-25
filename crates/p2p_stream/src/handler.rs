@@ -94,6 +94,8 @@ where
     inbound_request_id: Arc<AtomicU64>,
 
     worker_streams: futures_bounded::FuturesMap<RequestId, Result<Event<TCodec>, io::Error>>,
+
+    my_request_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -130,6 +132,7 @@ where
                 substream_timeout,
                 max_concurrent_streams,
             ),
+            my_request_id: 0,
         }
     }
 
@@ -148,9 +151,16 @@ where
             <Self as ConnectionHandler>::InboundOpenInfo,
         >,
     ) {
+        tracing::error!(
+            "RCV on_fully_negotiated_inbound START: worker_streams.len() {}",
+            self.worker_streams.len()
+        );
+
         let mut codec = self.codec.clone();
         let request_id = self.next_inbound_request_id();
         let mut sender = self.inbound_sender.clone();
+
+        self.my_request_id = request_id.0;
 
         let recv_request_then_fwd_outgoing_responses = async move {
             let (rs_send, mut rs_recv) = mpsc::channel(0);
@@ -198,6 +208,11 @@ where
         {
             tracing::warn!("Dropping inbound stream because we are at capacity")
         }
+
+        tracing::error!(
+            "RCV on_fully_negotiated_inbound END: worker_streams.len() {}",
+            self.worker_streams.len()
+        );
     }
 
     fn on_fully_negotiated_outbound(
@@ -458,85 +473,152 @@ where
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<ConnectionHandlerEvent<Protocol<TCodec::Protocol>, (), Self::ToBehaviour>> {
-        match self.worker_streams.poll_unpin(cx) {
-            Poll::Ready((_, Ok(Ok(event)))) => {
+        tracing::error!(
+            "RCV poll id {} START: worker_streams {}, pending_events {}, pending_outbound {}, \
+             requested_outbound {}",
+            self.my_request_id,
+            self.worker_streams.len(),
+            self.pending_events.len(),
+            self.pending_outbound.len(),
+            self.requested_outbound.len(),
+        );
+
+        let mut inner_poll = || {
+            match self.worker_streams.poll_unpin(cx) {
+                Poll::Ready((_, Ok(Ok(event)))) => {
+                    tracing::error!(
+                        "RCV poll id {} RET: \
+                         Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour({event:?}))",
+                        self.my_request_id,
+                    );
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
+                }
+                Poll::Ready((RequestId::Inbound(id), Ok(Err(e)))) => {
+                    tracing::error!(
+                        "RCV poll id {} RET: Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::InboundStreamFailed))", self.my_request_id,
+                    );
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                        Event::InboundStreamFailed {
+                            request_id: id,
+                            error: e,
+                        },
+                    ));
+                }
+                Poll::Ready((RequestId::Outbound(id), Ok(Err(e)))) => {
+                    tracing::error!(
+                        "RCV poll id {} RET: Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::OutboundStreamFailed))", self.my_request_id,
+                    );
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                        Event::OutboundStreamFailed {
+                            request_id: id,
+                            error: e,
+                        },
+                    ));
+                }
+                Poll::Ready((RequestId::Inbound(id), Err(futures_bounded::Timeout { .. }))) => {
+                    tracing::error!(
+                        "RCV poll id {} RET: Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::InboundTimeout))", self.my_request_id,
+                    );
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                        Event::InboundTimeout(id),
+                    ));
+                }
+                Poll::Ready((RequestId::Outbound(id), Err(futures_bounded::Timeout { .. }))) => {
+                    tracing::error!(
+                        "RCV poll id {} RET: Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::OutboundTimeout))", self.my_request_id,
+                    );
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                        Event::OutboundTimeout(id),
+                    ));
+                }
+                Poll::Pending => {}
+            }
+
+            // Drain pending events that were produced by `worker_streams`.
+            if let Some(event) = self.pending_events.pop_front() {
+                tracing::error!(
+                    "RCV poll id {} RET: \
+                     Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour({event:?}))",
+                    self.my_request_id,
+                );
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
+            } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
+                self.pending_events.shrink_to_fit();
             }
-            Poll::Ready((RequestId::Inbound(id), Ok(Err(e)))) => {
+
+            // Check for inbound requests.
+            if let Poll::Ready(Some((id, rq, rs_sender))) =
+                self.inbound_receiver.poll_next_unpin(cx)
+            {
+                tracing::error!(
+                    "RCV poll id {} RET: \
+                     Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::InboundRequest \
+                     id: {id}))",
+                    self.my_request_id,
+                );
+                // We received an inbound request.
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                    Event::InboundStreamFailed {
+                    Event::InboundRequest {
                         request_id: id,
-                        error: e,
+                        request: rq,
+                        sender: rs_sender,
                     },
                 ));
             }
-            Poll::Ready((RequestId::Outbound(id), Ok(Err(e)))) => {
+
+            // Emit outbound requests.
+            if let Some(request) = self.pending_outbound.pop_front() {
+                let protocols = request.protocols.clone();
+                self.requested_outbound.push_back(request);
+
+                tracing::error!(
+                    "RCV poll id {} RET: \
+                     Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest)",
+                    self.my_request_id,
+                );
+
+                return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
+                    protocol: SubstreamProtocol::new(Protocol { protocols }, ()),
+                });
+            }
+
+            // Check for readiness to receive inbound responses.
+            if let Poll::Ready(Some((id, rs_receiver))) = self.outbound_receiver.poll_next_unpin(cx)
+            {
+                tracing::error!(
+                    "RCV poll id {} RET: Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Event::OutboundRequestSentAwaitingResponses))", self.my_request_id,
+                );
+
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                    Event::OutboundStreamFailed {
+                    Event::OutboundRequestSentAwaitingResponses {
                         request_id: id,
-                        error: e,
+                        receiver: rs_receiver,
                     },
                 ));
             }
-            Poll::Ready((RequestId::Inbound(id), Err(futures_bounded::Timeout { .. }))) => {
-                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                    Event::InboundTimeout(id),
-                ));
+
+            debug_assert!(self.pending_outbound.is_empty());
+
+            if self.pending_outbound.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
+                self.pending_outbound.shrink_to_fit();
             }
-            Poll::Ready((RequestId::Outbound(id), Err(futures_bounded::Timeout { .. }))) => {
-                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                    Event::OutboundTimeout(id),
-                ));
-            }
-            Poll::Pending => {}
-        }
 
-        // Drain pending events that were produced by `worker_streams`.
-        if let Some(event) = self.pending_events.pop_front() {
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
-        } else if self.pending_events.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
-            self.pending_events.shrink_to_fit();
-        }
+            Poll::Pending
+        };
 
-        // Check for inbound requests.
-        if let Poll::Ready(Some((id, rq, rs_sender))) = self.inbound_receiver.poll_next_unpin(cx) {
-            // We received an inbound request.
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                Event::InboundRequest {
-                    request_id: id,
-                    request: rq,
-                    sender: rs_sender,
-                },
-            ));
-        }
+        let res = inner_poll();
 
-        // Emit outbound requests.
-        if let Some(request) = self.pending_outbound.pop_front() {
-            let protocols = request.protocols.clone();
-            self.requested_outbound.push_back(request);
+        tracing::error!(
+            "RCV poll id {} STOP: worker_streams {}, pending_events {}, pending_outbound {}, \
+             requested_outbound {}",
+            self.my_request_id,
+            self.worker_streams.len(),
+            self.pending_events.len(),
+            self.pending_outbound.len(),
+            self.requested_outbound.len(),
+        );
 
-            return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest {
-                protocol: SubstreamProtocol::new(Protocol { protocols }, ()),
-            });
-        }
-
-        // Check for readiness to receive inbound responses.
-        if let Poll::Ready(Some((id, rs_receiver))) = self.outbound_receiver.poll_next_unpin(cx) {
-            return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
-                Event::OutboundRequestSentAwaitingResponses {
-                    request_id: id,
-                    receiver: rs_receiver,
-                },
-            ));
-        }
-
-        debug_assert!(self.pending_outbound.is_empty());
-
-        if self.pending_outbound.capacity() > EMPTY_QUEUE_SHRINK_THRESHOLD {
-            self.pending_outbound.shrink_to_fit();
-        }
-
-        Poll::Pending
+        res
     }
 
     fn on_connection_event(

@@ -136,9 +136,32 @@ fn get_header(
         if let Some(signature) = db_tx.signature(block_number.into())? {
             tracing::trace!(?header, "Sending block header");
 
+            tracing::error!(
+                "RCV sync_handlers::get_header SEND..., tx.is_closed {} tx.capacity {}/{}",
+                tx.is_closed(),
+                tx.capacity(),
+                tx.max_capacity(),
+            );
+
             let sbh = SignedBlockHeader { header, signature };
 
             tx.blocking_send(BlockHeadersResponse::Header(Box::new(sbh.to_dto())))
+                .inspect(|_| {
+                    tracing::error!(
+                        "RCV sync_handlers::get_header SEND OK, tx.is_closed {} tx.capacity {}/{}",
+                        tx.is_closed(),
+                        tx.capacity(),
+                        tx.max_capacity(),
+                    )
+                })
+                .inspect_err(|_| {
+                    tracing::error!(
+                        "RCV sync_handlers::get_header SEND ERR, tx.is_closed {} tx.capacity {}/{}",
+                        tx.is_closed(),
+                        tx.capacity(),
+                        tx.max_capacity(),
+                    )
+                })
                 .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
             return Ok(true);
@@ -443,8 +466,10 @@ where
             while let Some(x) = rx.recv().await.inspect(|_| {
                 tracing::error!("RCV sync_handlers::spawn_blocking_get RCVD in fwd_fut")
             }) {
+                tracing::error!("RCV sync_handlers::spawn_blocking_get SEND START in fwd_fut");
+
                 tx.send(x).await.context("Sending item").inspect(|_| {
-                    tracing::error!("RCV sync_handlers::spawn_blocking_get SENT in fwd_fut")
+                    tracing::error!("RCV sync_handlers::spawn_blocking_get SEND DONE in fwd_fut")
                 })?;
             }
 
