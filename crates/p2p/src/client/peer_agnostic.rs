@@ -689,7 +689,7 @@ mod header_stream {
                         return Action::TerminateStream;
                     }
 
-                    if let Err(_) = tx.send(PeerData::new(peer, hdr)).await {
+                    if tx.send(PeerData::new(peer, hdr)).await.is_err() {
                         tracing::debug!(%peer, "Failed to yield to stream, terminating");
                         return Action::TerminateStream;
                     }
@@ -909,9 +909,10 @@ mod transaction_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "All transactions received for block");
 
-        if let Err(_) = tx
+        if tx
             .send(Ok(PeerData::new(peer, (transactions, *start))))
             .await
+            .is_err()
         {
             tracing::debug!(%peer, "Failed to yield to stream, terminating");
             return true;
@@ -1132,7 +1133,11 @@ mod state_diff_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "State diff received for block");
 
-        if let Err(_) = tx.send(Ok(PeerData::new(peer, (state_diff, *start)))).await {
+        if tx
+            .send(Ok(PeerData::new(peer, (state_diff, *start))))
+            .await
+            .is_err()
+        {
             tracing::debug!(%peer, "Failed to yield to stream, terminating");
             return true;
         }
@@ -1317,7 +1322,11 @@ mod class_definition_stream {
         tracing::trace!(block_number=%start, "All classes received for block");
 
         for class_definition in class_definitions {
-            if let Err(_) = tx.send(Ok(PeerData::new(peer, class_definition))).await {
+            if tx
+                .send(Ok(PeerData::new(peer, class_definition)))
+                .await
+                .is_err()
+            {
                 tracing::debug!(%peer, "Failed to yield to stream, terminating");
                 return true;
             }
@@ -1502,7 +1511,11 @@ mod event_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "All events received for block");
 
-        if let Err(_) = tx.send(Ok(PeerData::new(peer, (*start, events)))).await {
+        if tx
+            .send(Ok(PeerData::new(peer, (*start, events))))
+            .await
+            .is_err()
+        {
             tracing::debug!(%peer, "Failed to yield to stream, terminating");
             return true;
         }
