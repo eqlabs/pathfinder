@@ -3,7 +3,12 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{
+    tree,
+    ClassCommitmentTree,
+    ContractsStorageTree,
+    StorageCommitmentTree,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
@@ -59,6 +64,18 @@ pub enum GetProofError {
 impl From<anyhow::Error> for GetProofError {
     fn from(e: anyhow::Error) -> Self {
         Self::Internal(e)
+    }
+}
+
+impl From<tree::GetProofError> for GetProofError {
+    fn from(e: tree::GetProofError) -> Self {
+        match e {
+            tree::GetProofError::Internal(e) => Self::Internal(e),
+            tree::GetProofError::StorageNodeMissing(index) => {
+                tracing::warn!("Storage node missing: {}", index);
+                Self::ProofMissing
+            }
+        }
     }
 }
 
@@ -256,9 +273,8 @@ pub async fn get_proof(
             header.number,
             &input.contract_address,
             storage_root_idx,
-        )
-        .context("Creating contract proof")?
-        .ok_or(GetProofError::ProofMissing)?;
+        )?;
+
         let contract_proof = ProofNodes(contract_proof);
 
         let contract_state_hash = tx
@@ -302,16 +318,8 @@ pub async fn get_proof(
                     header.number,
                     k.view_bits(),
                     root,
-                )
-                .context("Get proof from contract state tree")?
-                .ok_or_else(|| {
-                    let e = anyhow!(
-                        "Storage proof missing for key {:?}, but should be present",
-                        k
-                    );
-                    tracing::warn!("{e}");
-                    e
-                })?;
+                )?;
+
                 storage_proofs.push(ProofNodes(proof));
             } else {
                 storage_proofs.push(ProofNodes(vec![]));
@@ -385,9 +393,8 @@ pub async fn get_proof_class(
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
         let class_proof =
-            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)
-                .context("Creating class proof")?
-                .ok_or(GetProofError::ProofMissing)?;
+            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)?;
+
         let class_proof = ProofNodes(class_proof);
 
         Ok(GetClassProofOutput {
