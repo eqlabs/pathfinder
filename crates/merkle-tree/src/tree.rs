@@ -521,107 +521,134 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
     }
 
-    /// Generates a merkle-proof for a given `key`.
-    ///
-    /// Returns vector of [`TrieNode`] which form a chain from the root to the
-    /// key, if it exists, or down to the node which proves that the key
-    /// does not exist.
-    ///
-    /// The nodes are returned in order, root first.
-    ///
-    /// Verification is performed by confirming that:
-    ///   1. the chain follows the path of `key`, and
-    ///   2. the hashes are correct, and
-    ///   3. the root hash matches the known root
+    /// Single-key version of [`MerkleTree::get_proofs`].
     pub fn get_proof(
         root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
     ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        // Manually traverse towards the key.
-        let mut nodes = Vec::new();
+        Self::get_proofs(root, storage, &[key]).map(|mut proofs| proofs.pop().flatten())
+    }
 
-        let mut next = Some(root);
-        let mut height = 0;
-        while let Some(index) = next.take() {
-            let Some(node) = storage.get(index).context("Resolving node")? else {
-                return Ok(None);
-            };
+    /// Generates merkle-proofs for a given list of `keys`.
+    ///
+    /// For each key, returns a vector of [`TrieNode`]s which form a chain from
+    /// the root to the key, if it exists, or down to the node which proves
+    /// that the key does not exist. If a node in the path is missing from
+    /// storage, `None` will be returned for that path.
+    ///
+    /// The nodes are added to the proof in order, root first.
+    ///
+    /// Verification is performed by confirming that:
+    ///   1. the chain follows the path of `key`, and
+    ///   2. the hashes are correct, and
+    ///   3. the root hash matches the known root
+    ///
+    /// Uses a cache to avoid repeated lookups.
+    pub fn get_proofs(
+        root: u64,
+        storage: &impl Storage,
+        keys: &[&BitSlice<u8, Msb0>],
+    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+        let mut node_cache: HashMap<u64, StoredNode> = HashMap::new();
+        let mut proofs = vec![];
 
-            let node = match node {
-                StoredNode::Binary { left, right } => {
-                    // Choose the direction to go in.
-                    next = match key.get(height).map(|b| Direction::from(*b)) {
-                        Some(Direction::Left) => Some(left),
-                        Some(Direction::Right) => Some(right),
-                        None => anyhow::bail!("Key path too short for binary node"),
-                    };
-                    height += 1;
+        'key_loop: for key in keys {
+            // Manually traverse towards the key.
+            let mut nodes = Vec::new();
 
-                    let left = storage
-                        .hash(left)
-                        .context("Querying left child's hash")?
-                        .context("Left child's hash is missing")?;
-
-                    let right = storage
-                        .hash(right)
-                        .context("Querying right child's hash")?
-                        .context("Right child's hash is missing")?;
-
-                    TrieNode::Binary { left, right }
-                }
-                StoredNode::Edge { child, path } => {
-                    let key = key
-                        .get(height..height + path.len())
-                        .context("Key path is too short for edge node")?;
-                    height += path.len();
-
-                    // If the path matches then we continue otherwise the proof is complete.
-                    if key == path {
-                        next = Some(child);
+            let mut next = Some(root);
+            let mut height = 0;
+            while let Some(index) = next.take() {
+                let node = match node_cache.get(&index) {
+                    Some(node) => node.clone(),
+                    None => {
+                        let Some(node) = storage.get(index).context("Resolving node")? else {
+                            proofs.push(None);
+                            continue 'key_loop;
+                        };
+                        node_cache.insert(index, node.clone());
+                        node
                     }
+                };
 
-                    let child = storage
-                        .hash(child)
-                        .context("Querying child child's hash")?
-                        .context("Child's hash is missing")?;
+                let node = match node {
+                    StoredNode::Binary { left, right } => {
+                        // Choose the direction to go in.
+                        next = match key.get(height).map(|b| Direction::from(*b)) {
+                            Some(Direction::Left) => Some(left),
+                            Some(Direction::Right) => Some(right),
+                            None => anyhow::bail!("Key path too short for binary node"),
+                        };
+                        height += 1;
 
-                    TrieNode::Edge { child, path }
-                }
-                StoredNode::LeafBinary => {
-                    // End of the line, get child hashes.
-                    let mut path = key[..height].to_bitvec();
-                    path.push(Direction::Left.into());
-                    let left = storage
-                        .leaf(&path)
-                        .context("Querying left leaf hash")?
-                        .context("Left leaf is missing")?;
-                    path.pop();
-                    path.push(Direction::Right.into());
-                    let right = storage
-                        .leaf(&path)
-                        .context("Querying right leaf hash")?
-                        .context("Right leaf is missing")?;
+                        let left = storage
+                            .hash(left)
+                            .context("Querying left child's hash")?
+                            .context("Left child's hash is missing")?;
 
-                    TrieNode::Binary { left, right }
-                }
-                StoredNode::LeafEdge { path } => {
-                    let mut current_path = key[..height].to_bitvec();
-                    // End of the line, get hash of the child.
-                    current_path.extend_from_bitslice(&path);
-                    let child = storage
-                        .leaf(&current_path)
-                        .context("Querying leaf hash")?
-                        .context("Child leaf is missing")?;
+                        let right = storage
+                            .hash(right)
+                            .context("Querying right child's hash")?
+                            .context("Right child's hash is missing")?;
 
-                    TrieNode::Edge { child, path }
-                }
-            };
+                        TrieNode::Binary { left, right }
+                    }
+                    StoredNode::Edge { child, path } => {
+                        let key = key
+                            .get(height..height + path.len())
+                            .context("Key path is too short for edge node")?;
+                        height += path.len();
 
-            nodes.push(node);
+                        // If the path matches then we continue otherwise the proof is complete.
+                        if key == path {
+                            next = Some(child);
+                        }
+
+                        let child = storage
+                            .hash(child)
+                            .context("Querying child child's hash")?
+                            .context("Child's hash is missing")?;
+
+                        TrieNode::Edge { child, path }
+                    }
+                    StoredNode::LeafBinary => {
+                        // End of the line, get child hashes.
+                        let mut path = key[..height].to_bitvec();
+                        path.push(Direction::Left.into());
+                        let left = storage
+                            .leaf(&path)
+                            .context("Querying left leaf hash")?
+                            .context("Left leaf is missing")?;
+                        path.pop();
+                        path.push(Direction::Right.into());
+                        let right = storage
+                            .leaf(&path)
+                            .context("Querying right leaf hash")?
+                            .context("Right leaf is missing")?;
+
+                        TrieNode::Binary { left, right }
+                    }
+                    StoredNode::LeafEdge { path } => {
+                        let mut current_path = key[..height].to_bitvec();
+                        // End of the line, get hash of the child.
+                        current_path.extend_from_bitslice(&path);
+                        let child = storage
+                            .leaf(&current_path)
+                            .context("Querying leaf hash")?
+                            .context("Child leaf is missing")?;
+
+                        TrieNode::Edge { child, path }
+                    }
+                };
+
+                nodes.push(node);
+            }
+
+            proofs.push(Some(nodes));
         }
 
-        Ok(Some(nodes))
+        Ok(proofs)
     }
 
     /// Traverses from the current root towards destination node.
@@ -1970,7 +1997,6 @@ mod tests {
         use pathfinder_crypto::Felt;
 
         use super::{Direction, TestStorage, TestTree};
-        use crate::storage::Storage;
         use crate::tree::tests::commit_and_persist_with_pruning;
 
         #[derive(Debug, PartialEq, Eq)]
@@ -2109,28 +2135,18 @@ mod tests {
             fn verify(&mut self) {
                 let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                     self.keys.iter().map(|k| k.view_bits()).collect();
-                let proofs = get_proofs(&keys_bits, self.root_idx, &self.storage).unwrap();
+                let proofs =
+                    TestTree::get_proofs(self.root_idx, &self.storage, &keys_bits).unwrap();
                 keys_bits
                     .iter()
                     .zip(self.values.iter())
                     .enumerate()
                     .for_each(|(i, (k, v))| {
-                        let verified = verify_proof(self.root, k, *v, &proofs[i]).unwrap();
+                        let verified =
+                            verify_proof(self.root, k, *v, proofs[i].as_ref().unwrap()).unwrap();
                         assert_eq!(verified, Membership::Member, "Failed to prove key");
                     });
             }
-        }
-
-        /// Generates a storage proof for each `key` in `keys` and returns the
-        /// result in the form of an array.
-        fn get_proofs(
-            keys: &'_ [&BitSlice<u8, Msb0>],
-            root: u64,
-            storage: &impl Storage,
-        ) -> anyhow::Result<Vec<Vec<TrieNode>>> {
-            keys.iter()
-                .map(|k| TestTree::get_proof(root, storage, k).map(Option::unwrap))
-                .collect()
         }
 
         #[test]
@@ -2156,9 +2172,10 @@ mod tests {
             uut.set(&storage, key2.clone(), value_2).unwrap();
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
-            let verified_key1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let verified_key1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
 
             assert_eq!(verified_key1, Membership::Member);
         }
@@ -2195,14 +2212,17 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
-            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
+            let verified_1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let verified_2 = verify_proof(root, &key2, value_2, &proofs[1]).unwrap();
+            let verified_2 =
+                verify_proof(root, &key2, value_2, proofs[1].as_ref().unwrap()).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
 
-            let verified_key3 = verify_proof(root, &key3, value_3, &proofs[2]).unwrap();
+            let verified_key3 =
+                verify_proof(root, &key3, value_3, proofs[2].as_ref().unwrap()).unwrap();
             assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
         }
 
@@ -2227,8 +2247,9 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
-            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
+            let verified_1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2253,8 +2274,9 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
-            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
+            let verified_1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2279,8 +2301,9 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
-            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
+            let verified_1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2310,11 +2333,13 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let proofs = get_proofs(&keys, root_idx, &storage).unwrap();
-            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
+            let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
+            let verified_1 =
+                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let verified_2 = verify_proof(root, &key2, value_2, &proofs[1]).unwrap();
+            let verified_2 =
+                verify_proof(root, &key2, value_2, proofs[1].as_ref().unwrap()).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
 
@@ -2357,13 +2382,15 @@ mod tests {
             let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                 inexistent_keys.iter().map(|k| k.view_bits()).collect();
             let proofs =
-                get_proofs(&keys_bits, random_tree.root_idx, &random_tree.storage).unwrap();
+                TestTree::get_proofs(random_tree.root_idx, &random_tree.storage, &keys_bits)
+                    .unwrap();
             keys_bits
                 .iter()
                 .zip(random_tree.values.iter())
                 .enumerate()
                 .for_each(|(i, (k, v))| {
-                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]).unwrap();
+                    let verified =
+                        verify_proof(random_tree.root, k, *v, proofs[i].as_ref().unwrap()).unwrap();
                     assert_eq!(verified, Membership::NonMember);
                 });
         }
@@ -2385,14 +2412,16 @@ mod tests {
             let keys_bits: Vec<&BitSlice<u8, Msb0>> =
                 random_tree.keys.iter().map(|k| k.view_bits()).collect();
             let proofs =
-                get_proofs(&keys_bits[..], random_tree.root_idx, &random_tree.storage).unwrap();
+                TestTree::get_proofs(random_tree.root_idx, &random_tree.storage, &keys_bits)
+                    .unwrap();
 
             keys_bits
                 .iter()
                 .zip(inexistent_values.iter())
                 .enumerate()
                 .for_each(|(i, (k, v))| {
-                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]);
+                    let verified =
+                        verify_proof(random_tree.root, k, *v, proofs[i].as_ref().unwrap());
                     assert!(verified.is_none());
                 });
         }
@@ -2423,19 +2452,19 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let mut proofs = get_proofs(&keys, root_idx, &storage).unwrap();
+            let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the left hash
-            let new_node = match &proofs[0][0] {
+            let new_node = match &proofs[0].as_ref().unwrap()[0] {
                 TrieNode::Binary { right, .. } => TrieNode::Binary {
                     left: felt!("0x42"),
                     right: *right,
                 },
                 _ => unreachable!(),
             };
-            proofs[0][0] = new_node;
+            proofs[0].as_mut().unwrap()[0] = new_node;
 
-            let verified = verify_proof(root, &key1, value_1, &proofs[0]);
+            let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
             assert!(verified.is_none());
         }
 
@@ -2465,19 +2494,19 @@ mod tests {
 
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let mut proofs = get_proofs(&keys, root_idx, &storage).unwrap();
+            let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the child hash
-            let new_node = match &proofs[0][1] {
+            let new_node = match &proofs[0].as_ref().unwrap()[1] {
                 TrieNode::Edge { path, .. } => TrieNode::Edge {
                     child: felt!("0x42"),
                     path: path.clone(),
                 },
                 _ => unreachable!(),
             };
-            proofs[0][1] = new_node;
+            proofs[0].as_mut().unwrap()[1] = new_node;
 
-            let verified = verify_proof(root, &key1, value_1, &proofs[0]);
+            let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
             assert!(verified.is_none());
         }
     }
