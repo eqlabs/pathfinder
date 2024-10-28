@@ -1,6 +1,5 @@
 use anyhow::Context;
 use pathfinder_common::hash::PoseidonHash;
-use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockNumber,
     ClassCommitment,
@@ -11,7 +10,7 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
-use crate::tree::{GetProofError, MerkleTree};
+use crate::tree::{GetProofError, MerkleTree, TrieNodeWithHash};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
 /// Starknet's Sierra classes.
@@ -80,7 +79,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
         block: BlockNumber,
         class_hash: ClassHash,
         root: u64,
-    ) -> Result<Vec<TrieNode>, GetProofError> {
+    ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
         let storage = ClassStorage {
             tx,
             block: Some(block),
@@ -89,14 +88,16 @@ impl<'tx> ClassCommitmentTree<'tx> {
         MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
     }
 
-    /// Generates a proof for the given list of `class_hashes`.
-    /// See [`MerkleTree::get_proofs`].
+    /// Generates proofs for the given list of `class_hashes`. See
+    /// [`MerkleTree::get_proofs`]. Returns  [(`TrieNode`,
+    /// `Felt`)](TrieNodeWithHash) pairs where the second element is the
+    /// node hash.
     pub fn get_proofs(
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         class_hashes: &[ClassHash],
         root: u64,
-    ) -> Result<Vec<Vec<TrieNode>>, GetProofError> {
+    ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
         let storage = ClassStorage {
             tx,
             block: Some(block),
