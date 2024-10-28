@@ -46,7 +46,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
-use crate::state::{update_starknet_state, StarknetStateUpdate};
+use crate::state::update_starknet_state;
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError2;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -817,11 +817,7 @@ impl ProcessStage for StoreBlock {
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
-            StarknetStateUpdate {
-                contract_updates: &state_diff.contract_updates,
-                system_contract_updates: &state_diff.system_contract_updates,
-                declared_sierra_classes: &state_diff.declared_sierra_classes,
-            },
+            (&state_diff).into(),
             self.verify_tree_hashes,
             block_number,
             self.storage.clone(),

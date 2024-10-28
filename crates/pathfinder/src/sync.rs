@@ -127,11 +127,11 @@ impl Sync {
                     continue_from
                 }
                 Err(SyncError::Other(error)) => {
-                    tracing::error!(%error, "Stopping checkpoint sync");
+                    tracing::error!(?error, "Stopping checkpoint sync");
                     return Err(error);
                 }
                 Err(error) => {
-                    tracing::debug!(%error, "Restarting checkpoint sync");
+                    tracing::debug!(?error, "Restarting checkpoint sync");
                     self.handle_recoverable_error(&error.into_v2()).await;
                     continue;
                 }
@@ -186,12 +186,12 @@ impl Sync {
                     data: SyncError2::Other(error),
                     ..
                 }) => {
-                    tracing::error!(%error, "Stopping track sync");
+                    tracing::error!(?error, "Stopping track sync");
                     use pathfinder_common::error::AnyhowExt;
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
-                    tracing::debug!(error=%error.data, "Restarting track sync");
+                    tracing::debug!(error=?error.data, "Restarting track sync");
                     self.handle_recoverable_error(error).await;
                 }
             }

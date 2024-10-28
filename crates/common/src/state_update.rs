@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map, HashMap, HashSet};
+use std::slice;
 
 use fake::Dummy;
 
@@ -48,10 +49,37 @@ pub struct SystemContractUpdate {
     pub storage: HashMap<StorageAddress, StorageValue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Dummy)]
+#[derive(Debug, Copy, Clone, PartialEq, Dummy)]
 pub enum ContractClassUpdate {
     Deploy(ClassHash),
     Replace(ClassHash),
+}
+
+pub struct StateUpdateRef<'a> {
+    pub contract_updates: Vec<(&'a ContractAddress, ContractUpdateRef<'a>)>,
+    pub system_contract_updates: Vec<(&'a ContractAddress, SystemContractUpdateRef<'a>)>,
+    pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
+}
+
+pub struct ContractUpdateRef<'a> {
+    pub storage: StorageRef<'a>,
+    pub class: &'a Option<ContractClassUpdate>,
+    pub nonce: &'a Option<ContractNonce>,
+}
+
+pub struct SystemContractUpdateRef<'a> {
+    pub storage: StorageRef<'a>,
+}
+
+#[derive(Copy, Clone)]
+pub enum StorageRef<'a> {
+    HashMap(&'a HashMap<StorageAddress, StorageValue>),
+    Vec(&'a Vec<(StorageAddress, StorageValue)>),
+}
+
+pub enum StorageRefIter<'a> {
+    HashMap(hash_map::Iter<'a, StorageAddress, StorageValue>),
+    Vec(slice::Iter<'a, (StorageAddress, StorageValue)>),
 }
 
 impl ContractUpdate {
@@ -332,6 +360,140 @@ impl From<StateUpdate> for StateUpdateData {
             system_contract_updates: state_update.system_contract_updates,
             declared_cairo_classes: state_update.declared_cairo_classes,
             declared_sierra_classes: state_update.declared_sierra_classes,
+        }
+    }
+}
+
+impl<'a> From<&'a StateUpdate> for StateUpdateRef<'a> {
+    fn from(state_update: &'a StateUpdate) -> Self {
+        Self {
+            contract_updates: state_update
+                .contract_updates
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        ContractUpdateRef {
+                            storage: StorageRef::HashMap(&v.storage),
+                            class: &v.class,
+                            nonce: &v.nonce,
+                        },
+                    )
+                })
+                .collect(),
+            system_contract_updates: state_update
+                .system_contract_updates
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        SystemContractUpdateRef {
+                            storage: StorageRef::HashMap(&v.storage),
+                        },
+                    )
+                })
+                .collect(),
+            declared_sierra_classes: &state_update.declared_sierra_classes,
+        }
+    }
+}
+
+impl<'a> From<&'a StateUpdateData> for StateUpdateRef<'a> {
+    fn from(state_update: &'a StateUpdateData) -> Self {
+        Self {
+            contract_updates: state_update
+                .contract_updates
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        ContractUpdateRef {
+                            storage: StorageRef::HashMap(&v.storage),
+                            class: &v.class,
+                            nonce: &v.nonce,
+                        },
+                    )
+                })
+                .collect(),
+            system_contract_updates: state_update
+                .system_contract_updates
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k,
+                        SystemContractUpdateRef {
+                            storage: StorageRef::HashMap(&v.storage),
+                        },
+                    )
+                })
+                .collect(),
+            declared_sierra_classes: &state_update.declared_sierra_classes,
+        }
+    }
+}
+
+impl StorageRef<'_> {
+    pub fn iter(&self) -> StorageRefIter<'_> {
+        match self {
+            StorageRef::HashMap(map) => StorageRefIter::HashMap(map.iter()),
+            StorageRef::Vec(vec) => StorageRefIter::Vec(vec.iter()),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            StorageRef::HashMap(map) => map.is_empty(),
+            StorageRef::Vec(vec) => vec.is_empty(),
+        }
+    }
+}
+
+impl<'a> From<&'a ContractUpdate> for ContractUpdateRef<'a> {
+    fn from(x: &'a ContractUpdate) -> Self {
+        ContractUpdateRef {
+            storage: (&x.storage).into(),
+            class: &x.class,
+            nonce: &x.nonce,
+        }
+    }
+}
+
+impl<'a> From<&'a SystemContractUpdate> for SystemContractUpdateRef<'a> {
+    fn from(x: &'a SystemContractUpdate) -> Self {
+        SystemContractUpdateRef {
+            storage: (&x.storage).into(),
+        }
+    }
+}
+
+impl<'a> From<&'a HashMap<StorageAddress, StorageValue>> for StorageRef<'a> {
+    fn from(x: &'a HashMap<StorageAddress, StorageValue>) -> Self {
+        StorageRef::HashMap(x)
+    }
+}
+
+impl<'a> From<&'a Vec<(StorageAddress, StorageValue)>> for StorageRef<'a> {
+    fn from(x: &'a Vec<(StorageAddress, StorageValue)>) -> Self {
+        StorageRef::Vec(x)
+    }
+}
+
+impl<'a> IntoIterator for &'a StorageRef<'a> {
+    type Item = (&'a StorageAddress, &'a StorageValue);
+    type IntoIter = StorageRefIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a> Iterator for StorageRefIter<'a> {
+    type Item = (&'a StorageAddress, &'a StorageValue);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            StorageRefIter::HashMap(iter) => iter.next(),
+            StorageRefIter::Vec(iter) => iter.next().map(|(k, v)| (k, v)),
         }
     }
 }
