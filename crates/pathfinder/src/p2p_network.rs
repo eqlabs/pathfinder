@@ -21,7 +21,7 @@ pub struct P2PContext {
     pub storage: Storage,
     pub proxy: bool,
     pub keypair: Keypair,
-    pub listen_on: Multiaddr,
+    pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
 }
@@ -49,10 +49,12 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         tokio::task::spawn(p2p_main_loop.run().instrument(span))
     };
 
-    p2p_client
-        .start_listening(listen_on)
-        .await
-        .context("Starting P2P listener")?;
+    for addr in listen_on {
+        p2p_client
+            .start_listening(addr.clone())
+            .await
+            .with_context(|| format!("Starting P2P listener: {addr}"))?;
+    }
 
     let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
         addr.iter()
