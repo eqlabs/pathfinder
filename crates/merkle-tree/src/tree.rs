@@ -526,16 +526,16 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         root: u64,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        Self::get_proofs(root, storage, &[key]).map(|mut proofs| proofs.pop().flatten())
+    ) -> Result<Vec<TrieNode>, GetProofError> {
+        Self::get_proofs(root, storage, &[key])
+            .map(|proofs| proofs.into_iter().next().expect("Single proof is present"))
     }
 
     /// Generates merkle-proofs for a given list of `keys`.
     ///
     /// For each key, returns a vector of [`TrieNode`]s which form a chain from
     /// the root to the key, if it exists, or down to the node which proves
-    /// that the key does not exist. If a node in the path is missing from
-    /// storage, `None` will be returned for that path.
+    /// that the key does not exist.
     ///
     /// The nodes are added to the proof in order, root first.
     ///
@@ -549,11 +549,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         root: u64,
         storage: &impl Storage,
         keys: &[&BitSlice<u8, Msb0>],
-    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+    ) -> Result<Vec<Vec<TrieNode>>, GetProofError> {
         let mut node_cache: HashMap<u64, StoredNode> = HashMap::new();
         let mut proofs = vec![];
 
-        'key_loop: for key in keys {
+        for key in keys {
             // Manually traverse towards the key.
             let mut nodes = Vec::new();
 
@@ -564,8 +564,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     Some(node) => node.clone(),
                     None => {
                         let Some(node) = storage.get(index).context("Resolving node")? else {
-                            proofs.push(None);
-                            continue 'key_loop;
+                            return Err(GetProofError::StorageNodeMissing(index));
                         };
                         node_cache.insert(index, node.clone());
                         node
@@ -578,7 +577,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         next = match key.get(height).map(|b| Direction::from(*b)) {
                             Some(Direction::Left) => Some(left),
                             Some(Direction::Right) => Some(right),
-                            None => anyhow::bail!("Key path too short for binary node"),
+                            None => {
+                                return Err(
+                                    anyhow::anyhow!("Key path too short for binary node").into()
+                                )
+                            }
                         };
                         height += 1;
 
@@ -645,7 +648,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 nodes.push(node);
             }
 
-            proofs.push(Some(nodes));
+            proofs.push(nodes);
         }
 
         Ok(proofs)
@@ -889,6 +892,18 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
 
         Ok(None)
+    }
+}
+
+#[derive(Debug)]
+pub enum GetProofError {
+    Internal(anyhow::Error),
+    StorageNodeMissing(u64),
+}
+
+impl From<anyhow::Error> for GetProofError {
+    fn from(e: anyhow::Error) -> Self {
+        Self::Internal(e)
     }
 }
 
@@ -2142,8 +2157,7 @@ mod tests {
                     .zip(self.values.iter())
                     .enumerate()
                     .for_each(|(i, (k, v))| {
-                        let verified =
-                            verify_proof(self.root, k, *v, proofs[i].as_ref().unwrap()).unwrap();
+                        let verified = verify_proof(self.root, k, *v, &proofs[i]).unwrap();
                         assert_eq!(verified, Membership::Member, "Failed to prove key");
                     });
             }
@@ -2174,8 +2188,7 @@ mod tests {
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
-            let verified_key1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_key1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
 
             assert_eq!(verified_key1, Membership::Member);
         }
@@ -2213,16 +2226,13 @@ mod tests {
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
-            let verified_1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let verified_2 =
-                verify_proof(root, &key2, value_2, proofs[1].as_ref().unwrap()).unwrap();
+            let verified_2 = verify_proof(root, &key2, value_2, &proofs[1]).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
 
-            let verified_key3 =
-                verify_proof(root, &key3, value_3, proofs[2].as_ref().unwrap()).unwrap();
+            let verified_key3 = verify_proof(root, &key3, value_3, &proofs[2]).unwrap();
             assert_eq!(verified_key3, Membership::Member, "Failed to prove key3");
         }
 
@@ -2248,8 +2258,7 @@ mod tests {
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
-            let verified_1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2275,8 +2284,7 @@ mod tests {
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
-            let verified_1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2302,8 +2310,7 @@ mod tests {
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
-            let verified_1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
         }
 
@@ -2334,12 +2341,10 @@ mod tests {
             let (root, root_idx) = commit_and_persist_with_pruning(uut, &mut storage);
 
             let proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
-            let verified_1 =
-                verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap()).unwrap();
+            let verified_1 = verify_proof(root, &key1, value_1, &proofs[0]).unwrap();
             assert_eq!(verified_1, Membership::Member, "Failed to prove key1");
 
-            let verified_2 =
-                verify_proof(root, &key2, value_2, proofs[1].as_ref().unwrap()).unwrap();
+            let verified_2 = verify_proof(root, &key2, value_2, &proofs[1]).unwrap();
             assert_eq!(verified_2, Membership::Member, "Failed to prove key2");
         }
 
@@ -2389,8 +2394,7 @@ mod tests {
                 .zip(random_tree.values.iter())
                 .enumerate()
                 .for_each(|(i, (k, v))| {
-                    let verified =
-                        verify_proof(random_tree.root, k, *v, proofs[i].as_ref().unwrap()).unwrap();
+                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]).unwrap();
                     assert_eq!(verified, Membership::NonMember);
                 });
         }
@@ -2420,8 +2424,7 @@ mod tests {
                 .zip(inexistent_values.iter())
                 .enumerate()
                 .for_each(|(i, (k, v))| {
-                    let verified =
-                        verify_proof(random_tree.root, k, *v, proofs[i].as_ref().unwrap());
+                    let verified = verify_proof(random_tree.root, k, *v, &proofs[i]);
                     assert!(verified.is_none());
                 });
         }
@@ -2455,16 +2458,16 @@ mod tests {
             let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the left hash
-            let new_node = match &proofs[0].as_ref().unwrap()[0] {
+            let new_node = match &proofs[0][0] {
                 TrieNode::Binary { right, .. } => TrieNode::Binary {
                     left: felt!("0x42"),
                     right: *right,
                 },
                 _ => unreachable!(),
             };
-            proofs[0].as_mut().unwrap()[0] = new_node;
+            proofs[0][0] = new_node;
 
-            let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
+            let verified = verify_proof(root, &key1, value_1, &proofs[0]);
             assert!(verified.is_none());
         }
 
@@ -2497,16 +2500,16 @@ mod tests {
             let mut proofs = TestTree::get_proofs(root_idx, &storage, &keys).unwrap();
 
             // Modify the child hash
-            let new_node = match &proofs[0].as_ref().unwrap()[1] {
+            let new_node = match &proofs[0][1] {
                 TrieNode::Edge { path, .. } => TrieNode::Edge {
                     child: felt!("0x42"),
                     path: path.clone(),
                 },
                 _ => unreachable!(),
             };
-            proofs[0].as_mut().unwrap()[1] = new_node;
+            proofs[0][1] = new_node;
 
-            let verified = verify_proof(root, &key1, value_1, proofs[0].as_ref().unwrap());
+            let verified = verify_proof(root, &key1, value_1, &proofs[0]);
             assert!(verified.is_none());
         }
     }

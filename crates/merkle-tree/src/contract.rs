@@ -24,7 +24,7 @@ use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
-use crate::tree::{MerkleTree, Visit};
+use crate::tree::{GetProofError, MerkleTree, Visit};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a
 /// Starknet contract's storage.
@@ -84,7 +84,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         block: BlockNumber,
         key: &BitSlice<u8, Msb0>,
         root: u64,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+    ) -> Result<Vec<TrieNode>, GetProofError> {
         let storage = ContractStorage {
             tx,
             block: Some(block),
@@ -102,7 +102,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         block: BlockNumber,
         keys: &[StorageAddress],
         root: u64,
-    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+    ) -> Result<Vec<Vec<TrieNode>>, GetProofError> {
         let storage = ContractStorage {
             tx,
             block: Some(block),
@@ -212,7 +212,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         block: BlockNumber,
         address: &ContractAddress,
         root: u64,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+    ) -> Result<Vec<TrieNode>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
             block: Some(block),
@@ -228,7 +228,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         block: BlockNumber,
         addresses: &[ContractAddress],
         root: u64,
-    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+    ) -> Result<Vec<Vec<TrieNode>>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
             block: Some(block),

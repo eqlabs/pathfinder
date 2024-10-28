@@ -11,7 +11,7 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
-use crate::tree::MerkleTree;
+use crate::tree::{GetProofError, MerkleTree};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
 /// Starknet's Sierra classes.
@@ -80,7 +80,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
         block: BlockNumber,
         class_hash: ClassHash,
         root: u64,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
+    ) -> Result<Vec<TrieNode>, GetProofError> {
         let storage = ClassStorage {
             tx,
             block: Some(block),
@@ -96,7 +96,7 @@ impl<'tx> ClassCommitmentTree<'tx> {
         block: BlockNumber,
         class_hashes: &[ClassHash],
         root: u64,
-    ) -> anyhow::Result<Vec<Option<Vec<TrieNode>>>> {
+    ) -> Result<Vec<Vec<TrieNode>>, GetProofError> {
         let storage = ClassStorage {
             tx,
             block: Some(block),
