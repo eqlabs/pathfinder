@@ -449,7 +449,7 @@ mod prop {
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
                 TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
-                    (TransactionVariant::try_from_dto(transaction).unwrap(), Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                    (TransactionVariant::try_from_dto(transaction.txn).unwrap(), Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
                 }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
