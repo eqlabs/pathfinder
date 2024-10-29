@@ -418,13 +418,14 @@ struct P2PCli {
     identity_config_file: Option<std::path::PathBuf>,
     #[arg(
         long = "p2p.listen-on",
-        long_help = "The multiaddress on which to listen for incoming p2p connections. If not \
-                     provided, default route on randomly assigned port will be used.",
-        value_name = "MULTIADDRESS",
+        long_help = "The list of multiaddresses on which to listen for incoming p2p connections. \
+                     If not provided, default route on randomly assigned port will be used.",
+        value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         default_value = "/ip4/0.0.0.0/tcp/0",
         env = "PATHFINDER_P2P_LISTEN_ON"
     )]
-    listen_on: Multiaddr,
+    listen_on: Vec<String>,
     #[arg(
         long = "p2p.bootstrap-addresses",
         long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID.
@@ -520,9 +521,9 @@ Example:
     #[arg(
         long = "p2p.experimental.max-concurrent-streams",
         long_help = "Maximum allowed number of concurrent streams per each \
-                     request/response-stream protocol.",
+                     request/response-stream protocol per connection.",
         value_name = "LIMIT",
-        default_value = "100",
+        default_value = "1",
         env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
     )]
     max_concurrent_streams: usize,
@@ -741,7 +742,7 @@ pub enum NetworkConfig {
 pub struct P2PConfig {
     pub proxy: bool,
     pub identity_config_file: Option<std::path::PathBuf>,
-    pub listen_on: Multiaddr,
+    pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
     pub max_inbound_direct_connections: usize,
@@ -891,7 +892,7 @@ impl P2PConfig {
             max_outbound_connections: args.max_outbound_connections.try_into().unwrap(),
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
-            listen_on: args.listen_on,
+            listen_on: parse_multiaddr_vec("p2p.listen-on", args.listen_on),
             bootstrap_addresses: parse_multiaddr_vec(
                 "p2p.bootstrap-addresses",
                 args.bootstrap_addresses,
