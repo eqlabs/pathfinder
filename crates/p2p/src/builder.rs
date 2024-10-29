@@ -49,6 +49,8 @@ impl Builder {
         let (command_sender, command_receiver) = mpsc::channel(1);
         let client = Client::new(command_sender, local_peer_id);
 
+        let x = cfg.max_concurrent_streams;
+
         let (behaviour, relay_transport) = behaviour_builder
             .unwrap_or_else(|| Behaviour::builder(keypair.clone(), chain_id, cfg))
             .build();
@@ -58,8 +60,11 @@ impl Builder {
             behaviour,
             local_peer_id,
             swarm::Config::with_tokio_executor()
-                .with_notify_handler_buffer_size(NonZeroUsize::new(1000).unwrap())
-                .with_per_connection_event_buffer_size(1000)
+                // The default value is 32
+                .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())
+                // The default value is 7
+                // .with_per_connection_event_buffer_size(x * 2)
+                .with_per_connection_event_buffer_size(7)
                 .with_idle_connection_timeout(Duration::from_secs(60)),
         );
 
