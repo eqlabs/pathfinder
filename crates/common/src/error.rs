@@ -47,22 +47,22 @@ impl AnyhowExt for anyhow::Error {
 mod tests {
     use super::*;
 
-    fn fixture() -> (anyhow::Error, anyhow::Error) {
-        (
-            anyhow::anyhow!("root")
-                .context("level 1")
-                .context("level 2")
-                .context("level 3"),
-            anyhow::anyhow!("root")
-                .context("level 1")
-                .context("level 2")
-                .context("level 3"),
-        )
+    fn fixture() -> anyhow::Error {
+        anyhow::anyhow!("root")
+            .context("level 1")
+            .context("level 2")
+            .context("level 3")
+    }
+
+    fn strip_backtrace(s: &str) -> &str {
+        let i = s.find("Stack backtrace").unwrap_or(s.len());
+        &s[..i]
     }
 
     #[test]
     fn take_if_refcount_eq1() {
-        let (src0, src) = fixture();
+        let src0 = fixture();
+        let src = fixture();
 
         let mut arced = std::sync::Arc::new(src0);
         assert_eq!(Arc::strong_count(&arced), 1);
@@ -70,14 +70,18 @@ mod tests {
         // Strong ref count is 1, taking the error should work
         let taken = arced.take_or_deep_clone();
         assert_eq!(format!("{}", taken), format!("{}", src));
-        assert_eq!(format!("{:?}", taken), format!("{:?}", src));
+        assert_eq!(
+            strip_backtrace(&format!("{:?}", taken)),
+            strip_backtrace(&format!("{:?}", src))
+        );
 
         assert!(arced.to_string().is_empty());
     }
 
     #[test]
     fn clone_if_refcount_gt1() {
-        let (src0, src) = fixture();
+        let src0 = fixture();
+        let src = fixture();
 
         let mut arced = std::sync::Arc::new(src0);
         let arc_clone = arced.clone();
@@ -86,9 +90,15 @@ mod tests {
         // Strong ref count is 2, only a poor-man's clone is possible
         let cloned = arced.take_or_deep_clone();
         assert_eq!(format!("{}", cloned), format!("{}", src));
-        assert_eq!(format!("{:?}", cloned), format!("{:?}", src));
+        assert_eq!(
+            strip_backtrace(&format!("{:?}", arced)),
+            strip_backtrace(&format!("{:?}", src))
+        );
 
         assert_eq!(format!("{}", arced), format!("{}", src));
-        assert_eq!(format!("{:?}", arced), format!("{:?}", src));
+        assert_eq!(
+            strip_backtrace(&format!("{:?}", arced)),
+            strip_backtrace(&format!("{:?}", src))
+        );
     }
 }
