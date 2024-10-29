@@ -19,7 +19,7 @@ use p2p_proto::receipt::{
     MessageToL1,
     ReceiptCommon,
 };
-use p2p_proto::transaction::AccountSignature;
+use p2p_proto::transaction::{AccountSignature, TransactionEnum};
 use pathfinder_common::class_definition::{
     Cairo,
     SelectorAndFunctionIndex,
@@ -143,13 +143,13 @@ impl ToDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
     }
 }
 
-impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
-    fn to_dto(self) -> p2p_proto::transaction::Transaction {
+impl ToDto<TransactionEnum> for TransactionVariant {
+    fn to_dto(self) -> TransactionEnum {
         use p2p_proto::transaction as proto;
         use pathfinder_common::transaction::TransactionVariant::*;
 
         match self {
-            DeclareV0(x) => proto::Transaction::DeclareV0(proto::DeclareV0 {
+            DeclareV0(x) => TransactionEnum::DeclareV0(proto::DeclareV0 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -157,7 +157,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 },
                 class_hash: Hash(x.class_hash.0),
             }),
-            DeclareV1(x) => proto::Transaction::DeclareV1(proto::DeclareV1 {
+            DeclareV1(x) => TransactionEnum::DeclareV1(proto::DeclareV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -166,7 +166,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 class_hash: Hash(x.class_hash.0),
                 nonce: x.nonce.0,
             }),
-            DeclareV2(x) => proto::Transaction::DeclareV2(proto::DeclareV2 {
+            DeclareV2(x) => TransactionEnum::DeclareV2(proto::DeclareV2 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -176,7 +176,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce: x.nonce.0,
                 compiled_class_hash: Hash(x.compiled_class_hash.0),
             }),
-            DeclareV3(x) => proto::Transaction::DeclareV3(proto::DeclareV3 {
+            DeclareV3(x) => TransactionEnum::DeclareV3(proto::DeclareV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -198,19 +198,19 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
                 fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
             }),
-            DeployV0(x) => proto::Transaction::Deploy(proto::Deploy {
+            DeployV0(x) => TransactionEnum::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
                 version: 0,
             }),
-            DeployV1(x) => proto::Transaction::Deploy(proto::Deploy {
+            DeployV1(x) => TransactionEnum::Deploy(proto::Deploy {
                 class_hash: Hash(x.class_hash.0),
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
                 version: 1,
             }),
-            DeployAccountV1(x) => proto::Transaction::DeployAccountV1(proto::DeployAccountV1 {
+            DeployAccountV1(x) => TransactionEnum::DeployAccountV1(proto::DeployAccountV1 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -220,7 +220,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 address_salt: x.contract_address_salt.0,
                 calldata: x.constructor_calldata.into_iter().map(|c| c.0).collect(),
             }),
-            DeployAccountV3(x) => proto::Transaction::DeployAccountV3(proto::DeployAccountV3 {
+            DeployAccountV3(x) => TransactionEnum::DeployAccountV3(proto::DeployAccountV3 {
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
                 },
@@ -237,7 +237,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce_data_availability_mode: x.nonce_data_availability_mode.to_dto(),
                 fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
             }),
-            InvokeV0(x) => proto::Transaction::InvokeV0(proto::InvokeV0 {
+            InvokeV0(x) => TransactionEnum::InvokeV0(proto::InvokeV0 {
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -246,7 +246,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 entry_point_selector: x.entry_point_selector.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV1(x) => proto::Transaction::InvokeV1(proto::InvokeV1 {
+            InvokeV1(x) => TransactionEnum::InvokeV1(proto::InvokeV1 {
                 sender: Address(x.sender_address.0),
                 max_fee: x.max_fee.0,
                 signature: AccountSignature {
@@ -255,7 +255,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 nonce: x.nonce.0,
                 calldata: x.calldata.into_iter().map(|c| c.0).collect(),
             }),
-            InvokeV3(x) => proto::Transaction::InvokeV3(proto::InvokeV3 {
+            InvokeV3(x) => TransactionEnum::InvokeV3(proto::InvokeV3 {
                 sender: Address(x.sender_address.0),
                 signature: AccountSignature {
                     parts: x.signature.into_iter().map(|s| s.0).collect(),
@@ -276,7 +276,7 @@ impl ToDto<p2p_proto::transaction::Transaction> for TransactionVariant {
                 fee_data_availability_mode: x.fee_data_availability_mode.to_dto(),
                 nonce: x.nonce.0,
             }),
-            L1Handler(x) => proto::Transaction::L1HandlerV0(proto::L1HandlerV0 {
+            L1Handler(x) => TransactionEnum::L1HandlerV0(proto::L1HandlerV0 {
                 nonce: x.nonce.0,
                 address: Address(x.contract_address.0),
                 entry_point_selector: x.entry_point_selector.0,
@@ -432,12 +432,12 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
     }
 }
 
-impl TryFromDto<p2p_proto::transaction::Transaction> for TransactionVariant {
-    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
+impl TryFromDto<TransactionEnum> for TransactionVariant {
+    fn try_from_dto(dto: TransactionEnum) -> anyhow::Result<Self>
     where
         Self: Sized,
     {
-        use p2p_proto::transaction::Transaction::{
+        use TransactionEnum::{
             DeclareV0,
             DeclareV1,
             DeclareV2,

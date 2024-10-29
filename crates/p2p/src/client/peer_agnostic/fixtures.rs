@@ -18,6 +18,7 @@ use pathfinder_common::{
     BlockHeader,
     BlockNumber,
     CasmHash,
+    ChainId,
     ClassHash,
     ContractAddress,
     SierraHash,
@@ -124,9 +125,15 @@ pub fn hdr(tag: i32) -> SignedBlockHeader {
 
 pub fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {
     let TestTxn { t, r } = txn(tag, transaction_index);
+    let receipt = (&t, r).to_dto();
+    let h = t.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+    let transaction = p2p_proto::transaction::Transaction {
+        txn: t.to_dto(),
+        transaction_hash: Hash(h.0),
+    };
     let resp = TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
-        receipt: (&t, r).to_dto(),
-        transaction: t.to_dto(),
+        receipt,
+        transaction,
     });
     Tagged::get(format!("txn resp {tag}"), || resp)
         .unwrap()

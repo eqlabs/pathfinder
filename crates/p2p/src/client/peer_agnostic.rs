@@ -329,7 +329,7 @@ impl BlockClient for Client {
                     match x {
                         Ok(TransactionsResponse::Fin) => unreachable!("Already handled Fin above"),
                         Ok(TransactionsResponse::TransactionWithReceipt(tx_with_receipt)) => Ok((
-                            TransactionVariant::try_from_dto(tx_with_receipt.transaction)?,
+                            TransactionVariant::try_from_dto(tx_with_receipt.transaction.txn)?,
                             Receipt::try_from((
                                 tx_with_receipt.receipt,
                                 TransactionIndex::new(i.try_into().unwrap())
@@ -856,7 +856,7 @@ mod transaction_stream {
                 receipt,
             })) => {
                 if let (Ok(t), Ok(r)) = (
-                    TransactionVariant::try_from_dto(transaction),
+                    TransactionVariant::try_from_dto(transaction.txn),
                     Receipt::try_from((receipt, txn_idx)),
                 ) {
                     Some((t, r))
