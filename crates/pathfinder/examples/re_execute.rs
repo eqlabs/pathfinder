@@ -193,8 +193,8 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                         receipt.execution_resources.total_gas_consumed.l1_gas
                     };
 
-                let estimated_gas_consumed = estimate.gas_consumed.as_u128();
-                let estimated_data_gas_consumed = estimate.data_gas_consumed.as_u128();
+                let estimated_gas_consumed = estimate.l1_gas_consumed.as_u128();
+                let estimated_data_gas_consumed = estimate.l1_data_gas_consumed.as_u128();
 
                 let gas_diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
                 let data_gas_diff = actual_data_gas_consumed.abs_diff(estimated_data_gas_consumed);

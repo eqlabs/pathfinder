@@ -98,15 +98,19 @@ impl From<EstimateFeeError> for ApplicationError {
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 pub struct FeeEstimate {
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-    pub gas_consumed: primitive_types::U256,
+    pub l1_gas_consumed: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-    pub gas_price: primitive_types::U256,
+    pub l1_gas_price: primitive_types::U256,
     #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_gas_consumed: Option<primitive_types::U256>,
+    pub l1_data_gas_consumed: Option<primitive_types::U256>,
     #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_gas_price: Option<primitive_types::U256>,
+    pub l1_data_gas_price: Option<primitive_types::U256>,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub l2_gas_consumed: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub l2_gas_price: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
@@ -115,20 +119,22 @@ pub struct FeeEstimate {
 impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
     fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
         Self {
-            gas_consumed: value.gas_consumed,
-            gas_price: value.gas_price,
+            l1_gas_consumed: value.l1_gas_consumed,
+            l1_gas_price: value.l1_gas_price,
+            l1_data_gas_consumed: Some(value.l1_data_gas_consumed),
+            l1_data_gas_price: Some(value.l1_data_gas_price),
+            l2_gas_consumed: value.l2_gas_consumed,
+            l2_gas_price: value.l2_gas_price,
             overall_fee: value.overall_fee,
             unit: value.unit.into(),
-            data_gas_consumed: Some(value.data_gas_consumed),
-            data_gas_price: Some(value.data_gas_price),
         }
     }
 }
 
 impl FeeEstimate {
     pub fn with_v06_format(&mut self) {
-        self.data_gas_consumed = None;
-        self.data_gas_price = None;
+        self.l1_data_gas_consumed = None;
+        self.l1_data_gas_price = None;
     }
 }
 
@@ -467,45 +473,54 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 2768.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 2768.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 3020.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 3020.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 1674.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 1669.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 1669.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 1669.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_v3_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
-                // STRK gas price is 2
-                gas_price: 2.into(),
+                l1_gas_consumed: 1674.into(),
+                l1_gas_price: 2.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             assert_eq!(
                 result,
