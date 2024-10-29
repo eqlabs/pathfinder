@@ -75,8 +75,16 @@ impl<T> Dummy<T> for Cairo1Class {
 
 #[derive(Clone, PartialEq, Eq, Dummy, TaggedDebug)]
 pub enum Class {
-    Cairo0 { class: Cairo0Class, domain: u32, class_hash: Hash },
-    Cairo1 { class: Cairo1Class, domain: u32, class_hash: Hash },
+    Cairo0 {
+        class: Cairo0Class,
+        domain: u32,
+        class_hash: Hash,
+    },
+    Cairo1 {
+        class: Cairo1Class,
+        domain: u32,
+        class_hash: Hash,
+    },
 }
 
 impl ToProtobuf<proto::class::Class> for Class {
@@ -84,12 +92,20 @@ impl ToProtobuf<proto::class::Class> for Class {
         use proto::class::class::Class::{Cairo0, Cairo1};
         use proto::class::Class;
         match self {
-            Self::Cairo0 { class, domain, class_hash } => Class {
+            Self::Cairo0 {
+                class,
+                domain,
+                class_hash,
+            } => Class {
                 class: Some(Cairo0(class.to_protobuf())),
                 domain,
                 class_hash: Some(class_hash.to_protobuf()),
             },
-            Self::Cairo1 { class, domain, class_hash } => Class {
+            Self::Cairo1 {
+                class,
+                domain,
+                class_hash,
+            } => Class {
                 class: Some(Cairo1(class.to_protobuf())),
                 domain,
                 class_hash: Some(class_hash.to_protobuf()),

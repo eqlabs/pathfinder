@@ -1274,7 +1274,11 @@ mod class_definition_stream {
         block_number: BlockNumber,
     ) -> Option<ClassDefinition> {
         match response {
-            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _, class_hash: _ })) => {
+            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                class,
+                domain: _,
+                class_hash: _,
+            })) => {
                 let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Cairo definition failed to parse");
@@ -1286,7 +1290,11 @@ mod class_definition_stream {
                     definition,
                 })
             }
-            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _, class_hash: _ })) => {
+            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                class,
+                domain: _,
+                class_hash: _,
+            })) => {
                 let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Sierra definition failed to parse");
