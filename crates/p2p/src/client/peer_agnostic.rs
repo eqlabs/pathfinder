@@ -2,6 +2,7 @@
 //! Frees the caller from managing peers manually.
 use std::collections::HashSet;
 use std::future::Future;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -101,6 +102,12 @@ impl Client {
     }
 
     async fn get_random_peers(&self) -> Vec<PeerId> {
+        // TODO TEST
+        // FORCE PROXY
+        return vec![
+            PeerId::from_str("12D3KooWC4fgZuc3dGF62JpUZAhsQFaYRJAZ4EVLQ7UXESMEV2rW").unwrap(),
+        ];
+
         use rand::seq::SliceRandom;
 
         let r = self.peers.read().await;
@@ -693,6 +700,9 @@ mod header_stream {
                         tracing::debug!(%peer, "Failed to yield to stream, terminating");
                         return Action::TerminateStream;
                     }
+
+                    // TODO TEST Simulate detached stream producer
+                    // let _ = tx.send(PeerData::new(peer, hdr)).await;
 
                     *start = match direction {
                         Direction::Forward => *start + 1,
