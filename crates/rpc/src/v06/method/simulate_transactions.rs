@@ -227,10 +227,10 @@ pub mod dto {
     impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
         fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
             Self {
-                gas_consumed: value.gas_consumed,
-                gas_price: value.gas_price,
-                data_gas_consumed: Some(value.data_gas_consumed),
-                data_gas_price: Some(value.data_gas_price),
+                gas_consumed: value.l1_gas_consumed,
+                gas_price: value.l1_gas_price,
+                data_gas_consumed: Some(value.l1_data_gas_consumed),
+                data_gas_price: Some(value.l1_data_gas_price),
                 overall_fee: value.overall_fee,
                 unit: value.unit.into(),
             }
