@@ -6,8 +6,8 @@ on:
     branches: [main]
   pull_request:
   # Daily cron job used to clear and rebuild cache (https://github.com/Swatinem/rust-cache/issues/181).
-  schedule:
-    - cron: '0 0 * * *'
+  # schedule:
+  #   - cron: '0 0 * * *'
 
 # Limits workflow concurrency to only the latest commit in the PR.
 concurrency:
