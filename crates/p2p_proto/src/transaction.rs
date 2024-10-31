@@ -160,7 +160,7 @@ pub struct L1HandlerV0 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
-pub enum TransactionEnum {
+pub enum TransactionVariant {
     DeclareV0(DeclareV0),
     DeclareV1(DeclareV1),
     DeclareV2(DeclareV2),
@@ -177,7 +177,7 @@ pub enum TransactionEnum {
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::Transaction")]
 pub struct Transaction {
-    pub txn: TransactionEnum,
+    pub txn: TransactionVariant,
     pub transaction_hash: Hash,
 }
 
@@ -202,7 +202,7 @@ pub enum TransactionsResponse {
     Fin,
 }
 
-impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionEnum {
+impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
     fn to_protobuf(self) -> proto::transaction::transaction::Txn {
         use proto::transaction::transaction::Txn::{
             DeclareV0,
@@ -233,7 +233,7 @@ impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionEnum {
     }
 }
 
-impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionEnum {
+impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
     fn try_from_protobuf(
         input: proto::transaction::transaction::Txn,
         field_name: &'static str,
