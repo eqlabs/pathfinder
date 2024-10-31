@@ -779,9 +779,9 @@ mod transaction_stream {
         tracing::trace!(?start, ?stop, "Streaming Transactions");
 
         make_stream::from_future(move |tx| async move {
-            let mut counts_and_commitments_stream = Box::pin(counts_stream);
+            let mut expected_transaction_counts_stream = Box::pin(counts_stream);
 
-            let cnt = match try_next(&mut counts_and_commitments_stream).await {
+            let cnt = match try_next(&mut expected_transaction_counts_stream).await {
                 Ok(x) => x,
                 Err(e) => {
                     _ = tx.send(Err(e)).await;
@@ -826,7 +826,7 @@ mod transaction_stream {
                         if yield_block(
                             peer,
                             &mut progress,
-                            &mut counts_and_commitments_stream,
+                            &mut expected_transaction_counts_stream,
                             transactions,
                             &mut start,
                             stop,
