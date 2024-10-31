@@ -1561,6 +1561,8 @@ async fn try_next<T>(
     match count_stream.next().await {
         Some(Ok(cnt)) => Ok(cnt),
         Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
+        // This is a non-recovarable error, the stream is expected to yield the correct number of
+        // items and then terminate. Otherwise it's a DB error.
         None => Err(PeerData::new(
             PeerId::random(),
             anyhow::anyhow!("Count stream terminated prematurely"),

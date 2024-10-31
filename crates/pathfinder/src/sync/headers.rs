@@ -316,9 +316,10 @@ pub struct Persist {
 impl ProcessStage for Persist {
     const NAME: &'static str = "Headers::Persist";
     type Input = Vec<SignedBlockHeader>;
-    type Output = ();
+    type Output = BlockNumber;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+        let tail = input.last().expect("not empty").header.number;
         let tx = self
             .connection
             .transaction()
@@ -332,6 +333,6 @@ impl ProcessStage for Persist {
         }
 
         tx.commit().context("Committing database transaction")?;
-        Ok(())
+        Ok(tail)
     }
 }

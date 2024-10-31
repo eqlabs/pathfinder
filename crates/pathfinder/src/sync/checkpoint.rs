@@ -315,15 +315,16 @@ async fn handle_header_stream(
             headers::VerifyHashAndSignature::new(chain, chain_id, public_key, block_hash_db),
             10,
         )
-        .try_chunks(1024, 10)
+        .try_chunks(1000, 10)
         .pipe(
             headers::Persist {
-                connection: storage.connection()?,
+                connection: storage.connection().context("Creating db connection")?,
             },
             10,
         )
         .into_stream()
-        .try_fold((), |_state, _x| std::future::ready(Ok(())))
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "Headers chunk synced"))
+        .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
         .map_err(SyncError::from_v2)?;
     Ok(())
