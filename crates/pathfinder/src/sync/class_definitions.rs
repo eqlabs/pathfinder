@@ -20,6 +20,7 @@ use starknet_gateway_types::class_hash::from_parts::{
     compute_cairo_class_hash,
     compute_sierra_class_hash,
 };
+use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::{oneshot, Mutex};
@@ -523,7 +524,8 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     type Output = CompiledClass;
 
     fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)?;
+        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)
+            .map_err(|_| SyncError2::FetchingCasmFailed)?;
         Ok(compiled)
     }
 }
@@ -542,7 +544,8 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<
             .into_par_iter()
             .map(|x| {
                 let PeerData { peer, data } = x;
-                let compiled = compile_or_fetch_impl(data, &fgw, &tokio_handle)?;
+                let compiled = compile_or_fetch_impl(data, &fgw, &tokio_handle)
+                    .map_err(|_| SyncError::FetchingCasmFailed)?;
                 Ok(PeerData::new(peer, compiled))
             })
             .collect::<Result<Vec<PeerData<CompiledClass>>, SyncError>>();
@@ -555,7 +558,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
     class: Class,
     fgw: &SequencerClient,
     tokio_handle: &tokio::runtime::Handle,
-) -> anyhow::Result<CompiledClass> {
+) -> Result<CompiledClass, SequencerError> {
     let Class {
         block_number,
         hash,
@@ -570,9 +573,11 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
 
             let casm_definition = match casm_definition {
                 Ok(x) => x,
+                // Feeder gateway request errors are recoverable at this point because we know
+                // that the class is declared and exists so if the gateway responds with an
+                // error we should restart the sync and retry later.
                 Err(_) => tokio_handle
-                    .block_on(fgw.pending_casm_by_hash(hash))
-                    .context("Fetching casm definition from gateway")?
+                    .block_on(fgw.pending_casm_by_hash(hash))?
                     .to_vec(),
             };
 

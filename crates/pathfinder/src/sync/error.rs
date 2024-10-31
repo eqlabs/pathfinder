@@ -32,6 +32,8 @@ pub(super) enum SyncError {
     BadTransactionHash(PeerId),
     #[error("Class hash verification failed")]
     BadClassHash(PeerId),
+    #[error("Fetching casm from feeder gateway failed")]
+    FetchingCasmFailed,
 }
 
 impl PartialEq for SyncError {
@@ -65,6 +67,9 @@ impl SyncError {
             SyncError::StateRootMismatch(x) => PeerData::new(x, SyncError2::StateRootMismatch),
             SyncError::BadTransactionHash(x) => PeerData::new(x, SyncError2::BadTransactionHash),
             SyncError::BadClassHash(x) => PeerData::new(x, SyncError2::BadClassHash),
+            SyncError::FetchingCasmFailed => {
+                PeerData::new(PeerId::random(), SyncError2::FetchingCasmFailed)
+            }
         }
     }
 
@@ -87,6 +92,7 @@ impl SyncError {
             SyncError2::StateRootMismatch => SyncError::StateRootMismatch(peer),
             SyncError2::BadTransactionHash => SyncError::BadTransactionHash(peer),
             SyncError2::BadClassHash => SyncError::BadClassHash(peer),
+            SyncError2::FetchingCasmFailed => SyncError::FetchingCasmFailed,
             other => SyncError::Other(other.into()),
         }
     }
@@ -148,6 +154,8 @@ pub(super) enum SyncError2 {
     BadTransactionHash,
     #[error("Class hash verification failed")]
     BadClassHash,
+    #[error("Fetching casm from feeder gateway failed")]
+    FetchingCasmFailed,
 }
 
 impl PartialEq for SyncError2 {
