@@ -133,7 +133,7 @@ pub mod init {
 
     use super::Block;
 
-    pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> anyhow::Result<BlockHash>>;
+    pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
     pub type TransactionCommitmentFn =
         Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
     pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
@@ -151,7 +151,7 @@ pub mod init {
     impl Default for Config {
         fn default() -> Self {
             Self {
-                calculate_block_hash: Box::new(|_| Ok(Faker.fake())),
+                calculate_block_hash: Box::new(|_| Faker.fake()),
                 calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
                 calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
                 calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
@@ -434,7 +434,7 @@ pub mod init {
             } = init.get_mut(0).unwrap();
             header.header.parent_hash = BlockHash::ZERO;
 
-            header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
+            header.header.hash = (config.calculate_block_hash)(&header.header);
 
             state_update.block_hash = header.header.hash;
 
@@ -451,7 +451,7 @@ pub mod init {
 
                 header.header.parent_hash = parent_hash;
 
-                header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
+                header.header.hash = (config.calculate_block_hash)(&header.header);
 
                 state_update.block_hash = header.header.hash;
             }

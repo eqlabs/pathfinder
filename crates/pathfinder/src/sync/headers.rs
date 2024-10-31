@@ -264,7 +264,7 @@ impl VerifyHashAndSignature {
             .as_ref()
             .and_then(|db| db.block_hash(header.number))
             .unwrap_or(header.hash);
-        match crate::state::block_hash::compute_final_hash(&BlockHeaderData {
+        let computed_hash = crate::state::block_hash::compute_final_hash(&BlockHeaderData {
             hash: header.hash,
             parent_hash: header.parent_hash,
             number: header.number,
@@ -290,17 +290,12 @@ impl VerifyHashAndSignature {
             strk_l2_gas_price: header.strk_l2_gas_price,
             receipt_commitment: header.receipt_commitment,
             l1_da_mode: header.l1_da_mode,
-        }) {
-            Ok(block_hash) => {
-                if block_hash == expected_hash {
-                    true
-                } else {
-                    tracing::debug!(block_number=%header.number, expected_block_hash=%expected_hash, actual_block_hash=%block_hash, "Block hash mismatch");
-                    false
-                }
-            }
-            Err(e) => {
-                tracing::debug!(block_number=%header.number, error = ?e, "Failed to verify block hash");
+        });
+        {
+            if computed_hash == expected_hash {
+                true
+            } else {
+                tracing::debug!(block_number=%header.number, expected_block_hash=%expected_hash, actual_block_hash=%computed_hash, "Block hash mismatch");
                 false
             }
         }
