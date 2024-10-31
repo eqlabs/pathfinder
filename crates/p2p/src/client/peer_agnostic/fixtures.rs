@@ -283,7 +283,7 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
             ClassDefinition::Sierra(s) => Class::Cairo1 {
                 class: s.to_dto(),
                 domain: 0,
-                class_hash: Hash(Felt::default()),
+                class_hash: Faker.fake(),
             },
             ClassDefinition::Cairo(c) => Class::Cairo0 {
                 class: c.to_dto(),
