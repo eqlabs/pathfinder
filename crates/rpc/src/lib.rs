@@ -904,7 +904,6 @@ mod tests {
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
 
     #[case::v0_8_api  ("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[
-        "starknet_getBlockWithReceipts",
         "starknet_getTransactionReceipt",
     ])]
     #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[])]

@@ -31,6 +31,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getTransactionByBlockIdAndIndex",     crate::method::get_transaction_by_block_id_and_index)
         .register("starknet_getTransactionByHash",                crate::method::get_transaction_by_hash)
         .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
+        .register("starknet_getBlockWithReceipts",                crate::method::get_block_with_receipts)
         .register("starknet_simulateTransactions",                crate::method::simulate_transactions)
         .register("starknet_subscribeNewHeads",                   SubscribeNewHeads)
         .register("starknet_subscribePendingTransactions",        SubscribePendingTransactions)
