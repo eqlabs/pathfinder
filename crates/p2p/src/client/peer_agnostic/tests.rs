@@ -319,7 +319,11 @@ async fn make_transaction_stream(
     .map_ok(|x| {
         (
             TestPeer(x.peer),
-            x.data.0.into_iter().map(TestTxn::new).collect(),
+            x.data
+                .0
+                .into_iter()
+                .map(|(t, r)| TestTxn::new((t.variant, r)))
+                .collect(),
         )
     })
     .map_err(|_| ())

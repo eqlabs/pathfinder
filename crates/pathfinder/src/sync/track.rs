@@ -1040,7 +1040,7 @@ mod tests {
             block: BlockNumber,
         ) -> Option<(
             PeerId,
-            impl Stream<Item = anyhow::Result<(TransactionVariant, P2PReceipt)>> + Send,
+            impl Stream<Item = anyhow::Result<(Transaction, P2PReceipt)>> + Send,
         )> {
             let tr = self
                 .blocks
@@ -1049,8 +1049,8 @@ mod tests {
                 .unwrap()
                 .transaction_data
                 .iter()
-                .map(|(t, r, e)| Ok((t.variant.clone(), P2PReceipt::from(r.clone()))))
-                .collect::<Vec<anyhow::Result<(TransactionVariant, P2PReceipt)>>>();
+                .map(|(t, r, e)| Ok((t.clone(), P2PReceipt::from(r.clone()))))
+                .collect::<Vec<anyhow::Result<(Transaction, P2PReceipt)>>>();
 
             Some((PeerId::random(), stream::iter(tr)))
         }

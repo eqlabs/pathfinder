@@ -3,7 +3,7 @@ use fake::Dummy;
 use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockCommitmentSignature,
     BlockCommitmentSignatureElem,
@@ -75,7 +75,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-pub type TransactionData = Vec<(TransactionVariant, Receipt)>;
+pub type TransactionData = Vec<(Transaction, Receipt)>;
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 

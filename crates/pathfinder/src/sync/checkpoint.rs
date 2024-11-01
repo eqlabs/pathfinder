@@ -1034,7 +1034,7 @@ mod tests {
                             block
                                 .transaction_data
                                 .iter()
-                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
+                                .map(|x| (x.0.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
                             block.header.header.number,
                         )))
@@ -1060,6 +1060,42 @@ mod tests {
                 Setup {
                     streamed_transactions,
                     expected_transactions,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        async fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
+            use fake::{Fake, Faker};
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_transactions = blocks
+                    .iter_mut()
+                    .map(|block| {
+                        block.header.header.transaction_commitment = Faker.fake();
+
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| (x.0.clone(), x.1.clone().into()))
+                                .collect::<Vec<_>>(),
+                            block.header.header.number,
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                blocks.iter_mut().for_each(|b| {
+                    // Purge transaction data.
+                    b.transaction_data = Default::default();
+                });
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_transactions,
+                    expected_transactions: Vec::default(),
                     storage,
                 }
             })
@@ -1110,7 +1146,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn commitment_mismatch() {
+        async fn transaction_mismatch() {
             let Setup {
                 streamed_transactions,
                 storage,
@@ -1123,6 +1159,25 @@ mod tests {
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
                     ChainId::MAINNET,
+                    BlockNumber::GENESIS,
+                )
+                .await,
+                Err(SyncError::BadTransactionHash(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            let Setup {
+                streamed_transactions,
+                storage,
+                ..
+            } = setup_commitment_mismatch(1).await;
+            assert_matches!(
+                handle_transaction_stream(
+                    stream::iter(streamed_transactions),
+                    storage.clone(),
+                    ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
                 .await,

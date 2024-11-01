@@ -89,23 +89,24 @@ impl ProcessStage for CalculateHashes {
         let (transactions, block_number, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
-            .map(|(tv, r)| {
-                let transaction_hash = tv.calculate_hash(self.0, false);
-                let transaction = Transaction {
-                    hash: transaction_hash,
-                    variant: tv,
-                };
-                let receipt = Receipt {
-                    actual_fee: r.actual_fee,
-                    execution_resources: r.execution_resources,
-                    l2_to_l1_messages: r.l2_to_l1_messages,
-                    execution_status: r.execution_status,
-                    transaction_hash,
-                    transaction_index: r.transaction_index,
-                };
-                (transaction, receipt)
+            .map(|(tx, r)| {
+                let transaction_hash = tx.variant.calculate_hash(self.0, false);
+                if tx.hash != transaction_hash {
+                    tracing::debug!(input_hash=%tx.hash, actual_hash=%transaction_hash, "Transaction hash mismatch");
+                    Err(SyncError2::BadTransactionHash)
+                } else {
+                    let receipt = Receipt {
+                        actual_fee: r.actual_fee,
+                        execution_resources: r.execution_resources,
+                        l2_to_l1_messages: r.l2_to_l1_messages,
+                        execution_status: r.execution_status,
+                        transaction_hash,
+                        transaction_index: r.transaction_index,
+                    };
+                    Ok((tx, receipt))
+                }
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
