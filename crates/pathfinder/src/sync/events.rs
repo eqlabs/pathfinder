@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::client::types::EventsForBlockByTransaction;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -22,7 +23,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use super::error::SyncError;
 use super::storage_adapters;
 use crate::state::block_hash::calculate_event_commitment;
-use crate::sync::error::SyncError2;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
@@ -157,7 +157,7 @@ impl ProcessStage for VerifyCommitment {
     fn map(
         &mut self,
         (event_commitment, transactions, mut events, version): Self::Input,
-    ) -> Result<Self::Output, super::error::SyncError2> {
+    ) -> Result<Self::Output, super::error::SyncError> {
         let mut ordered_events = Vec::new();
         for tx_hash in &transactions {
             // Some transactions may not have events
@@ -167,13 +167,17 @@ impl ProcessStage for VerifyCommitment {
         }
         if ordered_events.len() != events.len() {
             tracing::debug!(expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
-            return Err(SyncError2::EventsTransactionsMismatch);
+            // TODO
+            // Use a real peer ID here
+            return Err(SyncError::EventsTransactionsMismatch(PeerId::random()));
         }
         let actual =
             calculate_event_commitment(&ordered_events, version.max(StarknetVersion::V_0_13_2))?;
         if actual != event_commitment {
             tracing::debug!(expected=%event_commitment, actual=%actual, "Event commitment mismatch");
-            return Err(SyncError2::EventCommitmentMismatch);
+            // TODO
+            // Use a real peer ID here
+            return Err(SyncError::EventCommitmentMismatch(PeerId::random()));
         }
         Ok(events)
     }

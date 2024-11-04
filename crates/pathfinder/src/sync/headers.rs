@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::header;
 use pathfinder_common::{
@@ -19,7 +20,7 @@ use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{BlockHeaderData, VerifyResult};
-use crate::sync::error::{SyncError, SyncError2};
+use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
@@ -176,12 +177,14 @@ impl ProcessStage for ForwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
             tracing::debug!(expected_block_number=%self.next, actual_block_number=%header.number, expected_parent_block_hash=%self.parent_hash, actual_parent_block_hash=%header.parent_hash, "Block chain discontinuity");
-            return Err(SyncError2::Discontinuity);
+            // TODO
+            // Use a real peer ID here
+            return Err(SyncError::Discontinuity(PeerId::random()));
         }
 
         self.next += 1;
@@ -208,12 +211,18 @@ impl ProcessStage for BackwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let number = self.number.ok_or(SyncError2::Discontinuity)?;
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+        // TODO
+        // Use a real peer ID here
+        let number = self
+            .number
+            .ok_or(SyncError::Discontinuity(PeerId::random()))?;
 
         if input.header.number != number || input.header.hash != self.hash {
             tracing::debug!(expected_block_number=%number, actual_block_number=%input.header.number, expected_block_hash=%self.hash, actual_block_hash=%input.header.hash, "Block chain discontinuity");
-            return Err(SyncError2::Discontinuity);
+            // TODO
+            // Use a real peer ID here
+            return Err(SyncError::Discontinuity(PeerId::random()));
         }
 
         self.number = number.parent();
@@ -228,9 +237,11 @@ impl ProcessStage for VerifyHashAndSignature {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
         if !self.verify_hash(&input.header) {
-            return Err(SyncError2::BadBlockHash);
+            // TODO
+            // Use a real peer ID here
+            return Err(SyncError::BadBlockHash(PeerId::random()));
         }
 
         if !self.verify_signature(&input) {
@@ -318,7 +329,7 @@ impl ProcessStage for Persist {
     type Input = Vec<SignedBlockHeader>;
     type Output = BlockNumber;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
         let tail = input.last().expect("not empty").header.number;
         let tx = self
             .connection

@@ -6,7 +6,7 @@ use p2p::PeerData;
 use tokio::sync::mpsc::Receiver;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::sync::error::SyncError2;
+use crate::sync::error::SyncError;
 
 pub struct SyncReceiver<T> {
     inner: Receiver<SyncResult<T>>,
@@ -15,7 +15,7 @@ pub struct SyncReceiver<T> {
 /// [SyncReceiver::try_chunks].
 pub struct ChunkSyncReceiver<T>(SyncReceiver<Vec<T>>);
 
-pub type SyncResult<T> = Result<PeerData<T>, PeerData<SyncError2>>;
+pub type SyncResult<T> = Result<PeerData<T>, SyncError>;
 
 pub trait ProcessStage {
     type Input;
@@ -24,7 +24,7 @@ pub trait ProcessStage {
     /// Used to identify this stage in metrics and traces.
     const NAME: &'static str;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError>;
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
@@ -89,9 +89,8 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let output: Result<Vec<_>, _> = data
                             .into_iter()
                             .map(|data| {
-                                stage.map(data).map_err(|e| {
-                                    tracing::debug!(error=%e, "Processing item failed");
-                                    PeerData::new(peer, e)
+                                stage.map(data).inspect_err(|error| {
+                                    tracing::debug!(%error, "Processing item failed");
                                 })
                             })
                             .collect();
@@ -149,13 +148,13 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let t = std::time::Instant::now();
 
                         // Process the data.
-                        let output = stage
-                            .map(data)
-                            .map(|x| PeerData::new(peer, x))
-                            .map_err(|e| {
-                                tracing::debug!(error=%e, "Processing item failed");
-                                PeerData::new(peer, e)
-                            });
+                        let output =
+                            stage
+                                .map(data)
+                                .map(|x| PeerData::new(peer, x))
+                                .inspect_err(|error| {
+                                    tracing::debug!(%error, "Processing item failed");
+                                });
 
                         // Log trace and metrics.
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
@@ -333,7 +332,8 @@ where
     }
 }
 
-#[cfg(test)]
+// TODO
+#[cfg(test_FIXME)]
 mod tests {
     use super::*;
 

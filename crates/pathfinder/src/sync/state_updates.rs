@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use anyhow::Context;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::state_update::{
     self,
@@ -37,7 +38,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
 use crate::state::update_starknet_state;
-use crate::sync::error::{SyncError, SyncError2};
+use crate::sync::error::SyncError;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose state update is missing, counting from
@@ -104,7 +105,7 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     type Input = (T, BlockNumber);
     type Output = (T, BlockNumber, StateDiffCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -126,13 +127,15 @@ impl ProcessStage for VerifyCommitment {
     type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
     type Output = (StateUpdateData, BlockNumber);
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
         let (state_diff, block_number, expected_commitment) = input;
         let actual_commitment = state_diff.compute_state_diff_commitment();
 
         if actual_commitment != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
-            return Err(SyncError2::StateDiffCommitmentMismatch);
+            // TODO
+            // add peer id here, for now just use a random one as a placeholder
+            return Err(SyncError::StateDiffCommitmentMismatch(PeerId::random()));
         }
 
         Ok((state_diff, block_number))
@@ -280,7 +283,7 @@ pub async fn batch_update_starknet_state(
         update_starknet_state_impl(db, state_update_ref, verify_tree_hashes, tail, storage)
             .map_err(|e| match e {
                 UpdateStarknetStateError::StateRootMismatch => SyncError::StateRootMismatch(peer),
-                UpdateStarknetStateError::DBError(error) => SyncError::Fatal(error),
+                UpdateStarknetStateError::DBError(error) => SyncError::Fatal(Arc::new(error)),
             })?;
 
         Ok(PeerData::new(peer, tail))
@@ -302,7 +305,7 @@ impl ProcessStage for UpdateStarknetState {
 
     const NAME: &'static str = "StateDiff::UpdateStarknetState";
 
-    fn map(&mut self, state_update: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, state_update: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .connection
             .transaction()
@@ -321,8 +324,12 @@ impl ProcessStage for UpdateStarknetState {
             self.storage.clone(),
         )
         .map_err(|e| match e {
-            UpdateStarknetStateError::StateRootMismatch => SyncError2::StateRootMismatch,
-            UpdateStarknetStateError::DBError(error) => SyncError2::Other(Arc::new(error)),
+            UpdateStarknetStateError::StateRootMismatch => {
+                // TODO
+                // add peer id here, for now just use a random one as a placeholder
+                SyncError::StateRootMismatch(PeerId::random())
+            }
+            UpdateStarknetStateError::DBError(error) => SyncError::Fatal(Arc::new(error)),
         })?;
 
         self.current_block += 1;

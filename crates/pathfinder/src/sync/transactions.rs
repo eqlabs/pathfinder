@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
 use p2p::client::types::TransactionData;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -18,7 +19,7 @@ use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::error::{SyncError, SyncError2};
+use super::error::SyncError;
 use super::storage_adapters;
 use super::stream::ProcessStage;
 use crate::state::block_hash::calculate_transaction_commitment;
@@ -84,23 +85,25 @@ impl ProcessStage for CalculateHashes {
     );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
+        // TODO remove the placeholder
+        let peer = &PeerId::random();
         let (transactions, block_number, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
             .map(|(tx, r)| {
-                let transaction_hash = tx.variant.calculate_hash(self.0, false);
-                if tx.hash != transaction_hash {
-                    tracing::debug!(input_hash=%tx.hash, actual_hash=%transaction_hash, "Transaction hash mismatch");
-                    Err(SyncError2::BadTransactionHash)
+                let computed_hash = tx.variant.calculate_hash(self.0, false);
+                if tx.hash != computed_hash {
+                    tracing::debug!(%peer, %block_number, expected_hash=%tx.hash, %computed_hash, "Transaction hash mismatch");
+                    Err(SyncError::BadTransactionHash(*peer))
                 } else {
                     let receipt = Receipt {
                         actual_fee: r.actual_fee,
                         execution_resources: r.execution_resources,
                         l2_to_l1_messages: r.l2_to_l1_messages,
                         execution_status: r.execution_status,
-                        transaction_hash,
+                        transaction_hash: computed_hash,
                         transaction_index: r.transaction_index,
                     };
                     Ok((tx, receipt))
@@ -135,7 +138,7 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     type Input = (T, BlockNumber);
     type Output = (T, BlockNumber, StarknetVersion, TransactionCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -161,7 +164,7 @@ impl ProcessStage for VerifyCommitment {
     type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,
@@ -175,7 +178,9 @@ impl ProcessStage for VerifyCommitment {
             .context("Computing transaction commitment")?;
         if actual != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
-            return Err(SyncError2::TransactionCommitmentMismatch);
+            // TODO
+            // Use the real peer id here
+            return Err(SyncError::TransactionCommitmentMismatch(PeerId::random()));
         }
         Ok(transactions)
     }
@@ -200,7 +205,7 @@ impl ProcessStage for Store {
     type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()

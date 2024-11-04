@@ -42,7 +42,6 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
-use super::error::SyncError2;
 use crate::state::block_hash::calculate_transaction_commitment;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
@@ -326,8 +325,6 @@ async fn handle_header_stream(
         .inspect_ok(|x| tracing::debug!(tail=%x.data, "Headers chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-    Ok(())
 }
 
 async fn handle_transaction_stream(
@@ -336,7 +333,10 @@ async fn handle_transaction_stream(
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    // TODO
+    // stream errors should not carry PeerId as only fatal errors are reported by
+    // the stream and those stem from DB errors which are fatal.
+    Source::from_stream(stream.map_err(|e| e.data.into()))
         .spawn()
         .pipe(
             transactions::FetchCommitmentFromDb::new(storage.connection()?),
@@ -349,8 +349,6 @@ async fn handle_transaction_stream(
         .inspect_ok(|x| tracing::debug!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-    Ok(())
 }
 
 async fn handle_state_diff_stream(
@@ -359,7 +357,7 @@ async fn handle_state_diff_stream(
     start: BlockNumber,
     verify_tree_hashes: bool,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    Source::from_stream(stream.map_err(|e| e.data.into()))
         .spawn()
         .pipe(
             state_updates::FetchCommitmentFromDb::new(storage.connection()?),
@@ -368,14 +366,13 @@ async fn handle_state_diff_stream(
         .pipe(state_updates::VerifyCommitment, 10)
         .into_stream()
         .try_chunks(1000)
-        .map_err(|e| SyncError::from_v2(e.1))
+        .map_err(|e| e.1)
         .and_then(|x| {
             state_updates::batch_update_starknet_state(storage.clone(), verify_tree_hashes, x)
         })
         .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diff synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
-    Ok(())
+        .await
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
@@ -397,7 +394,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .and_then(class_definitions::verify_layout)
         .try_chunks(chunk_size)
         .map_err(|e| e.1)
-        .and_then(class_definitions::compute_hash)
+        .and_then(class_definitions::verify_hash)
         .boxed();
 
     class_definitions::verify_declared_at(expected_declarations.boxed(), classes_with_hashes)
@@ -413,9 +410,7 @@ async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'stati
         .and_then(|x| class_definitions::persist(storage.clone(), x))
         .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
-
-    Ok(())
+        .await
 }
 
 async fn handle_event_stream(
@@ -431,8 +426,7 @@ async fn handle_event_stream(
         .inspect_ok(|x| tracing::debug!(tail=%x, "Events chunk synced"))
         // Drive stream to completion.
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
-    Ok(())
+        .await
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
