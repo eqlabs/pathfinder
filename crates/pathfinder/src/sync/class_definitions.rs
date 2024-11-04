@@ -116,9 +116,7 @@ pub(super) async fn verify_layout(
     peer_data: PeerData<P2PClassDefinition>,
 ) -> Result<PeerData<ClassWithLayout>, SyncError> {
     let PeerData { peer, data } = peer_data;
-    verify_layout_impl(data)
-        .map(|x| PeerData::new(peer, x))
-        .map_err(|_| SyncError::BadClassLayout(peer))
+    verify_layout_impl(&peer, data).map(|x| PeerData::new(peer, x))
 }
 
 pub struct VerifyLayout;
@@ -129,14 +127,15 @@ impl ProcessStage for VerifyLayout {
     type Input = P2PClassDefinition;
     type Output = ClassWithLayout;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
-        // TODO
-        // Use the real peer id here
-        verify_layout_impl(input).map_err(|_| SyncError::BadClassLayout(PeerId::random()))
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+        verify_layout_impl(peer, input)
     }
 }
 
-fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout> {
+fn verify_layout_impl(
+    peer: &PeerId,
+    def: P2PClassDefinition,
+) -> Result<ClassWithLayout, SyncError> {
     match def {
         P2PClassDefinition::Cairo {
             block_number,
@@ -144,9 +143,10 @@ fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout
             hash,
         } => {
             let layout = GwClassDefinition::Cairo(
-                serde_json::from_slice::<Cairo<'_>>(&definition).inspect_err(
-                    |e| tracing::debug!(%block_number, error=%e, "Bad class layout"),
-                )?,
+                serde_json::from_slice::<Cairo<'_>>(&definition).map_err(|error| {
+                    tracing::debug!(%peer, %block_number, %error, "Bad class layout");
+                    SyncError::BadClassLayout(*peer)
+                })?,
             );
             Ok(ClassWithLayout {
                 block_number,
@@ -161,9 +161,10 @@ fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout
             hash,
         } => {
             let layout = GwClassDefinition::Sierra(
-                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).inspect_err(
-                    |e| tracing::debug!(%block_number, error=%e, "Bad class layout"),
-                )?,
+                serde_json::from_slice::<Sierra<'_>>(&sierra_definition).map_err(|error| {
+                    tracing::debug!(%peer, %block_number, %error, "Bad class layout");
+                    SyncError::BadClassLayout(*peer)
+                })?,
             );
             Ok(ClassWithLayout {
                 block_number,
@@ -183,10 +184,8 @@ impl ProcessStage for VerifyHash {
     type Input = ClassWithLayout;
     type Output = Class;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
-        // TODO
-        // Use the real peer id here
-        verify_hash_impl(&PeerId::random(), input)
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+        verify_hash_impl(peer, input)
     }
 }
 
@@ -268,7 +267,7 @@ impl ProcessStage for VerifyDeclaredAt {
     type Input = Class;
     type Output = Class;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         if self.current.classes.is_empty() {
             self.current = loop {
                 let expected = self
@@ -287,18 +286,14 @@ impl ProcessStage for VerifyDeclaredAt {
 
         if self.current.block_number != input.block_number {
             tracing::debug!(expected_block_number=%self.current.block_number, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
-            // TODO
-            // Use the real peer id here
-            return Err(SyncError::UnexpectedClass(PeerId::random()));
+            return Err(SyncError::UnexpectedClass(*peer));
         }
 
         if self.current.classes.remove(&input.hash) {
             Ok(input)
         } else {
             tracing::debug!(block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
-            // TODO
-            // Use the real peer id here
-            Err(SyncError::UnexpectedClass(PeerId::random()))
+            Err(SyncError::UnexpectedClass(*peer))
         }
     }
 }
@@ -534,7 +529,7 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     type Input = Class;
     type Output = CompiledClass;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)
             .map_err(|_| SyncError::FetchingCasmFailed)?;
         Ok(compiled)
@@ -614,7 +609,7 @@ impl ProcessStage for Store {
     type Input = CompiledClass;
     type Output = BlockNumber;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let CompiledClass {
             block_number,
             hash,
@@ -707,7 +702,7 @@ impl ProcessStage for VerifyClassHashes {
     type Input = Vec<CompiledClass>;
     type Output = Vec<CompiledClass>;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let mut declared_classes = self
             .tokio_handle
             .block_on(self.declarations.next())
@@ -718,11 +713,7 @@ impl ProcessStage for VerifyClassHashes {
                 CompiledClassDefinition::Cairo(_) => {
                     if !declared_classes.cairo.remove(&class.hash) {
                         tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
-                        // TODO
-                        // Use the real peer id here
-                        return Err(SyncError::ClassDefinitionsDeclarationsMismatch(
-                            PeerId::random(),
-                        ));
+                        return Err(SyncError::ClassDefinitionsDeclarationsMismatch(*peer));
                     }
                 }
                 CompiledClassDefinition::Sierra { .. } => {
@@ -732,9 +723,7 @@ impl ProcessStage for VerifyClassHashes {
                         .remove(&hash)
                         .ok_or_else(|| {
                             tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
-                            // TODO
-                            // Use the real peer id here
-                            SyncError::ClassDefinitionsDeclarationsMismatch(PeerId::random())
+                            SyncError::ClassDefinitionsDeclarationsMismatch(*peer)
                         })?;
                 }
             }
@@ -753,11 +742,7 @@ impl ProcessStage for VerifyClassHashes {
                 )
                 .collect();
             tracing::trace!(?missing, "Expected class definitions are missing");
-            // TODO
-            // Use the real peer id here
-            Err(SyncError::ClassDefinitionsDeclarationsMismatch(
-                PeerId::random(),
-            ))
+            Err(SyncError::ClassDefinitionsDeclarationsMismatch(*peer))
         }
     }
 }

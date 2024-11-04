@@ -156,6 +156,7 @@ impl ProcessStage for VerifyCommitment {
 
     fn map(
         &mut self,
+        peer: &PeerId,
         (event_commitment, transactions, mut events, version): Self::Input,
     ) -> Result<Self::Output, super::error::SyncError> {
         let mut ordered_events = Vec::new();
@@ -167,17 +168,13 @@ impl ProcessStage for VerifyCommitment {
         }
         if ordered_events.len() != events.len() {
             tracing::debug!(expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
-            // TODO
-            // Use a real peer ID here
-            return Err(SyncError::EventsTransactionsMismatch(PeerId::random()));
+            return Err(SyncError::EventsTransactionsMismatch(*peer));
         }
         let actual =
             calculate_event_commitment(&ordered_events, version.max(StarknetVersion::V_0_13_2))?;
         if actual != event_commitment {
             tracing::debug!(expected=%event_commitment, actual=%actual, "Event commitment mismatch");
-            // TODO
-            // Use a real peer ID here
-            return Err(SyncError::EventCommitmentMismatch(PeerId::random()));
+            return Err(SyncError::EventCommitmentMismatch(*peer));
         }
         Ok(events)
     }

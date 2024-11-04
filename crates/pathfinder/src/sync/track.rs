@@ -755,7 +755,7 @@ impl ProcessStage for StoreBlock {
     type Input = BlockData;
     type Output = ();
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let BlockData {
             header: SignedBlockHeader { header, signature },
             mut events,
@@ -831,8 +831,7 @@ impl ProcessStage for StoreBlock {
                     actual_class_commitment=%class_commitment,
                     actual_state_commitment=%state_commitment,
                     "State root mismatch");
-            // TODO: remove placeholder
-            return Err(SyncError::StateRootMismatch(PeerId::random()));
+            return Err(SyncError::StateRootMismatch(*peer));
         }
 
         db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)

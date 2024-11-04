@@ -24,7 +24,7 @@ pub trait ProcessStage {
     /// Used to identify this stage in metrics and traces.
     const NAME: &'static str;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError>;
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError>;
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
@@ -89,7 +89,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let output: Result<Vec<_>, _> = data
                             .into_iter()
                             .map(|data| {
-                                stage.map(data).inspect_err(|error| {
+                                stage.map(&peer, data).inspect_err(|error| {
                                     tracing::debug!(%error, "Processing item failed");
                                 })
                             })
@@ -148,13 +148,12 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let t = std::time::Instant::now();
 
                         // Process the data.
-                        let output =
-                            stage
-                                .map(data)
-                                .map(|x| PeerData::new(peer, x))
-                                .inspect_err(|error| {
-                                    tracing::debug!(%error, "Processing item failed");
-                                });
+                        let output = stage
+                            .map(&peer, data)
+                            .map(|x| PeerData::new(peer, x))
+                            .inspect_err(|error| {
+                                tracing::debug!(%error, "Processing item failed");
+                            });
 
                         // Log trace and metrics.
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
@@ -189,7 +188,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
         std::thread::spawn(move || {
             let mut chunk = Vec::with_capacity(capacity);
-            let mut peer = PeerId::random();
+            let mut peer = None;
             let mut err = None;
 
             while let Some(input) = self.inner.blocking_recv() {
@@ -203,14 +202,17 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
                 // 1st element, assign peer ID.
                 if chunk.is_empty() {
-                    peer = input.peer;
+                    peer = Some(input.peer);
                 }
 
                 chunk.push(input.data);
 
                 if chunk.len() == capacity {
                     let data = std::mem::replace(&mut chunk, Vec::with_capacity(capacity));
-                    if tx.blocking_send(Ok(PeerData::new(peer, data))).is_err() {
+                    if tx
+                        .blocking_send(Ok(PeerData::new(peer.expect("to be set"), data)))
+                        .is_err()
+                    {
                         break;
                     };
                 }
@@ -218,7 +220,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
             // Send any remaining elements.
             if !chunk.is_empty() {
-                _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
+                _ = tx.blocking_send(Ok(PeerData::new(peer.expect("to be set"), chunk)));
             }
 
             if let Some(err) = err {

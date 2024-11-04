@@ -85,7 +85,7 @@ impl ProcessStage for CalculateHashes {
     );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
         // TODO remove the placeholder
         let peer = &PeerId::random();
@@ -138,7 +138,11 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     type Input = (T, BlockNumber);
     type Output = (T, BlockNumber, StarknetVersion, TransactionCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(
+        &mut self,
+        _: &PeerId,
+        (data, block_number): Self::Input,
+    ) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -164,7 +168,7 @@ impl ProcessStage for VerifyCommitment {
     type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,
@@ -178,9 +182,7 @@ impl ProcessStage for VerifyCommitment {
             .context("Computing transaction commitment")?;
         if actual != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
-            // TODO
-            // Use the real peer id here
-            return Err(SyncError::TransactionCommitmentMismatch(PeerId::random()));
+            return Err(SyncError::TransactionCommitmentMismatch(*peer));
         }
         Ok(transactions)
     }
@@ -205,7 +207,7 @@ impl ProcessStage for Store {
     type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, _: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()

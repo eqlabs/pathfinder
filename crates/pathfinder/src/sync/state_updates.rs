@@ -105,7 +105,11 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     type Input = (T, BlockNumber);
     type Output = (T, BlockNumber, StateDiffCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(
+        &mut self,
+        _: &PeerId,
+        (data, block_number): Self::Input,
+    ) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -127,15 +131,13 @@ impl ProcessStage for VerifyCommitment {
     type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
     type Output = (StateUpdateData, BlockNumber);
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let (state_diff, block_number, expected_commitment) = input;
         let actual_commitment = state_diff.compute_state_diff_commitment();
 
         if actual_commitment != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
-            // TODO
-            // add peer id here, for now just use a random one as a placeholder
-            return Err(SyncError::StateDiffCommitmentMismatch(PeerId::random()));
+            return Err(SyncError::StateDiffCommitmentMismatch(*peer));
         }
 
         Ok((state_diff, block_number))
@@ -305,7 +307,7 @@ impl ProcessStage for UpdateStarknetState {
 
     const NAME: &'static str = "StateDiff::UpdateStarknetState";
 
-    fn map(&mut self, state_update: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, state_update: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .connection
             .transaction()
@@ -324,11 +326,7 @@ impl ProcessStage for UpdateStarknetState {
             self.storage.clone(),
         )
         .map_err(|e| match e {
-            UpdateStarknetStateError::StateRootMismatch => {
-                // TODO
-                // add peer id here, for now just use a random one as a placeholder
-                SyncError::StateRootMismatch(PeerId::random())
-            }
+            UpdateStarknetStateError::StateRootMismatch => SyncError::StateRootMismatch(*peer),
             UpdateStarknetStateError::DBError(error) => SyncError::Fatal(Arc::new(error)),
         })?;
 
