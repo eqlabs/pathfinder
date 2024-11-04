@@ -143,11 +143,13 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
         let version = db
             .block_version(block_number)
             .context("Fetching starknet version")?
-            .ok_or(SyncError2::StarknetVersionNotFound)?;
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Starknet version not found in db")?;
         let commitment = db
             .transaction_commitment(block_number)
             .context("Fetching transaction commitment")?
-            .ok_or(SyncError2::TransactionCommitmentNotFound)?;
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Transaction commitment not found in db")?;
         Ok((data, block_number, version, commitment))
     }
 }

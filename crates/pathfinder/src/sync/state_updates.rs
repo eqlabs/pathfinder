@@ -112,7 +112,9 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
         let commitment = db
             .state_diff_commitment(block_number)
             .context("Fetching state diff commitment")?
-            .ok_or(SyncError2::StateDiffCommitmentNotFound)?;
+            // This is a fatal error because the block header is already expected to be in the
+            // database
+            .context("State diff commitment not found")?;
         Ok((data, block_number, commitment))
     }
 }

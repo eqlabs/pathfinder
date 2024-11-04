@@ -142,12 +142,6 @@ pub(super) enum SyncError2 {
     SierraDefinitionError,
     #[error("Class definitions and declarations mismatch")]
     ClassDefinitionsDeclarationsMismatch,
-    #[error("Starknet version not found in db")]
-    StarknetVersionNotFound,
-    #[error("State diff commitment not found in db")]
-    StateDiffCommitmentNotFound,
-    #[error("Transaction commitment not found in db")]
-    TransactionCommitmentNotFound,
     #[error("State root mismatch")]
     StateRootMismatch,
     #[error("Transaction hash verification failed")]
