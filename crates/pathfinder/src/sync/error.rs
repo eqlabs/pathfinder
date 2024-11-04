@@ -6,8 +6,10 @@ use pathfinder_common::{BlockNumber, ClassHash, SignedBlockHeader};
 
 #[derive(Debug, thiserror::Error)]
 pub(super) enum SyncError {
+    /// This is the only variant that causes any sync process to halt and does
+    /// not result in a retry.
     #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    Fatal(#[from] anyhow::Error),
     #[error("Header signature verification failed")]
     BadHeaderSignature(PeerId),
     #[error("Block hash verification failed")]
@@ -36,17 +38,11 @@ pub(super) enum SyncError {
     FetchingCasmFailed,
 }
 
-impl PartialEq for SyncError {
-    fn eq(&self, other: &Self) -> bool {
-        todo!();
-    }
-}
-
 impl SyncError {
     /// Temporary cast to allow refactoring towards SyncError2.
     pub fn into_v2(self) -> PeerData<SyncError2> {
         match self {
-            SyncError::Other(e) => PeerData::new(PeerId::random(), SyncError2::Other(Arc::new(e))),
+            SyncError::Fatal(e) => PeerData::new(PeerId::random(), SyncError2::Other(Arc::new(e))),
             SyncError::BadHeaderSignature(x) => PeerData::new(x, SyncError2::BadHeaderSignature),
             SyncError::BadBlockHash(x) => PeerData::new(x, SyncError2::BadBlockHash),
             SyncError::Discontinuity(x) => PeerData::new(x, SyncError2::Discontinuity),
@@ -93,7 +89,7 @@ impl SyncError {
             SyncError2::BadTransactionHash => SyncError::BadTransactionHash(peer),
             SyncError2::BadClassHash => SyncError::BadClassHash(peer),
             SyncError2::FetchingCasmFailed => SyncError::FetchingCasmFailed,
-            other => SyncError::Other(other.into()),
+            other => SyncError::Fatal(other.into()),
         }
     }
 }

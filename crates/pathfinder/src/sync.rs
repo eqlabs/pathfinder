@@ -126,7 +126,7 @@ impl Sync {
                     tracing::debug!(?continue_from, "Checkpoint sync complete");
                     continue_from
                 }
-                Err(SyncError::Other(error)) => {
+                Err(SyncError::Fatal(error)) => {
                     tracing::error!(?error, "Stopping checkpoint sync");
                     return Err(error);
                 }

@@ -280,7 +280,7 @@ pub async fn batch_update_starknet_state(
         update_starknet_state_impl(db, state_update_ref, verify_tree_hashes, tail, storage)
             .map_err(|e| match e {
                 UpdateStarknetStateError::StateRootMismatch => SyncError::StateRootMismatch(peer),
-                UpdateStarknetStateError::DBError(error) => SyncError::Other(error),
+                UpdateStarknetStateError::DBError(error) => SyncError::Fatal(error),
             })?;
 
         Ok(PeerData::new(peer, tail))

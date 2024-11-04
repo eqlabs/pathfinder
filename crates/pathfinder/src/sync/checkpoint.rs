@@ -982,7 +982,7 @@ mod tests {
                     storage.clone(),
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1198,7 +1198,7 @@ mod tests {
                     BlockNumber::GENESIS,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
 
@@ -1216,7 +1216,7 @@ mod tests {
                     BlockNumber::GENESIS,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1367,7 +1367,7 @@ mod tests {
                     false,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
 
@@ -1385,7 +1385,7 @@ mod tests {
                     false,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1690,7 +1690,7 @@ mod tests {
                     Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1839,7 +1839,7 @@ mod tests {
                 )
                 .await
                 .unwrap_err(),
-                SyncError::Other(_)
+                SyncError::Fatal(_)
             );
         }
 
@@ -1852,7 +1852,7 @@ mod tests {
                 )
                 .await
                 .unwrap_err(),
-                SyncError::Other(_)
+                SyncError::Fatal(_)
             );
         }
     }
