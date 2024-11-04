@@ -1557,16 +1557,15 @@ mod event_stream {
 
 async fn try_next<T>(
     count_stream: &mut (impl Stream<Item = anyhow::Result<T>> + Unpin + Send + 'static),
-) -> Result<T, PeerData<anyhow::Error>> {
+) -> Result<T, anyhow::Error> {
     match count_stream.next().await {
         Some(Ok(cnt)) => Ok(cnt),
-        Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
-        // This is a non-recovarable error, the stream is expected to yield the correct number of
-        // items and then terminate. Otherwise it's a DB error.
-        None => Err(PeerData::new(
-            PeerId::random(),
-            anyhow::anyhow!("Count stream terminated prematurely"),
-        )),
+        // This is a non-recovarable error, because "Counter" streams fail only if the underlying
+        // database fails.
+        Some(Err(e)) => Err(e),
+        // This is a non-recovarable error, because we expect all the necessary headers that are the
+        // source of the stream to be in the database.
+        None => Err(anyhow::anyhow!("Count stream terminated prematurely")),
     }
 }
 
