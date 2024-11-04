@@ -58,6 +58,54 @@ pub(super) enum SyncError {
     UnexpectedClass(PeerId),
 }
 
+impl PartialEq for SyncError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (SyncError::Fatal(x), SyncError::Fatal(y)) => x.to_string() == y.to_string(),
+            (SyncError::BadBlockHash(x), SyncError::BadBlockHash(y)) => x == y,
+            (SyncError::BadClassLayout(x), SyncError::BadClassLayout(y)) => x == y,
+            (SyncError::BadHeaderSignature(x), SyncError::BadHeaderSignature(y)) => x == y,
+            (SyncError::CairoDefinitionError(x), SyncError::CairoDefinitionError(y)) => x == y,
+            (
+                SyncError::ClassDefinitionsDeclarationsMismatch(x),
+                SyncError::ClassDefinitionsDeclarationsMismatch(y),
+            ) => x == y,
+            (SyncError::ClassHashComputationError(x), SyncError::ClassHashComputationError(y)) => {
+                x == y
+            }
+            (SyncError::Discontinuity(x), SyncError::Discontinuity(y)) => x == y,
+            (SyncError::EventCommitmentMismatch(x), SyncError::EventCommitmentMismatch(y)) => {
+                x == y
+            }
+            (
+                SyncError::EventsTransactionsMismatch(x),
+                SyncError::EventsTransactionsMismatch(y),
+            ) => x == y,
+            (SyncError::FetchingCasmFailed, SyncError::FetchingCasmFailed) => true,
+            (SyncError::IncorrectStateDiffCount(x), SyncError::IncorrectStateDiffCount(y)) => {
+                x == y
+            }
+            (SyncError::InvalidDto(x), SyncError::InvalidDto(y)) => x == y,
+            (SyncError::SierraDefinitionError(x), SyncError::SierraDefinitionError(y)) => x == y,
+            (
+                SyncError::StateDiffCommitmentMismatch(x),
+                SyncError::StateDiffCommitmentMismatch(y),
+            ) => x == y,
+            (SyncError::StateRootMismatch(x), SyncError::StateRootMismatch(y)) => x == y,
+            (SyncError::TooFewEvents(x), SyncError::TooFewEvents(y)) => x == y,
+            (SyncError::TooFewTransactions, SyncError::TooFewTransactions) => true,
+            (SyncError::TooManyEvents(x), SyncError::TooManyEvents(y)) => x == y,
+            (SyncError::TooManyTransactions(x), SyncError::TooManyTransactions(y)) => x == y,
+            (
+                SyncError::TransactionCommitmentMismatch(x),
+                SyncError::TransactionCommitmentMismatch(y),
+            ) => x == y,
+            (SyncError::UnexpectedClass(x), SyncError::UnexpectedClass(y)) => x == y,
+            _ => false,
+        }
+    }
+}
+
 impl SyncError {
     /// Temporary cast to allow refactoring towards SyncError2.
     pub fn into_v2(self) -> PeerData<SyncError2> {
