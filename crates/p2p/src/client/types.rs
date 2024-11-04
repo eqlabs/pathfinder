@@ -12,11 +12,13 @@ use pathfinder_common::{
     BlockNumber,
     BlockTimestamp,
     ClassCommitment,
+    ClassHash,
     EventCommitment,
     Fee,
     GasPrice,
     ReceiptCommitment,
     SequencerAddress,
+    SierraHash,
     SignedBlockHeader,
     StateCommitment,
     StateDiffCommitment,
@@ -35,10 +37,12 @@ pub enum ClassDefinition {
     Cairo {
         block_number: BlockNumber,
         definition: Vec<u8>,
+        hash: ClassHash,
     },
     Sierra {
         block_number: BlockNumber,
         sierra_definition: Vec<u8>,
+        hash: SierraHash,
     },
 }
 

@@ -513,25 +513,27 @@ impl BlockClient for Client {
                     Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                         class,
                         domain: _,
-                        class_hash: _,
+                        class_hash,
                     })) => {
                         let definition = CairoDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Cairo {
                             block_number: block,
                             definition: definition.0,
+                            hash: ClassHash(class_hash.0),
                         });
                     }
                     Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                         class,
                         domain: _,
-                        class_hash: _,
+                        class_hash,
                     })) => {
                         let definition = SierraDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: definition.0,
+                            hash: SierraHash(class_hash.0),
                         });
                     }
                     Ok(ClassesResponse::Fin) => {
@@ -1277,7 +1279,7 @@ mod class_definition_stream {
             Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                 class,
                 domain: _,
-                class_hash: _,
+                class_hash,
             })) => {
                 let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
                     // TODO punish the peer
@@ -1288,12 +1290,13 @@ mod class_definition_stream {
                 Some(ClassDefinition::Cairo {
                     block_number,
                     definition,
+                    hash: ClassHash(class_hash.0),
                 })
             }
             Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                 class,
                 domain: _,
-                class_hash: _,
+                class_hash,
             })) => {
                 let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
                     // TODO punish the peer
@@ -1304,6 +1307,7 @@ mod class_definition_stream {
                 Some(ClassDefinition::Sierra {
                     block_number,
                     sierra_definition: definition,
+                    hash: SierraHash(class_hash.0),
                 })
             }
             Ok(ClassesResponse::Fin) => {

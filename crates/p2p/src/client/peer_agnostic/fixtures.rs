@@ -26,7 +26,6 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
-use pathfinder_crypto::Felt;
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
@@ -288,7 +287,7 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
             ClassDefinition::Cairo(c) => Class::Cairo0 {
                 class: c.to_dto(),
                 domain: 0,
-                class_hash: Hash(Felt::default()),
+                class_hash: Faker.fake(),
             },
         }
     })
@@ -300,18 +299,28 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
 pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
     let block_number = BlockNumber::new_or_panic(block_number);
     match class_resp(tag) {
-        ClassesResponse::Class(Class::Cairo0 { class, .. }) => {
+        ClassesResponse::Class(Class::Cairo0 {
+            class,
+            domain: _,
+            class_hash,
+        }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Cairo {
                 block_number,
                 definition: CairoDefinition::try_from_dto(class).unwrap().0,
+                hash: ClassHash(class_hash.0),
             })
             .unwrap()
             .data
         }
-        ClassesResponse::Class(Class::Cairo1 { class, .. }) => {
+        ClassesResponse::Class(Class::Cairo1 {
+            class,
+            domain: _,
+            class_hash,
+        }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Sierra {
                 block_number,
                 sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
+                hash: SierraHash(class_hash.0),
             })
             .unwrap()
             .data

@@ -30,6 +30,8 @@ pub(super) enum SyncError {
     StateRootMismatch(PeerId),
     #[error("Transaction hash verification failed")]
     BadTransactionHash(PeerId),
+    #[error("Class hash verification failed")]
+    BadClassHash(PeerId),
 }
 
 impl PartialEq for SyncError {
@@ -62,6 +64,7 @@ impl SyncError {
             }
             SyncError::StateRootMismatch(x) => PeerData::new(x, SyncError2::StateRootMismatch),
             SyncError::BadTransactionHash(x) => PeerData::new(x, SyncError2::BadTransactionHash),
+            SyncError::BadClassHash(x) => PeerData::new(x, SyncError2::BadClassHash),
         }
     }
 
@@ -83,6 +86,7 @@ impl SyncError {
             }
             SyncError2::StateRootMismatch => SyncError::StateRootMismatch(peer),
             SyncError2::BadTransactionHash => SyncError::BadTransactionHash(peer),
+            SyncError2::BadClassHash => SyncError::BadClassHash(peer),
             other => SyncError::Other(other.into()),
         }
     }
@@ -142,6 +146,8 @@ pub(super) enum SyncError2 {
     StateRootMismatch,
     #[error("Transaction hash verification failed")]
     BadTransactionHash,
+    #[error("Class hash verification failed")]
+    BadClassHash,
 }
 
 impl PartialEq for SyncError2 {

@@ -14,7 +14,6 @@ use p2p::client::types::{
     TransactionData,
 };
 use p2p::PeerData;
-use pathfinder_common::class_definition::ClassDefinition;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
@@ -1087,16 +1086,18 @@ mod tests {
             let defs = b
                 .cairo_defs
                 .iter()
-                .map(|(_, x)| ClassDefinition::Cairo {
+                .map(|(h, x)| ClassDefinition::Cairo {
                     block_number: block,
                     definition: x.clone(),
+                    hash: *h,
                 })
                 .chain(
                     b.sierra_defs
                         .iter()
-                        .map(|(_, x, _)| ClassDefinition::Sierra {
+                        .map(|(h, x, _)| ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: x.clone(),
+                            hash: *h,
                         }),
                 )
                 .collect::<Vec<ClassDefinition>>();

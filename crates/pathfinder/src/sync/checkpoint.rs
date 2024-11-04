@@ -1520,14 +1520,17 @@ mod tests {
                     Ok(PeerData::for_tests(ClassDefinition::Cairo {
                         block_number: BlockNumber::GENESIS + 1,
                         definition: CAIRO.to_vec(),
+                        hash: cairo_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA0.to_vec(),
+                        hash: sierra0_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA2.to_vec(),
+                        hash: sierra2_hash,
                     })),
                 ];
 
@@ -1618,11 +1621,13 @@ mod tests {
         #[rstest::rstest]
         #[case::cairo(ClassDefinition::Cairo {
             block_number: BlockNumber::GENESIS + 1,
-            definition: Default::default()
+            definition: Default::default(),
+            hash: Default::default(),
         })]
         #[case::sierra(ClassDefinition::Sierra {
             block_number: BlockNumber::GENESIS + 1,
             sierra_definition: Default::default(),
+            hash: Default::default(),
         })]
         #[tokio::test]
         async fn bad_layout(#[case] class: ClassDefinition) {
