@@ -167,8 +167,10 @@ impl ProcessStage for VerifyCommitment {
             block_number,
         } = transactions;
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
-        let actual =
-            calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))?;
+        // This computation can only fail in case of internal trie error which is always
+        // a fatal error
+        let actual = calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))
+            .context("Computing transaction commitment")?;
         if actual != expected_commitment {
             tracing::debug!(%block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
             return Err(SyncError2::TransactionCommitmentMismatch);
