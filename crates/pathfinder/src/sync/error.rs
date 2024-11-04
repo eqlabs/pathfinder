@@ -20,18 +20,38 @@ pub(super) enum SyncError {
     BadHeaderSignature(PeerId),
     #[error("Transaction hash verification failed")]
     BadTransactionHash(PeerId),
+    #[error("Incorrect cairo definition")]
+    CairoDefinitionError(PeerId),
+    #[error("Class definitions and declarations mismatch")]
+    ClassDefinitionsDeclarationsMismatch(PeerId),
     #[error("Class hash computation failed")]
     ClassHashComputationError(PeerId),
     #[error("Discontinuity in header chain")]
     Discontinuity(PeerId),
     #[error("Event commitment mismatch")]
     EventCommitmentMismatch(PeerId),
+    #[error("Mismatch between events and transactions")]
+    EventsTransactionsMismatch(PeerId),
     #[error("Fetching casm from feeder gateway failed")]
     FetchingCasmFailed,
+    #[error("Incorrect state diff count")]
+    IncorrectStateDiffCount(PeerId),
+    #[error("Invalid data in DTO")]
+    InvalidDto(PeerId),
+    #[error("Incorrect sierra definition")]
+    SierraDefinitionError(PeerId),
     #[error("State diff commitment mismatch")]
     StateDiffCommitmentMismatch(PeerId),
     #[error("State root mismatch")]
     StateRootMismatch(PeerId),
+    #[error("Too few events")]
+    TooFewEvents(PeerId),
+    #[error("Too few transactions")]
+    TooFewTransactions,
+    #[error("Too many events")]
+    TooManyEvents(PeerId),
+    #[error("Too many transactions")]
+    TooManyTransactions(PeerId),
     #[error("Transaction commitment mismatch")]
     TransactionCommitmentMismatch(PeerId),
     #[error("Unexpected class definition")]
@@ -66,6 +86,7 @@ impl SyncError {
             SyncError::FetchingCasmFailed => {
                 PeerData::new(PeerId::random(), SyncError2::FetchingCasmFailed)
             }
+            _ => todo!(),
         }
     }
 
