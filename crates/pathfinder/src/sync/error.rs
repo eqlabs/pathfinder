@@ -10,32 +10,32 @@ pub(super) enum SyncError {
     /// not result in a retry.
     #[error(transparent)]
     Fatal(#[from] anyhow::Error),
-    #[error("Header signature verification failed")]
-    BadHeaderSignature(PeerId),
     #[error("Block hash verification failed")]
     BadBlockHash(PeerId),
-    #[error("Discontinuity in header chain")]
-    Discontinuity(PeerId),
-    #[error("State diff commitment mismatch")]
-    StateDiffCommitmentMismatch(PeerId),
-    #[error("Invalid class definition layout")]
-    BadClassLayout(PeerId),
-    #[error("Class hash computation failed")]
-    ClassHashComputationError(PeerId),
-    #[error("Unexpected class definition")]
-    UnexpectedClass(PeerId),
-    #[error("Event commitment mismatch")]
-    EventCommitmentMismatch(PeerId),
-    #[error("Transaction commitment mismatch")]
-    TransactionCommitmentMismatch(PeerId),
-    #[error("State root mismatch")]
-    StateRootMismatch(PeerId),
-    #[error("Transaction hash verification failed")]
-    BadTransactionHash(PeerId),
     #[error("Class hash verification failed")]
     BadClassHash(PeerId),
+    #[error("Invalid class definition layout")]
+    BadClassLayout(PeerId),
+    #[error("Header signature verification failed")]
+    BadHeaderSignature(PeerId),
+    #[error("Transaction hash verification failed")]
+    BadTransactionHash(PeerId),
+    #[error("Class hash computation failed")]
+    ClassHashComputationError(PeerId),
+    #[error("Discontinuity in header chain")]
+    Discontinuity(PeerId),
+    #[error("Event commitment mismatch")]
+    EventCommitmentMismatch(PeerId),
     #[error("Fetching casm from feeder gateway failed")]
     FetchingCasmFailed,
+    #[error("State diff commitment mismatch")]
+    StateDiffCommitmentMismatch(PeerId),
+    #[error("State root mismatch")]
+    StateRootMismatch(PeerId),
+    #[error("Transaction commitment mismatch")]
+    TransactionCommitmentMismatch(PeerId),
+    #[error("Unexpected class definition")]
+    UnexpectedClass(PeerId),
 }
 
 impl SyncError {
