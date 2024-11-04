@@ -118,27 +118,7 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
-    const NAME: &'static str = "StateDiff::Verify";
-    type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
-    type Output = StateUpdateData;
-
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let (state_diff, block_number, expected_commitment) = input;
-        let actual_commitment = state_diff.compute_state_diff_commitment();
-
-        if actual_commitment != expected_commitment {
-            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
-            return Err(SyncError2::StateDiffCommitmentMismatch);
-        }
-
-        Ok(state_diff)
-    }
-}
-
-pub struct VerifyCommitment2;
-
-impl ProcessStage for VerifyCommitment2 {
-    const NAME: &'static str = "StateDiff::Verify2";
+    const NAME: &'static str = "StateDiff::VerifyCommitment";
     type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
     type Output = (StateUpdateData, BlockNumber);
 

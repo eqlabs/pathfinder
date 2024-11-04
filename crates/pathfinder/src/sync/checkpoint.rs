@@ -365,7 +365,7 @@ async fn handle_state_diff_stream(
             state_updates::FetchCommitmentFromDb::new(storage.connection()?),
             10,
         )
-        .pipe(state_updates::VerifyCommitment2, 10)
+        .pipe(state_updates::VerifyCommitment, 10)
         .into_stream()
         .try_chunks(1000)
         .map_err(|e| SyncError::from_v2(e.1))

@@ -232,7 +232,10 @@ struct StateDiffFanout {
 }
 
 impl StateDiffFanout {
-    fn from_source(mut source: SyncReceiver<StateUpdateData>, buffer: usize) -> Self {
+    fn from_source(
+        mut source: SyncReceiver<(StateUpdateData, BlockNumber)>,
+        buffer: usize,
+    ) -> Self {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
         let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
@@ -241,13 +244,19 @@ impl StateDiffFanout {
             while let Some(state_update) = source.recv().await {
                 let is_err = state_update.is_err();
 
-                if s_tx.send(state_update.clone()).await.is_err() || is_err {
+                if s_tx
+                    .send(state_update.clone().map(|x| x.map(|(sud, _)| sud)))
+                    .await
+                    .is_err()
+                    || is_err
+                {
                     return;
                 }
 
                 let class_declarations = state_update
                     .expect("Error case already handled")
                     .data
+                    .0
                     .declared_classes();
 
                 if d1_tx.send(class_declarations.clone()).await.is_err() {
