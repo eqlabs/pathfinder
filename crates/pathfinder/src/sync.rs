@@ -65,7 +65,7 @@ impl Sync {
 
     async fn handle_recoverable_error(&self, err: &error::SyncError) {
         // TODO
-        tracing::debug!(?err, "Log and punish as appropriate");
+        tracing::debug!(%err, "Log and punish as appropriate");
     }
 
     /// Retry forever until a valid L1 checkpoint is retrieved

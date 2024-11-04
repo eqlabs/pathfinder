@@ -285,14 +285,14 @@ impl ProcessStage for VerifyDeclaredAt {
         }
 
         if self.current.block_number != input.block_number {
-            tracing::debug!(expected_block_number=%self.current.block_number, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
+            tracing::debug!(%peer, expected_block_number=%self.current.block_number, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
             return Err(SyncError::UnexpectedClass(*peer));
         }
 
         if self.current.classes.remove(&input.hash) {
             Ok(input)
         } else {
-            tracing::debug!(block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
+            tracing::debug!(%peer, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
             Err(SyncError::UnexpectedClass(*peer))
         }
     }
@@ -353,18 +353,18 @@ pub(super) fn verify_declared_at(
                     return;
                 };
 
-                let res = maybe_class.and_then(|class| {
+                let res = maybe_class.and_then(|PeerData { peer, data: class }| {
                     // Check if the class is declared at the expected block
-                    if declared_at != class.data.block_number {
-                        tracing::error!(%declared_at, %class.data.block_number, %class.data.hash, ?declared, "Unexpected class 1");
-                        return Err(SyncError::UnexpectedClass(class.peer));
+                    if declared_at != class.block_number {
+                        tracing::debug!(%peer, expected_block_number=%declared_at, block_number=%class.block_number, %class.hash, "Unexpected class definition");
+                        return Err(SyncError::UnexpectedClass(peer));
                     }
 
-                    if declared.remove(&class.data.hash) {
-                        Ok(class)
+                    if declared.remove(&class.hash) {
+                        Ok(PeerData::new(peer, class))
                     } else {
-                        tracing::error!(%declared_at, %class.data.block_number, %class.data.hash, ?declared, "Unexpected class 2");
-                        Err(SyncError::UnexpectedClass(class.peer))
+                        tracing::debug!(%peer, block_number=%class.block_number, %class.hash, "Unexpected class definition");
+                        Err(SyncError::UnexpectedClass(peer))
                     }
                 });
                 let bail = res.is_err();
@@ -530,8 +530,7 @@ impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCas
     type Output = CompiledClass;
 
     fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)
-            .map_err(|_| SyncError::FetchingCasmFailed)?;
+        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)?;
         Ok(compiled)
     }
 }
@@ -550,8 +549,7 @@ pub(super) async fn compile_sierra_to_casm_or_fetch<
             .into_par_iter()
             .map(|x| {
                 let PeerData { peer, data } = x;
-                let compiled = compile_or_fetch_impl(data, &fgw, &tokio_handle)
-                    .map_err(|_| SyncError::FetchingCasmFailed)?;
+                let compiled = compile_or_fetch_impl(data, &fgw, &tokio_handle)?;
                 Ok(PeerData::new(peer, compiled))
             })
             .collect::<Result<Vec<PeerData<CompiledClass>>, SyncError>>();
@@ -564,7 +562,7 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
     class: Class,
     fgw: &SequencerClient,
     tokio_handle: &tokio::runtime::Handle,
-) -> Result<CompiledClass, SequencerError> {
+) -> Result<CompiledClass, SyncError> {
     let Class {
         block_number,
         hash,
@@ -583,7 +581,11 @@ fn compile_or_fetch_impl<SequencerClient: GatewayApi + Clone + Send + 'static>(
                 // that the class is declared and exists so if the gateway responds with an
                 // error we should restart the sync and retry later.
                 Err(_) => tokio_handle
-                    .block_on(fgw.pending_casm_by_hash(hash))?
+                    .block_on(fgw.pending_casm_by_hash(hash))
+                    .map_err(|error| {
+                        tracing::debug!(%block_number, class_hash=%hash, %error, "Fetching casm from feeder gateway failed");
+                        SyncError::FetchingCasmFailed
+                    })?
                     .to_vec(),
             };
 

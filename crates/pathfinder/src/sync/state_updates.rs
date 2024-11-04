@@ -282,11 +282,14 @@ pub async fn batch_update_starknet_state(
 
         let state_update_ref: StateUpdateRef<'_> = (&merged).into();
 
-        update_starknet_state_impl(db, state_update_ref, verify_tree_hashes, tail, storage)
-            .map_err(|e| match e {
-                UpdateStarknetStateError::StateRootMismatch => SyncError::StateRootMismatch(peer),
-                UpdateStarknetStateError::DBError(error) => SyncError::Fatal(Arc::new(error)),
-            })?;
+        update_starknet_state_impl(
+            &peer,
+            db,
+            state_update_ref,
+            verify_tree_hashes,
+            tail,
+            storage,
+        )?;
 
         Ok(PeerData::new(peer, tail))
     })
@@ -319,16 +322,13 @@ impl ProcessStage for UpdateStarknetState {
             .context("Inserting state update data")?;
 
         update_starknet_state_impl(
+            peer,
             db,
             (&state_update).into(),
             self.verify_tree_hashes,
             tail,
             self.storage.clone(),
-        )
-        .map_err(|e| match e {
-            UpdateStarknetStateError::StateRootMismatch => SyncError::StateRootMismatch(*peer),
-            UpdateStarknetStateError::DBError(error) => SyncError::Fatal(Arc::new(error)),
-        })?;
+        )?;
 
         self.current_block += 1;
 
@@ -336,21 +336,14 @@ impl ProcessStage for UpdateStarknetState {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-enum UpdateStarknetStateError {
-    #[error("State root mismatch")]
-    StateRootMismatch,
-    #[error(transparent)]
-    DBError(#[from] anyhow::Error),
-}
-
 fn update_starknet_state_impl(
+    peer: &PeerId,
     db: pathfinder_storage::Transaction<'_>,
     state_update_ref: StateUpdateRef<'_>,
     verify_tree_hashes: bool,
     tail: BlockNumber,
     storage: Storage,
-) -> Result<(), UpdateStarknetStateError> {
+) -> Result<(), SyncError> {
     let (storage_commitment, class_commitment) = update_starknet_state(
         &db,
         state_update_ref,
@@ -372,7 +365,7 @@ fn update_starknet_state_impl(
         actual_state_commitment=%state_commitment,
         %expected_state_commitment,
         "State root mismatch");
-        return Err(UpdateStarknetStateError::StateRootMismatch);
+        return Err(SyncError::StateRootMismatch(*peer));
     }
     db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
         .context("Updating storage and class commitments")?;
