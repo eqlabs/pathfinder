@@ -549,8 +549,7 @@ impl<P> StateDiffSource<P> {
                             let _ = tx.send(Err(SyncError::IncorrectStateDiffCount(peer))).await;
                             return;
                         }
-                        Err(StateDiffsError::ResponseStreamFailure(peer, _error)) => {
-                            // TODO what about the _error
+                        Err(StateDiffsError::ResponseStreamFailure(peer, _)) => {
                             let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
@@ -620,8 +619,7 @@ impl<P> ClassSource<P> {
                                 ClassDefinitionsError::SierraDefinitionError(peer) => {
                                     SyncError::SierraDefinitionError(peer)
                                 }
-                                ClassDefinitionsError::ResponseStreamFailure(peer, _error) => {
-                                    // TODO what about the _error
+                                ClassDefinitionsError::ResponseStreamFailure(peer, _) => {
                                     SyncError::InvalidDto(peer)
                                 }
                             };

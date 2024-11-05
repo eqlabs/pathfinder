@@ -333,9 +333,6 @@ async fn handle_transaction_stream(
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    // TODO
-    // stream errors should not carry PeerId as only fatal errors are reported by
-    // the stream and those stem from DB errors which are fatal.
     Source::from_stream(stream.map_err(Into::into))
         .spawn()
         .pipe(
@@ -1838,6 +1835,6 @@ mod tests {
                 .unwrap_err(),
                 SyncError::Fatal(_)
             );
-        } /*  */
+        }
     }
 }
