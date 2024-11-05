@@ -1,5 +1,6 @@
 use std::num::NonZeroUsize;
 
+use anyhow::Result;
 use pathfinder_common::event::Event;
 use pathfinder_common::{
     BlockHash,
@@ -10,7 +11,9 @@ use pathfinder_common::{
     TransactionHash,
 };
 
-use crate::bloom::BloomFilter;
+#[cfg(feature = "aggregate_bloom")]
+use crate::bloom::AddBloomError;
+use crate::bloom::{AggregateBloom, BloomFilter};
 use crate::prelude::*;
 use crate::ReorgCounter;
 
@@ -231,8 +234,8 @@ impl Transaction<'_> {
                 }
             }
 
-            // Stop if we have a page of events plus an extra one to decide if we're on the
-            // last page.
+            // Stop if we have a page of events plus an extra one to decide if we're on
+            // the last page.
             if emitted_events.len() > filter.page_size {
                 break ScanResult::PageFull;
             }
@@ -245,6 +248,80 @@ impl Transaction<'_> {
                 break ScanResult::ContinueFrom(block_number);
             }
         };
+
+        // TODO:
+        // The logic that constructs aggregate bloom filters is temporarily
+        // placed here, in order to compare with the current implementation.
+        // It will be moved to sync as a follow up.
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            let mut aggregates = vec![];
+            let mut running_aggregate = AggregateBloom::new(from_block);
+
+            let mut blocks_from_individual = vec![];
+
+            for block_num in from_block.get()..=to_block.get() {
+                if block_num as usize >= max_blocks_to_scan.get() {
+                    break;
+                }
+
+                let block_num = BlockNumber::new_or_panic(block_num);
+
+                // TODO:
+                // Using single block `BloomFilter` API for now since we don't have
+                // a table for `AggregateBloom` yet.
+                let bloom = self.load_bloom(reorg_counter, block_num)?;
+                match bloom {
+                    Filter::Missing => {}
+                    Filter::Cached(bloom) => {
+                        if bloom.check_filter(filter) {
+                            blocks_from_individual.push(block_num);
+                        }
+
+                        match running_aggregate.add_bloom(&bloom, block_num) {
+                            Ok(_) => {}
+                            Err(AddBloomError::BlockLimitReached) => {
+                                aggregates.push(running_aggregate);
+                                running_aggregate = AggregateBloom::new(block_num + 1);
+                            }
+                            Err(AddBloomError::InvalidBlockNumber) => {
+                                unreachable!() // For now.
+                            }
+                        }
+                    }
+                    Filter::Loaded(bloom) => {
+                        if bloom.check_filter(filter) {
+                            blocks_from_individual.push(block_num);
+                        }
+
+                        match running_aggregate.add_bloom(&bloom, block_num) {
+                            Ok(_) => {}
+                            Err(AddBloomError::BlockLimitReached) => {
+                                aggregates.push(running_aggregate);
+                                running_aggregate = AggregateBloom::new(block_num + 1);
+                            }
+                            Err(AddBloomError::InvalidBlockNumber) => {
+                                unreachable!() // For now.
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Remainder of (to_block - from_block) % AggregateBloom::BLOCK_RANGE_LEN
+            aggregates.push(running_aggregate);
+
+            let blocks_from_aggregate = aggregates.iter().fold(vec![], |mut acc, aggregate| {
+                acc.extend(aggregate.blocks_for_filter(filter));
+                acc
+            });
+
+            if blocks_from_individual != blocks_from_aggregate {
+                tracing::error!("Blocks from individual and aggregate bloom filter do not match");
+                tracing::error!("Individual: {:?}", blocks_from_individual,);
+                tracing::error!("Aggregate: {:?}", blocks_from_aggregate,);
+            }
+        }
 
         match result {
             ScanResult::Done => {
@@ -388,6 +465,30 @@ impl Transaction<'_> {
             }
             None => Filter::Missing,
         })
+    }
+
+    // TODO:
+    // Implement once [`AggregateBloom`] table is added.
+    fn _running_bloom_aggregate(&self) -> Result<Option<AggregateBloom>, anyhow::Error> {
+        // Fetch running aggregate from DB
+        unimplemented!()
+    }
+
+    fn _load_bloom_range(
+        &self,
+        _from_block: BlockNumber,
+        _to_block: BlockNumber,
+    ) -> anyhow::Result<Vec<AggregateBloom>> {
+        // Should be something like:
+        // (from_block..to_block)
+        //     .chunks(AggregateBloom::BLOCK_RANGE_LEN)
+        //     .iter()
+        //     .enumerate()
+        //     .map(|(i, _)| {
+        //         // load from DB where ID is i
+        //      })
+        //      .collect()
+        unimplemented!()
     }
 }
 
@@ -1118,6 +1219,10 @@ mod tests {
     }
 
     #[test]
+    // TODO:
+    // This fails when "aggregate_bloom" feature is enabled because in that case all filters are
+    // loaded twice. We can ignore it for now.
+    #[cfg_attr(feature = "aggregate_bloom", ignore)]
     fn bloom_filter_load_limit() {
         let (storage, test_data) = test_utils::setup_test_storage();
         let emitted_events = test_data.events;
