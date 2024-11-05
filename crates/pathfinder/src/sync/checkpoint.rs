@@ -692,8 +692,7 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
     .context("Joining blocking task")?
 }
 
-// FIXME P2P
-#[cfg(test_FIXME)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -865,7 +864,6 @@ mod tests {
 
             pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
         }
-
         #[tokio::test]
         async fn discontinuity() {
             let Setup {
@@ -1185,9 +1183,7 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_transaction_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
@@ -1243,7 +1239,7 @@ mod tests {
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests((
+                        Result::<PeerData<_>, _>::Ok(PeerData::for_tests((
                             block.state_update.clone().into(),
                             block.header.header.number,
                         )))
@@ -1354,9 +1350,7 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_state_diff_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
                     false,
@@ -1469,7 +1463,7 @@ mod tests {
         }
 
         struct Setup {
-            pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>,
+            pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, anyhow::Error>>,
             pub declared_classes: DeclaredClasses,
             pub expected_defs: HashMap<ClassHash, Vec<u8>>,
             pub storage: Storage,
@@ -1632,14 +1626,14 @@ mod tests {
             let expected_peer_id = data.peer;
 
             assert_matches!(
-                handle_class_stream(
-                    stream::once(std::future::ready(Ok(data))),
-                    storage,
-                    FakeFgw,
-                    Faker.fake::<DeclaredClasses>().to_stream(),
-                )
-                .await,
-                Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
+                    handle_class_stream(
+                        stream::once(std::future::ready(Ok(data))),
+                        storage,
+                        FakeFgw,
+                        Faker.fake::<DeclaredClasses>().to_stream(),
+                    )
+                    .await,
+                    Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
         }
 
         #[tokio::test]
@@ -1663,23 +1657,21 @@ mod tests {
             let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
 
             assert_matches!(
-                handle_class_stream(
-                    stream::iter(streamed_classes),
-                    storage,
-                    FakeFgw,
-                    declared_classes.to_stream(),
-                )
-                .await,
-                Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
+                    handle_class_stream(
+                        stream::iter(streamed_classes),
+                        storage,
+                        FakeFgw,
+                        declared_classes.to_stream(),
+                    )
+                    .await,
+                    Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
         }
 
         #[tokio::test]
         async fn stream_failure() {
             assert_matches!(
                 handle_class_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
                     Faker.fake::<DeclaredClasses>().to_stream(),
@@ -1706,8 +1698,7 @@ mod tests {
         use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events:
-                Vec<Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+            pub streamed_events: Vec<Result<PeerData<EventsForBlockByTransaction>, anyhow::Error>>,
             pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
             pub storage: Storage,
         }
@@ -1827,9 +1818,7 @@ mod tests {
         async fn stream_failure() {
             assert_matches::assert_matches!(
                 handle_event_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap()
                 )
                 .await
@@ -1849,6 +1838,6 @@ mod tests {
                 .unwrap_err(),
                 SyncError::Fatal(_)
             );
-        }
+        } /*  */
     }
 }
