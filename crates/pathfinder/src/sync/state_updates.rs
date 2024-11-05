@@ -136,7 +136,7 @@ impl ProcessStage for VerifyCommitment {
         let actual_commitment = state_diff.compute_state_diff_commitment();
 
         if actual_commitment != expected_commitment {
-            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
+            tracing::debug!(%peer, %block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
             return Err(SyncError::StateDiffCommitmentMismatch(*peer));
         }
 
@@ -359,6 +359,7 @@ fn update_starknet_state_impl(
         .context("State commitment not found")?;
     if state_commitment != expected_state_commitment {
         tracing::debug!(
+        %peer,
         %tail,
         actual_storage_commitment=%storage_commitment,
         actual_class_commitment=%class_commitment,

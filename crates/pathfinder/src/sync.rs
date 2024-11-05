@@ -127,11 +127,11 @@ impl Sync {
                     continue_from
                 }
                 Err(SyncError::Fatal(mut error)) => {
-                    tracing::error!(?error, "Stopping checkpoint sync");
+                    tracing::error!(%error, "Stopping checkpoint sync");
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
-                    tracing::debug!(?error, "Restarting checkpoint sync");
+                    tracing::debug!(%error, "Restarting checkpoint sync");
                     self.handle_recoverable_error(&error).await;
                     continue;
                 }
@@ -183,12 +183,12 @@ impl Sync {
             match result {
                 Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
                 Err(SyncError::Fatal(mut error)) => {
-                    tracing::error!(?error, "Stopping track sync");
+                    tracing::error!(%error, "Stopping track sync");
                     use pathfinder_common::error::AnyhowExt;
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
-                    tracing::debug!(?error, "Restarting track sync");
+                    tracing::debug!(%error, "Restarting track sync");
                     self.handle_recoverable_error(&error).await;
                 }
             }

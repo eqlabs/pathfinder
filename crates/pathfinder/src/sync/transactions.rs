@@ -181,7 +181,7 @@ impl ProcessStage for VerifyCommitment {
         let actual = calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))
             .context("Computing transaction commitment")?;
         if actual != expected_commitment {
-            tracing::debug!(%block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
+            tracing::debug!(%peer, %block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
             return Err(SyncError::TransactionCommitmentMismatch(*peer));
         }
         Ok(transactions)

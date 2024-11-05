@@ -714,7 +714,7 @@ impl ProcessStage for VerifyClassHashes {
             match class.definition {
                 CompiledClassDefinition::Cairo(_) => {
                     if !declared_classes.cairo.remove(&class.hash) {
-                        tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
+                        tracing::debug!(%peer, block_number=%class.block_number, class_hash=%class.hash, "Class hash not found in declared classes");
                         return Err(SyncError::ClassDefinitionsDeclarationsMismatch(*peer));
                     }
                 }
@@ -724,7 +724,7 @@ impl ProcessStage for VerifyClassHashes {
                         .sierra
                         .remove(&hash)
                         .ok_or_else(|| {
-                            tracing::debug!(class_hash=%class.hash, "Class hash not found in declared classes");
+                            tracing::debug!(%peer, block_number=%class.block_number, class_hash=%class.hash, "Class hash not found in declared classes");
                             SyncError::ClassDefinitionsDeclarationsMismatch(*peer)
                         })?;
                 }
@@ -743,7 +743,7 @@ impl ProcessStage for VerifyClassHashes {
                         .map(|casm_hash| ClassHash(casm_hash.0)),
                 )
                 .collect();
-            tracing::trace!(?missing, "Expected class definitions are missing");
+            tracing::trace!(%peer, ?missing, "Expected class definitions are missing");
             Err(SyncError::ClassDefinitionsDeclarationsMismatch(*peer))
         }
     }

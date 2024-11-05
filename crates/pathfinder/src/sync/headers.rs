@@ -210,7 +210,10 @@ impl ProcessStage for BackwardContinuity {
     type Output = SignedBlockHeader;
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        let number = self.number.ok_or(SyncError::Discontinuity(*peer))?;
+        let number = self.number.ok_or_else(|| {
+            tracing::debug!(actual_block_number=%input.header.number, actual_block_hash=%input.header.hash, "Block chain discontinuity, no block expected before genesis");
+            SyncError::Discontinuity(*peer)
+        })?;
 
         if input.header.number != number || input.header.hash != self.hash {
             tracing::debug!(expected_block_number=%number, actual_block_number=%input.header.number, expected_block_hash=%self.hash, actual_block_hash=%input.header.hash, "Block chain discontinuity");
@@ -235,9 +238,9 @@ impl ProcessStage for VerifyHashAndSignature {
         }
 
         if !self.verify_signature(&input) {
-            // TODO: make this an error once state diff commitments and signatures are fixed
-            // on the feeder gateway return Err(SyncError2::BadHeaderSignature);
-            tracing::debug!(header=?input.header, "Header signature verification failed");
+            // TODO: make this an error once state diff commitments and
+            // signatures are fixed on the feeder gateway return
+            // Err(SyncError2::BadHeaderSignature);
         }
 
         Ok(input)
@@ -306,6 +309,9 @@ impl VerifyHashAndSignature {
         header
             .signature
             .verify(self.public_key, header.header.hash)
+            .inspect_err(
+                |error| tracing::debug!(%error, ?header, "Header signature verification failed"),
+            )
             .is_ok()
     }
 }

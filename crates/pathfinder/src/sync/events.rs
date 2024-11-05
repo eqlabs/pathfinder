@@ -96,6 +96,7 @@ pub(super) async fn verify_commitment(
         )
         .context("Calculating commitment")?;
         if computed != header.event_commitment {
+            tracing::debug!(%peer, %block_number, expected_commitment=%header.event_commitment, actual_commitment=%computed, "Event commitment mismatch");
             return Err(SyncError::EventCommitmentMismatch(peer));
         }
         Ok(events)

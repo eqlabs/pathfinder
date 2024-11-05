@@ -370,7 +370,7 @@ async fn handle_state_diff_stream(
         .and_then(|x| {
             state_updates::batch_update_starknet_state(storage.clone(), verify_tree_hashes, x)
         })
-        .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diff synced"))
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diffs chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
 }
