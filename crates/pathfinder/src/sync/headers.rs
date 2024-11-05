@@ -234,7 +234,7 @@ impl ProcessStage for VerifyHashAndSignature {
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         if !self.verify_hash(&input.header) {
-            return Err(SyncError::BadBlockHash((*peer)));
+            return Err(SyncError::BadBlockHash(*peer));
         }
 
         if !self.verify_signature(&input) {

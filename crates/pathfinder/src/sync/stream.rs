@@ -341,7 +341,7 @@ mod tests {
     use super::*;
 
     pub fn peer_id() -> PeerId {
-        static PEER_ID: LazyLock<PeerId> = LazyLock::new(|| PeerId::random());
+        static PEER_ID: LazyLock<PeerId> = LazyLock::new(PeerId::random);
         *PEER_ID
     }
 
