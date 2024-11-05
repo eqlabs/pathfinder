@@ -41,6 +41,6 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_syncing",                             crate::method::syncing)
         .register("starknet_traceBlockTransactions",              crate::method::trace_block_transactions)
         .register("starknet_traceTransaction",                    crate::method::trace_transaction)
-
+        .register("starknet_getCompiledCasm",                     crate::method::get_compiled_casm)
         .register("pathfinder_getProof",                          crate::pathfinder::methods::get_proof)
 }
