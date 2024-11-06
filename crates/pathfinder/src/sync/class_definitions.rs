@@ -35,6 +35,7 @@ pub struct ClassWithLayout {
     pub block_number: BlockNumber,
     pub definition: ClassDefinition,
     pub layout: GwClassDefinition<'static>,
+    pub hash: ClassHash,
 }
 
 #[derive(Debug)]
@@ -137,6 +138,7 @@ fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout
         P2PClassDefinition::Cairo {
             block_number,
             definition,
+            hash,
         } => {
             let layout = GwClassDefinition::Cairo(
                 serde_json::from_slice::<Cairo<'_>>(&definition).inspect_err(
@@ -147,11 +149,13 @@ fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout
                 block_number,
                 definition: ClassDefinition::Cairo(definition),
                 layout,
+                hash,
             })
         }
         P2PClassDefinition::Sierra {
             block_number,
             sierra_definition,
+            hash,
         } => {
             let layout = GwClassDefinition::Sierra(
                 serde_json::from_slice::<Sierra<'_>>(&sierra_definition).inspect_err(
@@ -162,6 +166,7 @@ fn verify_layout_impl(def: P2PClassDefinition) -> anyhow::Result<ClassWithLayout
                 block_number,
                 definition: ClassDefinition::Sierra(sierra_definition),
                 layout,
+                hash: ClassHash(hash.0),
             })
         }
     }
@@ -204,9 +209,10 @@ fn compute_hash_impl(input: ClassWithLayout) -> anyhow::Result<Class> {
         block_number,
         definition,
         layout,
+        hash,
     } = input;
 
-    let hash = match layout {
+    let computed_hash = match layout {
         GwClassDefinition::Cairo(c) => compute_cairo_class_hash(
             c.abi.as_ref().get().as_bytes(),
             c.program.as_ref().get().as_bytes(),
@@ -222,11 +228,16 @@ fn compute_hash_impl(input: ClassWithLayout) -> anyhow::Result<Class> {
         ),
     }?;
 
-    Ok(Class {
-        block_number,
-        definition,
-        hash,
-    })
+    if computed_hash != hash {
+        tracing::debug!(input_hash=%hash, actual_hash=%computed_hash, "Class hash mismatch");
+        Err(SyncError2::BadClassHash.into())
+    } else {
+        Ok(Class {
+            block_number,
+            definition,
+            hash,
+        })
+    }
 }
 
 pub struct VerifyDeclaredAt {

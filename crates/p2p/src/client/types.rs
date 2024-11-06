@@ -3,7 +3,7 @@ use fake::Dummy;
 use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockCommitmentSignature,
     BlockCommitmentSignatureElem,
@@ -12,11 +12,13 @@ use pathfinder_common::{
     BlockNumber,
     BlockTimestamp,
     ClassCommitment,
+    ClassHash,
     EventCommitment,
     Fee,
     GasPrice,
     ReceiptCommitment,
     SequencerAddress,
+    SierraHash,
     SignedBlockHeader,
     StateCommitment,
     StateDiffCommitment,
@@ -35,10 +37,12 @@ pub enum ClassDefinition {
     Cairo {
         block_number: BlockNumber,
         definition: Vec<u8>,
+        hash: ClassHash,
     },
     Sierra {
         block_number: BlockNumber,
         sierra_definition: Vec<u8>,
+        hash: SierraHash,
     },
 }
 
@@ -75,7 +79,7 @@ impl From<pathfinder_common::receipt::Receipt> for Receipt {
     }
 }
 
-pub type TransactionData = Vec<(TransactionVariant, Receipt)>;
+pub type TransactionData = Vec<(Transaction, Receipt)>;
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 

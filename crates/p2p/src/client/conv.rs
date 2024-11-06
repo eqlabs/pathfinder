@@ -50,6 +50,7 @@ use pathfinder_common::transaction::{
     L1HandlerTransaction,
     ResourceBound,
     ResourceBounds,
+    Transaction,
     TransactionVariant,
 };
 use pathfinder_common::{
@@ -679,6 +680,18 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 nonce: TransactionNonce(x.nonce),
                 calldata: x.calldata.into_iter().map(CallParam).collect(),
             }),
+        })
+    }
+}
+
+impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
+    fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Transaction {
+            hash: TransactionHash(dto.transaction_hash.0),
+            variant: TransactionVariant::try_from_dto(dto.txn)?,
         })
     }
 }

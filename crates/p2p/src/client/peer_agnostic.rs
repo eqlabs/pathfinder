@@ -22,7 +22,7 @@ use p2p_proto::state::{
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockNumber,
     CasmHash,
@@ -297,7 +297,7 @@ impl BlockClient for Client {
         block: BlockNumber,
     ) -> Option<(
         PeerId,
-        impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+        impl Stream<Item = anyhow::Result<(Transaction, Receipt)>>,
     )> {
         let request = TransactionsRequest {
             iteration: Iteration {
@@ -329,7 +329,7 @@ impl BlockClient for Client {
                     match x {
                         Ok(TransactionsResponse::Fin) => unreachable!("Already handled Fin above"),
                         Ok(TransactionsResponse::TransactionWithReceipt(tx_with_receipt)) => Ok((
-                            TransactionVariant::try_from_dto(tx_with_receipt.transaction.txn)?,
+                            Transaction::try_from_dto(tx_with_receipt.transaction)?,
                             Receipt::try_from((
                                 tx_with_receipt.receipt,
                                 TransactionIndex::new(i.try_into().unwrap())
@@ -513,25 +513,27 @@ impl BlockClient for Client {
                     Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                         class,
                         domain: _,
-                        class_hash: _,
+                        class_hash,
                     })) => {
                         let definition = CairoDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Cairo {
                             block_number: block,
                             definition: definition.0,
+                            hash: ClassHash(class_hash.0),
                         });
                     }
                     Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                         class,
                         domain: _,
-                        class_hash: _,
+                        class_hash,
                     })) => {
                         let definition = SierraDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: definition.0,
+                            hash: SierraHash(class_hash.0),
                         });
                     }
                     Ok(ClassesResponse::Fin) => {
@@ -849,14 +851,14 @@ mod transaction_stream {
         peer: PeerId,
         response: std::io::Result<TransactionsResponse>,
         txn_idx: TransactionIndex,
-    ) -> Option<(TransactionVariant, Receipt)> {
+    ) -> Option<(Transaction, Receipt)> {
         match response {
             Ok(TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
                 transaction,
                 receipt,
             })) => {
                 if let (Ok(t), Ok(r)) = (
-                    TransactionVariant::try_from_dto(transaction.txn),
+                    Transaction::try_from_dto(transaction),
                     Receipt::try_from((receipt, txn_idx)),
                 ) {
                     Some((t, r))
@@ -904,7 +906,7 @@ mod transaction_stream {
         peer: PeerId,
         progress: &mut BlockProgress,
         count_stream: &mut (impl Stream<Item = anyhow::Result<usize>> + Unpin + Send + 'static),
-        transactions: Vec<(TransactionVariant, Receipt)>,
+        transactions: Vec<(Transaction, Receipt)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
         tx: mpsc::Sender<StreamItem<(TransactionData, BlockNumber)>>,
@@ -1277,7 +1279,7 @@ mod class_definition_stream {
             Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                 class,
                 domain: _,
-                class_hash: _,
+                class_hash,
             })) => {
                 let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
                     // TODO punish the peer
@@ -1288,12 +1290,13 @@ mod class_definition_stream {
                 Some(ClassDefinition::Cairo {
                     block_number,
                     definition,
+                    hash: ClassHash(class_hash.0),
                 })
             }
             Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                 class,
                 domain: _,
-                class_hash: _,
+                class_hash,
             })) => {
                 let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
                     // TODO punish the peer
@@ -1304,6 +1307,7 @@ mod class_definition_stream {
                 Some(ClassDefinition::Sierra {
                     block_number,
                     sierra_definition: definition,
+                    hash: SierraHash(class_hash.0),
                 })
             }
             Ok(ClassesResponse::Fin) => {
