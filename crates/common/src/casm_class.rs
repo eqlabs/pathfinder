@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::EntryPoint;
 
 /// A contract in the Starknet network.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct CasmContractClass {
     pub bytecode: Vec<Felt>,
     pub bytecode_segment_lengths: Option<NestedIntList>,
@@ -17,7 +17,7 @@ pub struct CasmContractClass {
 }
 
 /// The entry points (functions) of a contract.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct CasmContractEntryPoints {
     #[serde(rename = "EXTERNAL")]
     pub external: Vec<CasmContractEntryPoint>,
@@ -28,7 +28,7 @@ pub struct CasmContractEntryPoints {
 }
 
 /// An entry point (function) of a contract.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct CasmContractEntryPoint {
     /// A field element that encodes the signature of the called function.
     pub selector: EntryPoint,
@@ -40,7 +40,7 @@ pub struct CasmContractEntryPoint {
 }
 
 /// A field element that encodes the signature of the called function.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct BigUintAsHex {
     /// A field element that encodes the signature of the called function.
@@ -82,7 +82,7 @@ where
 /// is segmented by its branches. It is also possible to have the inner
 /// segmentation only for some of the functions, while others are kept as
 /// non-segmented leaves in the tree.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum NestedIntList {
     Leaf(usize),
