@@ -880,6 +880,56 @@ mod tests {
         assert_eq!(expected_final_hash, calculated_final_hash);
     }
 
+    /// Source:
+    /// https://github.com/starkware-libs/sequencer/blob/main/crates/starknet_api/src/block_hash/block_hash_calculator_test.rs#L74-121
+    #[rstest::rstest]
+    fn test_final_transaction_hash_variants(
+        #[values(StarknetVersion::V_0_13_2, StarknetVersion::V_0_13_4)]
+        starknet_version: StarknetVersion,
+    ) {
+        let block_header = BlockHeaderData {
+            hash: Default::default(),
+            number: BlockNumber::new_or_panic(1),
+            state_commitment: StateCommitment(2u64.into()),
+            sequencer_address: SequencerAddress(3u64.into()),
+            timestamp: BlockTimestamp::new_or_panic(4),
+            l1_da_mode: L1DataAvailabilityMode::Blob,
+            strk_l1_gas_price: GasPrice(6),
+            eth_l1_gas_price: GasPrice(7),
+            strk_l1_data_gas_price: GasPrice(10),
+            eth_l1_data_gas_price: GasPrice(9),
+            strk_l2_gas_price: GasPrice(11),
+            eth_l2_gas_price: GasPrice(12),
+            starknet_version,
+            starknet_version_str: format!("{}", starknet_version),
+            parent_hash: BlockHash(11u64.into()),
+            transaction_commitment: TransactionCommitment(felt!(
+                "0x72f432efa51e2a34f68404ac5e77514301e26eb53ec89badd8173f4e8561b95"
+            )),
+            transaction_count: 1,
+            event_commitment: EventCommitment(Felt::ZERO),
+            event_count: 0,
+            state_diff_commitment: StateDiffCommitment(felt!(
+                "0x281f5966e49ad7dad9323826d53d1d27c0c4e6ebe5525e2e2fbca549bfa0a67"
+            )),
+            state_diff_length: 10,
+            receipt_commitment: ReceiptCommitment(felt!(
+                "0x8e7dfb2772c2ac26e712fb97404355d66db0ba9555f0f64f30d61a56df9c76"
+            )),
+        };
+
+        let expected_hash = BlockHash(match starknet_version {
+            StarknetVersion::V_0_13_2 => {
+                felt!("0xe248d6ce583f8fa48d1d401d4beb9ceced3733e38d8eacb0d8d3669a7d901c")
+            }
+            _ => {
+                felt!("0x3d6174623c812f5dc03fa3faa07c42c06fd90ad425629ee5f39e149df65c3ca")
+            }
+        });
+
+        assert_eq!(compute_final_hash(&block_header).unwrap(), expected_hash);
+    }
+
     #[test]
     fn test_block_hash_without_sequencer_address() {
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the
@@ -1010,6 +1060,35 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_transaction_hash_with_signature_0_13_4() {
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: vec![
+                    TransactionSignatureElem(Felt::from_u64(2)),
+                    TransactionSignatureElem(Felt::from_u64(3)),
+                ],
+                ..Default::default()
+            }),
+        };
+        let expected = felt!("0x2f0d8840bcf3bc629598d8a6cc80cb7c0d9e52d93dab244bbf9cd0dca0ad082");
+        assert_eq!(
+            calculate_transaction_hash_with_signature(&transaction),
+            expected
+        );
+
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::L1Handler(Default::default()),
+        };
+        let expected = felt!("0x00579E8877C7755365D5EC1EC7D3A94A457EFF5D1F40482BBE9729C064CDEAD2");
+        assert_eq!(
+            calculate_transaction_hash_with_signature(&transaction),
+            expected
+        );
+    }
+
     /// Source:
     /// https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/transaction_commitment_test.rs#L32.
     #[test]
@@ -1135,7 +1214,7 @@ mod tests {
             strk_l1_data_gas_price: GasPrice(10),
             eth_l1_data_gas_price: GasPrice(9),
             strk_l2_gas_price: GasPrice(0), // not used for StarknetVersion::V_0_13_2
-            eth_l2_gas_price: GasPrice(0), // ditto
+            eth_l2_gas_price: GasPrice(0),  // ditto
             starknet_version: StarknetVersion::V_0_13_2,
             starknet_version_str: "10".to_string(),
             parent_hash: BlockHash(11u64.into()),
