@@ -163,6 +163,8 @@ fn get_header_data(header: &BlockHeader) -> BlockHeaderData {
         strk_l1_gas_price: header.strk_l1_gas_price,
         eth_l1_data_gas_price: header.eth_l1_data_gas_price,
         strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+        eth_l2_gas_price: header.eth_l2_gas_price,
+        strk_l2_gas_price: header.strk_l2_gas_price,
         receipt_commitment: header.receipt_commitment,
         l1_da_mode: header.l1_da_mode,
     }

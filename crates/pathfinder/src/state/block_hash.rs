@@ -133,6 +133,8 @@ pub struct BlockHeaderData {
     pub strk_l1_gas_price: GasPrice,
     pub eth_l1_data_gas_price: GasPrice,
     pub strk_l1_data_gas_price: GasPrice,
+    pub eth_l2_gas_price: GasPrice,
+    pub strk_l2_gas_price: GasPrice,
     pub receipt_commitment: ReceiptCommitment,
     pub l1_da_mode: L1DataAvailabilityMode,
 }
@@ -160,6 +162,8 @@ impl BlockHeaderData {
             strk_l1_gas_price: header.strk_l1_gas_price,
             eth_l1_data_gas_price: header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            eth_l2_gas_price: header.eth_l2_gas_price,
+            strk_l2_gas_price: header.strk_l2_gas_price,
             receipt_commitment: header.receipt_commitment,
             l1_da_mode: header.l1_da_mode,
             state_diff_commitment: header.state_diff_commitment,
@@ -202,6 +206,8 @@ impl BlockHeaderData {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
             receipt_commitment: block.receipt_commitment.unwrap_or_default(),
             l1_da_mode: block.l1_da_mode.into(),
         })
@@ -399,25 +405,7 @@ fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     BlockHash(chain.finalize())
 }
 
-pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
-    // Concatenate the transaction count, event count, state diff length, and L1
-    // data availability mode into a single felt.
-    let mut concat_counts = [0u8; 32];
-    let mut writer = concat_counts.as_mut_slice();
-    writer
-        .write_all(&header.transaction_count.to_be_bytes())
-        .unwrap();
-    writer.write_all(&header.event_count.to_be_bytes()).unwrap();
-    writer
-        .write_all(&header.state_diff_length.to_be_bytes())
-        .unwrap();
-    writer
-        .write_all(&[match header.l1_da_mode {
-            L1DataAvailabilityMode::Calldata => 0,
-            L1DataAvailabilityMode::Blob => 0b10000000,
-        }])
-        .unwrap();
-    let concat_counts = MontFelt::from_be_bytes(concat_counts);
+fn compute_final_hash_v0(header: &BlockHeaderData) -> Result<BlockHash> {
     // Hash the block header.
     let mut hasher = PoseidonHasher::new();
     hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH0").into());
@@ -425,7 +413,7 @@ pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
     hasher.write(header.state_commitment.0.into());
     hasher.write(header.sequencer_address.0.into());
     hasher.write(header.timestamp.get().into());
-    hasher.write(concat_counts);
+    hasher.write(concatenate_counts(header));
     hasher.write(header.state_diff_commitment.0.into());
     hasher.write(header.transaction_commitment.0.into());
     hasher.write(header.event_commitment.0.into());
@@ -442,6 +430,40 @@ pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
     Ok(BlockHash(hasher.finish().into()))
+}
+
+// Bumps the initial STARKNET_BLOCK_HASH0 to STARKNET_BLOCK_HASH1,
+// replaces gas price elements with gas_prices_hash.
+fn compute_final_hash_v1(header: &BlockHeaderData) -> Result<BlockHash> {
+    // Hash the block header.
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
+    hasher.write(header.number.get().into());
+    hasher.write(header.state_commitment.0.into());
+    hasher.write(header.sequencer_address.0.into());
+    hasher.write(header.timestamp.get().into());
+    hasher.write(concatenate_counts(header));
+    hasher.write(header.state_diff_commitment.0.into());
+    hasher.write(header.transaction_commitment.0.into());
+    hasher.write(header.event_commitment.0.into());
+    hasher.write(header.receipt_commitment.0.into());
+    hasher.write(gas_prices_to_hash(header));
+    hasher.write(
+        Felt::from_be_slice(header.starknet_version_str.as_bytes())
+            .expect("Starknet version should fit into a felt")
+            .into(),
+    );
+    hasher.write(MontFelt::ZERO);
+    hasher.write(header.parent_hash.0.into());
+    Ok(BlockHash(hasher.finish().into()))
+}
+
+pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+    if header.starknet_version < StarknetVersion::V_0_13_4 {
+        compute_final_hash_v0(header)
+    } else {
+        compute_final_hash_v1(header)
+    }
 }
 
 /// Calculate transaction commitment hash value.
@@ -463,6 +485,8 @@ pub fn calculate_transaction_commitment(
                 calculate_transaction_hash_with_signature_pre_0_11_1(tx)
             } else if version < StarknetVersion::V_0_13_2 {
                 calculate_transaction_hash_with_signature_pre_0_13_2(tx)
+            } else if version < StarknetVersion::V_0_13_4 {
+                calculate_transaction_hash_with_signature_pre_0_13_4(tx)
             } else {
                 calculate_transaction_hash_with_signature(tx)
             }
@@ -527,6 +551,39 @@ pub fn calculate_receipt_commitment(receipts: &[Receipt]) -> Result<ReceiptCommi
         .collect();
 
     calculate_commitment_root::<PoseidonHash>(hashes).map(ReceiptCommitment)
+}
+
+// Concatenate the transaction count, event count, state diff length,
+// and L1 data availability mode into a single felt.
+fn concatenate_counts(header: &BlockHeaderData) -> MontFelt {
+    let mut concat_counts = [0u8; 32];
+    let mut writer = concat_counts.as_mut_slice();
+    writer
+        .write_all(&header.transaction_count.to_be_bytes())
+        .unwrap();
+    writer.write_all(&header.event_count.to_be_bytes()).unwrap();
+    writer
+        .write_all(&header.state_diff_length.to_be_bytes())
+        .unwrap();
+    writer
+        .write_all(&[match header.l1_da_mode {
+            L1DataAvailabilityMode::Calldata => 0,
+            L1DataAvailabilityMode::Blob => 0b10000000,
+        }])
+        .unwrap();
+    MontFelt::from_be_bytes(concat_counts)
+}
+
+fn gas_prices_to_hash(header: &BlockHeaderData) -> MontFelt {
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(felt_bytes!(b"STARKNET_GAS_PRICES0").into());
+    hasher.write(header.eth_l1_gas_price.0.into());
+    hasher.write(header.strk_l1_gas_price.0.into());
+    hasher.write(header.eth_l1_data_gas_price.0.into());
+    hasher.write(header.strk_l1_data_gas_price.0.into());
+    hasher.write(header.eth_l2_gas_price.0.into());
+    hasher.write(header.strk_l2_gas_price.0.into());
+    hasher.finish()
 }
 
 fn calculate_commitment_root<H: FeltHash>(hashes: Vec<Felt>) -> Result<Felt> {
@@ -610,7 +667,7 @@ fn calculate_transaction_hash_with_signature_pre_0_13_2(tx: &Transaction) -> Fel
 /// Compute the combined hash of the transaction hash and the signature.
 ///
 /// [Reference code from StarkWare](https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/block_hash_calculator.rs#L95-L98).
-fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+fn calculate_transaction_hash_with_signature_pre_0_13_4(tx: &Transaction) -> Felt {
     let signature = match &tx.variant {
         TransactionVariant::InvokeV0(tx) => tx.signature.as_slice(),
         TransactionVariant::DeclareV0(tx) => tx.signature.as_slice(),
@@ -630,6 +687,30 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         &[TransactionSignatureElem::ZERO]
     } else {
         signature
+    };
+
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(tx.hash.0.into());
+    for elem in signature {
+        hasher.write(elem.0.into());
+    }
+    hasher.finish().into()
+}
+
+fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+    let signature = match &tx.variant {
+        TransactionVariant::InvokeV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV2(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
+        | TransactionVariant::L1Handler(_) => &[],
     };
 
     let mut hasher = PoseidonHasher::new();
@@ -799,6 +880,56 @@ mod tests {
         assert_eq!(expected_final_hash, calculated_final_hash);
     }
 
+    /// Source:
+    /// https://github.com/starkware-libs/sequencer/blob/main/crates/starknet_api/src/block_hash/block_hash_calculator_test.rs#L74-121
+    #[rstest::rstest]
+    fn test_final_transaction_hash_variants(
+        #[values(StarknetVersion::V_0_13_2, StarknetVersion::V_0_13_4)]
+        starknet_version: StarknetVersion,
+    ) {
+        let block_header = BlockHeaderData {
+            hash: Default::default(),
+            number: BlockNumber::new_or_panic(1),
+            state_commitment: StateCommitment(2u64.into()),
+            sequencer_address: SequencerAddress(3u64.into()),
+            timestamp: BlockTimestamp::new_or_panic(4),
+            l1_da_mode: L1DataAvailabilityMode::Blob,
+            strk_l1_gas_price: GasPrice(6),
+            eth_l1_gas_price: GasPrice(7),
+            strk_l1_data_gas_price: GasPrice(10),
+            eth_l1_data_gas_price: GasPrice(9),
+            strk_l2_gas_price: GasPrice(11),
+            eth_l2_gas_price: GasPrice(12),
+            starknet_version,
+            starknet_version_str: format!("{}", starknet_version),
+            parent_hash: BlockHash(11u64.into()),
+            transaction_commitment: TransactionCommitment(felt!(
+                "0x72f432efa51e2a34f68404ac5e77514301e26eb53ec89badd8173f4e8561b95"
+            )),
+            transaction_count: 1,
+            event_commitment: EventCommitment(Felt::ZERO),
+            event_count: 0,
+            state_diff_commitment: StateDiffCommitment(felt!(
+                "0x281f5966e49ad7dad9323826d53d1d27c0c4e6ebe5525e2e2fbca549bfa0a67"
+            )),
+            state_diff_length: 10,
+            receipt_commitment: ReceiptCommitment(felt!(
+                "0x8e7dfb2772c2ac26e712fb97404355d66db0ba9555f0f64f30d61a56df9c76"
+            )),
+        };
+
+        let expected_hash = BlockHash(match starknet_version {
+            StarknetVersion::V_0_13_2 => {
+                felt!("0xe248d6ce583f8fa48d1d401d4beb9ceced3733e38d8eacb0d8d3669a7d901c")
+            }
+            _ => {
+                felt!("0x3d6174623c812f5dc03fa3faa07c42c06fd90ad425629ee5f39e149df65c3ca")
+            }
+        });
+
+        assert_eq!(compute_final_hash(&block_header).unwrap(), expected_hash);
+    }
+
     #[test]
     fn test_block_hash_without_sequencer_address() {
         // This tests with a post-0.7, pre-0.8.0 block where zero is used as the
@@ -914,7 +1045,7 @@ mod tests {
         };
         let expected = felt!("0x2f0d8840bcf3bc629598d8a6cc80cb7c0d9e52d93dab244bbf9cd0dca0ad082");
         assert_eq!(
-            calculate_transaction_hash_with_signature(&transaction),
+            calculate_transaction_hash_with_signature_pre_0_13_4(&transaction),
             expected
         );
 
@@ -923,6 +1054,35 @@ mod tests {
             variant: TransactionVariant::L1Handler(Default::default()),
         };
         let expected = felt!("0x00a93bf5e58b9378d093aa86ddc2f61a3295a1d1e665bd0ef3384dd07b30e033");
+        assert_eq!(
+            calculate_transaction_hash_with_signature_pre_0_13_4(&transaction),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_transaction_hash_with_signature_0_13_4() {
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::InvokeV3(InvokeTransactionV3 {
+                signature: vec![
+                    TransactionSignatureElem(Felt::from_u64(2)),
+                    TransactionSignatureElem(Felt::from_u64(3)),
+                ],
+                ..Default::default()
+            }),
+        };
+        let expected = felt!("0x2f0d8840bcf3bc629598d8a6cc80cb7c0d9e52d93dab244bbf9cd0dca0ad082");
+        assert_eq!(
+            calculate_transaction_hash_with_signature(&transaction),
+            expected
+        );
+
+        let transaction = Transaction {
+            hash: TransactionHash(Felt::ONE),
+            variant: TransactionVariant::L1Handler(Default::default()),
+        };
+        let expected = felt!("0x00579E8877C7755365D5EC1EC7D3A94A457EFF5D1F40482BBE9729C064CDEAD2");
         assert_eq!(
             calculate_transaction_hash_with_signature(&transaction),
             expected
@@ -1053,6 +1213,8 @@ mod tests {
             eth_l1_gas_price: GasPrice(7),
             strk_l1_data_gas_price: GasPrice(10),
             eth_l1_data_gas_price: GasPrice(9),
+            strk_l2_gas_price: GasPrice(0), // not used for StarknetVersion::V_0_13_2
+            eth_l2_gas_price: GasPrice(0),  // ditto
             starknet_version: StarknetVersion::V_0_13_2,
             starknet_version_str: "10".to_string(),
             parent_hash: BlockHash(11u64.into()),

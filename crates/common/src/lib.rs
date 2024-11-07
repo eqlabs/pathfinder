@@ -465,6 +465,10 @@ impl StarknetVersion {
     }
 
     pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
+
+    // TODO: version at which block hash definition changes taken from
+    // Starkware implementation but might yet change
+    pub const V_0_13_4: Self = Self::new(0, 13, 4, 0);
 }
 
 impl FromStr for StarknetVersion {
