@@ -13,6 +13,7 @@ use p2p::client::types::{
     StateDiffsError,
     TransactionData,
 };
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -47,7 +48,7 @@ use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
 use crate::state::update_starknet_state;
 use crate::sync::class_definitions::{self, ClassWithLayout};
-use crate::sync::error::SyncError2;
+use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 use crate::sync::{events, headers};
 
@@ -68,7 +69,7 @@ impl<L, P> Sync<L, P> {
         next: BlockNumber,
         parent_hash: BlockHash,
         fgw: SequencerClient,
-    ) -> Result<(), PeerData<SyncError2>>
+    ) -> Result<(), SyncError>
     where
         L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
         P: BlockClient + Clone + HeaderStream + Send + 'static,
@@ -76,12 +77,7 @@ impl<L, P> Sync<L, P> {
         let storage_connection = self
             .storage
             .connection()
-            .context("Creating database connection")
-            // FIXME: PeerData should allow for None peers.
-            .map_err(|e| PeerData {
-                peer: p2p::libp2p::PeerId::random(),
-                data: SyncError2::from(e),
-            })?;
+            .context("Creating database connection")?;
 
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
@@ -148,7 +144,7 @@ impl<L, P> Sync<L, P> {
         }
         .spawn()
         .pipe_each(class_definitions::VerifyLayout, 10)
-        .pipe_each(class_definitions::ComputeHash, 10)
+        .pipe_each(class_definitions::VerifyHash, 10)
         .pipe_each(
             class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
@@ -232,7 +228,10 @@ struct StateDiffFanout {
 }
 
 impl StateDiffFanout {
-    fn from_source(mut source: SyncReceiver<StateUpdateData>, buffer: usize) -> Self {
+    fn from_source(
+        mut source: SyncReceiver<(StateUpdateData, BlockNumber)>,
+        buffer: usize,
+    ) -> Self {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
         let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
@@ -241,13 +240,19 @@ impl StateDiffFanout {
             while let Some(state_update) = source.recv().await {
                 let is_err = state_update.is_err();
 
-                if s_tx.send(state_update.clone()).await.is_err() || is_err {
+                if s_tx
+                    .send(state_update.clone().map(|x| x.map(|(sud, _)| sud)))
+                    .await
+                    .is_err()
+                    || is_err
+                {
                     return;
                 }
 
                 let class_declarations = state_update
                     .expect("Error case already handled")
                     .data
+                    .0
                     .declared_classes();
 
                 if d1_tx.send(class_declarations.clone()).await.is_err() {
@@ -391,13 +396,11 @@ impl<P> TransactionSource<P> {
                     let (transaction, receipt) = match transactions.next().await {
                         Some(Ok((transaction, receipt))) => (transaction, receipt),
                         Some(Err(_)) => {
-                            let err = PeerData::new(peer, SyncError2::InvalidDto);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
                         None => {
-                            let err = PeerData::new(peer, SyncError2::TooFewTransactions);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::TooFewTransactions(peer))).await;
                             return;
                         }
                     };
@@ -407,8 +410,7 @@ impl<P> TransactionSource<P> {
 
                 // Ensure that the stream is exhausted.
                 if transactions.next().await.is_some() {
-                    let err = PeerData::new(peer, SyncError2::TooManyTransactions);
-                    let _ = tx.send(Err(err)).await;
+                    let _ = tx.send(Err(SyncError::TooManyTransactions(peer))).await;
                     return;
                 }
 
@@ -464,9 +466,9 @@ impl<P> EventSource<P> {
                 };
 
                 let Some(block_transactions) = transactions.next().await else {
-                    let err =
-                        PeerData::new(peer, SyncError2::Other(anyhow!("No transactions").into()));
-                    let _ = tx.send(Err(err)).await;
+                    // TODO is this a fatal error?
+                    // is this an error at all? Can blocks have no transactions?
+                    let _ = tx.send(Err(anyhow!("No transactions").into())).await;
                     return;
                 };
 
@@ -482,13 +484,11 @@ impl<P> EventSource<P> {
                             block_events.entry(tx_hash).or_default().push(event);
                         }
                         Some(Err(_)) => {
-                            let err = PeerData::new(peer, SyncError2::InvalidDto);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
                         None => {
-                            let err = PeerData::new(peer, SyncError2::TooFewEvents);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::TooFewEvents(peer))).await;
                             return;
                         }
                     }
@@ -496,8 +496,7 @@ impl<P> EventSource<P> {
 
                 // Ensure that the stream is exhausted.
                 if events.next().await.is_some() {
-                    let err = PeerData::new(peer, SyncError2::TooManyEvents);
-                    let _ = tx.send(Err(err)).await;
+                    let _ = tx.send(Err(SyncError::TooManyEvents(peer))).await;
                     return;
                 }
 
@@ -547,13 +546,11 @@ impl<P> StateDiffSource<P> {
                         Ok(Some(state_diff)) => break state_diff,
                         Ok(None) => {}
                         Err(StateDiffsError::IncorrectStateDiffCount(peer)) => {
-                            let err = PeerData::new(peer, SyncError2::IncorrectStateDiffCount);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::IncorrectStateDiffCount(peer))).await;
                             return;
                         }
-                        Err(StateDiffsError::ResponseStreamFailure(peer, error)) => {
-                            let err = PeerData::new(peer, SyncError2::InvalidDto);
-                            let _ = tx.send(Err(err)).await;
+                        Err(StateDiffsError::ResponseStreamFailure(peer, _)) => {
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
                     }
@@ -614,16 +611,16 @@ impl<P> ClassSource<P> {
                         Err(err) => {
                             let err = match err {
                                 ClassDefinitionsError::IncorrectClassDefinitionCount(peer) => {
-                                    PeerData::new(peer, SyncError2::IncorrectClassDefinitionCount)
+                                    SyncError::IncorrectClassDefinitionCount(peer)
                                 }
                                 ClassDefinitionsError::CairoDefinitionError(peer) => {
-                                    PeerData::new(peer, SyncError2::CairoDefinitionError)
+                                    SyncError::CairoDefinitionError(peer)
                                 }
                                 ClassDefinitionsError::SierraDefinitionError(peer) => {
-                                    PeerData::new(peer, SyncError2::SierraDefinitionError)
+                                    SyncError::SierraDefinitionError(peer)
                                 }
-                                ClassDefinitionsError::ResponseStreamFailure(peer, error) => {
-                                    PeerData::new(peer, SyncError2::InvalidDto)
+                                ClassDefinitionsError::ResponseStreamFailure(peer, _) => {
+                                    SyncError::InvalidDto(peer)
                                 }
                             };
                             let _ = tx.send(Err(err)).await;
@@ -756,7 +753,7 @@ impl ProcessStage for StoreBlock {
     type Input = BlockData;
     type Output = ();
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let BlockData {
             header: SignedBlockHeader { header, signature },
             mut events,
@@ -832,7 +829,7 @@ impl ProcessStage for StoreBlock {
                     actual_class_commitment=%class_commitment,
                     actual_state_commitment=%state_commitment,
                     "State root mismatch");
-            return Err(SyncError2::StateRootMismatch);
+            return Err(SyncError::StateRootMismatch(*peer));
         }
 
         db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)

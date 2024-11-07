@@ -253,7 +253,7 @@ pub fn verify_block_hash(
             false
         }
     } else {
-        let computed_hash = compute_final_hash(&header)?;
+        let computed_hash = compute_final_hash(&header);
         computed_hash == header.hash
     };
 
@@ -405,7 +405,7 @@ fn compute_final_hash_pre_0_13_2(header: &BlockHeaderData) -> BlockHash {
     BlockHash(chain.finalize())
 }
 
-fn compute_final_hash_v0(header: &BlockHeaderData) -> Result<BlockHash> {
+fn compute_final_hash_v0(header: &BlockHeaderData) -> BlockHash {
     // Hash the block header.
     let mut hasher = PoseidonHasher::new();
     hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH0").into());
@@ -429,12 +429,12 @@ fn compute_final_hash_v0(header: &BlockHeaderData) -> Result<BlockHash> {
     );
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
-    Ok(BlockHash(hasher.finish().into()))
+    BlockHash(hasher.finish().into())
 }
 
 // Bumps the initial STARKNET_BLOCK_HASH0 to STARKNET_BLOCK_HASH1,
 // replaces gas price elements with gas_prices_hash.
-fn compute_final_hash_v1(header: &BlockHeaderData) -> Result<BlockHash> {
+fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
     // Hash the block header.
     let mut hasher = PoseidonHasher::new();
     hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
@@ -455,10 +455,10 @@ fn compute_final_hash_v1(header: &BlockHeaderData) -> Result<BlockHash> {
     );
     hasher.write(MontFelt::ZERO);
     hasher.write(header.parent_hash.0.into());
-    Ok(BlockHash(hasher.finish().into()))
+    BlockHash(hasher.finish().into())
 }
 
-pub fn compute_final_hash(header: &BlockHeaderData) -> Result<BlockHash> {
+pub fn compute_final_hash(header: &BlockHeaderData) -> BlockHash {
     if header.starknet_version < StarknetVersion::V_0_13_4 {
         compute_final_hash_v0(header)
     } else {
@@ -927,7 +927,7 @@ mod tests {
             }
         });
 
-        assert_eq!(compute_final_hash(&block_header).unwrap(), expected_hash);
+        assert_eq!(compute_final_hash(&block_header), expected_hash);
     }
 
     #[test]
@@ -1235,7 +1235,7 @@ mod tests {
         let expected_hash = BlockHash(felt!(
             "0x061e4998d51a248f1d0288d7e17f6287757b0e5e6c5e1e58ddf740616e312134"
         ));
-        assert_eq!(compute_final_hash(&header).unwrap(), expected_hash);
+        assert_eq!(compute_final_hash(&header), expected_hash);
     }
 
     // Source
@@ -1271,9 +1271,6 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(
-            compute_final_hash(&block_header_data).unwrap(),
-            expected_hash
-        );
+        assert_eq!(compute_final_hash(&block_header_data), expected_hash);
     }
 }

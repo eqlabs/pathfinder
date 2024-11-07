@@ -16,7 +16,7 @@ use crate::client::types::{
 };
 use crate::PeerData;
 
-pub type StreamItem<T> = Result<PeerData<T>, PeerData<anyhow::Error>>;
+pub type StreamItem<T> = Result<PeerData<T>, anyhow::Error>;
 
 pub trait HeaderStream {
     fn header_stream(

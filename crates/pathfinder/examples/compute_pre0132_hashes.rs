@@ -126,7 +126,7 @@ fn main() -> anyhow::Result<()> {
 
         // Compute the block hash in the 0.13.2 style
         let header_data = get_header_data(&header);
-        let new_block_hash = compute_final_hash(&header_data).context("Computing block hash")?;
+        let new_block_hash = compute_final_hash(&header_data);
 
         // Write to the CSV file
         writeln!(csv_file, "{},{}", block_number, new_block_hash)?;

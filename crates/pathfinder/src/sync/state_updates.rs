@@ -1,17 +1,19 @@
 use std::collections::VecDeque;
 use std::num::NonZeroUsize;
+use std::sync::Arc;
 
 use anyhow::Context;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::state_update::{
     self,
     ContractClassUpdate,
     ContractUpdate,
     StateUpdateData,
+    StateUpdateRef,
     SystemContractUpdate,
 };
 use pathfinder_common::{
-    class_hash,
     BlockHash,
     BlockHeader,
     BlockNumber,
@@ -35,7 +37,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
 use crate::state::update_starknet_state;
-use crate::sync::error::{SyncError, SyncError2};
+use crate::sync::error::SyncError;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose state update is missing, counting from
@@ -102,7 +104,11 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     type Input = (T, BlockNumber);
     type Output = (T, BlockNumber, StateDiffCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(
+        &mut self,
+        _: &PeerId,
+        (data, block_number): Self::Input,
+    ) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -110,7 +116,9 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
         let commitment = db
             .state_diff_commitment(block_number)
             .context("Fetching state diff commitment")?
-            .ok_or(SyncError2::StateDiffCommitmentNotFound)?;
+            // This is a fatal error because the block header is already expected to be in the
+            // database
+            .context("State diff commitment not found")?;
         Ok((data, block_number, commitment))
     }
 }
@@ -118,37 +126,17 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
 pub struct VerifyCommitment;
 
 impl ProcessStage for VerifyCommitment {
-    const NAME: &'static str = "StateDiff::Verify";
-    type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
-    type Output = StateUpdateData;
-
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let (state_diff, block_number, expected_commitment) = input;
-        let actual_commitment = state_diff.compute_state_diff_commitment();
-
-        if actual_commitment != expected_commitment {
-            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
-            return Err(SyncError2::StateDiffCommitmentMismatch);
-        }
-
-        Ok(state_diff)
-    }
-}
-
-pub struct VerifyCommitment2;
-
-impl ProcessStage for VerifyCommitment2 {
-    const NAME: &'static str = "StateDiff::Verify2";
+    const NAME: &'static str = "StateDiff::VerifyCommitment";
     type Input = (StateUpdateData, BlockNumber, StateDiffCommitment);
     type Output = (StateUpdateData, BlockNumber);
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let (state_diff, block_number, expected_commitment) = input;
         let actual_commitment = state_diff.compute_state_diff_commitment();
 
         if actual_commitment != expected_commitment {
-            tracing::debug!(%block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
-            return Err(SyncError2::StateDiffCommitmentMismatch);
+            tracing::debug!(%peer, %block_number, %expected_commitment, %actual_commitment, "State diff commitment mismatch");
+            return Err(SyncError::StateDiffCommitmentMismatch(*peer));
         }
 
         Ok((state_diff, block_number))
@@ -291,37 +279,16 @@ pub async fn batch_update_starknet_state(
 
         let PeerData { peer, data: merged } = merge_state_updates(state_updates);
 
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            &db,
-            (&merged).into(),
+        let state_update_ref: StateUpdateRef<'_> = (&merged).into();
+
+        update_starknet_state_impl(
+            &peer,
+            db,
+            state_update_ref,
             verify_tree_hashes,
             tail,
-            storage.clone(),
-        )
-        .context("Updating Starknet state")?;
-
-        // Ensure that roots match.
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-        let expected_state_commitment = db
-            .state_commitment(tail.into())
-            .context("Querying state commitment")?
-            .context("State commitment not found")?;
-        if state_commitment != expected_state_commitment {
-            tracing::debug!(
-            %tail,
-            actual_storage_commitment=%storage_commitment,
-            actual_class_commitment=%class_commitment,
-            actual_state_commitment=%state_commitment,
-            %expected_state_commitment,
-            "State root mismatch");
-            // TODO Wrapping in PeerData does not seem to make much sense in this case, it's
-            // more the range of blocks that matters
-            return Err(SyncError::StateRootMismatch(peer));
-        }
-
-        db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
-            .context("Updating storage and class commitments")?;
-        db.commit().context("Committing db transaction")?;
+            storage,
+        )?;
 
         Ok(PeerData::new(peer, tail))
     })
@@ -342,7 +309,7 @@ impl ProcessStage for UpdateStarknetState {
 
     const NAME: &'static str = "StateDiff::UpdateStarknetState";
 
-    fn map(&mut self, state_update: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, state_update: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .connection
             .transaction()
@@ -350,38 +317,58 @@ impl ProcessStage for UpdateStarknetState {
 
         let tail = self.current_block;
 
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            &db,
-            (&state_update).into(),
-            self.verify_tree_hashes,
-            self.current_block,
-            self.storage.clone(),
-        )
-        .context("Updating Starknet state")?;
-
-        // Ensure that roots match.
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-        let expected_state_commitment = db
-            .state_commitment(self.current_block.into())
-            .context("Querying state commitment")?
-            .context("State commitment not found")?;
-        if state_commitment != expected_state_commitment {
-            tracing::debug!(
-                actual_storage_commitment=%storage_commitment,
-                actual_class_commitment=%class_commitment,
-                actual_state_commitment=%state_commitment,
-                "State root mismatch");
-            return Err(SyncError2::StateRootMismatch);
-        }
-
-        db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
-            .context("Updating storage and class commitments")?;
         db.insert_state_update_data(self.current_block, &state_update)
             .context("Inserting state update data")?;
-        db.commit().context("Committing db transaction")?;
+
+        update_starknet_state_impl(
+            peer,
+            db,
+            (&state_update).into(),
+            self.verify_tree_hashes,
+            tail,
+            self.storage.clone(),
+        )?;
 
         self.current_block += 1;
 
         Ok(tail)
     }
+}
+
+fn update_starknet_state_impl(
+    peer: &PeerId,
+    db: pathfinder_storage::Transaction<'_>,
+    state_update_ref: StateUpdateRef<'_>,
+    verify_tree_hashes: bool,
+    tail: BlockNumber,
+    storage: Storage,
+) -> Result<(), SyncError> {
+    let (storage_commitment, class_commitment) = update_starknet_state(
+        &db,
+        state_update_ref,
+        verify_tree_hashes,
+        tail,
+        storage.clone(),
+    )
+    .context("Updating Starknet state")?;
+    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+    let expected_state_commitment = db
+        .state_commitment(tail.into())
+        .context("Querying state commitment")?
+        .context("State commitment not found")?;
+    if state_commitment != expected_state_commitment {
+        tracing::debug!(
+        %peer,
+        %tail,
+        actual_storage_commitment=%storage_commitment,
+        actual_class_commitment=%class_commitment,
+        actual_state_commitment=%state_commitment,
+        %expected_state_commitment,
+        "State root mismatch");
+        return Err(SyncError::StateRootMismatch(*peer));
+    }
+    db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
+        .context("Updating storage and class commitments")?;
+    db.commit().context("Committing db transaction")?;
+    Ok(())
 }

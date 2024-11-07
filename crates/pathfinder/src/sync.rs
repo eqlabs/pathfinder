@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use error::{SyncError, SyncError2};
+use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::PeerData;
@@ -63,9 +63,9 @@ impl Sync {
         self.track_sync(next, parent_hash).await
     }
 
-    async fn handle_recoverable_error(&self, err: &PeerData<error::SyncError2>) {
+    async fn handle_recoverable_error(&self, err: &error::SyncError) {
         // TODO
-        tracing::debug!(?err, "Log and punish as appropriate");
+        tracing::debug!(%err, "Log and punish as appropriate");
     }
 
     /// Retry forever until a valid L1 checkpoint is retrieved
@@ -126,13 +126,13 @@ impl Sync {
                     tracing::debug!(?continue_from, "Checkpoint sync complete");
                     continue_from
                 }
-                Err(SyncError::Other(error)) => {
-                    tracing::error!(?error, "Stopping checkpoint sync");
-                    return Err(error);
+                Err(SyncError::Fatal(mut error)) => {
+                    tracing::error!(%error, "Stopping checkpoint sync");
+                    return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
-                    tracing::debug!(?error, "Restarting checkpoint sync");
-                    self.handle_recoverable_error(&error.into_v2()).await;
+                    tracing::debug!(%error, "Restarting checkpoint sync");
+                    self.handle_recoverable_error(&error).await;
                     continue;
                 }
             };
@@ -180,19 +180,16 @@ impl Sync {
             .run(next, parent_hash, self.fgw_client.clone())
             .await;
 
-            match &mut result {
+            match result {
                 Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
-                Err(PeerData {
-                    data: SyncError2::Other(error),
-                    ..
-                }) => {
-                    tracing::error!(?error, "Stopping track sync");
+                Err(SyncError::Fatal(mut error)) => {
+                    tracing::error!(%error, "Stopping track sync");
                     use pathfinder_common::error::AnyhowExt;
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
-                    tracing::debug!(error=?error.data, "Restarting track sync");
-                    self.handle_recoverable_error(error).await;
+                    tracing::debug!(%error, "Restarting track sync");
+                    self.handle_recoverable_error(&error).await;
                 }
             }
         }

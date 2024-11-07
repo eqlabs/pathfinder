@@ -6,7 +6,7 @@ use p2p::PeerData;
 use tokio::sync::mpsc::Receiver;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::sync::error::SyncError2;
+use crate::sync::error::SyncError;
 
 pub struct SyncReceiver<T> {
     inner: Receiver<SyncResult<T>>,
@@ -15,7 +15,7 @@ pub struct SyncReceiver<T> {
 /// [SyncReceiver::try_chunks].
 pub struct ChunkSyncReceiver<T>(SyncReceiver<Vec<T>>);
 
-pub type SyncResult<T> = Result<PeerData<T>, PeerData<SyncError2>>;
+pub type SyncResult<T> = Result<PeerData<T>, SyncError>;
 
 pub trait ProcessStage {
     type Input;
@@ -24,7 +24,7 @@ pub trait ProcessStage {
     /// Used to identify this stage in metrics and traces.
     const NAME: &'static str;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError>;
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
@@ -89,9 +89,8 @@ impl<T: Send + 'static> SyncReceiver<T> {
                         let output: Result<Vec<_>, _> = data
                             .into_iter()
                             .map(|data| {
-                                stage.map(data).map_err(|e| {
-                                    tracing::debug!(error=%e, "Processing item failed");
-                                    PeerData::new(peer, e)
+                                stage.map(&peer, data).inspect_err(|error| {
+                                    tracing::debug!(%error, "Processing item failed");
                                 })
                             })
                             .collect();
@@ -150,11 +149,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
                         // Process the data.
                         let output = stage
-                            .map(data)
+                            .map(&peer, data)
                             .map(|x| PeerData::new(peer, x))
-                            .map_err(|e| {
-                                tracing::debug!(error=%e, "Processing item failed");
-                                PeerData::new(peer, e)
+                            .inspect_err(|error| {
+                                tracing::debug!(%error, "Processing item failed");
                             });
 
                         // Log trace and metrics.
@@ -190,7 +188,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
         std::thread::spawn(move || {
             let mut chunk = Vec::with_capacity(capacity);
-            let mut peer = PeerId::random();
+            let mut peer = None;
             let mut err = None;
 
             while let Some(input) = self.inner.blocking_recv() {
@@ -204,14 +202,17 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
                 // 1st element, assign peer ID.
                 if chunk.is_empty() {
-                    peer = input.peer;
+                    peer = Some(input.peer);
                 }
 
                 chunk.push(input.data);
 
                 if chunk.len() == capacity {
                     let data = std::mem::replace(&mut chunk, Vec::with_capacity(capacity));
-                    if tx.blocking_send(Ok(PeerData::new(peer, data))).is_err() {
+                    if tx
+                        .blocking_send(Ok(PeerData::new(peer.expect("to be set"), data)))
+                        .is_err()
+                    {
                         break;
                     };
                 }
@@ -219,7 +220,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
             // Send any remaining elements.
             if !chunk.is_empty() {
-                _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
+                _ = tx.blocking_send(Ok(PeerData::new(peer.expect("to be set"), chunk)));
             }
 
             if let Some(err) = err {
@@ -335,7 +336,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
+
+    pub fn peer_id() -> PeerId {
+        static PEER_ID: LazyLock<PeerId> = LazyLock::new(PeerId::random);
+        *PEER_ID
+    }
 
     #[rstest::rstest]
     #[case::all_ok(
@@ -343,13 +351,13 @@ mod tests {
             vec![Ok(0), Ok(1), Ok(2)]
         )]
     #[case::short_circuit_on_error(
-            vec![Ok(0), Ok(1), Err(SyncError2::BadBlockHash), Ok(2)],
-            vec![Ok(0), Ok(1), Err(SyncError2::BadBlockHash)],
+            vec![Ok(0), Ok(1), Err(SyncError::BadBlockHash(peer_id())), Ok(2)],
+            vec![Ok(0), Ok(1), Err(SyncError::BadBlockHash(peer_id()))],
         )]
     #[tokio::test]
     async fn input_stream(
-        #[case] input: Vec<Result<u8, SyncError2>>,
-        #[case] expected: Vec<Result<u8, SyncError2>>,
+        #[case] input: Vec<Result<u8, SyncError>>,
+        #[case] expected: Vec<Result<u8, SyncError>>,
     ) {
         struct NoOp;
         impl ProcessStage for NoOp {
@@ -357,7 +365,7 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
                 Ok(input)
             }
         }
@@ -367,11 +375,11 @@ mod tests {
         let input = SyncReceiver::iter(
             input
                 .into_iter()
-                .map(move |x| PeerData::from_result(peer, x)),
+                .map(move |x| x.map(|y| PeerData::new(peer, y))),
         );
         let expected = expected
             .into_iter()
-            .map(|x| PeerData::from_result(peer, x))
+            .map(|x| x.map(|y| PeerData::new(peer, y)))
             .collect::<Vec<_>>();
 
         let stage = NoOp {};
@@ -390,21 +398,25 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(
+                &mut self,
+                peer: &PeerId,
+                input: Self::Input,
+            ) -> Result<Self::Output, SyncError> {
                 if self.0 == 0 {
                     self.0 = 1;
                     Ok(input)
                 } else {
-                    Err(SyncError2::BadBlockHash)
+                    Err(SyncError::BadBlockHash(*peer))
                 }
             }
         }
 
         let peer = PeerId::random();
-        let input = (0..10).map(move |x| PeerData::from_result(peer, Ok(x)));
+        let input = (0..10).map(move |x| Ok(PeerData::new(peer, x)));
         let expected = vec![
-            Ok(PeerData::new(peer, 0)),
-            Err(PeerData::new(peer, SyncError2::BadBlockHash)),
+            Ok(PeerData::new(peer, 0u8)),
+            Err(SyncError::BadBlockHash(peer)),
         ];
 
         let stage = OnlyOnce(0);
@@ -420,7 +432,7 @@ mod tests {
     #[tokio::test]
     async fn short_circuit_on_source_error() {
         let ok = Ok(PeerData::for_tests(0));
-        let err = Err(PeerData::for_tests(SyncError2::BadBlockHash));
+        let err = Err(SyncError::BadBlockHash(PeerId::random()));
         let ok_unprocessed = Ok(PeerData::for_tests(1));
 
         let input = vec![ok.clone(), err.clone(), ok_unprocessed];

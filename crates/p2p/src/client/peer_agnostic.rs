@@ -779,9 +779,9 @@ mod transaction_stream {
         tracing::trace!(?start, ?stop, "Streaming Transactions");
 
         make_stream::from_future(move |tx| async move {
-            let mut counts_and_commitments_stream = Box::pin(counts_stream);
+            let mut expected_transaction_counts_stream = Box::pin(counts_stream);
 
-            let cnt = match try_next(&mut counts_and_commitments_stream).await {
+            let cnt = match try_next(&mut expected_transaction_counts_stream).await {
                 Ok(x) => x,
                 Err(e) => {
                     _ = tx.send(Err(e)).await;
@@ -826,7 +826,7 @@ mod transaction_stream {
                         if yield_block(
                             peer,
                             &mut progress,
-                            &mut counts_and_commitments_stream,
+                            &mut expected_transaction_counts_stream,
                             transactions,
                             &mut start,
                             stop,
@@ -1557,14 +1557,15 @@ mod event_stream {
 
 async fn try_next<T>(
     count_stream: &mut (impl Stream<Item = anyhow::Result<T>> + Unpin + Send + 'static),
-) -> Result<T, PeerData<anyhow::Error>> {
+) -> Result<T, anyhow::Error> {
     match count_stream.next().await {
         Some(Ok(cnt)) => Ok(cnt),
-        Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
-        None => Err(PeerData::new(
-            PeerId::random(),
-            anyhow::anyhow!("Count stream terminated prematurely"),
-        )),
+        // This is a non-recoverable error, because "Counter" streams fail only if the underlying
+        // database fails.
+        Some(Err(e)) => Err(e),
+        // This is a non-recoverable error, because we expect all the necessary headers that are the
+        // source of the stream to be in the database.
+        None => Err(anyhow::anyhow!("Count stream terminated prematurely")),
     }
 }
 
