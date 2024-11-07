@@ -485,6 +485,8 @@ pub fn calculate_transaction_commitment(
                 calculate_transaction_hash_with_signature_pre_0_11_1(tx)
             } else if version < StarknetVersion::V_0_13_2 {
                 calculate_transaction_hash_with_signature_pre_0_13_2(tx)
+            } else if version < StarknetVersion::V_0_13_4 {
+                calculate_transaction_hash_with_signature_pre_0_13_4(tx)
             } else {
                 calculate_transaction_hash_with_signature(tx)
             }
@@ -665,7 +667,7 @@ fn calculate_transaction_hash_with_signature_pre_0_13_2(tx: &Transaction) -> Fel
 /// Compute the combined hash of the transaction hash and the signature.
 ///
 /// [Reference code from StarkWare](https://github.com/starkware-libs/starknet-api/blob/5565e5282f5fead364a41e49c173940fd83dee00/src/block_hash/block_hash_calculator.rs#L95-L98).
-fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+fn calculate_transaction_hash_with_signature_pre_0_13_4(tx: &Transaction) -> Felt {
     let signature = match &tx.variant {
         TransactionVariant::InvokeV0(tx) => tx.signature.as_slice(),
         TransactionVariant::DeclareV0(tx) => tx.signature.as_slice(),
@@ -685,6 +687,30 @@ fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
         &[TransactionSignatureElem::ZERO]
     } else {
         signature
+    };
+
+    let mut hasher = PoseidonHasher::new();
+    hasher.write(tx.hash.0.into());
+    for elem in signature {
+        hasher.write(elem.0.into());
+    }
+    hasher.finish().into()
+}
+
+fn calculate_transaction_hash_with_signature(tx: &Transaction) -> Felt {
+    let signature = match &tx.variant {
+        TransactionVariant::InvokeV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV0(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV2(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeclareV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployAccountV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV1(tx) => tx.signature.as_slice(),
+        TransactionVariant::InvokeV3(tx) => tx.signature.as_slice(),
+        TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
+        | TransactionVariant::L1Handler(_) => &[],
     };
 
     let mut hasher = PoseidonHasher::new();
@@ -969,7 +995,7 @@ mod tests {
         };
         let expected = felt!("0x2f0d8840bcf3bc629598d8a6cc80cb7c0d9e52d93dab244bbf9cd0dca0ad082");
         assert_eq!(
-            calculate_transaction_hash_with_signature(&transaction),
+            calculate_transaction_hash_with_signature_pre_0_13_4(&transaction),
             expected
         );
 
@@ -979,7 +1005,7 @@ mod tests {
         };
         let expected = felt!("0x00a93bf5e58b9378d093aa86ddc2f61a3295a1d1e665bd0ef3384dd07b30e033");
         assert_eq!(
-            calculate_transaction_hash_with_signature(&transaction),
+            calculate_transaction_hash_with_signature_pre_0_13_4(&transaction),
             expected
         );
     }
