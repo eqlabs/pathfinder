@@ -14,7 +14,6 @@ use pathfinder_common::state_update::{
     SystemContractUpdate,
 };
 use pathfinder_common::{
-    class_hash,
     BlockHash,
     BlockHeader,
     BlockNumber,
