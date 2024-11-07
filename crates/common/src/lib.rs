@@ -14,6 +14,7 @@ use pathfinder_crypto::Felt;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
+pub mod casm_class;
 pub mod class_definition;
 pub mod consts;
 pub mod error;
