@@ -1560,10 +1560,10 @@ async fn try_next<T>(
 ) -> Result<T, anyhow::Error> {
     match count_stream.next().await {
         Some(Ok(cnt)) => Ok(cnt),
-        // This is a non-recovarable error, because "Counter" streams fail only if the underlying
+        // This is a non-recoverable error, because "Counter" streams fail only if the underlying
         // database fails.
         Some(Err(e)) => Err(e),
-        // This is a non-recovarable error, because we expect all the necessary headers that are the
+        // This is a non-recoverable error, because we expect all the necessary headers that are the
         // source of the stream to be in the database.
         None => Err(anyhow::anyhow!("Count stream terminated prematurely")),
     }
