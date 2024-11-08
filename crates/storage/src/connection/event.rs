@@ -594,7 +594,7 @@ impl Transaction<'_> {
         let aggregates = stmt
             .query_map(
                 named_params![
-                    ":end_block": &end_block, 
+                    ":end_block": &end_block,
                     ":start_block": &start_block
                 ],
                 |row| {
