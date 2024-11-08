@@ -9,6 +9,7 @@ use crate::EntryPoint;
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct CasmContractClass {
     pub bytecode: Vec<Felt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bytecode_segment_lengths: Option<NestedIntList>,
     pub compiler_version: String,
     pub hints: serde_json::Value,
