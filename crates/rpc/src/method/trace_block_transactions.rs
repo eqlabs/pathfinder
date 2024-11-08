@@ -273,10 +273,37 @@ pub(crate) fn map_gateway_trace(
             .try_into()
             .unwrap(),
     };
+    let l1_gas = validate_invocation_resources
+        .total_gas_consumed
+        .unwrap_or_default()
+        .l1_gas
+        + function_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l1_gas
+        + fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l1_gas;
+    let l1_data_gas = validate_invocation_resources
+        .total_gas_consumed
+        .unwrap_or_default()
+        .l1_data_gas
+        + function_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l1_data_gas
+        + fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l1_data_gas;
     let execution_resources = pathfinder_executor::types::ExecutionResources {
         computation_resources,
         // These values are not available in the gateway trace.
         data_availability: Default::default(),
+        l1_gas,
+        l1_data_gas,
+        l2_gas: 0,
     };
 
     use pathfinder_common::transaction::TransactionVariant;

@@ -367,6 +367,9 @@ fn to_trace(
     let execution_resources = ExecutionResources {
         computation_resources,
         data_availability,
+        l1_gas: execution_info.transaction_receipt.gas.l1_gas,
+        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
+        l2_gas: 0,
     };
 
     match transaction_type {

@@ -461,13 +461,24 @@ impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
         &self,
         serializer: super::serialize::Serializer,
     ) -> Result<super::serialize::Ok, super::serialize::Error> {
-        let mut serializer = serializer.serialize_struct()?;
-        serializer.flatten(&ComputationResources(&self.0.computation_resources))?;
-        serializer.serialize_field(
-            "data_availability",
-            &DataAvailabilityResources(&self.0.data_availability),
-        )?;
-        serializer.end()
+        match serializer.version {
+            RpcVersion::V08 => {
+                let mut serializer = serializer.serialize_struct()?;
+                serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
+                serializer.serialize_field("l1_data_gas", &self.0.l1_data_gas)?;
+                serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
+                serializer.end()
+            }
+            _ => {
+                let mut serializer = serializer.serialize_struct()?;
+                serializer.flatten(&ComputationResources(&self.0.computation_resources))?;
+                serializer.serialize_field(
+                    "data_availability",
+                    &DataAvailabilityResources(&self.0.data_availability),
+                )?;
+                serializer.end()
+            }
+        }
     }
 }
 
