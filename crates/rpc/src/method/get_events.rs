@@ -217,6 +217,17 @@ pub async fn get_events(
             offset: requested_offset,
         };
 
+        // TODO:
+        // Instrumentation and `AggregateBloom` version of fetching events
+        // for the given `EventFilter` are under a feature flag for now and
+        // we do not execute them during testing because they would only
+        // slow the tests down and would not have any impact on their outcome.
+        // Follow-up PR will use the `AggregateBloom` logic to create the output,
+        // then the conditions will be removed.
+
+        #[cfg(all(feature = "aggregate_bloom", not(test)))]
+        let start = std::time::Instant::now();
+
         let page = transaction
             .events(
                 &filter,
@@ -227,6 +238,40 @@ pub async fn get_events(
                 EventFilterError::Internal(e) => GetEventsError::Internal(e),
                 EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
             })?;
+
+        #[cfg(all(feature = "aggregate_bloom", not(test)))]
+        {
+            let elapsed = start.elapsed();
+
+            tracing::info!(
+                "Getting events (individual Bloom filters) took {:?}",
+                elapsed
+            );
+
+            let start = std::time::Instant::now();
+            let page_from_aggregate = transaction
+                .events_from_aggregate(&filter, context.config.get_events_max_blocks_to_scan)
+                .map_err(|e| match e {
+                    EventFilterError::Internal(e) => GetEventsError::Internal(e),
+                    EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
+                })?;
+            let elapsed = start.elapsed();
+
+            tracing::info!(
+                "Getting events (aggregate Bloom filters) took {:?}",
+                elapsed
+            );
+
+            if page != page_from_aggregate {
+                tracing::error!(
+                    "Page of events from individual and aggregate bloom filters does not match!"
+                );
+                tracing::error!("Individual: {:?}", page);
+                tracing::error!("Aggregate: {:?}", page_from_aggregate);
+            } else {
+                tracing::info!("Page of events from individual and aggregate bloom filters match!");
+            }
+        }
 
         let mut events = GetEventsResult {
             events: page.events.into_iter().map(|e| e.into()).collect(),

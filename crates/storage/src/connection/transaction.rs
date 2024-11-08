@@ -167,6 +167,12 @@ impl Transaction<'_> {
             .context("Inserting transaction data")?;
 
         if let Some(events) = events {
+            #[cfg(feature = "aggregate_bloom")]
+            {
+                let events: Vec<Event> = events.iter().flatten().cloned().collect();
+                self.upsert_block_events_aggregate(block_number, &events)
+                    .context("Inserting events into Bloom filter aggregate")?;
+            }
             let events = events.iter().flatten();
             self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
@@ -210,6 +216,12 @@ impl Transaction<'_> {
         ])
         .context("Updating events")?;
 
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            let events: Vec<Event> = events.iter().flatten().cloned().collect();
+            self.upsert_block_events_aggregate(block_number, &events)
+                .context("Inserting events into Bloom filter aggregate")?;
+        }
         self.upsert_block_events(block_number, events.iter().flatten())
             .context("Inserting events into Bloom filter")?;
 
