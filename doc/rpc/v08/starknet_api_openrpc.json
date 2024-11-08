@@ -681,7 +681,7 @@
         "schema": {
           "title": "Estimation",
           "type": "array",
-          "description": "a sequence of fee estimatione where the i'th estimate corresponds to the i'th transaction",
+          "description": "a sequence of fee estimation where the i'th estimate corresponds to the i'th transaction",
           "items": {
             "$ref": "#/components/schemas/FEE_ESTIMATE"
           }
@@ -969,7 +969,7 @@
       ],
       "result": {
         "name": "result",
-        "description": "The requested storage proofs. Note that if a requested leaf has the default value, the path to it may end in an edge node whose path is not a prefix of the requested leaf, thus effecitvely proving non-membership",
+        "description": "The requested storage proofs. Note that if a requested leaf has the default value, the path to it may end in an edge node whose path is not a prefix of the requested leaf, thus effectively proving non-membership",
         "schema": {
           "type": "object",
           "properties": {
@@ -3617,7 +3617,7 @@
       "DA_MODE": {
         "title": "DA mode",
         "type": "string",
-        "description": "Specifies a storage domain in Starknet. Each domain has different gurantess regarding availability",
+        "description": "Specifies a storage domain in Starknet. Each domain has different guarantees regarding availability",
         "enum": ["L1", "L2"]
       },
       "RESOURCE_BOUNDS_MAPPING": {

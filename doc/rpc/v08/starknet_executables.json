@@ -113,7 +113,7 @@
                     },
                     "bytecode_segment_lengths": {
                         "type": "array",
-                        "description": "a list of sizes of segments in the bytecode, each segment is hashed invidually when computing the bytecode hash",
+                        "description": "a list of sizes of segments in the bytecode, each segment is hashed individually when computing the bytecode hash",
                         "items": {
                             "type": "integer"
                         }
@@ -181,7 +181,7 @@
                 "properties": {
                     "DoubleDeref": {
                         "title": "DoubleDeref",
-                        "description": "A (CellRef, offsest) tuple",
+                        "description": "A (CellRef, offset) tuple",
                         "type": "array",
                         "items": {
                             "oneOf": [
