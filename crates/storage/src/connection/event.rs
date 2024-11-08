@@ -587,22 +587,28 @@ impl Transaction<'_> {
         #[rustfmt::skip]
         let mut stmt = self.inner().prepare_cached(
             "SELECT from_block, to_block, bloom FROM starknet_event_filters_aggregate \
-            WHERE from_block <= ? AND to_block >= ? \
+            WHERE from_block <= :end_block AND to_block >= :start_block \
             ORDER BY from_block",
         )?;
 
         let aggregates = stmt
-            .query_map(params![&end_block, &start_block], |row| {
-                let from_block: u64 = row.get(0)?;
-                let to_block: u64 = row.get(1)?;
-                let compressed_bitmap: Vec<u8> = row.get(2)?;
+            .query_map(
+                named_params![
+                    ":end_block": &end_block, 
+                    ":start_block": &start_block
+                ],
+                |row| {
+                    let from_block: u64 = row.get(0)?;
+                    let to_block: u64 = row.get(1)?;
+                    let compressed_bitmap: Vec<u8> = row.get(2)?;
 
-                Ok(AggregateBloom::from_existing_compressed(
-                    from_block,
-                    to_block,
-                    compressed_bitmap,
-                ))
-            })
+                    Ok(AggregateBloom::from_existing_compressed(
+                        from_block,
+                        to_block,
+                        compressed_bitmap,
+                    ))
+                },
+            )
             .context("Querying bloom filter range")?
             .collect::<Result<Vec<_>, _>>()?;
 
