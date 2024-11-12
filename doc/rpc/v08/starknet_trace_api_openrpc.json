@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.7.1",
+    "version": "0.8.0-rc.0",
     "title": "StarkNet Trace API",
     "license": {}
   },
@@ -30,7 +30,7 @@
       },
       "errors": [
         {
-          "$ref": "#/components/errors/TXN_HASH_NOT_FOUND"
+          "$ref": "./api/starknet_api_openrpc.json#/components/errors/TXN_HASH_NOT_FOUND"
         },
         {
           "$ref": "#/components/errors/NO_TRACE_AVAILABLE"
@@ -39,7 +39,7 @@
     },
     {
       "name": "starknet_simulateTransactions",
-      "summary": "Simulate a given sequence of transactions on the requested state, and generate the execution traces. Note that some of the transactions may revert, in which case no error is thrown, but revert details can be seen on the returned trace object. . Note that some of the transactions may revert, this will be reflected by the revert_error property in the trace. Other types of failures (e.g. unexpected error or failure in the validation phase) will result in TRANSACTION_EXECUTION_ERROR.",
+      "summary": "Simulate a given sequence of transactions on the requested state, and generate the execution traces. Note that some of the transactions may revert, in which case no error is thrown, but revert details can be seen on the returned trace object. Note that some of the transactions may revert, this will be reflected by the revert_error property in the trace. Other types of failures (e.g. unexpected error or failure in the validation phase) will result in TRANSACTION_EXECUTION_ERROR.",
       "params": [
         {
           "name": "block_id",
@@ -97,10 +97,10 @@
       },
       "errors": [
         {
-          "$ref": "#/components/errors/BLOCK_NOT_FOUND"
+          "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
         },
         {
-          "$ref": "#/components/errors/TRANSACTION_EXECUTION_ERROR"
+          "$ref": "./api/starknet_api_openrpc.json#/components/errors/TRANSACTION_EXECUTION_ERROR"
         }
       ]
     },
@@ -139,7 +139,7 @@
       },
       "errors": [
         {
-          "$ref": "#/components/errors/BLOCK_NOT_FOUND"
+          "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
         }
       ]
     }
@@ -480,15 +480,6 @@
             }
           }
         }
-      },
-      "TXN_HASH_NOT_FOUND": {
-        "$ref": "./api/starknet_api_openrpc.json#/components/errors/TXN_HASH_NOT_FOUND"
-      },
-      "BLOCK_NOT_FOUND": {
-        "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
-      },
-      "TRANSACTION_EXECUTION_ERROR": {
-        "$ref": "./api/starknet_api_openrpc.json#/components/errors/TRANSACTION_EXECUTION_ERROR"
       }
     }
   }

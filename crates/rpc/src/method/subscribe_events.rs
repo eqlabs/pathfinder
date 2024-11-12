@@ -250,14 +250,14 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, CATCH_UP_BATCH_SIZE};
     use crate::pending::PendingWatcher;
     use crate::v02::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SyncState};
 
     #[tokio::test]
     async fn no_filtering() {
-        let num_blocks = 2000;
+        let num_blocks = 80;
         let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -319,14 +319,14 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address() {
-        let router = setup(2000).await;
+        let router = setup(80).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
                 "block": {"block_number": 0},
-                "from_address": "0x90",
+                "from_address": "0x46",
             }
         );
         receiver_tx
@@ -351,7 +351,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -371,9 +371,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x90).into())
+            .send(sample_block(0x46).into())
             .unwrap();
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -385,14 +385,14 @@ mod tests {
 
     #[tokio::test]
     async fn filter_keys() {
-        let router = setup(2000).await;
+        let router = setup(80).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
                 "block": {"block_number": 0},
-                "keys": [["0x90"], [], ["0x92", "0x93"]],
+                "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
         );
         receiver_tx
@@ -417,7 +417,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -437,9 +437,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x90).into())
+            .send(sample_block(0x46).into())
             .unwrap();
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -451,15 +451,15 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
-        let router = setup(2000).await;
+        let router = setup(80).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
                 "block": {"block_number": 0},
-                "from_address": "0x90",
-                "keys": [["0x90"], [], ["0x92", "0x93"]],
+                "from_address": "0x46",
+                "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
         );
         receiver_tx
@@ -484,7 +484,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -504,9 +504,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x90).into())
+            .send(sample_block(0x46).into())
             .unwrap();
-        let expected = sample_event_message(0x90, subscription_id);
+        let expected = sample_event_message(0x46, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -518,32 +518,32 @@ mod tests {
 
     #[tokio::test]
     async fn too_many_keys_filter() {
-        let router = setup(2000).await;
+        let router = setup(80).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
                 "block": {"block_number": 0},
-                "from_address": "0x90",
+                "from_address": "0x46",
                 "keys": [
-                    ["0x91"],
-                    ["0x92"],
-                    ["0x93"],
-                    ["0x94"],
-                    ["0x95"],
-                    ["0x96"],
-                    ["0x97"],
-                    ["0x98"],
-                    ["0x99"],
-                    ["0x9a"],
-                    ["0x9b"],
-                    ["0x9c"],
-                    ["0x9d"],
-                    ["0x9e"],
-                    ["0x9f"],
-                    ["0xa0"],
-                    ["0xa1"],
+                    ["0x46"],
+                    ["0x47"],
+                    ["0x48"],
+                    ["0x49"],
+                    ["0x4a"],
+                    ["0x4b"],
+                    ["0x4c"],
+                    ["0x4d"],
+                    ["0x4e"],
+                    ["0x4f"],
+                    ["0x50"],
+                    ["0x51"],
+                    ["0x52"],
+                    ["0x53"],
+                    ["0x54"],
+                    ["0x55"],
+                    ["0x56"],
                 ],
             }
         );
@@ -644,6 +644,8 @@ mod tests {
     }
 
     async fn setup(num_blocks: u64) -> RpcRouter {
+        assert!(num_blocks == 0 || num_blocks > CATCH_UP_BATCH_SIZE);
+
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
             let storage = storage.clone();

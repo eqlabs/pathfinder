@@ -264,6 +264,9 @@ pub struct ReplacedClass {
 pub struct ExecutionResources {
     pub computation_resources: ComputationResources,
     pub data_availability: DataAvailabilityResources,
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
+    pub l2_gas: u128,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
