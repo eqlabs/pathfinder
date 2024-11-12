@@ -9,18 +9,18 @@ use super::felt::IntoFelt;
 pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
     TransactionHash(
         match transaction {
-            Transaction::AccountTransaction(tx) => match tx {
+            Transaction::Account(tx) => match tx {
                 blockifier::transaction::account_transaction::AccountTransaction::Declare(tx) => {
                     tx.tx_hash()
                 }
                 blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(
                     tx,
-                ) => tx.tx_hash,
+                ) => tx.tx_hash(),
                 blockifier::transaction::account_transaction::AccountTransaction::Invoke(tx) => {
-                    tx.tx_hash
+                    tx.tx_hash()
                 }
             },
-            Transaction::L1HandlerTransaction(tx) => tx.tx_hash,
+            Transaction::L1Handler(tx) => tx.tx_hash,
         }
         .0
         .into_felt(),
@@ -29,7 +29,7 @@ pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
 
 pub fn fee_type(transaction: &Transaction) -> FeeType {
     match transaction {
-        Transaction::AccountTransaction(tx) => tx.fee_type(),
-        Transaction::L1HandlerTransaction(tx) => tx.fee_type(),
+        Transaction::Account(tx) => tx.fee_type(),
+        Transaction::L1Handler(tx) => tx.fee_type(),
     }
 }

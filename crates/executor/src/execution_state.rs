@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use blockifier::blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::blockifier::block::{pre_process_block, BlockInfo};
 use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
@@ -14,6 +14,7 @@ use pathfinder_common::{
     L1DataAvailabilityMode,
     StateUpdate,
 };
+use starknet_api::block::{BlockHashAndNumber, GasPrice, NonzeroGasPrice};
 use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
@@ -141,7 +142,7 @@ impl<'tx> ExecutionState<'tx> {
 
             tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
 
-            Some(BlockNumberHashPair {
+            Some(BlockHashAndNumber {
                 number: starknet_api::block::BlockNumber(
                     block_number_whose_hash_becomes_available.get(),
                 ),
@@ -207,6 +208,55 @@ impl<'tx> ExecutionState<'tx> {
     }
 
     fn block_info(&self) -> anyhow::Result<BlockInfo> {
+        let eth_l1_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_gas_price.0 == 0 {
+                // Bad API design - the genesis block has 0 gas price, but
+                // blockifier doesn't allow for it. This isn't critical for
+                // consensus, so we just use 1.
+                1
+            } else {
+                self.header.eth_l1_gas_price.0
+            }))?;
+        let strk_l1_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_gas_price.0 == 0 {
+                // Bad API design - the genesis block has 0 gas price, but
+                // blockifier doesn't allow for it. This isn't critical for
+                // consensus, so we just use 1.
+                1
+            } else {
+                self.header.strk_l1_gas_price.0
+            }))?;
+        let eth_l1_data_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_data_gas_price.0 == 0 {
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                // blockifier doesn't allow for it. This value is ignored for those
+                // transactions.
+                1
+            } else {
+                self.header.eth_l1_data_gas_price.0
+            }))?;
+        let strk_l1_data_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_data_gas_price.0 == 0 {
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                // blockifier doesn't allow for it. This value is ignored for those
+                // transactions.
+                1
+            } else {
+                self.header.strk_l1_data_gas_price.0
+            }))?;
+        let eth_l2_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l2_gas_price.0 == 0 {
+                1
+            } else {
+                self.header.eth_l2_gas_price.0
+            }))?;
+        let strk_l2_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l2_gas_price.0 == 0 {
+                1
+            } else {
+                self.header.strk_l2_gas_price.0
+            }))?;
+
         Ok(BlockInfo {
             block_number: starknet_api::block::BlockNumber(self.header.number.get()),
             block_timestamp: starknet_api::block::BlockTimestamp(self.header.timestamp.get()),
@@ -214,40 +264,14 @@ impl<'tx> ExecutionState<'tx> {
                 PatriciaKey::try_from(self.header.sequencer_address.0.into_starkfelt())
                     .expect("Sequencer address overflow"),
             ),
-            gas_prices: blockifier::blockifier::block::GasPrices {
-                eth_l1_gas_price: if self.header.eth_l1_gas_price.0 == 0 {
-                    // Bad API design - the genesis block has 0 gas price, but
-                    // blockifier doesn't allow for it. This isn't critical for
-                    // consensus, so we just use 1.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.eth_l1_gas_price.0.try_into().unwrap()
-                },
-                strk_l1_gas_price: if self.header.strk_l1_gas_price.0 == 0 {
-                    // Bad API design - the genesis block has 0 gas price, but
-                    // blockifier doesn't allow for it. This isn't critical for
-                    // consensus, so we just use 1.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.strk_l1_gas_price.0.try_into().unwrap()
-                },
-                eth_l1_data_gas_price: if self.header.eth_l1_data_gas_price.0 == 0 {
-                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                    // blockifier doesn't allow for it. This value is ignored for those
-                    // transactions.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.eth_l1_data_gas_price.0.try_into().unwrap()
-                },
-                strk_l1_data_gas_price: if self.header.strk_l1_data_gas_price.0 == 0 {
-                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                    // blockifier doesn't allow for it. This value is ignored for those
-                    // transactions.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.strk_l1_data_gas_price.0.try_into().unwrap()
-                },
-            },
+            gas_prices: blockifier::blockifier::block::GasPrices::new(
+                eth_l1_gas_price,
+                strk_l1_gas_price,
+                eth_l1_data_gas_price,
+                strk_l1_data_gas_price,
+                eth_l2_gas_price,
+                strk_l2_gas_price,
+            ),
             use_kzg_da: self.allow_use_kzg_data
                 && self.header.l1_da_mode == L1DataAvailabilityMode::Blob,
         })

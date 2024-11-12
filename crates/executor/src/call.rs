@@ -7,6 +7,7 @@ use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInf
 use blockifier::versioned_constants::VersionedConstants;
 use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
+use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
 
 use super::error::CallError;
@@ -34,10 +35,10 @@ pub fn call(
 
     let call_entry_point = CallEntryPoint {
         storage_address: contract_address,
-        entry_point_type: starknet_api::deprecated_contract_class::EntryPointType::External,
+        entry_point_type: EntryPointType::External,
         entry_point_selector,
-        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
-        initial_gas: VersionedConstants::latest_constants().tx_initial_gas(),
+        calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
+        initial_gas: VersionedConstants::latest_constants().default_initial_gas_cost(),
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
@@ -49,10 +50,11 @@ pub fn call(
             tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
         }),
         false,
-    )?;
+    );
 
+    let mut remaining_gas = 0;
     let call_info = call_entry_point
-        .execute(&mut state, &mut resources, &mut context)
+        .execute(&mut state, &mut resources, &mut context, &mut remaining_gas)
         .map_err(|e| {
             CallError::from_entry_point_execution_error(
                 e,
