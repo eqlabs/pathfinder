@@ -92,10 +92,17 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
         let transactions = input
             .request
             .into_iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
+            .map(|tx| {
+                crate::executor::map_broadcasted_transaction(
+                    &tx,
+                    context.chain_id,
+                    skip_validate,
+                    true,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(state, transactions, skip_validate)?;
+        let result = pathfinder_executor::estimate(state, transactions)?;
 
         Ok::<_, EstimateFeeError>(result)
     })
@@ -379,18 +386,18 @@ mod tests {
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 24201.into(),
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
+            l1_gas_consumed: 15.into(),
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 464.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 463.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
@@ -399,7 +406,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 268.into(),
             unit: PriceUnit::Wei,
         };
@@ -409,7 +416,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 266.into(),
             unit: PriceUnit::Wei,
         };
@@ -420,7 +427,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 280.into(),
             unit: PriceUnit::Fri,
         };
@@ -474,7 +481,7 @@ mod tests {
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 1262.into(),
             unit: PriceUnit::Wei,
         };
@@ -484,7 +491,7 @@ mod tests {
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 464.into(),
             unit: PriceUnit::Wei,
         };
@@ -494,7 +501,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 268.into(),
             unit: PriceUnit::Wei,
         };
@@ -504,7 +511,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 266.into(),
             unit: PriceUnit::Wei,
         };
@@ -515,7 +522,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 280.into(),
             unit: PriceUnit::Fri,
         };
@@ -569,7 +576,7 @@ mod tests {
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 24203.into(),
             unit: PriceUnit::Wei,
         };
@@ -579,7 +586,7 @@ mod tests {
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 467.into(),
             unit: PriceUnit::Wei,
         };
@@ -589,7 +596,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 270.into(),
             unit: PriceUnit::Wei,
         };
@@ -599,7 +606,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 267.into(),
             unit: PriceUnit::Wei,
         };
@@ -610,7 +617,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 284.into(),
             unit: PriceUnit::Fri,
         };
@@ -664,7 +671,7 @@ mod tests {
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 1264.into(),
             unit: PriceUnit::Wei,
         };
@@ -674,7 +681,7 @@ mod tests {
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 467.into(),
             unit: PriceUnit::Wei,
         };
@@ -684,7 +691,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 270.into(),
             unit: PriceUnit::Wei,
         };
@@ -694,7 +701,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 267.into(),
             unit: PriceUnit::Wei,
         };
@@ -705,7 +712,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 284.into(),
             unit: PriceUnit::Fri,
         };
