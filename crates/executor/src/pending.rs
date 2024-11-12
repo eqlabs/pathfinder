@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use pathfinder_common::{StateUpdate, StorageAddress};
@@ -84,13 +85,11 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
             .unwrap_or_else(|| self.state.get_class_hash_at(contract_address))
     }
 
-    fn get_compiled_contract_class(
+    fn get_compiled_class(
         &self,
         class_hash: starknet_api::core::ClassHash,
-    ) -> blockifier::state::state_api::StateResult<
-        blockifier::execution::contract_class::ContractClass,
-    > {
-        self.state.get_compiled_contract_class(class_hash)
+    ) -> blockifier::state::state_api::StateResult<RunnableCompiledClass> {
+        self.state.get_compiled_class(class_hash)
     }
 
     fn get_compiled_class_hash(
@@ -103,6 +102,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
 
 #[cfg(test)]
 mod tests {
+    use blockifier::execution::contract_class::RunnableCompiledClass;
     use blockifier::state::state_api::StateReader;
     use pathfinder_common::{
         class_hash,
@@ -141,12 +141,10 @@ mod tests {
             Ok(starknet_api::core::ClassHash(CoreFelt::from(u32::MAX)))
         }
 
-        fn get_compiled_contract_class(
+        fn get_compiled_class(
             &self,
             _class_hash: starknet_api::core::ClassHash,
-        ) -> blockifier::state::state_api::StateResult<
-            blockifier::execution::contract_class::ContractClass,
-        > {
+        ) -> blockifier::state::state_api::StateResult<RunnableCompiledClass> {
             unimplemented!()
         }
 

@@ -88,11 +88,17 @@ pub async fn simulate_transactions(
         let transactions = input
             .transactions
             .into_iter()
-            .map(|tx| crate::executor::map_broadcasted_transaction(&tx, context.chain_id))
+            .map(|tx| {
+                crate::executor::map_broadcasted_transaction(
+                    &tx,
+                    context.chain_id,
+                    skip_validate,
+                    skip_fee_charge,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let txs =
-            pathfinder_executor::simulate(state, transactions, skip_validate, skip_fee_charge)?;
+        let txs = pathfinder_executor::simulate(state, transactions)?;
         Ok(Output(txs))
     })
     .await
@@ -529,7 +535,7 @@ pub(crate) mod tests {
                     l1_data_gas_price: 2.into(),
                     l2_gas_consumed: 0.into(),
                     l2_gas_price: 0.into(),
-                    overall_fee: 15720.into(),
+                    overall_fee: OVERALL_FEE.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
                 }
             }
