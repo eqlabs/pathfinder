@@ -1,3 +1,4 @@
+use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
@@ -38,13 +39,7 @@ impl<'tx> PathfinderStateReader<'tx> {
         &self,
         pathfinder_class_hash: ClassHash,
         class_hash: &starknet_api::core::ClassHash,
-    ) -> Result<
-        (
-            Option<BlockNumber>,
-            blockifier::execution::contract_class::ContractClass,
-        ),
-        StateError,
-    > {
+    ) -> Result<(Option<BlockNumber>, RunnableCompiledClass), StateError> {
         tracing::trace!("Getting class");
 
         let block_id = self.state_block_id().ok_or_else(|| {
@@ -72,14 +67,14 @@ impl<'tx> PathfinderStateReader<'tx> {
             })?;
 
             let casm_class =
-                blockifier::execution::contract_class::ContractClassV1::try_from_json_string(
+                blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
                     &casm_definition,
                 )
                 .map_err(StateError::ProgramError)?;
 
             return Ok((
                 definition_block_number,
-                blockifier::execution::contract_class::ContractClass::V1(casm_class),
+                RunnableCompiledClass::V1(casm_class),
             ));
         }
 
@@ -105,15 +100,12 @@ impl<'tx> PathfinderStateReader<'tx> {
             })?;
 
             let class =
-                blockifier::execution::contract_class::ContractClassV0::try_from_json_string(
+                blockifier::execution::contract_class::CompiledClassV0::try_from_json_string(
                     &definition,
                 )
                 .map_err(StateError::ProgramError)?;
 
-            return Ok((
-                definition_block_number,
-                blockifier::execution::contract_class::ContractClass::V0(class),
-            ));
+            return Ok((definition_block_number, RunnableCompiledClass::V0(class)));
         }
 
         tracing::trace!("Class definition not found");
@@ -218,12 +210,10 @@ impl StateReader for PathfinderStateReader<'_> {
         Ok(starknet_api::core::ClassHash(class_hash.0.into_starkfelt()))
     }
 
-    fn get_compiled_contract_class(
+    fn get_compiled_class(
         &self,
         class_hash: starknet_api::core::ClassHash,
-    ) -> blockifier::state::state_api::StateResult<
-        blockifier::execution::contract_class::ContractClass,
-    > {
+    ) -> blockifier::state::state_api::StateResult<RunnableCompiledClass> {
         let pathfinder_class_hash = ClassHash(class_hash.0.into_felt());
 
         let _span =

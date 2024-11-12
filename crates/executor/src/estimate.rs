@@ -1,5 +1,6 @@
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -8,7 +9,6 @@ use super::types::FeeEstimate;
 pub fn estimate(
     execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
-    skip_validate: bool,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
@@ -20,19 +20,19 @@ pub fn estimate(
 
         let fee_type = super::transaction::fee_type(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
-            Transaction::AccountTransaction(account_transaction) => Some(
-                blockifier::fee::gas_usage::estimate_minimal_gas_vector(
+            Transaction::Account(account_transaction) => {
+                Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     &block_context,
                     account_transaction,
-                )
-                .map_err(|e| TransactionExecutionError::new(transaction_idx, e.into()))?,
-            ),
-            Transaction::L1HandlerTransaction(_) => None,
+                    &GasVectorComputationMode::All,
+                ))
+            }
+            Transaction::L1Handler(_) => None,
         };
         let tx_info: Result<
             blockifier::transaction::objects::TransactionExecutionInfo,
             blockifier::transaction::errors::TransactionExecutionError,
-        > = transaction.execute(&mut state, &block_context, false, !skip_validate);
+        > = transaction.execute(&mut state, &block_context);
 
         match tx_info {
             Ok(tx_info) => {
@@ -42,11 +42,12 @@ pub fn estimate(
                     return Err(TransactionExecutionError::ExecutionError {
                         transaction_index: transaction_idx,
                         error: revert_string,
-                        error_stack: revert_error.into(),
+                        // TODO: is ErrorStack available?
+                        error_stack: Default::default(),
                     });
                 }
 
-                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction estimation finished");
+                tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction estimation finished");
 
                 fees.push(FeeEstimate::from_tx_info_and_gas_price(
                     &tx_info,

@@ -13,8 +13,10 @@ pub(crate) mod transaction;
 pub mod types;
 
 // re-export blockifier transaction type since it's exposed on our API
-pub use blockifier::execution::contract_class::ClassInfo;
-pub use blockifier::transaction::account_transaction::AccountTransaction;
+pub use blockifier::transaction::account_transaction::{
+    AccountTransaction,
+    ExecutionFlags as AccountTransactionExecutionFlags,
+};
 pub use blockifier::transaction::transaction_execution::Transaction;
 pub use blockifier::versioned_constants::VersionedConstants;
 pub use call::call;
@@ -25,4 +27,5 @@ pub use estimate::estimate;
 pub use execution_state::{ExecutionState, L1BlobDataAvailability};
 pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, TraceCache};
+pub use starknet_api::contract_class::ClassInfo;
 pub use transaction::transaction_hash;

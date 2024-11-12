@@ -157,7 +157,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::simulate(execution_state, transactions, false, false) {
+    match pathfinder_executor::simulate(execution_state, transactions) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()
