@@ -55,17 +55,17 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/eqlabs/sequencer", branch = "eqlabs/main-v0.13.2" }
+blockifier = { git = "https://github.com/eqlabs/sequencer", branch = "starkware/main" }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
-cairo-lang-starknet-classes = "=2.7.0"
+cairo-lang-starknet-classes = "=2.9.0-dev.0"
 # This one needs to match the version used by blockifier
 cairo-vm = "=1.0.1"
 casm-compiler-v1_0_0-alpha6 = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = "=1.1.1"
-casm-compiler-v2 = "=2.7.0"
+casm-compiler-v2 = "=2.9.0-dev.0"
 clap = "4.1.13"
 console-subscriber = "0.1.10"
 const-decoder = "0.3.0"
@@ -123,9 +123,9 @@ serde_with = "3.7.0"
 sha2 = "0.10.7"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-starknet_api = { git = "https://github.com/eqlabs/sequencer", branch = "eqlabs/main-v0.13.2" }
+starknet_api = { git = "https://github.com/eqlabs/sequencer", branch = "starkware/main" }
 # This one needs to match the version used by blockifier
-starknet-types-core = "=0.1.5"
+starknet-types-core = "=0.1.6"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", default-features = false }
