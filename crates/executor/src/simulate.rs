@@ -368,8 +368,8 @@ fn to_trace(
     let execution_resources = ExecutionResources {
         computation_resources,
         data_availability,
-        l1_gas: execution_info.transaction_receipt.gas.l1_gas,
-        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
+        l1_gas: execution_info.receipt.gas.l1_gas.0.into(),
+        l1_data_gas: execution_info.receipt.da_gas.l1_data_gas.0.into(),
         l2_gas: 0,
     };
 
