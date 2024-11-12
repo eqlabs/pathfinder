@@ -5,6 +5,7 @@ use pathfinder_common::{BlockId, CallParam, ChainId, TransactionNonce};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
+use starknet_api::transaction::fields::{Calldata, Fee};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
@@ -117,7 +118,7 @@ fn create_executor_transaction(
         entry_point_selector: starknet_api::core::EntryPointSelector(
             input.message.entry_point_selector.0.into_starkfelt(),
         ),
-        calldata: starknet_api::transaction::Calldata(Arc::new(
+        calldata: Calldata(Arc::new(
             transaction
                 .calldata
                 .into_iter()
@@ -130,7 +131,7 @@ fn create_executor_transaction(
         starknet_api::transaction::Transaction::L1Handler(tx),
         starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
         None,
-        Some(starknet_api::transaction::Fee(1)),
+        Some(Fee(1)),
         None,
         false,
     )?;

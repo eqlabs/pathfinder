@@ -18,6 +18,7 @@ use pathfinder_common::{
     StorageValue,
     TransactionHash,
 };
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -95,14 +96,14 @@ pub fn simulate(
             transaction_declared_deprecated_class(&transaction);
         let fee_type = super::transaction::fee_type(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
-            Transaction::AccountTransaction(account_transaction) => Some(
-                blockifier::fee::gas_usage::estimate_minimal_gas_vector(
+            Transaction::Account(account_transaction) => {
+                Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     &block_context,
                     account_transaction,
-                )
-                .map_err(|e| TransactionExecutionError::new(transaction_idx, e.into()))?,
-            ),
-            Transaction::L1HandlerTransaction(_) => None,
+                    &GasVectorComputationMode::All,
+                ))
+            }
+            Transaction::L1Handler(_) => None,
         };
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
@@ -122,7 +123,7 @@ pub fn simulate(
                     tracing::trace!(revert_error=%revert_string, "Transaction reverted");
                 }
 
-                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction simulation finished");
+                tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
                 simulations.push(TransactionSimulation {
                     fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
@@ -232,7 +233,7 @@ enum TransactionType {
 
 fn transaction_type(transaction: &Transaction) -> TransactionType {
     match transaction {
-        Transaction::AccountTransaction(tx) => match tx {
+        Transaction::Account(tx) => match tx {
             blockifier::transaction::account_transaction::AccountTransaction::Declare(_) => {
                 TransactionType::Declare
             }
@@ -243,13 +244,13 @@ fn transaction_type(transaction: &Transaction) -> TransactionType {
                 TransactionType::Invoke
             }
         },
-        Transaction::L1HandlerTransaction(_) => TransactionType::L1Handler,
+        Transaction::L1Handler(_) => TransactionType::L1Handler,
     }
 }
 
 fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
     match transaction {
-        Transaction::AccountTransaction(
+        Transaction::Account(
             blockifier::transaction::account_transaction::AccountTransaction::Declare(tx),
         ) => match tx.tx() {
             starknet_api::transaction::DeclareTransaction::V0(_)
@@ -361,8 +362,8 @@ fn to_trace(
             .map(|i: &FunctionInvocation| i.computation_resources.clone())
             .unwrap_or_default();
     let data_availability = DataAvailabilityResources {
-        l1_gas: execution_info.transaction_receipt.da_gas.l1_gas,
-        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
+        l1_gas: execution_info.receipt.da_gas.l1_gas.0.into(),
+        l1_data_gas: execution_info.receipt.da_gas.l1_data_gas.0.into(),
     };
     let execution_resources = ExecutionResources {
         computation_resources,

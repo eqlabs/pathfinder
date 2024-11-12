@@ -1,5 +1,5 @@
 use blockifier::execution::stack_trace::{
-    gen_transaction_execution_error_trace,
+    gen_tx_execution_error_trace,
     ErrorStack as BlockifierErrorStack,
 };
 use blockifier::transaction::errors::TransactionExecutionError;
@@ -18,7 +18,7 @@ impl From<BlockifierErrorStack> for ErrorStack {
 
 impl From<TransactionExecutionError> for ErrorStack {
     fn from(value: TransactionExecutionError) -> Self {
-        let error_stack = gen_transaction_execution_error_trace(&value);
+        let error_stack = gen_tx_execution_error_trace(&value);
         error_stack.into()
     }
 }

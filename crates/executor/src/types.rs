@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use blockifier::blockifier::block::BlockInfo;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::transaction::objects::{FeeType, GasVector, TransactionExecutionInfo};
+use blockifier::transaction::objects::{FeeType, TransactionExecutionInfo};
 use pathfinder_common::{
     CasmHash,
     ClassHash,
@@ -13,6 +13,7 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
+use starknet_api::execution_resources::GasVector;
 
 use super::felt::IntoFelt;
 
@@ -36,28 +37,29 @@ impl FeeEstimate {
         fee_type: FeeType,
         minimal_l1_gas_amount_vector: &Option<GasVector>,
     ) -> FeeEstimate {
-        tracing::trace!(resources=?tx_info.transaction_receipt.resources, "Transaction resources");
-        let l1_gas_price = block_info
-            .gas_prices
-            .get_gas_price_by_fee_type(&fee_type)
-            .get();
-        let l1_data_gas_price = block_info
-            .gas_prices
-            .get_data_gas_price_by_fee_type(&fee_type)
-            .get();
+        tracing::trace!(resources=?tx_info.receipt.resources, "Transaction resources");
+        let gas_prices = block_info.gas_prices.get_gas_prices_by_fee_type(&fee_type);
+        let l1_gas_price = gas_prices.l1_gas_price.get();
+        let l1_data_gas_price = gas_prices.l1_data_gas_price.get();
+        let l2_gas_price = gas_prices.l2_gas_price.get();
 
         let minimal_l1_gas_amount_vector = minimal_l1_gas_amount_vector.unwrap_or_default();
 
         let l1_gas_consumed = tx_info
-            .transaction_receipt
+            .receipt
             .gas
             .l1_gas
             .max(minimal_l1_gas_amount_vector.l1_gas);
         let l1_data_gas_consumed = tx_info
-            .transaction_receipt
+            .receipt
             .gas
             .l1_data_gas
             .max(minimal_l1_gas_amount_vector.l1_data_gas);
+        let l2_gas_consumed = tx_info
+            .receipt
+            .gas
+            .l2_gas
+            .max(minimal_l1_gas_amount_vector.l2_gas);
 
         // Blockifier does not put the actual fee into the receipt if `max_fee` in the
         // transaction was zero. In that case we have to compute the fee
@@ -67,18 +69,19 @@ impl FeeEstimate {
             GasVector {
                 l1_gas: l1_gas_consumed,
                 l1_data_gas: l1_data_gas_consumed,
+                l2_gas: l2_gas_consumed,
             },
             &fee_type,
         )
         .0;
 
         FeeEstimate {
-            l1_gas_consumed: l1_gas_consumed.into(),
-            l1_gas_price: l1_gas_price.into(),
-            l1_data_gas_consumed: l1_data_gas_consumed.into(),
-            l1_data_gas_price: l1_data_gas_price.into(),
-            l2_gas_consumed: 0.into(), // TODO: Fix when we have l2 gas price
-            l2_gas_price: 0.into(),    // TODO: Fix when we have l2 gas price
+            l1_gas_consumed: l1_gas_consumed.0.into(),
+            l1_gas_price: l1_gas_price.0.into(),
+            l1_data_gas_consumed: l1_data_gas_consumed.0.into(),
+            l1_data_gas_price: l1_data_gas_price.0.into(),
+            l2_gas_consumed: l2_gas_consumed.0.into(),
+            l2_gas_price: l2_gas_price.0.into(),
             overall_fee: overall_fee.into(),
             unit: fee_type.into(),
         }
@@ -353,7 +356,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             events,
             messages,
             result,
-            computation_resources: call_info.resources.into(),
+            computation_resources: call_info.charged_resources.vm_resources.into(),
             execution_resources: InnerCallExecutionResources {
                 l1_gas: call_info.execution.gas_consumed.into(),
                 // TODO: Use proper l2_gas value for Starknet 0.13.3
@@ -373,9 +376,9 @@ impl From<blockifier::execution::entry_point::CallType> for CallType {
     }
 }
 
-impl From<starknet_api::deprecated_contract_class::EntryPointType> for EntryPointType {
-    fn from(value: starknet_api::deprecated_contract_class::EntryPointType) -> Self {
-        use starknet_api::deprecated_contract_class::EntryPointType::*;
+impl From<starknet_api::contract_class::EntryPointType> for EntryPointType {
+    fn from(value: starknet_api::contract_class::EntryPointType) -> Self {
+        use starknet_api::contract_class::EntryPointType::*;
         match value {
             External => EntryPointType::External,
             L1Handler => EntryPointType::L1Handler,

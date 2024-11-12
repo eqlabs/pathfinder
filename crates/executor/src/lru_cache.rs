@@ -1,6 +1,6 @@
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
-use blockifier::execution::contract_class::ContractClass;
+use blockifier::execution::contract_class::RunnableContractClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateResult;
 use cached::{Cached, SizedCache};
@@ -12,7 +12,7 @@ pub static GLOBAL_CACHE: LazyLock<LruContractCache> = LazyLock::new(LruContractC
 
 #[derive(Clone)]
 pub struct Entry {
-    pub definition: ContractClass,
+    pub definition: RunnableContractClass,
     /// The height at which the class was declared
     pub height: BlockNumber,
 }
@@ -39,7 +39,7 @@ impl LruContractCache {
     pub fn set(
         &self,
         class_hash: StarknetClassHash,
-        contract_class: ContractClass,
+        contract_class: RunnableContractClass,
         block_number: BlockNumber,
     ) -> StateResult<()> {
         self.locked_cache()?.cache_set(
