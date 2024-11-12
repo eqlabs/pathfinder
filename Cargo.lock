@@ -9868,6 +9868,7 @@ version = "0.15.0"
 dependencies = [
  "fake",
  "pretty_assertions_sorted",
+ "rand",
  "tagged-debug-derive",
 ]
 

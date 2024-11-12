@@ -102,6 +102,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
 
 #[cfg(test)]
 mod tests {
+    use blockifier::execution::contract_class::RunnableContractClass;
     use blockifier::state::state_api::StateReader;
     use pathfinder_common::{
         class_hash,
@@ -143,7 +144,7 @@ mod tests {
         fn get_compiled_contract_class(
             &self,
             _class_hash: starknet_api::core::ClassHash,
-        ) -> blockifier::state::state_api::StateResult<ContractClass> {
+        ) -> blockifier::state::state_api::StateResult<RunnableContractClass> {
             unimplemented!()
         }
 
