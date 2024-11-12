@@ -117,7 +117,7 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
     }
 }
 
-const SUBSCRIPTION_NAME: &str = "starknet_subscriptionTransactionsStatus";
+const SUBSCRIPTION_NAME: &str = "starknet_subscriptionTransactionStatus";
 
 #[async_trait]
 impl RpcSubscriptionFlow for SubscribeTransactionStatus {
@@ -470,7 +470,7 @@ mod tests {
                     vec![
                         serde_json::json!({
                             "jsonrpc": "2.0",
-                            "method": "starknet_subscriptionTransactionsStatus",
+                            "method": "starknet_subscriptionTransactionStatus",
                             "params": {
                                 "result": {
                                     "transaction_hash": "0x1",
@@ -483,7 +483,7 @@ mod tests {
                         }),
                         serde_json::json!({
                             "jsonrpc": "2.0",
-                            "method": "starknet_subscriptionTransactionsStatus",
+                            "method": "starknet_subscriptionTransactionStatus",
                             "params": {
                                 "result": {
                                     "transaction_hash": "0x1",
@@ -570,7 +570,7 @@ mod tests {
             json,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "method": "starknet_subscriptionTransactionsStatus",
+                "method": "starknet_subscriptionTransactionStatus",
                 "params": {
                     "result": {
                         "transaction_hash": "0x1",
@@ -600,7 +600,7 @@ mod tests {
                 vec![
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -613,7 +613,7 @@ mod tests {
                     }),
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -645,7 +645,7 @@ mod tests {
                 vec![
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -658,7 +658,7 @@ mod tests {
                     }),
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -672,7 +672,7 @@ mod tests {
                     }),
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -705,7 +705,7 @@ mod tests {
                 vec![
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -718,7 +718,7 @@ mod tests {
                     }),
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -733,7 +733,7 @@ mod tests {
                     }),
                     serde_json::json!({
                         "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionsStatus",
+                        "method": "starknet_subscriptionTransactionStatus",
                         "params": {
                             "result": {
                                 "transaction_hash": "0x1",
@@ -805,7 +805,7 @@ mod tests {
                 ),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionsStatus",
+                    "method": "starknet_subscriptionTransactionStatus",
                     "params": {
                         "result": {
                             "transaction_hash": "0x1",
@@ -818,7 +818,7 @@ mod tests {
                 })),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionsStatus",
+                    "method": "starknet_subscriptionTransactionStatus",
                     "params": {
                         "result": {
                             "transaction_hash": "0x1",
@@ -868,7 +868,7 @@ mod tests {
                 ),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionsStatus",
+                    "method": "starknet_subscriptionTransactionStatus",
                     "params": {
                         "result": {
                             "transaction_hash": "0x1",
@@ -901,7 +901,7 @@ mod tests {
                 })),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionsStatus",
+                    "method": "starknet_subscriptionTransactionStatus",
                     "params": {
                         "result": {
                             "transaction_hash": "0x1",

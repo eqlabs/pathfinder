@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0",
     "info": {
-        "version": "0.8.0",
+        "version": "0.8.0-rc.0",
         "title": "API for getting Starknet executables from nodes that store compiled artifacts",
         "license": {}
     },
@@ -110,13 +110,13 @@
                             "minItems": 2,
                             "maxItems": 2
                         }
-                    }
-                },
-                "bytecode_segment_lengths": {
-                    "type": "array",
-                    "description": "a list of sizes of segments in the bytecode, each segment is hashed individually when computing the bytecode hash",
-                    "items": {
-                        "type": "integer"
+                    },
+                    "bytecode_segment_lengths": {
+                        "type": "array",
+                        "description": "a list of sizes of segments in the bytecode, each segment is hashed individually when computing the bytecode hash",
+                        "items": {
+                            "type": "integer"
+                        }
                     }
                 },
                 "required": [
@@ -202,7 +202,7 @@
                 ]
             },
             "Immediate": {
-                "title": "Imeediate",
+                "title": "Immediate",
                 "type": "object",
                 "properties": {
                     "Immediate": {
@@ -213,11 +213,13 @@
                     "Immediate"
                 ]
             },
-            "BinOp": {
+            "BinOp":{
                 "title": "BinOperand",
                 "type": "object",
-                "properties": {
+                "properties":{
                     "BinOp": {
+                        "type": "object",
+                        "properties": {
                         "op": {
                             "type": "string",
                             "enum": [
@@ -238,12 +240,16 @@
                                 }
                             ]
                         }
+                        },
+                        "required":[
+                            "op",
+                            "a",
+                            "b"
+                        ]
                     }
                 },
-                "required": [
-                    "BinOp",
-                    "a",
-                    "b"
+                "required":[
+                    "BinOp"
                 ]
             },
             "ResOperand": {
