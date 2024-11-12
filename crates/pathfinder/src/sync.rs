@@ -103,6 +103,9 @@ impl Sync {
     /// with an error.
     async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
         let mut checkpoint = self.get_checkpoint().await;
+        let from = (checkpoint.block_number, checkpoint.block_hash);
+
+        tracing::info!(?from, "Checkpoint sync started");
 
         loop {
             let result = checkpoint::Sync {
@@ -166,6 +169,8 @@ impl Sync {
         mut next: BlockNumber,
         mut parent_hash: BlockHash,
     ) -> anyhow::Result<()> {
+        tracing::info!(next_block=%next, "Track sync started");
+
         loop {
             let mut result = track::Sync {
                 latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
