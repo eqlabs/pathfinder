@@ -201,9 +201,7 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                // Ignore reorgs for now. Unsure how to handle this properly.
-
-                // TODO: Probably need a loop here if we don't get enough headers?
+                // TODO: handle reorgs correctly
                 let mut headers =
                     Box::pin(p2p.clone().header_stream(start, latest_onchain.0, false));
 

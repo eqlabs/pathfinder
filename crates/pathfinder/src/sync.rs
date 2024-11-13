@@ -208,8 +208,6 @@ struct LatestStream {
 
 impl Clone for LatestStream {
     fn clone(&self) -> Self {
-        tracing::info!("LatestStream: clone()");
-
         Self {
             // Keep the rx for the next clone
             rx: self.rx.clone(),
@@ -234,7 +232,6 @@ impl Stream for LatestStream {
 
 impl LatestStream {
     fn spawn(fgw: GatewayClient, head_poll_interval: Duration) -> Self {
-        tracing::info!("LatestStream: spawn()");
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
@@ -253,12 +250,23 @@ impl LatestStream {
                     continue;
                 };
 
-                tracing::info!(?latest, "LatestStream: block_header()");
+                tracing::trace!(?latest, "LatestStream");
 
-                if tx.send(latest).is_err() {
+                if tx.is_closed() {
                     tracing::debug!("Channel closed, exiting");
                     break;
                 }
+
+                tx.send_if_modified(|current| {
+                    // TODO: handle reorgs correctly
+                    if *current != latest {
+                        tracing::info!(?latest, "LatestStream");
+                        *current = latest;
+                        true
+                    } else {
+                        false
+                    }
+                });
             }
         });
 
