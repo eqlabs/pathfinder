@@ -963,7 +963,7 @@ mod tests {
                 let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].take()
+                json["result"].take()
             }
             _ => panic!("Expected text message"),
         };
@@ -1117,7 +1117,7 @@ mod tests {
                 let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].take()
+                json["result"].take()
             }
             _ => panic!("Expected text message"),
         };

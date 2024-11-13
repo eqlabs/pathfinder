@@ -661,9 +661,7 @@ async fn handle_request(
                 panic!("subscription id overflow");
             }
             Ok(Some(RpcResponse {
-                output: Ok(
-                    serde_json::to_value(&SubscriptionIdResult { subscription_id }).unwrap(),
-                ),
+                output: Ok(serde_json::to_value(subscription_id).unwrap()),
                 id: req_id,
                 version: state.version,
             }))
@@ -679,11 +677,6 @@ async fn handle_request(
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StarknetUnsubscribeParams {
-    subscription_id: SubscriptionId,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct SubscriptionIdResult {
     subscription_id: SubscriptionId,
 }
 
@@ -885,7 +878,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -962,7 +955,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
