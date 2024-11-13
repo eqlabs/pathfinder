@@ -9,18 +9,18 @@ use super::felt::IntoFelt;
 pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
     TransactionHash(
         match transaction {
-            Transaction::Account(tx) => match tx {
-                blockifier::transaction::account_transaction::AccountTransaction::Declare(tx) => {
-                    tx.tx_hash()
+            Transaction::Account(outer) => match &outer.tx {
+                starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {
+                    inner.tx_hash
                 }
-                blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(
-                    tx,
-                ) => tx.tx_hash(),
-                blockifier::transaction::account_transaction::AccountTransaction::Invoke(tx) => {
-                    tx.tx_hash()
+                starknet_api::executable_transaction::AccountTransaction::DeployAccount(
+                    inner,
+                ) => inner.tx_hash(),
+                starknet_api::executable_transaction::AccountTransaction::Invoke(inner) => {
+                    inner.tx_hash()
                 }
             },
-            Transaction::L1Handler(tx) => tx.tx_hash,
+            Transaction::L1Handler(outer) => outer.tx_hash,
         }
         .0
         .into_felt(),
