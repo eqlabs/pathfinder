@@ -52,7 +52,7 @@ pub fn call(
         false,
     );
 
-    let mut remaining_gas = 0;
+    let mut remaining_gas = call_entry_point.initial_gas;
     let call_info = call_entry_point
         .execute(&mut state, &mut resources, &mut context, &mut remaining_gas)
         .map_err(|e| {
