@@ -181,11 +181,17 @@ pub struct VerifyHash;
 impl ProcessStage for VerifyHash {
     const NAME: &'static str = "Class::VerifyHash";
 
-    type Input = ClassWithLayout;
-    type Output = Class;
+    type Input = Vec<ClassWithLayout>;
+    type Output = Vec<Class>;
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        verify_hash_impl(peer, input)
+        input
+            .into_par_iter()
+            .map(|class| {
+                let compiled = verify_hash_impl(peer, class)?;
+                Ok(compiled)
+            })
+            .collect::<Result<Vec<Class>, SyncError>>()
     }
 }
 
@@ -526,12 +532,17 @@ impl<T> CompileSierraToCasm<T> {
 impl<T: GatewayApi + Clone + Send + 'static> ProcessStage for CompileSierraToCasm<T> {
     const NAME: &'static str = "Class::CompileSierraToCasm";
 
-    type Input = Class;
-    type Output = CompiledClass;
+    type Input = Vec<Class>;
+    type Output = Vec<CompiledClass>;
 
     fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        let compiled = compile_or_fetch_impl(input, &self.fgw, &self.tokio_handle)?;
-        Ok(compiled)
+        input
+            .into_par_iter()
+            .map(|class| {
+                let compiled = compile_or_fetch_impl(class, &self.fgw, &self.tokio_handle)?;
+                Ok(compiled)
+            })
+            .collect::<Result<Vec<CompiledClass>, SyncError>>()
     }
 }
 
