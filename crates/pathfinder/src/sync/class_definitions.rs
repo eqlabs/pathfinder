@@ -124,11 +124,14 @@ pub struct VerifyLayout;
 impl ProcessStage for VerifyLayout {
     const NAME: &'static str = "Class::VerifyLayout";
 
-    type Input = P2PClassDefinition;
-    type Output = ClassWithLayout;
+    type Input = Vec<P2PClassDefinition>;
+    type Output = Vec<ClassWithLayout>;
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        verify_layout_impl(peer, input)
+        input
+            .into_par_iter()
+            .map(|class| verify_layout_impl(peer, class))
+            .collect()
     }
 }
 
