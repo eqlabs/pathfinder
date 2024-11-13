@@ -13,7 +13,7 @@ pub(crate) mod transaction;
 pub mod types;
 
 // re-export blockifier transaction type since it's exposed on our API
-pub use blockifier::execution::contract_class::ClassInfo;
+pub use starknet_api::contract_class::ClassInfo;
 pub use blockifier::transaction::account_transaction::AccountTransaction;
 pub use blockifier::transaction::transaction_execution::Transaction;
 pub use blockifier::versioned_constants::VersionedConstants;

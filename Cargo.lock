@@ -1556,7 +1556,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#4276a78d6bb8a82ef2773fcfda66ea64ca63707d"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -7307,7 +7307,7 @@ dependencies = [
 [[package]]
 name = "papyrus_config"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#4276a78d6bb8a82ef2773fcfda66ea64ca63707d"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
 dependencies = [
  "clap",
  "itertools 0.12.1",
@@ -9681,7 +9681,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#4276a78d6bb8a82ef2773fcfda66ea64ca63707d"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
 dependencies = [
  "bitvec",
  "cairo-lang-runner",

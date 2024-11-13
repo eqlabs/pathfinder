@@ -233,14 +233,14 @@ enum TransactionType {
 
 fn transaction_type(transaction: &Transaction) -> TransactionType {
     match transaction {
-        Transaction::Account(tx) => match tx {
-            blockifier::transaction::account_transaction::AccountTransaction::Declare(_) => {
+        Transaction::Account(tx) => match tx.tx {
+            starknet_api::executable_transaction::AccountTransaction::Declare(_) => {
                 TransactionType::Declare
             }
-            blockifier::transaction::account_transaction::AccountTransaction::DeployAccount(_) => {
+            starknet_api::executable_transaction::AccountTransaction::DeployAccount(_) => {
                 TransactionType::DeployAccount
             }
-            blockifier::transaction::account_transaction::AccountTransaction::Invoke(_) => {
+            starknet_api::executable_transaction::AccountTransaction::Invoke(_) => {
                 TransactionType::Invoke
             }
         },
@@ -250,15 +250,16 @@ fn transaction_type(transaction: &Transaction) -> TransactionType {
 
 fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
     match transaction {
-        Transaction::Account(
-            blockifier::transaction::account_transaction::AccountTransaction::Declare(tx),
-        ) => match tx.tx() {
-            starknet_api::transaction::DeclareTransaction::V0(_)
-            | starknet_api::transaction::DeclareTransaction::V1(_) => {
-                Some(ClassHash(tx.class_hash().0.into_felt()))
-            }
-            starknet_api::transaction::DeclareTransaction::V2(_)
-            | starknet_api::transaction::DeclareTransaction::V3(_) => None,
+        Transaction::Account(outer) => match &outer.tx {
+            starknet_api::executable_transaction::AccountTransaction::Declare(inner) => match inner.tx {
+                starknet_api::transaction::DeclareTransaction::V0(_)
+                    | starknet_api::transaction::DeclareTransaction::V1(_) => {
+                        Some(ClassHash(inner.class_hash().0.into_felt()))
+                    }
+                starknet_api::transaction::DeclareTransaction::V2(_)
+                    | starknet_api::transaction::DeclareTransaction::V3(_) => None,
+            },
+            _ => None,
         },
         _ => None,
     }
