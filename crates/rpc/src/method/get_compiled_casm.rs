@@ -87,7 +87,7 @@ pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Outp
         // Parse the casm definition
         let casm_contract_class = CasmContractClass::try_from(casm_definition_str.as_ref())
             .context("Parsing casm definition")
-            .map_err(|_| Error::CompilationFailed)?;
+            .map_err(|_| Error::Internal(anyhow::anyhow!("Failed to parse casm definition")))?;
 
         Ok(Output(casm_contract_class))
     });
