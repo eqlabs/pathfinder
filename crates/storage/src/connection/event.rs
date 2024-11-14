@@ -69,22 +69,32 @@ pub struct PageOfEvents {
 
 impl Transaction<'_> {
     #[cfg(feature = "aggregate_bloom")]
-    pub(super) fn upsert_block_events_aggregate(
+    /// Upsert the [aggregate event bloom filter](AggregateBloom) for the given
+    /// block number. This function operates under the assumption that
+    /// blocks are _never_ skipped so even if there are no events for a
+    /// block, this function should still be called with an empty iterator.
+    /// When testing it is fine to skip blocks, as long as the block at the end
+    /// of the current range is not skipped.
+    pub(super) fn upsert_block_events_aggregate<'a>(
         &self,
         block_number: BlockNumber,
-        events: &[Event],
+        events: impl Iterator<Item = &'a Event>,
     ) -> anyhow::Result<()> {
-        #[rustfmt::skip]
         let mut stmt = self.inner().prepare_cached(
-            "INSERT INTO starknet_event_filters_aggregate (from_block, to_block, bloom) \
-            VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET bloom=excluded.bloom",
+            r"
+            INSERT INTO starknet_events_filters_aggregate
+            (from_block, to_block, bitmap)
+            VALUES (?, ?, ?)
+            ON CONFLICT DO UPDATE SET bitmap=excluded.bitmap
+            ",
         )?;
 
-        let mut running_aggregate = match self.load_aggregate_bloom(block_number)? {
-            // Loading existing block range
-            Some(aggregate) => aggregate,
-            // New block range reached
-            None => AggregateBloom::new(block_number),
+        let mut running_aggregate = match self.running_aggregate.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Poisoned lock in upsert_block_events_aggregate");
+                poisoned.into_inner()
+            }
         };
 
         let mut bloom = BloomFilter::new();
@@ -94,12 +104,17 @@ impl Transaction<'_> {
         }
 
         running_aggregate.add_bloom(&bloom, block_number);
+        // This check is the reason that blocks cannot be skipped, if they were we would
+        // risk missing the last block of the current aggregate's range.
+        if block_number == running_aggregate.to_block {
+            stmt.execute(params![
+                &running_aggregate.from_block,
+                &running_aggregate.to_block,
+                &running_aggregate.compress_bitmap()
+            ])?;
 
-        stmt.execute(params![
-            &running_aggregate.from_block,
-            &running_aggregate.to_block,
-            &running_aggregate.compress_bitmap()
-        ])?;
+            *running_aggregate = AggregateBloom::new(running_aggregate.to_block + 1);
+        }
 
         Ok(())
     }
@@ -331,8 +346,7 @@ impl Transaction<'_> {
     }
 
     // TODO:
-    // This function is temporarily here to compare the performance of the new
-    // aggregate bloom filter.
+    // Add a limit to how many aggregate_bloom ranges can be loaded
     #[cfg(feature = "aggregate_bloom")]
     pub fn events_from_aggregate(
         &self,
@@ -551,55 +565,29 @@ impl Transaction<'_> {
     }
 
     #[cfg(feature = "aggregate_bloom")]
-    fn load_aggregate_bloom(
-        &self,
-        block_number: BlockNumber,
-    ) -> anyhow::Result<Option<AggregateBloom>> {
-        #[rustfmt::skip]
-        let mut select_stmt = self.inner().prepare_cached(
-            "SELECT from_block, to_block, bloom FROM starknet_event_filters_aggregate \
-            WHERE from_block <= ? AND to_block >= ?",
-        )?;
-
-        let aggregate = select_stmt
-            .query_row(params![&block_number, &block_number], |row| {
-                let from_block: u64 = row.get(0)?;
-                let to_block: u64 = row.get(1)?;
-                let compressed_bitmap: Vec<u8> = row.get(2)?;
-
-                Ok((from_block, to_block, compressed_bitmap))
-            })
-            .optional()
-            .context("Querying running bloom aggregate")?
-            .map(|(from_block, to_block, compressed_bitmap)| {
-                AggregateBloom::from_existing_compressed(from_block, to_block, compressed_bitmap)
-            });
-
-        Ok(aggregate)
-    }
-
-    #[cfg(feature = "aggregate_bloom")]
     fn load_aggregate_bloom_range(
         &self,
         start_block: BlockNumber,
         end_block: BlockNumber,
     ) -> anyhow::Result<Vec<AggregateBloom>> {
-        #[rustfmt::skip]
         let mut stmt = self.inner().prepare_cached(
-            "SELECT from_block, to_block, bloom FROM starknet_event_filters_aggregate \
-            WHERE from_block <= :end_block AND to_block >= :start_block \
-            ORDER BY from_block",
+            r"
+            SELECT from_block, to_block, bitmap
+            FROM starknet_events_filters_aggregate
+            WHERE from_block <= :end_block AND to_block >= :start_block
+            ORDER BY from_block
+            ",
         )?;
 
-        let aggregates = stmt
+        let mut aggregates = stmt
             .query_map(
                 named_params![
                     ":end_block": &end_block,
                     ":start_block": &start_block
                 ],
                 |row| {
-                    let from_block: u64 = row.get(0)?;
-                    let to_block: u64 = row.get(1)?;
+                    let from_block = row.get_block_number(0)?;
+                    let to_block = row.get_block_number(1)?;
                     let compressed_bitmap: Vec<u8> = row.get(2)?;
 
                     Ok(AggregateBloom::from_existing_compressed(
@@ -611,6 +599,21 @@ impl Transaction<'_> {
             )
             .context("Querying bloom filter range")?
             .collect::<Result<Vec<_>, _>>()?;
+
+        // There are no aggregates in the database yet or the loaded aggregates
+        // don't cover the requested range.
+        let should_include_running = aggregates.last().map_or(true, |a| end_block > a.to_block);
+
+        if should_include_running {
+            let running_aggregate = match self.running_aggregate.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    tracing::error!("Poisoned lock in load_aggregate_bloom_range");
+                    poisoned.into_inner()
+                }
+            };
+            aggregates.push(running_aggregate.clone());
+        }
 
         Ok(aggregates)
     }
@@ -1520,6 +1523,52 @@ mod tests {
                 .unwrap();
             assert_eq!(events_from_aggregate, events);
         }
+    }
+
+    #[test]
+    #[cfg(feature = "aggregate_bloom")]
+    fn crossing_aggregate_filter_range_stores_and_updates_running() {
+        let blocks: Vec<usize> = [
+            // First aggregate filter start.
+            BlockNumber::GENESIS,
+            BlockNumber::GENESIS + 1,
+            BlockNumber::GENESIS + 2,
+            BlockNumber::GENESIS + 3,
+            // End.
+            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN - 1,
+            // Second aggregate filter start.
+            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
+            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 1,
+            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 2,
+            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 3,
+            // End.
+            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN - 1,
+            // Third aggregate filter start.
+            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
+            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN + 1,
+        ]
+        .iter()
+        .map(|&n| n.get() as usize)
+        .collect();
+
+        let (storage, _) = test_utils::setup_custom_test_storage(&blocks, 2);
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let inserted_aggregate_filter_count = tx
+            .inner()
+            .prepare("SELECT COUNT(*) FROM starknet_events_filters_aggregate")
+            .unwrap()
+            .query_row([], |row| row.get::<_, u64>(0))
+            .unwrap();
+        assert_eq!(inserted_aggregate_filter_count, 2);
+
+        let running_aggregate = tx.running_aggregate.lock().unwrap();
+        // Running aggregate starts from next block range.
+        assert_eq!(
+            running_aggregate.from_block,
+            2 * AggregateBloom::BLOCK_RANGE_LEN
+        );
     }
 
     #[test]

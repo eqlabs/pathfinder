@@ -336,6 +336,7 @@ pub(crate) mod tests {
         block_hash,
         felt,
         BlockHeader,
+        BlockNumber,
         Chain,
         GasPrice,
         SequencerAddress,
@@ -639,6 +640,19 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests_on(Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`.
+        (0..619596)
+            .collect::<Vec<_>>()
+            .chunks(pathfinder_storage::BLOCK_RANGE_LEN as usize)
+            .map(|range| *range.last().unwrap() as u64)
+            .for_each(|block| {
+                let block = BlockNumber::new_or_panic(block);
+                transaction
+                    .insert_transaction_data(block, &[], None)
+                    .unwrap();
+            });
+
         let block: starknet_gateway_types::reply::Block =
             serde_json::from_str(include_str!("../../../fixtures/mainnet-619596.json")).unwrap();
         let transaction_count = block.transactions.len();
