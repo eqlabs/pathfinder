@@ -679,7 +679,7 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
         let db = db.transaction().context("Creating database transaction")?;
         db.upsert_l1_state(&anchor).context("Inserting anchor")?;
         // TODO: this is a bit dodgy, but is used by the sync process. However it
-        // destroys       some RPC assumptions which we should be aware of.
+        // destroys some RPC assumptions which we should be aware of.
         db.update_l1_l2_pointer(Some(anchor.block_number))
             .context("Updating L1-L2 pointer")?;
         db.commit().context("Committing database transaction")?;
