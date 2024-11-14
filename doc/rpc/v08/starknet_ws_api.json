@@ -12,7 +12,7 @@
       "description": "Creates a WebSocket stream which will fire events for new block headers",
       "params": [
         {
-          "name": "block",
+          "name": "block_id",
           "summary": "The block to get notifications from, default is latest, limited to 1024 blocks back",
           "required": false,
           "schema": {
@@ -32,6 +32,9 @@
         },
         {
           "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
+        },
+        {
+            "$ref": "#/components/errors/CALL_ON_PENDING"
         }
       ]
     },
@@ -74,11 +77,11 @@
           "required": false,
           "schema": {
             "title": "event keys",
-            "$ref": "#/components/schemas/EVENT_KEYS"
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/EVENT_KEYS"
           }
         },
         {
-          "name": "block",
+          "name": "block_id",
           "summary": "The block to get notifications from, default is latest, limited to 1024 blocks back",
           "required": false,
           "schema": {
@@ -101,6 +104,9 @@
         },
         {
           "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
+        },
+        {
+            "$ref": "#/components/errors/CALL_ON_PENDING"
         }
       ]
     },
@@ -138,7 +144,7 @@
           }
         },
         {
-          "name": "block",
+          "name": "block_id",
           "summary": "The block to get notifications from, default is latest, limited to 1024 blocks back",
           "required": false,
           "schema": {
@@ -254,6 +260,12 @@
         {
           "name": "subscription_id",
           "schema": {
+            "$ref": "#/components/schemas/SUBSCRIPTION_ID"
+          }
+        },
+        {
+          "name": "result",
+          "schema": {
             "$ref": "#/components/schemas/REORG_DATA"
           }
         }
@@ -361,6 +373,10 @@
       "TOO_MANY_BLOCKS_BACK": {
         "code": 68,
         "message": "Cannot go back more than 1024 blocks"
+      },
+      "CALL_ON_PENDING": {
+        "code": 69,
+        "message": "This method does not support being called on the pending block"
       }
     }
   }

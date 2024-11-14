@@ -3628,13 +3628,18 @@
             "description": "The max amount and max price per unit of L1 gas used in this tx",
             "$ref": "#/components/schemas/RESOURCE_BOUNDS"
           },
+          "l1_data_gas": {
+            "title": "L1 Data Gas",
+            "description": "The max amount and max price per unit of L1 blob gas used in this tx",
+            "$ref": "#/components/schemas/RESOURCE_BOUNDS"
+          },
           "l2_gas": {
             "title": "L2 Gas",
             "description": "The max amount and max price per unit of L2 gas used in this tx",
             "$ref": "#/components/schemas/RESOURCE_BOUNDS"
           }
         },
-        "required": ["l1_gas", "l2_gas"]
+        "required": ["l1_gas", "l1_data_gas", "l2_gas"]
       },
       "RESOURCE_BOUNDS": {
         "type": "object",
