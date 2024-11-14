@@ -257,7 +257,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_filtering() {
-        let num_blocks = 80;
+        let num_blocks = 2000;
         let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -319,7 +319,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -385,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_keys() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -451,7 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -518,7 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn too_many_keys_filter() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);

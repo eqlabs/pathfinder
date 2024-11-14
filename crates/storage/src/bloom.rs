@@ -68,7 +68,7 @@ use cached::{Cached, SizedCache};
 use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
 use pathfinder_crypto::Felt;
 
-use crate::ReorgCounter;
+use crate::{EventFilter, ReorgCounter};
 
 // We're using the upper 4 bits of the 32 byte representation of a felt
 // to store the index of the key in the values set in the Bloom filter.
@@ -76,10 +76,12 @@ use crate::ReorgCounter;
 // filter.
 pub const EVENT_KEY_FILTER_LIMIT: usize = 16;
 
+pub const BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
+
 /// An aggregate of all Bloom filters for a given range of blocks.
 /// Before being added to `AggregateBloom`, each [`BloomFilter`] is
 /// rotated by 90 degrees (transposed).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AggregateBloom {
     /// A [Self::BLOCK_RANGE_LEN] by [BloomFilter::BITVEC_LEN] matrix stored in
     /// a single array.
@@ -109,13 +111,10 @@ impl AggregateBloom {
     }
 
     pub fn from_existing_compressed(
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
         compressed_bitmap: Vec<u8>,
     ) -> Self {
-        let from_block = BlockNumber::new_or_panic(from_block);
-        let to_block = BlockNumber::new_or_panic(to_block);
-
         let bitmap = zstd::bulk::decompress(
             &compressed_bitmap,
             AggregateBloom::BLOCK_RANGE_BYTES as usize * BloomFilter::BITVEC_LEN as usize,
@@ -126,15 +125,10 @@ impl AggregateBloom {
     }
 
     fn from_parts(from_block: BlockNumber, to_block: BlockNumber, bitmap: Vec<u8>) -> Self {
-        assert_eq!(
-            from_block + Self::BLOCK_RANGE_LEN - 1,
-            to_block,
-            "Block range mismatch"
-        );
+        assert_eq!(from_block + Self::BLOCK_RANGE_LEN - 1, to_block);
         assert_eq!(
             bitmap.len() as u64,
-            Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN,
-            "Bitmap length mismatch"
+            Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN
         );
 
         Self {
@@ -148,24 +142,21 @@ impl AggregateBloom {
         zstd::bulk::compress(&self.bitmap, 10).expect("Compressing aggregate Bloom filter")
     }
 
-    /// Rotate the bloom filter by 90 degrees and add it to the aggregate.
+    /// Rotate the [`BloomFilter`] by 90 degrees (transpose) and add it to the
+    /// aggregate. It is up to the user to keep track of when the aggregate
+    /// filter's block range has been exhausted and respond accordingly.
     pub fn add_bloom(&mut self, bloom: &BloomFilter, block_number: BlockNumber) {
         assert!(
             (self.from_block..=self.to_block).contains(&block_number),
-            "Invalid block number",
+            "Block number {} is not in the range {}..={}",
+            block_number,
+            self.from_block,
+            self.to_block
         );
-        assert_eq!(
-            bloom.0.number_of_hash_functions(),
-            BloomFilter::K_NUM,
-            "Hash function count mismatch"
-        );
+        assert_eq!(bloom.0.number_of_hash_functions(), BloomFilter::K_NUM);
 
         let bloom = bloom.0.bit_vec().to_bytes();
-        assert_eq!(
-            bloom.len() as u64,
-            BloomFilter::BITVEC_BYTES,
-            "Bit vector length mismatch"
-        );
+        assert_eq!(bloom.len() as u64, BloomFilter::BITVEC_BYTES);
 
         let relative_block_number = block_number.get() - self.from_block.get();
         let byte_idx = (relative_block_number / 8) as usize;
@@ -183,7 +174,9 @@ impl AggregateBloom {
         }
     }
 
-    pub fn blocks_for_filter(&self, filter: &crate::EventFilter) -> BTreeSet<BlockNumber> {
+    /// Returns a set of [block numbers](BlockNumber) for which the given keys
+    /// are present in the aggregate.
+    pub fn blocks_for_filter(&self, filter: &EventFilter) -> BTreeSet<BlockNumber> {
         // Empty filters are considered present in all blocks.
         if filter.contract_address.is_none() && (filter.keys.iter().flatten().count() == 0) {
             return (self.from_block.get()..=self.to_block.get())
@@ -449,7 +442,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
+    #[cfg(feature = "aggregate_bloom")]
     fn add_bloom_and_check_single_block_found() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -460,15 +453,14 @@ mod tests {
 
         aggregate_bloom_filter.add_bloom(&bloom, from_block);
 
-        let filter = crate::EventFilter {
+        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
+        assert_eq!(block_matches, vec![from_block]);
+
+        let filter = EventFilter {
             keys: vec![vec![EventKey(KEY)]],
             contract_address: None,
             ..Default::default()
         };
-
-        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        assert_eq!(block_matches, vec![from_block]);
-
         let block_matches: Vec<_> = aggregate_bloom_filter
             .blocks_for_filter(&filter)
             .into_iter()
@@ -477,35 +469,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
-    fn aggregate_bloom_past_first_range() {
-        let from_block = BlockNumber::new_or_panic(AggregateBloom::BLOCK_RANGE_LEN);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
-
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
-        bloom.set(&KEY1);
-
-        let filter = crate::EventFilter {
-            keys: vec![vec![EventKey(KEY)]],
-            contract_address: None,
-            ..Default::default()
-        };
-
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
-
-        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        assert_eq!(block_matches, vec![from_block]);
-
-        let block_matches: Vec<_> = aggregate_bloom_filter
-            .blocks_for_filter(&filter)
-            .into_iter()
-            .collect();
-        assert_eq!(block_matches, vec![from_block]);
-    }
-
-    #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
+    #[cfg(feature = "aggregate_bloom")]
     fn add_blooms_and_check_multiple_blocks_found() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -516,15 +480,14 @@ mod tests {
         aggregate_bloom_filter.add_bloom(&bloom, from_block);
         aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
 
-        let filter = crate::EventFilter {
+        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
+        assert_eq!(block_matches, vec![from_block, from_block + 1]);
+
+        let filter = EventFilter {
             keys: vec![vec![EventKey(KEY)]],
             contract_address: None,
             ..Default::default()
         };
-
-        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        assert_eq!(block_matches, vec![from_block, from_block + 1]);
-
         let block_matches: Vec<_> = aggregate_bloom_filter
             .blocks_for_filter(&filter)
             .into_iter()
@@ -533,7 +496,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
+    #[cfg(feature = "aggregate_bloom")]
     fn key_not_in_filter_returns_empty_vec() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -546,12 +509,11 @@ mod tests {
         aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
 
         let block_matches_empty = aggregate_bloom_filter.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-
         assert_eq!(block_matches_empty, Vec::<BlockNumber>::new());
     }
 
     #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
+    #[cfg(feature = "aggregate_bloom")]
     fn serialize_aggregate_roundtrip() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -564,15 +526,14 @@ mod tests {
 
         let compressed_bitmap = aggregate_bloom_filter.compress_bitmap();
         let mut decompressed = AggregateBloom::from_existing_compressed(
-            aggregate_bloom_filter.from_block.get(),
-            aggregate_bloom_filter.to_block.get(),
+            aggregate_bloom_filter.from_block,
+            aggregate_bloom_filter.to_block,
             compressed_bitmap,
         );
         decompressed.add_bloom(&bloom, from_block + 2);
 
         let block_matches = decompressed.blocks_for_keys(&[KEY]);
         let block_matches_empty = decompressed.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-
         assert_eq!(
             block_matches,
             vec![from_block, from_block + 1, from_block + 2]
@@ -581,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(not(feature = "aggregate_bloom"), ignore)]
+    #[cfg(feature = "aggregate_bloom")]
     #[should_panic]
     fn invalid_insert_pos() {
         let from_block = BlockNumber::new_or_panic(0);

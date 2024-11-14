@@ -100,6 +100,10 @@ impl Transaction<'_> {
         events: Option<&[Vec<Event>]>,
     ) -> anyhow::Result<()> {
         if transactions.is_empty() && events.map_or(true, |x| x.is_empty()) {
+            // Advance the running event bloom filter even if there's nothing to add since
+            // it requires that no blocks are skipped.
+            #[cfg(feature = "aggregate_bloom")]
+            self.upsert_block_events_aggregate(block_number, std::iter::empty())?;
             return Ok(());
         }
 
@@ -166,13 +170,14 @@ impl Transaction<'_> {
             ])
             .context("Inserting transaction data")?;
 
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            let events = events.unwrap_or_default().iter().flatten();
+            self.upsert_block_events_aggregate(block_number, events)
+                .context("Inserting events into Bloom filter aggregate")?;
+        }
+
         if let Some(events) = events {
-            #[cfg(feature = "aggregate_bloom")]
-            {
-                let events: Vec<Event> = events.iter().flatten().cloned().collect();
-                self.upsert_block_events_aggregate(block_number, &events)
-                    .context("Inserting events into Bloom filter aggregate")?;
-            }
             let events = events.iter().flatten();
             self.upsert_block_events(block_number, events)
                 .context("Inserting events into Bloom filter")?;
@@ -218,8 +223,8 @@ impl Transaction<'_> {
 
         #[cfg(feature = "aggregate_bloom")]
         {
-            let events: Vec<Event> = events.iter().flatten().cloned().collect();
-            self.upsert_block_events_aggregate(block_number, &events)
+            let events = events.iter().flatten();
+            self.upsert_block_events_aggregate(block_number, events)
                 .context("Inserting events into Bloom filter aggregate")?;
         }
         self.upsert_block_events(block_number, events.iter().flatten())
