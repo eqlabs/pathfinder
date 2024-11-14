@@ -386,7 +386,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(128.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: 15720.into(),
+                        overall_fee: 335720.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
