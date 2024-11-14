@@ -172,6 +172,10 @@ impl Sync {
         tracing::info!(next_block=%next, "Track sync started");
 
         loop {
+            // TODO (done): if a block was stored, then next and parent_hash should have
+            // moved forward
+            // TODO: track sync should check for the l1 anchor and bail if there's a
+            // mismatch, falling back to checkpoint sync
             let mut result = track::Sync {
                 latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
                 p2p: self.p2p.clone(),
@@ -182,7 +186,7 @@ impl Sync {
                 block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
                 verify_tree_hashes: self.verify_tree_hashes,
             }
-            .run(next, parent_hash, self.fgw_client.clone())
+            .run(&mut next, &mut parent_hash, self.fgw_client.clone())
             .await;
 
             match result {
@@ -258,7 +262,6 @@ impl LatestStream {
                 }
 
                 tx.send_if_modified(|current| {
-                    // TODO: handle reorgs correctly
                     if *current != latest {
                         tracing::info!(?latest, "LatestStream");
                         *current = latest;

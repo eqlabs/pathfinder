@@ -64,10 +64,11 @@ pub struct Sync<L, P> {
 }
 
 impl<L, P> Sync<L, P> {
+    /// `next` and `parent_hash` will be advanced each time a block is stored.
     pub async fn run<SequencerClient: GatewayApi + Clone + Send + 'static>(
         self,
-        next: BlockNumber,
-        parent_hash: BlockHash,
+        next: &mut BlockNumber,
+        parent_hash: &mut BlockHash,
         fgw: SequencerClient,
     ) -> Result<(), SyncError>
     where
@@ -82,10 +83,10 @@ impl<L, P> Sync<L, P> {
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
             latest_onchain: self.latest.clone(),
-            start: next,
+            start: *next,
         }
         .spawn()
-        .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
+        .pipe(headers::ForwardContinuity::new(*next, *parent_hash), 100)
         .pipe(
             headers::VerifyHashAndSignature::new(
                 self.chain,
@@ -140,7 +141,7 @@ impl<L, P> Sync<L, P> {
         let classes = ClassSource {
             p2p: self.p2p.clone(),
             declarations: declarations_1,
-            start: next,
+            start: *next,
         }
         .spawn()
         .pipe(class_definitions::VerifyLayout, 10)
@@ -174,6 +175,15 @@ impl<L, P> Sync<L, P> {
             10,
         )
         .into_stream()
+        .inspect_ok(
+            |PeerData {
+                 data: (stored_block_number, stored_block_hash),
+                 ..
+             }| {
+                *next = *stored_block_number + 1;
+                *parent_hash = *stored_block_hash;
+            },
+        )
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
     }
@@ -724,6 +734,7 @@ struct BlockData {
     pub classes: Vec<CompiledClass>,
 }
 
+/// If successful, returns the stored block's number and hash.
 struct StoreBlock {
     connection: pathfinder_storage::Connection,
     // We need this so that we can create extra read-only transactions for parallel contract state
@@ -750,7 +761,7 @@ impl StoreBlock {
 impl ProcessStage for StoreBlock {
     const NAME: &'static str = "Blocks::Persist";
     type Input = BlockData;
-    type Output = ();
+    type Output = (BlockNumber, BlockHash);
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let BlockData {
@@ -870,7 +881,8 @@ impl ProcessStage for StoreBlock {
         let result = db
             .commit()
             .context("Committing transaction")
-            .map_err(Into::into);
+            .map_err(Into::into)
+            .map(|_| (block_number, header.hash));
 
         tracing::debug!(number=%block_number, "Block stored");
 
@@ -941,9 +953,13 @@ mod tests {
             verify_tree_hashes: false,
         };
 
-        sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
-            .await
-            .unwrap();
+        sync.run(
+            &mut (BlockNumber::GENESIS + 0),
+            &mut BlockHash::default(),
+            FakeFgw,
+        )
+        .await
+        .unwrap();
 
         let mut db = storage.connection().unwrap();
         let db = db.transaction().unwrap();
