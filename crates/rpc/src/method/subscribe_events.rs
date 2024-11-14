@@ -283,7 +283,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -347,7 +347,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -413,7 +413,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -480,7 +480,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -603,7 +603,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
