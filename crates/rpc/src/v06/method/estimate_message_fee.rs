@@ -413,7 +413,7 @@ mod tests {
             l1_data_gas_consumed: Some(0.into()),
             l1_data_gas_price: Some(1.into()),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
         };
