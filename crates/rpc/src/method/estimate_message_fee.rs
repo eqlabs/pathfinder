@@ -319,7 +319,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 1.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 29422.into(),
             unit: pathfinder_executor::types::PriceUnit::Wei,
         });
