@@ -1256,6 +1256,7 @@ pub(crate) mod tests {
             };
 
             const DECLARE_GAS_CONSUMED: u64 = 3632;
+            const DECLARE_GAS_CONSUMED_ESTIMATE: u64 = 320000 + DECLARE_GAS_CONSUMED;
 
             pub fn declare(
                 account_contract_address: ContractAddress,
@@ -1267,7 +1268,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: None,
                         data_gas_price: None,
-                        overall_fee: DECLARE_GAS_CONSUMED.into(),
+                        overall_fee: DECLARE_GAS_CONSUMED_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
@@ -1387,6 +1388,7 @@ pub(crate) mod tests {
             }
 
             const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 3009;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED_ESTIMATE: u64 = 400000 + UNIVERSAL_DEPLOYER_GAS_CONSUMED;
 
             pub fn universal_deployer(
                 account_contract_address: ContractAddress,
@@ -1399,7 +1401,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: None,
                         data_gas_price: None,
-                        overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        overall_fee: UNIVERSAL_DEPLOYER_GAS_CONSUMED_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1654,6 +1656,7 @@ pub(crate) mod tests {
             }
 
             const INVOKE_GAS_CONSUMED: u64 = 1664;
+            const INVOKE_GAS_CONSUMED_ESTIMATE: u64 = 360000 + INVOKE_GAS_CONSUMED;
 
             pub fn invoke(
                 account_contract_address: ContractAddress,
@@ -1666,7 +1669,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: None,
                         data_gas_price: None,
-                        overall_fee: INVOKE_GAS_CONSUMED.into(),
+                        overall_fee: INVOKE_GAS_CONSUMED_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {

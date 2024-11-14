@@ -379,9 +379,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 24201.into(),
+            l2_gas_consumed: 320000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 344201.into(),
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
@@ -389,9 +389,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 464.into(),
+            l2_gas_consumed: 400000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 400464.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
@@ -399,9 +399,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 268.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360268.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v0_expected = FeeEstimate {
@@ -409,9 +409,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 266.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360266.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v3_expected = FeeEstimate {
@@ -420,9 +420,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 280.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360280.into(),
             unit: PriceUnit::Fri,
         };
         assert_eq!(
@@ -474,9 +474,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 1262.into(),
+            l2_gas_consumed: 320000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 321262.into(),
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
@@ -484,9 +484,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 464.into(),
+            l2_gas_consumed: 400000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 400464.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
@@ -494,9 +494,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 268.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360268.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v0_expected = FeeEstimate {
@@ -504,9 +504,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 266.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360266.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v3_expected = FeeEstimate {
@@ -515,9 +515,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 280.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 360280.into(),
             unit: PriceUnit::Fri,
         };
         assert_eq!(
@@ -569,9 +569,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 24203.into(),
+            l2_gas_consumed: 360000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 384203.into(),
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
@@ -579,9 +579,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 467.into(),
+            l2_gas_consumed: 440000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 440467.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
@@ -589,9 +589,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 270.into(),
+            l2_gas_consumed: 440000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 440270.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v0_expected = FeeEstimate {
@@ -599,9 +599,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 267.into(),
+            l2_gas_consumed: 440000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 440267.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v3_expected = FeeEstimate {
@@ -610,9 +610,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 284.into(),
+            l2_gas_consumed: 440000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 440284.into(),
             unit: PriceUnit::Fri,
         };
         assert_eq!(
@@ -664,9 +664,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 192.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 1264.into(),
+            l2_gas_consumed: 400000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 401264.into(),
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
@@ -674,9 +674,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 467.into(),
+            l2_gas_consumed: 480000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 480467.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
@@ -684,9 +684,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 270.into(),
+            l2_gas_consumed: 480000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 480270.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v0_expected = FeeEstimate {
@@ -694,9 +694,9 @@ mod tests {
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 267.into(),
+            l2_gas_consumed: 480000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 480267.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_v3_expected = FeeEstimate {
@@ -705,9 +705,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
-            overall_fee: 284.into(),
+            l2_gas_consumed: 480000.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 480284.into(),
             unit: PriceUnit::Fri,
         };
         assert_eq!(

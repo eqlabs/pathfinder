@@ -522,6 +522,7 @@ pub(crate) mod tests {
             };
 
             const DECLARE_OVERALL_FEE: u64 = 1262;
+            const DECLARE_OVERALL_FEE_ESTIMATE: u64 = DECLARE_OVERALL_FEE + 320000;
             const DECLARE_GAS_CONSUMED: u64 = 878;
             const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
 
@@ -535,7 +536,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(DECLARE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: DECLARE_OVERALL_FEE.into(),
+                        overall_fee: DECLARE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
@@ -569,7 +570,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(DECLARE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: DECLARE_OVERALL_FEE.into(),
+                        overall_fee: DECLARE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
@@ -597,7 +598,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(DECLARE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: DECLARE_OVERALL_FEE.into(),
+                        overall_fee: DECLARE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Declare(DeclareTxnTrace {
@@ -731,6 +732,7 @@ pub(crate) mod tests {
             }
 
             const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 464;
+            const UNIVERSAL_DEPLOYER_OVERALL_FEE_ESTIMATE: u64 = UNIVERSAL_DEPLOYER_OVERALL_FEE + 400000;
             const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 16;
             const UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED: u64 = 224;
 
@@ -745,7 +747,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
+                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -791,7 +793,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
+                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -834,7 +836,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
+                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1106,6 +1108,7 @@ pub(crate) mod tests {
             }
 
             const INVOKE_OVERALL_FEE: u64 = 268;
+            const INVOKE_OVERALL_FEE_ESTIMATE: u64 = INVOKE_OVERALL_FEE + 360000;
             const INVOKE_GAS_CONSUMED: u64 = 12;
             const INVOKE_DATA_GAS_CONSUMED: u64 = 128;
 
@@ -1120,7 +1123,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(INVOKE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1160,7 +1163,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(INVOKE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1194,7 +1197,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: Some(INVOKE_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Wei,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1390,6 +1393,7 @@ pub(crate) mod tests {
             }
 
             const INVOKE_V3_OVERALL_FEE: u64 = 280;
+            const INVOKE_V3_OVERALL_FEE_ESTIMATE: u64 = INVOKE_V3_OVERALL_FEE + 360000;
             const INVOKE_V3_GAS_CONSUMED: u64 = 12;
             const INVOKE_V3_DATA_GAS_CONSUMED: u64 = 128;
 
@@ -1404,7 +1408,7 @@ pub(crate) mod tests {
                         gas_price: 2.into(),
                         data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_V3_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Fri,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1444,7 +1448,7 @@ pub(crate) mod tests {
                         gas_price: 2.into(),
                         data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_V3_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Fri,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
@@ -1478,7 +1482,7 @@ pub(crate) mod tests {
                         gas_price: 2.into(),
                         data_gas_consumed: Some(INVOKE_V3_DATA_GAS_CONSUMED.into()),
                         data_gas_price: Some(2.into()),
-                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_V3_OVERALL_FEE_ESTIMATE.into(),
                         unit: PriceUnit::Fri,
                     },
                     transaction_trace: TransactionTrace::Invoke(InvokeTxnTrace {
