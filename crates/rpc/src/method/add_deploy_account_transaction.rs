@@ -389,6 +389,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],
