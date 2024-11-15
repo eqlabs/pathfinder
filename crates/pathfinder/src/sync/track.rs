@@ -829,6 +829,12 @@ impl ProcessStage for StoreBlock {
         )
         .context("Updating Starknet state")?;
 
+        eprintln!("StoreBlock {block_number} classes:                     {classes:?}",);
+        eprintln!("StoreBlock {block_number} transactions:                {transactions:?}",);
+        eprintln!("StoreBlock {block_number} state_diff:                  {state_diff:?}",);
+        eprintln!("StoreBlock {block_number} computed storage_commitment: {storage_commitment}",);
+        eprintln!("StoreBlock {block_number} computed class_commitment:   {class_commitment}",);
+
         // Ensure that roots match.
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
         let expected_state_commitment = header.state_commitment;
@@ -952,20 +958,22 @@ mod tests {
             verify_tree_hashes: false,
         };
 
-        sync.run(
-            &mut (BlockNumber::GENESIS + 0),
-            &mut BlockHash::default(),
-            FakeFgw,
-        )
-        .await
-        .unwrap();
+        let mut start_number = BlockNumber::GENESIS;
+        let mut parent_hash = BlockHash::default();
+
+        sync.run(&mut start_number, &mut parent_hash, FakeFgw)
+            .await
+            .unwrap();
+
+        assert_eq!(start_number, number + 1);
+        assert_eq!(parent_hash, hash);
 
         let mut db = storage.connection().unwrap();
         let db = db.transaction().unwrap();
         for mut expected in blocks {
             // TODO p2p sync does not update class and storage tries yet
-            expected.header.header.class_commitment = ClassCommitment::ZERO;
-            expected.header.header.storage_commitment = StorageCommitment::ZERO;
+            // expected.header.header.class_commitment = ClassCommitment::ZERO;
+            // expected.header.header.storage_commitment = StorageCommitment::ZERO;
 
             let block_number = expected.header.header.number;
             let block_id = block_number.into();

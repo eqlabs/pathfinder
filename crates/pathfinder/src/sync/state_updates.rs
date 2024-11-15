@@ -296,6 +296,7 @@ pub async fn batch_update_starknet_state(
     .context("Joining blocking task")?
 }
 
+// TODO REMOVE
 pub struct UpdateStarknetState {
     pub storage: pathfinder_storage::Storage,
     pub connection: pathfinder_storage::Connection,
@@ -303,6 +304,7 @@ pub struct UpdateStarknetState {
     pub verify_tree_hashes: bool,
 }
 
+// TODO REMOVE
 impl ProcessStage for UpdateStarknetState {
     type Input = StateUpdateData;
     type Output = BlockNumber;
