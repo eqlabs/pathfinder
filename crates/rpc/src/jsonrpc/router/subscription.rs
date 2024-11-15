@@ -165,9 +165,7 @@ where
 
         let mut current_block = match first_block {
             BlockId::Pending => {
-                return Err(RpcError::InvalidParams(
-                    "Pending block not supported".to_string(),
-                ));
+                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
             }
             BlockId::Latest => {
                 // No need to catch up. The code below will subscribe to new blocks.
@@ -616,12 +614,12 @@ async fn handle_request(
             })?;
         let (_, handle) = subscriptions
             .remove(&params.subscription_id)
-            .ok_or_else(|| {
-                RpcResponse::invalid_params(
-                    req_id.clone(),
-                    "Subscription not found".to_string(),
-                    state.version,
-                )
+            .ok_or_else(|| RpcResponse {
+                output: Err(RpcError::ApplicationError(
+                    ApplicationError::InvalidSubscriptionID,
+                )),
+                id: req_id.clone(),
+                version: state.version,
             })?;
         handle.abort();
         metrics::increment_counter!("rpc_method_calls_total", "method" => "starknet_unsubscribe", "version" => state.version.to_str());

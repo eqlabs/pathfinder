@@ -99,6 +99,12 @@ pub enum ApplicationError {
     StorageProofNotSupported,
     #[error("Proof is missing")]
     ProofMissing,
+    #[error("Invalid subscription id")]
+    InvalidSubscriptionID,
+    #[error("Too many addresses in filter sender_address filter")]
+    TooManyAddressesInFilter,
+    #[error("This method does not support being called on the pending block")]
+    CallOnPending,
     /// Internal errors are errors whose details we don't want to show to the
     /// end user. These are logged, and a simple "internal error" message is
     /// shown to the end user.
@@ -151,6 +157,10 @@ impl ApplicationError {
             ApplicationError::ProofMissing => 10001,
             ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
             ApplicationError::SubscriptionGatewayDown { .. } => 10030,
+            // doc/rpc/starknet_ws_api.json
+            ApplicationError::InvalidSubscriptionID => 66,
+            ApplicationError::TooManyAddressesInFilter => 67,
+            ApplicationError::CallOnPending => 69,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -200,6 +210,9 @@ impl ApplicationError {
             ApplicationError::CompiledClassHashMismatch => None,
             ApplicationError::UnsupportedTxVersion => None,
             ApplicationError::UnsupportedContractClassVersion => None,
+            ApplicationError::InvalidSubscriptionID => None,
+            ApplicationError::TooManyAddressesInFilter => None,
+            ApplicationError::CallOnPending => None,
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
             })),
