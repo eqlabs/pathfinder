@@ -1,22 +1,65 @@
 //! Create fake blockchain data for test purposes
+use fake::{Fake, Faker};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{ClassHash, SierraHash, SignedBlockHeader, StateUpdate};
+use pathfinder_common::{
+    BlockNumber,
+    ClassCommitment,
+    ClassHash,
+    SierraHash,
+    SignedBlockHeader,
+    StateUpdate,
+    StorageCommitment,
+};
 use rand::Rng;
 
 use crate::Storage;
+
+// pub fn update_starknet_state(
+//     transaction: &Transaction<'_>,
+//     state_update: StateUpdateRef<'_>,
+//     verify_hashes: bool,
+//     block: BlockNumber,
+//     // we need this so that we can create extra read-only transactions for
+//     // parallel contract state updates
+//     storage: Storage,
+// ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
 
 // TODO remove this module and use real data from sepolia
 // then remove
 // ./crates/pathfinder/src/sync/fixtures
 // ./crates/pathfinder/src/sync/checkpoint/fixture.rs
 
+pub type UpdateTriesFn = Box<
+    dyn Fn(
+        &crate::Transaction<'_>,
+        StateUpdateRef<'_>,
+        bool,
+        BlockNumber,
+        Storage,
+    ) -> anyhow::Result<(StorageCommitment, ClassCommitment)>,
+>;
+
+pub struct Config2 {
+    pub update_tries: UpdateTriesFn,
+}
+
+impl Default for Config2 {
+    fn default() -> Self {
+        Self {
+            // TODO currently this is (0, 0)
+            update_tries: Box::new(|_, _, _, _, _| Ok((Faker.fake(), Faker.fake()))),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
     pub header: SignedBlockHeader,
     pub transaction_data: Vec<(Transaction, Receipt, Vec<Event>)>,
-    pub state_update: StateUpdate,
+    pub state_update: StateUpdate, // TODO make it StateUpdateData
     pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
 }
@@ -44,6 +87,8 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
              ..
          }| {
             tx.insert_block_header(&header.header).unwrap();
+            tx.insert_signature(header.header.number, &header.signature)
+                .unwrap();
             tx.insert_transaction_data(
                 header.header.number,
                 &transaction_data
@@ -60,7 +105,27 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
                 ),
             )
             .unwrap();
-            tx.insert_signature(header.header.number, &header.signature)
+
+            // let (storage_commitment, class_commitment) = update_starknet_state(
+            //     &db,
+            //     (&state_diff).into(),
+            //     self.verify_tree_hashes,
+            //     block_number,
+            //     self.storage.clone(),
+            // )
+            // .unwrap();
+
+            // db.update_storage_and_class_commitments(
+            //     block_number,
+            //     storage_commitment,
+            //     class_commitment,
+            // )
+            // .context("Updating storage and class commitments")?;
+            // db.insert_state_update_data(block_number, &state_diff)
+            //     .context("Inserting state update data")?;
+
+            // TODO insert_state_update_data
+            tx.insert_state_update(header.header.number, state_update)
                 .unwrap();
 
             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
@@ -81,9 +146,6 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
                     )
                     .unwrap()
                 });
-
-            tx.insert_state_update(header.header.number, state_update)
-                .unwrap();
         },
     );
     tx.commit().unwrap();
