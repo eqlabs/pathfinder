@@ -122,6 +122,10 @@
             "syscall_base_gas_cost": 1,
             "step_gas_cost": 50
         },
+        "get_class_hash_at_gas_cost": {
+            "step_gas_cost": 0,
+            "syscall_base_gas_cost": 0
+        },
         "emit_event_gas_cost": {
             "syscall_base_gas_cost": 1,
             "step_gas_cost": 10
@@ -420,6 +424,11 @@
                 "builtin_instance_counter": {
                     "range_check_builtin": 1
                 },
+                "n_memory_holes": 0
+            },
+            "GetClassHashAt": {
+                "n_steps": 0,
+                "builtin_instance_counter": {},
                 "n_memory_holes": 0
             }
         },
