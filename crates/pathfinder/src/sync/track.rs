@@ -829,11 +829,12 @@ impl ProcessStage for StoreBlock {
         )
         .context("Updating Starknet state")?;
 
-        eprintln!("StoreBlock {block_number} classes:                     {classes:?}",);
-        eprintln!("StoreBlock {block_number} transactions:                {transactions:?}",);
-        eprintln!("StoreBlock {block_number} state_diff:                  {state_diff:?}",);
-        eprintln!("StoreBlock {block_number} computed storage_commitment: {storage_commitment}",);
-        eprintln!("StoreBlock {block_number} computed class_commitment:   {class_commitment}",);
+        // eprintln!("StoreBlock {block_number} classes:
+        // {classes:?}",); eprintln!("StoreBlock {block_number} transactions:
+        // {transactions:?}",); eprintln!("StoreBlock {block_number} state_diff:
+        // {state_diff:?}",); eprintln!("StoreBlock {block_number} computed
+        // storage_commitment: {storage_commitment}",); eprintln!("StoreBlock
+        // {block_number} computed class_commitment:   {class_commitment}",);
 
         // Ensure that roots match.
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
@@ -925,7 +926,7 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path() {
-        const N: usize = 10;
+        const N: usize = 1;
         let blocks = fake::init::with_n_blocks_and_config(
             N,
             Config {

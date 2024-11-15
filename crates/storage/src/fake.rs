@@ -7,6 +7,11 @@ use rand::Rng;
 
 use crate::Storage;
 
+// TODO remove this module and use real data from sepolia
+// then remove
+// ./crates/pathfinder/src/sync/fixtures
+// ./crates/pathfinder/src/sync/checkpoint/fixture.rs
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
     pub header: SignedBlockHeader,
