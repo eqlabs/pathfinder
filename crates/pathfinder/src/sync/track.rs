@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::pin;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::stream::BoxStream;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
@@ -201,9 +201,7 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                // Ignore reorgs for now. Unsure how to handle this properly.
-
-                // TODO: Probably need a loop here if we don't get enough headers?
+                // TODO: handle reorgs correctly
                 let mut headers =
                     Box::pin(p2p.clone().header_stream(start, latest_onchain.0, false));
 
@@ -459,17 +457,18 @@ impl<P> EventSource<P> {
             } = self;
 
             while let Some(header) = headers.next().await {
+                let Some(block_transactions) = transactions.next().await else {
+                    // Expected transactions stream ended prematurely which means there was an error
+                    // at the source and track sync should be restarted. We should not signal an
+                    // error here as the error has already been indicated at the
+                    // transactions source.
+                    return;
+                };
+
                 let (peer, mut events) = loop {
                     if let Some(stream) = p2p.clone().events_for_block(header.number).await {
                         break stream;
                     }
-                };
-
-                let Some(block_transactions) = transactions.next().await else {
-                    // TODO is this a fatal error?
-                    // is this an error at all? Can blocks have no transactions?
-                    let _ = tx.send(Err(anyhow!("No transactions").into())).await;
-                    return;
                 };
 
                 let mut block_events: HashMap<_, Vec<Event>> = HashMap::new();

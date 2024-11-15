@@ -247,57 +247,6 @@ fn verify_hash_impl(peer: &PeerId, input: ClassWithLayout) -> Result<Class, Sync
     }
 }
 
-pub struct VerifyDeclaredAt {
-    expectation_source: Receiver<ExpectedDeclarations>,
-    current: ExpectedDeclarations,
-}
-
-impl VerifyDeclaredAt {
-    pub fn new(expectation_source: Receiver<ExpectedDeclarations>) -> Self {
-        Self {
-            expectation_source,
-            current: Default::default(),
-        }
-    }
-}
-
-impl ProcessStage for VerifyDeclaredAt {
-    const NAME: &'static str = "Class::VerifyDeclarationBlock";
-
-    type Input = Class;
-    type Output = Class;
-
-    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
-        if self.current.classes.is_empty() {
-            self.current = loop {
-                let expected = self
-                    .expectation_source
-                    .blocking_recv()
-                    .context("Receiving expected declarations")?;
-
-                // Some blocks may have no declared classes. Try the next one.
-                if expected.classes.is_empty() {
-                    continue;
-                }
-
-                break expected;
-            };
-        }
-
-        if self.current.block_number != input.block_number {
-            tracing::debug!(%peer, expected_block_number=%self.current.block_number, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
-            return Err(SyncError::UnexpectedClass(*peer));
-        }
-
-        if self.current.classes.remove(&input.hash) {
-            Ok(input)
-        } else {
-            tracing::debug!(%peer, block_number=%input.block_number, class_hash=%input.hash, "Unexpected class definition");
-            Err(SyncError::UnexpectedClass(*peer))
-        }
-    }
-}
-
 /// This function makes sure that the classes we receive from other peers are
 /// really declared at the expected blocks.
 ///
@@ -410,64 +359,6 @@ pub struct ExpectedDeclarations {
     pub classes: HashSet<ClassHash>,
 }
 
-pub struct ExpectedDeclarationsSource {
-    db_connection: pathfinder_storage::Connection,
-    start: BlockNumber,
-    stop: BlockNumber,
-}
-
-impl ExpectedDeclarationsSource {
-    pub fn new(
-        db_connection: pathfinder_storage::Connection,
-        start: BlockNumber,
-        stop: BlockNumber,
-    ) -> Self {
-        Self {
-            db_connection,
-            start,
-            stop,
-        }
-    }
-
-    pub fn spawn(self) -> anyhow::Result<Receiver<ExpectedDeclarations>> {
-        let (tx, rx) = mpsc::channel(1);
-        let Self {
-            mut db_connection,
-            mut start,
-            stop,
-        } = self;
-
-        tokio::task::spawn_blocking(move || {
-            let db = db_connection
-                .transaction()
-                .context("Creating database transaction")?;
-
-            while start <= stop {
-                let declared = db
-                    .declared_classes_at(start.into())
-                    .context("Querying declared classes at block")?
-                    .context("Block header not found")?
-                    .into_iter()
-                    .collect::<HashSet<_>>();
-
-                if !declared.is_empty() {
-                    tx.blocking_send(ExpectedDeclarations {
-                        block_number: start,
-                        classes: declared,
-                    })
-                    .context("Sending expected declarations")?;
-                }
-
-                start += 1;
-            }
-
-            anyhow::Ok(())
-        });
-
-        Ok(rx)
-    }
-}
-
 /// Returns a stream of sets of class hashes declared at each block in the range
 /// `start..=stop`.
 pub(super) fn expected_declarations_stream(
@@ -483,21 +374,22 @@ pub(super) fn expected_declarations_stream(
                 return;
             }
         };
-        let db = match db.transaction().context("Creating database transaction") {
-            Ok(x) => x,
-            Err(e) => {
-                tx.blocking_send(Err(e));
-                return;
-            }
-        };
 
         while start <= stop {
+            let db = match db.transaction().context("Creating database transaction") {
+                Ok(x) => x,
+                Err(e) => {
+                    tx.blocking_send(Err(e));
+                    return;
+                }
+            };
             let res = db
                 .declared_classes_at(start.into())
                 .context("Querying declared classes at block")
                 .and_then(|x| x.context("Block header not found"))
                 .map_err(Into::into)
                 .map(|x| (start, x.into_iter().collect::<HashSet<_>>()));
+            drop(db);
             let is_err = res.is_err();
             let is_empty = res.as_ref().map(|(_, x)| x.is_empty()).unwrap_or(false);
             if !is_empty {
@@ -639,7 +531,6 @@ pub(super) async fn persist(
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
         let tail = classes
             .last()
             .map(|x| x.data.block_number)
@@ -651,9 +542,10 @@ pub(super) async fn persist(
             hash,
         } in classes.into_iter().map(|x| x.data)
         {
+            let db = db.transaction().context("Creating database transaction")?;
             persist_impl(&db, hash, definition)?;
+            db.commit().context("Committing db transaction")?;
         }
-        db.commit().context("Committing db transaction")?;
 
         Ok(tail)
     })

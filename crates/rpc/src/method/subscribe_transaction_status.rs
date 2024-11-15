@@ -21,7 +21,7 @@ pub struct SubscribeTransactionStatus;
 #[derive(Debug, Clone, Default)]
 pub struct Params {
     transaction_hash: TransactionHash,
-    block: Option<BlockId>,
+    block_id: Option<BlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Params {
@@ -29,7 +29,7 @@ impl crate::dto::DeserializeForVersion for Params {
         value.deserialize_map(|value| {
             Ok(Self {
                 transaction_hash: value.deserialize("transaction_hash").map(TransactionHash)?,
-                block: value.deserialize_optional_serde("block")?,
+                block_id: value.deserialize_optional_serde("block_id")?,
             })
         })
     }
@@ -143,7 +143,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
             let mut l2_blocks = state.notifications.l2_blocks.subscribe();
             let mut reorgs = state.notifications.reorgs.subscribe();
             let storage = state.storage.clone();
-            if let Some(first_block) = params.block {
+            if let Some(first_block) = params.block_id {
                 // Check if we have the transaction in our database, and if so, send the
                 // relevant transaction status updates.
                 let (first_block, l1_state, tx_with_receipt) =
@@ -943,7 +943,7 @@ mod tests {
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
-            {"block": {"block_number": 0}, "transaction_hash": tx_hash}
+            {"block_id": {"block_number": 0}, "transaction_hash": tx_hash}
         );
         receiver_tx
             .send(Ok(Message::Text(
@@ -963,7 +963,7 @@ mod tests {
                 let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].take()
+                json["result"].take()
             }
             _ => panic!("Expected text message"),
         };
@@ -1097,7 +1097,7 @@ mod tests {
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
-            {"block": {"block_number": 0}, "transaction_hash": tx_hash}
+            {"block_id": {"block_number": 0}, "transaction_hash": tx_hash}
         );
         receiver_tx
             .send(Ok(Message::Text(
@@ -1117,7 +1117,7 @@ mod tests {
                 let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].take()
+                json["result"].take()
             }
             _ => panic!("Expected text message"),
         };

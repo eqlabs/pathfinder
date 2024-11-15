@@ -34,7 +34,7 @@
                     "$ref": "#/components/errors/COMPILATION_ERROR"
                 },
                 {
-                    "$ref": "#/components/errors/CLASS_HASH_NOT_FOUND"
+                    "$ref": "./api/starknet_api_openrpc.json#/components/errors/CLASS_HASH_NOT_FOUND"
                 }
             ]
         }
@@ -128,21 +128,23 @@
                 ]
             },
             "CASM_ENTRY_POINT": {
-                "allOf": [
-                    {
-                        "$ref": "#/components/schemas/DEPRECATED_CAIRO_ENTRY_POINT"
-                    },
-                    {
-                        "type": "object",
-                        "properties": {
-                            "builtins": {
-                                "type": "array",
-                                "items": "string"
-                            }
+                "schema": {
+                    "allOf": [
+                        {
+                            "$ref": "#/components/schemas/DEPRECATED_CAIRO_ENTRY_POINT"
                         },
-                        "required": "builtins"
-                    }
-                ]
+                        {
+                            "type": "object",
+                            "properties": {
+                                "builtins": {
+                                    "type": "array",
+                                    "items": "string"
+                                }
+                            },
+                            "required": "builtins"
+                        }
+                    ]
+                }
             },
             "CellRef": {
                 "title": "CellRef",
@@ -1335,20 +1337,19 @@
                 ]
             },
             "FELT": {
-                "$ref": "./starknet_api_openrpc.json#/components/schemas/FELT"
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/FELT"
             },
             "NUM_AS_HEX": {
-                "$ref": "./starknet_api_openrpc.json#/components/schemas/NUM_AS_HEX"
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/NUM_AS_HEX"
             },
             "DEPRECATED_CAIRO_ENTRY_POINT": {
-                "$ref": "./starknet_api_openrpc.json#/components/schemas/DEPRECATED_CAIRO_ENTRY_POINT"
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/DEPRECATED_CAIRO_ENTRY_POINT"
             }
         },
         "errors": {
-            "CLASS_HASH_NOT_FOUND": {
-                "$ref": "./api/starknet_api_openrpc.json#/components/errors/CLASS_HASH_NOT_FOUND"
-            },
             "COMPILATION_ERROR": {
+                "code": 100,
+                "message": "Failed to compile the contract",
                 "data": {
                     "type": "object",
                     "description": "More data about the compilation failure",

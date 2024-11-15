@@ -18,7 +18,7 @@ pub struct SubscribeEvents;
 pub struct Params {
     from_address: Option<ContractAddress>,
     keys: Option<Vec<Vec<EventKey>>>,
-    block: Option<BlockId>,
+    block_id: Option<BlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -35,7 +35,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                 keys: value.deserialize_optional_array("keys", |value| {
                     value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
                 })?,
-                block: value.deserialize_optional_serde("block")?,
+                block_id: value.deserialize_optional_serde("block_id")?,
             }))
         })
     }
@@ -85,7 +85,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     fn starting_block(params: &Self::Params) -> BlockId {
         params
             .as_ref()
-            .and_then(|req| req.block)
+            .and_then(|req| req.block_id)
             .unwrap_or(BlockId::Latest)
     }
 
@@ -257,13 +257,13 @@ mod tests {
 
     #[tokio::test]
     async fn no_filtering() {
-        let num_blocks = 80;
+        let num_blocks = 2000;
         let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
-            {"block": {"block_number": 0}}
+            {"block_id": {"block_number": 0}}
         );
         receiver_tx
             .send(Ok(Message::Text(
@@ -283,7 +283,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -319,13 +319,13 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
             }
         );
@@ -347,7 +347,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -385,13 +385,13 @@ mod tests {
 
     #[tokio::test]
     async fn filter_keys() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
         );
@@ -413,7 +413,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -451,13 +451,13 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
                 "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
@@ -480,7 +480,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -518,13 +518,13 @@ mod tests {
 
     #[tokio::test]
     async fn too_many_keys_filter() {
-        let router = setup(80).await;
+        let router = setup(2000).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
                 "keys": [
                     ["0x46"],
@@ -603,7 +603,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"]["subscription_id"].as_u64().unwrap()
+                json["result"].as_u64().unwrap()
             }
             _ => panic!("Expected text message"),
         };
