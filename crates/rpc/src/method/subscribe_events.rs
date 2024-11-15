@@ -68,6 +68,9 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
     fn validate_params(params: &Self::Params) -> Result<(), RpcError> {
         if let Some(params) = params {
+            if let Some(BlockId::Pending) = params.block_id {
+                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
+            }
             if let Some(keys) = &params.keys {
                 if keys.len() > EVENT_KEY_FILTER_LIMIT {
                     return Err(RpcError::ApplicationError(
@@ -638,6 +641,47 @@ mod tests {
                         "last_block_number": 2
                     },
                     "subscription_id": subscription_id
+                }
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn subscribe_with_pending_block() {
+        let router = setup(0).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+
+        // Send subscription request with pending block
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeEvents",
+                    "params": {"block_id": "pending"}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+
+        // Expect error response
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match res {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": 69,
+                    "message": "This method does not support being called on the pending block"
                 }
             })
         );
