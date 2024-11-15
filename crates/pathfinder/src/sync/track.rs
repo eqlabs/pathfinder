@@ -911,7 +911,7 @@ mod tests {
     use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
     use pathfinder_storage::fake::init::Config;
-    use pathfinder_storage::fake::{self, Block};
+    use pathfinder_storage::fake::{self, Block, Config2, Config3};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
@@ -927,7 +927,9 @@ mod tests {
     #[tokio::test]
     async fn happy_path() {
         const N: usize = 1;
-        let blocks = fake::init::with_n_blocks_and_config(
+        let dummy_storage = StorageBuilder::in_memory().unwrap();
+        let blocks = fake::with_n_blocks_and_config2(
+            &dummy_storage,
             N,
             Config {
                 calculate_block_hash: Box::new(|header: &BlockHeader| {
@@ -937,7 +939,28 @@ mod tests {
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
             },
+            Config2 {
+                update_tries: Box::new(update_starknet_state),
+            },
+            Config3 {
+                calculate_block_hash: Box::new(|header: &BlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_header(header))
+                }),
+            },
         );
+
+        // let blocks = fake::init::with_n_blocks_and_config(
+        //     N,
+        //     Config {
+        //         calculate_block_hash: Box::new(|header: &BlockHeader| {
+        //             compute_final_hash(&BlockHeaderData::from_header(header))
+        //         }),
+        //         calculate_transaction_commitment:
+        // Box::new(calculate_transaction_commitment),
+        //         calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+        //         calculate_event_commitment: Box::new(calculate_event_commitment),
+        //     },
+        // );
 
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
         let latest = (number, hash);

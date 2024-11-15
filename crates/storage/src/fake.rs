@@ -5,11 +5,14 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
+    BlockHash,
+    BlockHeader,
     BlockNumber,
     ClassCommitment,
     ClassHash,
     SierraHash,
     SignedBlockHeader,
+    StateCommitment,
     StateUpdate,
     StorageCommitment,
 };
@@ -55,6 +58,20 @@ impl Default for Config2 {
     }
 }
 
+pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
+
+pub struct Config3 {
+    pub calculate_block_hash: BlockHashFn,
+}
+
+impl Default for Config3 {
+    fn default() -> Self {
+        Self {
+            calculate_block_hash: Box::new(|_| Faker.fake()),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Block {
     pub header: SignedBlockHeader,
@@ -70,6 +87,93 @@ pub struct Block {
 pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
     let mut rng = rand::thread_rng();
     with_n_blocks_and_rng(storage, n, &mut rng)
+}
+
+/// Initialize [`Storage`] with a slice of already generated blocks
+pub fn fill_with_config2(
+    storage: &Storage,
+    blocks: &[Block],
+    config2: Config2,
+) -> Vec<(StorageCommitment, ClassCommitment)> {
+    let mut connection = storage.connection().unwrap();
+    let tx = connection.transaction().unwrap();
+
+    let mut computed_commitments = Vec::with_capacity(blocks.len());
+
+    blocks.iter().for_each(
+        |Block {
+             header,
+             transaction_data,
+             state_update,
+             cairo_defs,
+             sierra_defs,
+             ..
+         }| {
+            tx.insert_block_header(&header.header).unwrap();
+            tx.insert_signature(header.header.number, &header.signature)
+                .unwrap();
+            tx.insert_transaction_data(
+                header.header.number,
+                &transaction_data
+                    .iter()
+                    .cloned()
+                    .map(|(tx, receipt, ..)| (tx, receipt))
+                    .collect::<Vec<_>>(),
+                Some(
+                    &transaction_data
+                        .iter()
+                        .cloned()
+                        .map(|(_, _, events)| events)
+                        .collect::<Vec<_>>(),
+                ),
+            )
+            .unwrap();
+
+            let (storage_commitment, class_commitment) = (config2.update_tries)(
+                &tx,
+                state_update.into(),
+                false,
+                header.header.number,
+                storage.clone(),
+            )
+            .unwrap();
+
+            computed_commitments.push((storage_commitment, class_commitment));
+
+            tx.update_storage_and_class_commitments(
+                header.header.number,
+                storage_commitment,
+                class_commitment,
+            )
+            .unwrap();
+
+            // TODO insert_state_update_data
+            tx.insert_state_update(header.header.number, state_update)
+                .unwrap();
+
+            cairo_defs.iter().for_each(|(cairo_hash, definition)| {
+                tx.insert_cairo_class(*cairo_hash, definition).unwrap()
+            });
+
+            sierra_defs
+                .iter()
+                .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
+                    tx.insert_sierra_class(
+                        sierra_hash,
+                        sierra_definition,
+                        state_update
+                            .declared_sierra_classes
+                            .get(sierra_hash)
+                            .unwrap(),
+                        casm_definition,
+                    )
+                    .unwrap()
+                });
+        },
+    );
+    tx.commit().unwrap();
+
+    computed_commitments
 }
 
 /// Initialize [`Storage`] with a slice of already generated blocks
@@ -169,6 +273,66 @@ pub fn with_n_blocks_rng_and_config<R: Rng>(
     let blocks = init::with_n_blocks_rng_and_config(n, rng, config);
     fill(storage, &blocks);
     blocks
+}
+
+/// TODO
+pub fn with_n_blocks_rng_and_config2<R: Rng>(
+    storage: &Storage,
+    n: usize,
+    rng: &mut R,
+    config: init::Config,
+    config2: Config2,
+    config3: Config3,
+) -> Vec<Block> {
+    let mut blocks = init::with_n_blocks_rng_and_config(n, rng, config);
+    let computed_commitments = fill_with_config2(storage, &blocks, config2);
+    blocks.iter_mut().enumerate().for_each(|(i, block)| {
+        let (storage_commitment, class_commitment) = computed_commitments.get(i).unwrap();
+        let state_commitment = StateCommitment::calculate(*storage_commitment, *class_commitment);
+        block.header.header.storage_commitment = *storage_commitment;
+        block.header.header.class_commitment = *class_commitment;
+        block.header.header.state_commitment = state_commitment;
+    });
+
+    // Compute the block hash, update parent block hash with the correct value
+    let Block {
+        header,
+        state_update,
+        ..
+    } = blocks.get_mut(0).unwrap();
+    header.header.parent_hash = BlockHash::ZERO;
+    header.header.hash = (config3.calculate_block_hash)(&header.header);
+    state_update.block_hash = header.header.hash;
+
+    for i in 1..n {
+        let parent_hash = blocks
+            .get(i - 1)
+            .map(|Block { header, .. }| header.header.hash)
+            .unwrap();
+        let Block {
+            header,
+            state_update,
+            ..
+        } = blocks.get_mut(i).unwrap();
+
+        header.header.parent_hash = parent_hash;
+        header.header.hash = (config3.calculate_block_hash)(&header.header);
+        state_update.block_hash = header.header.hash;
+    }
+
+    blocks
+}
+
+/// TODO
+pub fn with_n_blocks_and_config2(
+    storage: &Storage,
+    n: usize,
+    config: init::Config,
+    config2: Config2,
+    config3: Config3,
+) -> Vec<Block> {
+    let mut rng = rand::thread_rng();
+    with_n_blocks_rng_and_config2(storage, n, &mut rng, config, config2, config3)
 }
 
 /// Raw _fake state initializers_
