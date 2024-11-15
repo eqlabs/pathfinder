@@ -20,20 +20,14 @@ use rand::Rng;
 
 use crate::Storage;
 
-// pub fn update_starknet_state(
-//     transaction: &Transaction<'_>,
-//     state_update: StateUpdateRef<'_>,
-//     verify_hashes: bool,
-//     block: BlockNumber,
-//     // we need this so that we can create extra read-only transactions for
-//     // parallel contract state updates
-//     storage: Storage,
-// ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+// TODO merge the apis, hide the init api, leave a storage filler api, remove
+// unused apis
 
-// TODO remove this module and use real data from sepolia
-// then remove
-// ./crates/pathfinder/src/sync/fixtures
-// ./crates/pathfinder/src/sync/checkpoint/fixture.rs
+// Summary [ 157.075s] 1099 tests run: 1097 passed (4 slow), 2 failed, 22
+// skipped FAIL [ 156.606s] pathfinder
+// p2p_network::sync_handlers::tests::prop::get_classes FAIL [   0.146s]
+// pathfinder-rpc
+// method::subscribe_transaction_status::tests::transaction_status_streaming
 
 pub type UpdateTriesFn = Box<
     dyn Fn(
