@@ -143,9 +143,9 @@ impl<L, P> Sync<L, P> {
             start: next,
         }
         .spawn()
-        .pipe_each(class_definitions::VerifyLayout, 10)
-        .pipe_each(class_definitions::VerifyHash, 10)
-        .pipe_each(
+        .pipe(class_definitions::VerifyLayout, 10)
+        .pipe(class_definitions::VerifyHash, 10)
+        .pipe(
             class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
         )
