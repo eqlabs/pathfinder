@@ -876,7 +876,7 @@ pub(crate) mod tests {
                         gas_price: 1.into(),
                         data_gas_consumed: None,
                         data_gas_price: None,
-                        overall_fee: 2222.into(),
+                        overall_fee: 382222.into(),
                         unit: PriceUnit::Wei,
                     }
                 ,
