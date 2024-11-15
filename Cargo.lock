@@ -164,14 +164,14 @@ dependencies = [
  "alloy-transport",
  "futures",
  "futures-util",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "alloy-core"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47ef9e96462d0b9fee9008c53c1f3d017b9498fcdef3ad8d728db98afef47955"
+checksum = "9c8316d83e590f4163b221b8180008f302bda5cf5451202855cdd323e588849c"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -181,9 +181,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-dyn-abi"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85132f2698b520fab3f54beed55a44389f7006a7b557a0261e1e69439dcc1572"
+checksum = "ef2364c782a245cf8725ea6dbfca5f530162702b5d685992ea03ce64529136cc"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-json-abi"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ded610181f3dad5810f6ff12d1a99994cf9b42d2fcb7709029352398a5da5ae6"
+checksum = "b84c506bf264110fa7e90d9924f742f40ef53c6572ea56a0b0bd714a567ed389"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-type-parser",
@@ -258,7 +258,7 @@ dependencies = [
  "alloy-sol-types",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
 ]
 
@@ -280,7 +280,7 @@ dependencies = [
  "async-trait",
  "auto_impl",
  "futures-utils-wasm",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -297,9 +297,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-primitives"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd58d377699e6cfeab52c4a9d28bdc4ef37e2bd235ff2db525071fe37a2e9af5"
+checksum = "9fce5dbd6a4f118eecc4719eaa9c7ffc31c315e6c5ccde3642db927802312425"
 dependencies = [
  "alloy-rlp",
  "bytes",
@@ -353,7 +353,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "url",
@@ -478,14 +478,14 @@ dependencies = [
  "auto_impl",
  "elliptic-curve",
  "k256",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "alloy-sol-macro"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a1b42ac8f45e2f49f4bcdd72cbfde0bb148f5481d403774ffa546e48b83efc1"
+checksum = "9343289b4a7461ed8bab8618504c995c049c082b70c7332efd7b32125633dc05"
 dependencies = [
  "alloy-sol-macro-expander",
  "alloy-sol-macro-input",
@@ -497,9 +497,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-expander"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06318f1778e57f36333e850aa71bd1bb5e560c10279e236622faae0470c50412"
+checksum = "4222d70bec485ceccc5d8fd4f2909edd65b5d5e43d4aca0b5dcee65d519ae98f"
 dependencies = [
  "alloy-json-abi",
  "alloy-sol-macro-input",
@@ -516,9 +516,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-input"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaebb9b0ad61a41345a22c9279975c0cdd231b97947b10d7aad1cf0a7181e4a5"
+checksum = "2e17f2677369571b976e51ea1430eb41c3690d344fef567b840bfc0b01b6f83a"
 dependencies = [
  "alloy-json-abi",
  "const-hex",
@@ -533,9 +533,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-type-parser"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12c71028bfbfec210e24106a542aad3def7caf1a70e2c05710e92a98481980d3"
+checksum = "aa64d80ae58ffaafdff9d5d84f58d03775f66c84433916dc9a64ed16af5755da"
 dependencies = [
  "serde",
  "winnow",
@@ -543,9 +543,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-types"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "374d7fb042d68ddfe79ccb23359de3007f6d4d53c13f703b64fb0db422132111"
+checksum = "6520d427d4a8eb7aa803d852d7a52ceb0c519e784c292f64bb339e636918cf27"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -566,7 +566,7 @@ dependencies = [
  "futures-utils-wasm",
  "serde",
  "serde_json",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tower 0.5.1",
  "tracing",
@@ -903,7 +903,7 @@ dependencies = [
  "nom",
  "num-traits",
  "rusticata-macros",
- "thiserror",
+ "thiserror 1.0.69",
  "time",
 ]
 
@@ -1556,7 +1556,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -1591,7 +1591,7 @@ dependencies = [
  "strum 0.25.0",
  "strum_macros 0.25.3",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.69",
  "toml 0.8.19",
 ]
 
@@ -1642,9 +1642,9 @@ dependencies = [
 
 [[package]]
 name = "bstr"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40723b8fb387abc38f4f4a37c09073622e41dd12327033091ef8950659e6dc0c"
+checksum = "1a68f1f47cdf0ec8ee4b941b2eee2a80cb796db73118c0dd09ac63fbe405be22"
 dependencies = [
  "memchr",
  "serde",
@@ -1726,7 +1726,7 @@ dependencies = [
  "hashbrown 0.13.2",
  "instant",
  "once_cell",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -1785,7 +1785,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "serde",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1798,7 +1798,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "serde",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1812,7 +1812,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "serde",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1850,7 +1850,7 @@ dependencies = [
  "clap",
  "log",
  "salsa",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1875,7 +1875,7 @@ dependencies = [
  "log",
  "salsa",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1901,7 +1901,7 @@ dependencies = [
  "log",
  "salsa",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1927,7 +1927,7 @@ dependencies = [
  "rust-analyzer-salsa",
  "semver 1.0.23",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2186,7 +2186,7 @@ dependencies = [
  "itertools 0.12.1",
  "rust-analyzer-salsa",
  "serde",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2490,7 +2490,7 @@ dependencies = [
  "cairo-lang-filesystem 1.0.0-alpha.6",
  "serde",
  "smol_str 0.1.24",
- "thiserror",
+ "thiserror 1.0.69",
  "toml 0.4.10",
 ]
 
@@ -2502,7 +2502,7 @@ dependencies = [
  "cairo-lang-filesystem 1.0.0-rc0",
  "serde",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
  "toml 0.4.10",
 ]
 
@@ -2515,7 +2515,7 @@ dependencies = [
  "cairo-lang-filesystem 1.1.1",
  "serde",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
  "toml 0.4.10",
 ]
 
@@ -2529,7 +2529,7 @@ dependencies = [
  "cairo-lang-utils 2.9.0-dev.0",
  "serde",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
  "toml 0.8.19",
 ]
 
@@ -2561,7 +2561,7 @@ dependencies = [
  "sha2",
  "smol_str 0.2.2",
  "starknet-types-core",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2678,7 +2678,7 @@ dependencies = [
  "serde",
  "sha3",
  "smol_str 0.1.24",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2700,7 +2700,7 @@ dependencies = [
  "serde",
  "sha3",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2723,7 +2723,7 @@ dependencies = [
  "serde",
  "sha3",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2750,7 +2750,7 @@ dependencies = [
  "sha3",
  "smol_str 0.2.2",
  "starknet-types-core",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2762,7 +2762,7 @@ dependencies = [
  "cairo-lang-sierra 1.0.0-alpha.6",
  "cairo-lang-utils 1.0.0-alpha.6",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2774,7 +2774,7 @@ dependencies = [
  "cairo-lang-sierra 1.0.0-rc0",
  "cairo-lang-utils 1.0.0-rc0",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2787,7 +2787,7 @@ dependencies = [
  "cairo-lang-sierra 1.1.1",
  "cairo-lang-utils 1.1.1",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2803,7 +2803,7 @@ dependencies = [
  "itertools 0.12.1",
  "num-bigint 0.4.6",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2815,7 +2815,7 @@ dependencies = [
  "cairo-lang-sierra 1.0.0-alpha.6",
  "cairo-lang-utils 1.0.0-alpha.6",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2827,7 +2827,7 @@ dependencies = [
  "cairo-lang-sierra 1.0.0-rc0",
  "cairo-lang-utils 1.0.0-rc0",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2840,7 +2840,7 @@ dependencies = [
  "cairo-lang-sierra 1.1.1",
  "cairo-lang-utils 1.1.1",
  "itertools 0.10.5",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2856,7 +2856,7 @@ dependencies = [
  "itertools 0.12.1",
  "num-bigint 0.4.6",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2978,7 +2978,7 @@ dependencies = [
  "log",
  "num-bigint 0.4.6",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3000,7 +3000,7 @@ dependencies = [
  "log",
  "num-bigint 0.4.6",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3023,7 +3023,7 @@ dependencies = [
  "log",
  "num-bigint 0.4.6",
  "num-traits",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3044,7 +3044,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-traits",
  "starknet-types-core",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3093,7 +3093,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "smol_str 0.1.24",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3133,7 +3133,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3174,7 +3174,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3204,7 +3204,7 @@ dependencies = [
  "serde_json",
  "smol_str 0.2.2",
  "starknet-types-core",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3227,7 +3227,7 @@ dependencies = [
  "sha3",
  "smol_str 0.2.2",
  "starknet-types-core",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3254,7 +3254,7 @@ dependencies = [
  "num-traits",
  "salsa",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
  "unescaper",
 ]
 
@@ -3271,7 +3271,7 @@ dependencies = [
  "num-traits",
  "salsa",
  "smol_str 0.2.2",
- "thiserror",
+ "thiserror 1.0.69",
  "unescaper",
 ]
 
@@ -3452,9 +3452,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.1.37"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40545c26d092346d8a8dab71ee48e7685a7a9cba76e634790c215b41a4a7b4cf"
+checksum = "fd9de9f2205d5ef3fd67e685b0df337994ddd4495e2a28d185500d0e1edfea47"
 dependencies = [
  "jobserver",
  "libc",
@@ -3552,9 +3552,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.20"
+version = "4.5.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b97f376d85a664d5837dbae44bf546e6477a679ff6610010f17276f686d867e8"
+checksum = "fb3b4b9e5a7c7514dfa52869339ee98b3156b0bfb4e8a77c4ff4babb64b1604f"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -3562,9 +3562,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.20"
+version = "4.5.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19bc80abd44e4bed93ca373a0704ccbd1b710dc5749406201bb018272808dc54"
+checksum = "b17a95aa67cc7b5ebd32aa5370189aa0d79069ef1c64ce893bd30fb24bff20ec"
 dependencies = [
  "anstream",
  "anstyle",
@@ -3587,9 +3587,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.7.2"
+version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1462739cb27611015575c0c11df5df7601141071f07518d56fcc1be504cbec97"
+checksum = "afb84c814227b90d6895e01398aee0d8033c00e7466aca416fb6a8e0eb19d8a7"
 
 [[package]]
 name = "colorchoice"
@@ -4498,9 +4498,9 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "flate2"
-version = "1.0.34"
+version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1b589b4dc103969ad3cf85c950899926ec64300a1a46d76c03a6072957036f0"
+checksum = "c936bfdafb507ebbf50b8074c54fa31c5be9a1e7e5f467dd659697041407d07c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -4733,9 +4733,9 @@ dependencies = [
 
 [[package]]
 name = "genco"
-version = "0.17.9"
+version = "0.17.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "afac3cbb14db69ac9fef9cdb60d8a87e39a7a527f85a81a923436efa40ad42c6"
+checksum = "a35958104272e516c2a5f66a9d82fba4784d2b585fc1e2358b8f96e15d342995"
 dependencies = [
  "genco-macros",
  "relative-path",
@@ -4744,9 +4744,9 @@ dependencies = [
 
 [[package]]
 name = "genco-macros"
-version = "0.17.9"
+version = "0.17.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "553630feadf7b76442b0849fd25fdf89b860d933623aec9693fed19af0400c78"
+checksum = "43eaff6bbc0b3a878361aced5ec6a2818ee7c541c5b33b5880dfa9a86c23e9e7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5061,7 +5061,7 @@ dependencies = [
  "once_cell",
  "rand",
  "socket2 0.5.7",
- "thiserror",
+ "thiserror 1.0.69",
  "tinyvec",
  "tokio",
  "tracing",
@@ -5084,7 +5084,7 @@ dependencies = [
  "rand",
  "resolv-conf",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
 ]
@@ -6000,7 +6000,7 @@ dependencies = [
  "multiaddr",
  "pin-project",
  "rw-stream-sink",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -6036,7 +6036,7 @@ dependencies = [
  "quick-protobuf-codec",
  "rand",
  "rand_core",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "void",
  "web-time",
@@ -6076,7 +6076,7 @@ dependencies = [
  "rw-stream-sink",
  "serde",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "unsigned-varint 0.8.0",
  "void",
@@ -6100,7 +6100,7 @@ dependencies = [
  "lru",
  "quick-protobuf",
  "quick-protobuf-codec",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "void",
  "web-time",
@@ -6172,7 +6172,7 @@ dependencies = [
  "quick-protobuf",
  "quick-protobuf-codec",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "void",
 ]
@@ -6191,7 +6191,7 @@ dependencies = [
  "rand",
  "serde",
  "sha2",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "zeroize",
 ]
@@ -6219,7 +6219,7 @@ dependencies = [
  "serde",
  "sha2",
  "smallvec",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "uint",
  "void",
@@ -6288,7 +6288,7 @@ dependencies = [
  "sha2",
  "snow",
  "static_assertions",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "x25519-dalek",
  "zeroize",
@@ -6347,7 +6347,7 @@ dependencies = [
  "ring 0.17.8",
  "rustls",
  "socket2 0.5.7",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
 ]
@@ -6371,7 +6371,7 @@ dependencies = [
  "quick-protobuf-codec",
  "rand",
  "static_assertions",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "void",
  "web-time",
@@ -6485,7 +6485,7 @@ dependencies = [
  "ring 0.17.8",
  "rustls",
  "rustls-webpki 0.101.7",
- "thiserror",
+ "thiserror 1.0.69",
  "x509-parser",
  "yasna",
 ]
@@ -6515,7 +6515,7 @@ dependencies = [
  "either",
  "futures",
  "libp2p-core",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
  "yamux 0.12.1",
  "yamux 0.13.3",
@@ -6688,7 +6688,7 @@ dependencies = [
  "parking_lot 0.12.3",
  "portable-atomic 0.3.20",
  "quanta",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
 ]
@@ -6939,7 +6939,7 @@ dependencies = [
  "anyhow",
  "byteorder",
  "paste",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -6953,7 +6953,7 @@ dependencies = [
  "log",
  "netlink-packet-core",
  "netlink-sys",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -7307,14 +7307,14 @@ dependencies = [
 [[package]]
 name = "papyrus_config"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
 dependencies = [
  "clap",
  "itertools 0.12.1",
  "serde",
  "serde_json",
  "strum_macros 0.25.3",
- "thiserror",
+ "thiserror 1.0.69",
  "validator",
 ]
 
@@ -7482,7 +7482,7 @@ dependencies = [
  "starknet-gateway-types",
  "starknet_api",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.69",
  "time",
  "tokio",
  "tokio-stream",
@@ -7523,7 +7523,7 @@ dependencies = [
  "sha3",
  "tagged",
  "tagged-debug-derive",
- "thiserror",
+ "thiserror 1.0.69",
  "vergen",
 ]
 
@@ -7618,7 +7618,7 @@ dependencies = [
  "pretty_assertions_sorted",
  "rand",
  "starknet-gateway-types",
- "thiserror",
+ "thiserror 1.0.69",
  "tracing",
 ]
 
@@ -7673,7 +7673,7 @@ dependencies = [
  "starknet_api",
  "tempfile",
  "test-log",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-tungstenite 0.21.0",
  "tower 0.4.13",
@@ -7733,7 +7733,7 @@ dependencies = [
  "starknet-gateway-types",
  "tempfile",
  "test-log",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -7775,7 +7775,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "879952a81a83930934cbf1786752d6dedc3b1f29e8f8fb2ad1d0a36f377cf442"
 dependencies = [
  "memchr",
- "thiserror",
+ "thiserror 1.0.69",
  "ucd-trie",
 ]
 
@@ -8346,15 +8346,15 @@ dependencies = [
  "asynchronous-codec",
  "bytes",
  "quick-protobuf",
- "thiserror",
+ "thiserror 1.0.69",
  "unsigned-varint 0.8.0",
 ]
 
 [[package]]
 name = "quinn"
-version = "0.11.5"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c7c5fdde3cdae7203427dc4f0a68fe0ed09833edc525a03456b153b79828684"
+checksum = "62e96808277ec6f97351a2380e6c25114bc9e67037775464979f3037c92d05ef"
 dependencies = [
  "bytes",
  "futures-io",
@@ -8364,26 +8364,29 @@ dependencies = [
  "rustc-hash 2.0.0",
  "rustls",
  "socket2 0.5.7",
- "thiserror",
+ "thiserror 2.0.3",
  "tokio",
  "tracing",
 ]
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.8"
+version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fadfaed2cd7f389d0161bb73eeb07b7b78f8691047a6f3e73caaeae55310a4a6"
+checksum = "a2fe5ef3495d7d2e377ff17b1a8ce2ee2ec2a18cde8b6ad6619d65d0701c135d"
 dependencies = [
  "bytes",
+ "getrandom",
  "rand",
  "ring 0.17.8",
  "rustc-hash 2.0.0",
  "rustls",
+ "rustls-pki-types",
  "slab",
- "thiserror",
+ "thiserror 2.0.3",
  "tinyvec",
  "tracing",
+ "web-time",
 ]
 
 [[package]]
@@ -8550,7 +8553,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom",
  "libredox",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8749,7 +8752,7 @@ dependencies = [
  "netlink-packet-route",
  "netlink-proto",
  "nix",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -8955,6 +8958,9 @@ name = "rustls-pki-types"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16f1201b3c9a7ee8039bcadc17b7e605e2945b27eee7631788c1bd2b0643674b"
+dependencies = [
+ "web-time",
+]
 
 [[package]]
 name = "rustls-webpki"
@@ -9659,7 +9665,7 @@ dependencies = [
  "serde_with",
  "sha3",
  "starknet-gateway-test-fixtures",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -9681,7 +9687,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#2b4f533e99e8c1e912a0ae89dfaae38029ba3c47"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
 dependencies = [
  "bitvec",
  "cairo-lang-runner",
@@ -9700,7 +9706,7 @@ dependencies = [
  "starknet-types-core",
  "strum 0.25.0",
  "strum_macros 0.25.3",
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -9805,9 +9811,9 @@ dependencies = [
 
 [[package]]
 name = "syn-solidity"
-version = "0.8.11"
+version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edf42e81491fb8871b74df3d222c64ae8cbc1269ea509fa768a3ed3e1b0ac8cb"
+checksum = "f76fe0a3e1476bdaa0775b9aec5b869ed9520c2b2fedfe9c6df3618f8ea6290b"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -9963,7 +9969,16 @@ version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.69",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c006c85c7651b3cf2ada4584faa36773bd07bac24acfb39f3c431b36d7e667aa"
+dependencies = [
+ "thiserror-impl 2.0.3",
 ]
 
 [[package]]
@@ -9971,6 +9986,17 @@ name = "thiserror-impl"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f077553d607adc1caf65430528a576c757a71ed73944b66ebb58ef2bbd243568"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10464,7 +10490,7 @@ dependencies = [
  "log",
  "rand",
  "sha1",
- "thiserror",
+ "thiserror 1.0.69",
  "url",
  "utf-8",
 ]
@@ -10485,7 +10511,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "sha1",
- "thiserror",
+ "thiserror 1.0.69",
  "utf-8",
 ]
 
@@ -10503,7 +10529,7 @@ dependencies = [
  "log",
  "rand",
  "sha1",
- "thiserror",
+ "thiserror 1.0.69",
  "utf-8",
 ]
 
@@ -10543,7 +10569,7 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c878a167baa8afd137494101a688ef8c67125089ff2249284bd2b5f9bfedb815"
 dependencies = [
- "thiserror",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -11219,7 +11245,7 @@ dependencies = [
  "pharos",
  "rustc_version 0.4.1",
  "send_wrapper",
- "thiserror",
+ "thiserror 1.0.69",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -11259,7 +11285,7 @@ dependencies = [
  "nom",
  "oid-registry",
  "rusticata-macros",
- "thiserror",
+ "thiserror 1.0.69",
  "time",
 ]
 
