@@ -18,7 +18,7 @@ pub struct SubscribeEvents;
 pub struct Params {
     from_address: Option<ContractAddress>,
     keys: Option<Vec<Vec<EventKey>>>,
-    block: Option<BlockId>,
+    block_id: Option<BlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -35,7 +35,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                 keys: value.deserialize_optional_array("keys", |value| {
                     value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
                 })?,
-                block: value.deserialize_optional_serde("block")?,
+                block_id: value.deserialize_optional_serde("block_id")?,
             }))
         })
     }
@@ -85,7 +85,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     fn starting_block(params: &Self::Params) -> BlockId {
         params
             .as_ref()
-            .and_then(|req| req.block)
+            .and_then(|req| req.block_id)
             .unwrap_or(BlockId::Latest)
     }
 
@@ -263,7 +263,7 @@ mod tests {
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
-            {"block": {"block_number": 0}}
+            {"block_id": {"block_number": 0}}
         );
         receiver_tx
             .send(Ok(Message::Text(
@@ -325,7 +325,7 @@ mod tests {
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
             }
         );
@@ -391,7 +391,7 @@ mod tests {
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
         );
@@ -457,7 +457,7 @@ mod tests {
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
                 "keys": [["0x46"], [], ["0x47", "0x48"]],
             }
@@ -524,7 +524,7 @@ mod tests {
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = serde_json::json!(
             {
-                "block": {"block_number": 0},
+                "block_id": {"block_number": 0},
                 "from_address": "0x46",
                 "keys": [
                     ["0x46"],

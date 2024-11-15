@@ -13,7 +13,7 @@ pub struct SubscribeNewHeads;
 
 #[derive(Debug, Clone)]
 pub struct Params {
-    block: Option<BlockId>,
+    block_id: Option<BlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -24,7 +24,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
         }
         value.deserialize_map(|value| {
             Ok(Some(Params {
-                block: value.deserialize_optional_serde("block")?,
+                block_id: value.deserialize_optional_serde("block_id")?,
             }))
         })
     }
@@ -58,7 +58,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
     fn starting_block(params: &Self::Params) -> BlockId {
         params
             .as_ref()
-            .and_then(|req| req.block)
+            .and_then(|req| req.block_id)
             .unwrap_or(BlockId::Latest)
     }
 
@@ -247,7 +247,7 @@ mod tests {
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "starknet_subscribeNewHeads",
-                    "params": {"block": {"block_number": 0}}
+                    "params": {"block_id": {"block_number": 0}}
                 })
                 .to_string(),
             )))
@@ -517,11 +517,11 @@ mod tests {
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
         let params = if num_blocks == 0 {
             serde_json::json!(
-                {"block": "latest"}
+                {"block_id": "latest"}
             )
         } else {
             serde_json::json!(
-                {"block": {"block_number": 0}}
+                {"block_id": {"block_number": 0}}
             )
         };
         receiver_tx
