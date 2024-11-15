@@ -129,6 +129,7 @@ pub mod init {
         BlockHeader,
         BlockNumber,
         ChainId,
+        ClassHash,
         ContractAddress,
         EventCommitment,
         ReceiptCommitment,
@@ -141,6 +142,7 @@ pub mod init {
         TransactionHash,
         TransactionIndex,
     };
+    use rand::seq::IteratorRandom;
     use rand::Rng;
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -232,6 +234,7 @@ pub mod init {
         config: Config,
     ) -> Vec<Block> {
         let mut init = Vec::with_capacity(n);
+        let mut declared_classes_accum = HashSet::new();
 
         for i in 0..n {
             let mut header: BlockHeader = Faker.fake_with_rng(rng);
@@ -330,6 +333,12 @@ pub mod init {
                 .map(|sierra_hash| (*sierra_hash, Faker.fake()))
                 .collect::<HashMap<_, _>>();
 
+            let all_declared_classes_in_this_block = declared_cairo_classes
+                .iter()
+                .copied()
+                .chain(declared_sierra_classes.keys().map(|x| ClassHash(x.0)))
+                .collect::<HashSet<_>>();
+
             init.push(Block {
                 header: SignedBlockHeader {
                     header,
@@ -351,19 +360,27 @@ pub mod init {
                         },
                     )]),
                     contract_updates: {
-                        let mut x = Faker.fake_with_rng::<HashMap<_, ContractUpdate>, _>(rng);
-                        x.iter_mut().for_each(|(_, u)| {
-                            // Initially generate deploys only
-                            u.class = u
-                                .class
-                                .as_ref()
-                                .map(|x| ContractClassUpdate::Deploy(x.class_hash()));
-                            // Disallow empty storage entries
-                            if u.storage.is_empty() {
-                                u.storage = fake_non_empty_with_rng(rng);
-                            }
-                        });
-                        x
+                        // We can only deploy what was declared so far in the chain
+                        if declared_classes_accum.is_empty() {
+                            Default::default()
+                        } else {
+                            Faker
+                                .fake_with_rng::<Vec<ContractAddress>, _>(rng)
+                                .into_iter()
+                                .map(|contract_address| {
+                                    (
+                                        contract_address,
+                                        ContractUpdate {
+                                            class: Some(ContractClassUpdate::Deploy(
+                                                *declared_classes_accum.iter().choose(rng).unwrap(),
+                                            )),
+                                            storage: fake_non_empty_with_rng(rng),
+                                            nonce: Faker.fake(),
+                                        },
+                                    )
+                                })
+                                .collect()
+                        }
                     },
                 },
                 cairo_defs: cairo_defs.into_iter().collect(),
@@ -372,6 +389,9 @@ pub mod init {
                     .map(|(h, (s, c))| (h, s, c))
                     .collect(),
             });
+
+            // These new classes from this block can now be deployed in the next blocks
+            declared_classes_accum.extend(all_declared_classes_in_this_block);
         }
 
         // Calculate state commitments and randomly choose which contract updates should
@@ -469,33 +489,36 @@ pub mod init {
                 ..
             } in init.iter_mut()
             {
+                // CHANGE: no implicitly declared classes
+                //
+                //
                 // All remaining Deploys in the current block should also be
                 // added to `declared_cairo_classes` because Cairo0 Deploys
                 // were not initially preceded by an explicit declare
                 // transaction
-                let implicitly_declared = state_update
-                    .contract_updates
-                    .iter_mut()
-                    .filter_map(|(_, update)| match &mut update.class {
-                        Some(ContractClassUpdate::Deploy(class_hash)) => {
-                            let def = serde_json::to_vec(
-                                &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
-                            )
-                            .unwrap();
-                            let new_hash = compute_class_hash(&def).unwrap().hash();
-                            *class_hash = new_hash;
-                            Some((new_hash, def))
-                        }
-                        Some(ContractClassUpdate::Replace(_)) | None => None,
-                    })
-                    .collect::<Vec<_>>();
+                // let implicitly_declared = state_update
+                //     .contract_updates
+                //     .iter_mut()
+                //     .filter_map(|(_, update)| match &mut update.class {
+                //         Some(ContractClassUpdate::Deploy(class_hash)) => {
+                //             let def = serde_json::to_vec(
+                //                 &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
+                //             )
+                //             .unwrap();
+                //             let new_hash = compute_class_hash(&def).unwrap().hash();
+                //             *class_hash = new_hash;
+                //             Some((new_hash, def))
+                //         }
+                //         Some(ContractClassUpdate::Replace(_)) | None => None,
+                //     })
+                //     .collect::<Vec<_>>();
 
-                state_update.declared_cairo_classes.extend(
-                    implicitly_declared
-                        .iter()
-                        .map(|(class_hash, _)| *class_hash),
-                );
-                cairo_defs.extend(implicitly_declared);
+                // state_update.declared_cairo_classes.extend(
+                //     implicitly_declared
+                //         .iter()
+                //         .map(|(class_hash, _)| *class_hash),
+                // );
+                // cairo_defs.extend(implicitly_declared);
 
                 *state_diff_length = state_update.state_diff_length();
                 *state_diff_commitment = state_update.compute_state_diff_commitment();
