@@ -145,19 +145,23 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
             let mut reorgs = state.notifications.reorgs.subscribe();
 
             if let Some(first_block) = params.block_id {
-                match send_historical_updates(
-                    state.storage.clone(),
-                    first_block,
-                    tx_hash,
-                    &mut sender,
-                )
-                .await?
-                {
-                    ControlFlow::Break(()) => {
-                        // Subscription closing.
-                        break;
+                // When subscribing starting from the pending block we must not send historical
+                // updates based on storage state.
+                if first_block != BlockId::Pending {
+                    match send_historical_updates(
+                        state.storage.clone(),
+                        first_block,
+                        tx_hash,
+                        &mut sender,
+                    )
+                    .await?
+                    {
+                        ControlFlow::Break(()) => {
+                            // Subscription closing.
+                            break;
+                        }
+                        ControlFlow::Continue(()) => {}
                     }
-                    ControlFlow::Continue(()) => {}
                 }
             }
 
