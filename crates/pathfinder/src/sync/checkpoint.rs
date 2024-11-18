@@ -979,7 +979,7 @@ mod tests {
 
     mod handle_transaction_stream {
         use assert_matches::assert_matches;
-        use fake::{Dummy, Faker};
+        use fake::{Dummy, Fake, Faker};
         use futures::stream;
         use p2p::client::types::TransactionData;
         use p2p::libp2p::PeerId;
@@ -1000,89 +1000,61 @@ mod tests {
         }
 
         async fn setup(num_blocks: usize) -> Setup {
-            tokio::task::spawn_blocking(move || {
-                let storage = StorageBuilder::in_memory().unwrap();
-                let (_, blocks) = fake_storage::with_n_blocks_and_config2(
-                    &storage,
-                    num_blocks,
-                    fake_storage::Config {
-                        calculate_transaction_commitment: Box::new(
-                            calculate_transaction_commitment,
-                        ),
-                        // Purge transaction data before insertion into the DB.
-                        modify_storage: Box::new(|blocks| {
-                            blocks.iter_mut().for_each(|b| {
-                                b.transaction_data = Default::default();
-                            })
-                        }),
-                        ..Default::default()
-                    },
-                );
-                let streamed_transactions = blocks
-                    .iter()
-                    .map(|block| {
-                        anyhow::Result::Ok(PeerData::for_tests((
-                            block
-                                .transaction_data
-                                .iter()
-                                .map(|x| (x.0.clone(), x.1.clone().into()))
-                                .collect::<Vec<_>>(),
-                            block.header.header.number,
-                        )))
-                    })
-                    .collect::<Vec<_>>();
-                let expected_transactions = blocks
-                    .iter()
-                    .map(|block| {
-                        block
-                            .transaction_data
-                            .iter()
-                            .map(|x| (x.0.clone(), x.1.clone()))
-                            .collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<_>>();
-
-                Setup {
-                    streamed_transactions,
-                    expected_transactions,
-                    storage,
-                }
-            })
-            .await
-            .unwrap()
+            setup_inner(num_blocks, Box::new(calculate_transaction_commitment))
         }
 
         async fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
-            use fake::{Fake, Faker};
-            tokio::task::spawn_blocking(move || {
-                let storage = StorageBuilder::in_memory().unwrap();
-                let mut blocks = fake_storage::with_n_blocks(&storage, num_blocks);
-                let streamed_transactions = blocks
-                    .iter()
-                    .map(|block| {
-                        anyhow::Result::Ok(PeerData::for_tests((
-                            block
-                                .transaction_data
-                                .iter()
-                                .map(|x| (x.0.clone(), x.1.clone().into()))
-                                .collect::<Vec<_>>(),
-                            block.header.header.number,
-                        )))
-                    })
-                    .collect::<Vec<_>>();
-                // Purge transaction data.
-                blocks.iter_mut().for_each(|b| {
-                    b.transaction_data = Default::default();
-                });
+            setup_inner(num_blocks, Box::new(|_, _| Ok(Faker.fake())))
+        }
 
-                Setup {
-                    streamed_transactions,
-                    expected_transactions: Vec::default(),
-                    storage,
-                }
-            })
-            .await
-            .unwrap()
+        fn setup_inner(
+            num_blocks: usize,
+            calculate_transaction_commitment: fake_storage::TransactionCommitmentFn,
+        ) -> Setup {
+            let storage = StorageBuilder::in_memory().unwrap();
+            let (_, blocks) = fake_storage::with_n_blocks_and_config2(
+                &storage,
+                num_blocks,
+                fake_storage::Config {
+                    calculate_transaction_commitment,
+                    // Purge transaction data before insertion into the DB.
+                    modify_storage: Box::new(|blocks| {
+                        blocks.iter_mut().for_each(|b| {
+                            b.transaction_data = Default::default();
+                        })
+                    }),
+                    ..Default::default()
+                },
+            );
+            let streamed_transactions = blocks
+                .iter()
+                .map(|block| {
+                    anyhow::Result::Ok(PeerData::for_tests((
+                        block
+                            .transaction_data
+                            .iter()
+                            .map(|x| (x.0.clone(), x.1.clone().into()))
+                            .collect::<Vec<_>>(),
+                        block.header.header.number,
+                    )))
+                })
+                .collect::<Vec<_>>();
+            let expected_transactions = blocks
+                .iter()
+                .map(|block| {
+                    block
+                        .transaction_data
+                        .iter()
+                        .map(|x| (x.0.clone(), x.1.clone()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            Setup {
+                streamed_transactions,
+                expected_transactions,
+                storage,
+            }
         }
 
         #[tokio::test]

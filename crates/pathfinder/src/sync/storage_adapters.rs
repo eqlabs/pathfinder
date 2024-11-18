@@ -165,10 +165,12 @@ mod tests {
         const DB_LEN: usize = 5;
         let ok_len = len.min(DB_LEN);
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
-            .into_iter()
-            .map(count_extractor)
-            .collect::<Vec<_>>();
+        let (blocks, _) = pathfinder_storage::fake::with_n_blocks_and_config2(
+            &storage,
+            DB_LEN,
+            Default::default(),
+        );
+        let expected = blocks.into_iter().map(count_extractor).collect::<Vec<_>>();
         let stream = super::counts_stream(
             storage.clone(),
             BlockNumber::GENESIS,

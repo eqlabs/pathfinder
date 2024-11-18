@@ -126,7 +126,10 @@ mod tests {
     fn context_with_state_updates() -> (Vec<StateUpdate>, RpcContext) {
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
 
-        let state_updates = pathfinder_storage::fake::with_n_blocks(&storage, 3)
+        let (blocks, _) =
+            pathfinder_storage::fake::with_n_blocks_and_config2(&storage, 3, Default::default());
+
+        let state_updates = blocks
             .into_iter()
             .map(|Block { state_update, .. }| state_update)
             .collect();

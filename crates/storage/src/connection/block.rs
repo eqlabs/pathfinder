@@ -1034,7 +1034,8 @@ mod tests {
         use crate::fake;
 
         let storage = StorageBuilder::in_memory().unwrap();
-        let faked = fake::with_n_blocks(&storage, 10);
+        let (faked, _) = fake::with_n_blocks_and_config2(&storage, 10, Default::default());
+
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
         if !sql.is_empty() {

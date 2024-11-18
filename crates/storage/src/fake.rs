@@ -1,4 +1,6 @@
 //! Create fake blockchain data for test purposes
+use std::sync::Arc;
+
 use fake::{Fake, Faker};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -85,15 +87,16 @@ pub struct Block {
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
 }
 
-/// Initialize [`Storage`] with fake blocks and state updates
-/// maintaining [**limited consistency
-/// guarantees**](crate::fake::init::with_n_blocks)
-pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
-    let mut rng = rand::thread_rng();
-    with_n_blocks_and_rng(storage, n, &mut rng)
-}
+// /// Initialize [`Storage`] with fake blocks and state updates
+// /// maintaining [**limited consistency
+// /// guarantees**](crate::fake::init::with_n_blocks)
+// pub fn with_n_blocks(storage: &Storage, n: usize) -> Vec<Block> {
+//     let mut rng = rand::thread_rng();
+//     with_n_blocks_and_rng(storage, n, &mut rng)
+// }
 
-/// Inserts trie data into the DB and updates headers with computed commitments.
+/// Inserts trie data into the DB and updates headers and state updates with
+/// computed commitments.
 pub fn insert_tries(
     db: &crate::Transaction<'_>,
     storage: Storage,
@@ -119,195 +122,204 @@ pub fn insert_tries(
             header.header.storage_commitment = storage_commitment;
             header.header.class_commitment = class_commitment;
             header.header.state_commitment = state_commitment;
+            state_update.state_commitment = state_commitment;
         },
     );
+
+    for i in 1..blocks.len() {
+        let parent_state_commitment = blocks.get(i - 1).unwrap().header.header.state_commitment;
+        let Block { state_update, .. } = blocks.get_mut(i).unwrap();
+
+        state_update.parent_state_commitment = parent_state_commitment;
+    }
 }
 
-/// Initialize [`Storage`] with a slice of already generated blocks
-pub fn fill_with_config2(
-    storage: &Storage,
-    blocks: &[Block],
-    update_tries: UpdateTriesFn,
-) -> Vec<(StorageCommitment, ClassCommitment)> {
-    let mut connection = storage.connection().unwrap();
-    let tx = connection.transaction().unwrap();
+// /// Initialize [`Storage`] with a slice of already generated blocks
+// pub fn fill_with_config2(
+//     storage: &Storage,
+//     blocks: &[Block],
+//     update_tries: UpdateTriesFn,
+// ) -> Vec<(StorageCommitment, ClassCommitment)> {
+//     let mut connection = storage.connection().unwrap();
+//     let tx = connection.transaction().unwrap();
 
-    let mut computed_commitments = Vec::with_capacity(blocks.len());
+//     let mut computed_commitments = Vec::with_capacity(blocks.len());
 
-    blocks.iter().for_each(
-        |Block {
-             header,
-             transaction_data,
-             state_update,
-             cairo_defs,
-             sierra_defs,
-             ..
-         }| {
-            tx.insert_block_header(&header.header).unwrap();
-            tx.insert_signature(header.header.number, &header.signature)
-                .unwrap();
-            tx.insert_transaction_data(
-                header.header.number,
-                &transaction_data
-                    .iter()
-                    .cloned()
-                    .map(|(tx, receipt, ..)| (tx, receipt))
-                    .collect::<Vec<_>>(),
-                Some(
-                    &transaction_data
-                        .iter()
-                        .cloned()
-                        .map(|(_, _, events)| events)
-                        .collect::<Vec<_>>(),
-                ),
-            )
-            .unwrap();
+//     blocks.iter().for_each(
+//         |Block {
+//              header,
+//              transaction_data,
+//              state_update,
+//              cairo_defs,
+//              sierra_defs,
+//              ..
+//          }| {
+//             tx.insert_block_header(&header.header).unwrap();
+//             tx.insert_signature(header.header.number, &header.signature)
+//                 .unwrap();
+//             tx.insert_transaction_data(
+//                 header.header.number,
+//                 &transaction_data
+//                     .iter()
+//                     .cloned()
+//                     .map(|(tx, receipt, ..)| (tx, receipt))
+//                     .collect::<Vec<_>>(),
+//                 Some(
+//                     &transaction_data
+//                         .iter()
+//                         .cloned()
+//                         .map(|(_, _, events)| events)
+//                         .collect::<Vec<_>>(),
+//                 ),
+//             )
+//             .unwrap();
 
-            let (storage_commitment, class_commitment) = update_tries(
-                &tx,
-                state_update.into(),
-                false,
-                header.header.number,
-                storage.clone(),
-            )
-            .unwrap();
+//             let (storage_commitment, class_commitment) = update_tries(
+//                 &tx,
+//                 state_update.into(),
+//                 false,
+//                 header.header.number,
+//                 storage.clone(),
+//             )
+//             .unwrap();
 
-            computed_commitments.push((storage_commitment, class_commitment));
+//             computed_commitments.push((storage_commitment,
+// class_commitment));
 
-            tx.update_storage_and_class_commitments(
-                header.header.number,
-                storage_commitment,
-                class_commitment,
-            )
-            .unwrap();
+//             tx.update_storage_and_class_commitments(
+//                 header.header.number,
+//                 storage_commitment,
+//                 class_commitment,
+//             )
+//             .unwrap();
 
-            // TODO insert_state_update_data
-            tx.insert_state_update(header.header.number, state_update)
-                .unwrap();
+//             // TODO insert_state_update_data
+//             tx.insert_state_update(header.header.number, state_update)
+//                 .unwrap();
 
-            cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-                tx.insert_cairo_class(*cairo_hash, definition).unwrap()
-            });
+//             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
+//                 tx.insert_cairo_class(*cairo_hash, definition).unwrap()
+//             });
 
-            sierra_defs
-                .iter()
-                .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
-                    tx.insert_sierra_class(
-                        sierra_hash,
-                        sierra_definition,
-                        state_update
-                            .declared_sierra_classes
-                            .get(sierra_hash)
-                            .unwrap(),
-                        casm_definition,
-                    )
-                    .unwrap()
-                });
-        },
-    );
-    tx.commit().unwrap();
+//             sierra_defs
+//                 .iter()
+//                 .for_each(|(sierra_hash, sierra_definition, casm_definition)|
+// {                     tx.insert_sierra_class(
+//                         sierra_hash,
+//                         sierra_definition,
+//                         state_update
+//                             .declared_sierra_classes
+//                             .get(sierra_hash)
+//                             .unwrap(),
+//                         casm_definition,
+//                     )
+//                     .unwrap()
+//                 });
+//         },
+//     );
+//     tx.commit().unwrap();
 
-    computed_commitments
-}
+//     computed_commitments
+// }
 
-/// Initialize [`Storage`] with a slice of already generated blocks
-pub fn fill(storage: &Storage, blocks: &[Block]) {
-    let mut connection = storage.connection().unwrap();
-    let tx = connection.transaction().unwrap();
+// /// Initialize [`Storage`] with a slice of already generated blocks
+// pub fn fill(storage: &Storage, blocks: &[Block]) {
+//     let mut connection = storage.connection().unwrap();
+//     let tx = connection.transaction().unwrap();
 
-    blocks.iter().for_each(
-        |Block {
-             header,
-             transaction_data,
-             state_update,
-             cairo_defs,
-             sierra_defs,
-             ..
-         }| {
-            tx.insert_block_header(&header.header).unwrap();
-            tx.insert_signature(header.header.number, &header.signature)
-                .unwrap();
-            tx.insert_transaction_data(
-                header.header.number,
-                &transaction_data
-                    .iter()
-                    .cloned()
-                    .map(|(tx, receipt, ..)| (tx, receipt))
-                    .collect::<Vec<_>>(),
-                Some(
-                    &transaction_data
-                        .iter()
-                        .cloned()
-                        .map(|(_, _, events)| events)
-                        .collect::<Vec<_>>(),
-                ),
-            )
-            .unwrap();
+//     blocks.iter().for_each(
+//         |Block {
+//              header,
+//              transaction_data,
+//              state_update,
+//              cairo_defs,
+//              sierra_defs,
+//              ..
+//          }| {
+//             tx.insert_block_header(&header.header).unwrap();
+//             tx.insert_signature(header.header.number, &header.signature)
+//                 .unwrap();
+//             tx.insert_transaction_data(
+//                 header.header.number,
+//                 &transaction_data
+//                     .iter()
+//                     .cloned()
+//                     .map(|(tx, receipt, ..)| (tx, receipt))
+//                     .collect::<Vec<_>>(),
+//                 Some(
+//                     &transaction_data
+//                         .iter()
+//                         .cloned()
+//                         .map(|(_, _, events)| events)
+//                         .collect::<Vec<_>>(),
+//                 ),
+//             )
+//             .unwrap();
 
-            // let (storage_commitment, class_commitment) = update_starknet_state(
-            //     &db,
-            //     (&state_diff).into(),
-            //     self.verify_tree_hashes,
-            //     block_number,
-            //     self.storage.clone(),
-            // )
-            // .unwrap();
+//             // let (storage_commitment, class_commitment) =
+// update_starknet_state(             //     &db,
+//             //     (&state_diff).into(),
+//             //     self.verify_tree_hashes,
+//             //     block_number,
+//             //     self.storage.clone(),
+//             // )
+//             // .unwrap();
 
-            // db.update_storage_and_class_commitments(
-            //     block_number,
-            //     storage_commitment,
-            //     class_commitment,
-            // )
-            // .context("Updating storage and class commitments")?;
-            // db.insert_state_update_data(block_number, &state_diff)
-            //     .context("Inserting state update data")?;
+//             // db.update_storage_and_class_commitments(
+//             //     block_number,
+//             //     storage_commitment,
+//             //     class_commitment,
+//             // )
+//             // .context("Updating storage and class commitments")?;
+//             // db.insert_state_update_data(block_number, &state_diff)
+//             //     .context("Inserting state update data")?;
 
-            // TODO insert_state_update_data
-            tx.insert_state_update(header.header.number, state_update)
-                .unwrap();
+//             // TODO insert_state_update_data
+//             tx.insert_state_update(header.header.number, state_update)
+//                 .unwrap();
 
-            cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-                tx.insert_cairo_class(*cairo_hash, definition).unwrap()
-            });
+//             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
+//                 tx.insert_cairo_class(*cairo_hash, definition).unwrap()
+//             });
 
-            sierra_defs
-                .iter()
-                .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
-                    tx.insert_sierra_class(
-                        sierra_hash,
-                        sierra_definition,
-                        state_update
-                            .declared_sierra_classes
-                            .get(sierra_hash)
-                            .unwrap(),
-                        casm_definition,
-                    )
-                    .unwrap()
-                });
-        },
-    );
-    tx.commit().unwrap();
-}
+//             sierra_defs
+//                 .iter()
+//                 .for_each(|(sierra_hash, sierra_definition, casm_definition)|
+// {                     tx.insert_sierra_class(
+//                         sierra_hash,
+//                         sierra_definition,
+//                         state_update
+//                             .declared_sierra_classes
+//                             .get(sierra_hash)
+//                             .unwrap(),
+//                         casm_definition,
+//                     )
+//                     .unwrap()
+//                 });
+//         },
+//     );
+//     tx.commit().unwrap();
+// }
 
-/// Same as [`with_n_blocks`] except caller can specify the rng used
-pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut R) -> Vec<Block> {
-    let blocks = init::with_n_blocks_and_rng(n, rng);
-    fill(storage, &blocks);
-    blocks
-}
+// /// Same as [`with_n_blocks`] except caller can specify the rng used
+// pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut
+// R) -> Vec<Block> {     let blocks = init::with_n_blocks_and_rng(n, rng);
+//     fill(storage, &blocks);
+//     blocks
+// }
 
-/// Same as [`with_n_blocks`] except caller can specify the rng and additional
-/// configuration
-pub fn with_n_blocks_rng_and_config<R: Rng>(
-    storage: &Storage,
-    n: usize,
-    rng: &mut R,
-    config: init::Config,
-) -> Vec<Block> {
-    let blocks = init::with_n_blocks_rng_and_config(n, rng, config);
-    fill(storage, &blocks);
-    blocks
-}
+// /// Same as [`with_n_blocks`] except caller can specify the rng and
+// additional /// configuration
+// pub fn with_n_blocks_rng_and_config<R: Rng>(
+//     storage: &Storage,
+//     n: usize,
+//     rng: &mut R,
+//     config: init::Config,
+// ) -> Vec<Block> {
+//     let blocks = init::with_n_blocks_rng_and_config(n, rng, config);
+//     fill(storage, &blocks);
+//     blocks
+// }
 
 /// ### Important
 ///
@@ -349,7 +361,7 @@ pub fn with_n_blocks_rng_and_config2<R: Rng>(
     // Apply additional modifications
     modify_storage(&mut inserted_blocks);
     // All the block data is inserted into the DB
-    fill_block_data(&db, &inserted_blocks);
+    insert_block_data(&db, &inserted_blocks);
 
     db.commit().unwrap();
 
@@ -384,7 +396,16 @@ fn compute_block_hashes(blocks: &mut [Block], calculate_block_hash: BlockHashFn)
     }
 }
 
-pub fn fill_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
+pub fn fill(storage: &Storage, blocks: &[Block]) {
+    let mut connection = storage.connection().unwrap();
+    let tx = connection.transaction().unwrap();
+
+    insert_block_data(&tx, blocks);
+
+    tx.commit().unwrap();
+}
+
+fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
     blocks.iter().for_each(
         |Block {
              header,
@@ -487,14 +508,15 @@ mod init {
     use rand::Rng;
     use starknet_gateway_types::class_hash::compute_class_hash;
 
-    use super::Block;
+    use super::{Block, *};
 
-    pub type TransactionCommitmentFn =
-        Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
-    pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
-    pub type EventCommitmentFn = Box<
-        dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) -> anyhow::Result<EventCommitment>,
-    >;
+    // pub type TransactionCommitmentFn =
+    //     Box<dyn Fn(&[Transaction], StarknetVersion) ->
+    // anyhow::Result<TransactionCommitment>>; pub type ReceiptCommitmentFn =
+    // Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
+    // pub type EventCommitmentFn = Box<
+    //     dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) ->
+    // anyhow::Result<EventCommitment>, >;
 
     pub struct Config {
         pub calculate_transaction_commitment: TransactionCommitmentFn,
@@ -502,15 +524,15 @@ mod init {
         pub calculate_event_commitment: EventCommitmentFn,
     }
 
-    impl Default for Config {
-        fn default() -> Self {
-            Self {
-                calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
-                calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
-                calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
-            }
-        }
-    }
+    // impl Default for Config {
+    //     fn default() -> Self {
+    //         Self {
+    //             calculate_transaction_commitment: Arc::new(|_, _|
+    // Ok(Faker.fake())),             calculate_receipt_commitment: Box::new(|_|
+    // Ok(Faker.fake())),             calculate_event_commitment: Box::new(|_,
+    // _| Ok(Faker.fake())),         }
+    //     }
+    // }
 
     /// Create fake blocks and state updates with __limited consistency
     /// guarantees__:
@@ -534,8 +556,8 @@ mod init {
     ///       block N-1
     ///     - each storage diff has its respective nonce update
     ///     - storage entries constrain at least 1 element
-    ///     - deployed Cairo0 contracts are treated as implicit declarations and
-    ///       are added to declared cairo classes`
+    ///     - no implicitly declared classes (ie. as in the old deploy
+    ///       transactions that were not preceded by a declare transaction)
     /// - declared cairo|sierra definitions
     ///     - class definition is a serialized to JSON representation of
     ///       `class_definition::Cairo|Sierra` respectively with random fields
@@ -547,25 +569,6 @@ mod init {
     /// - transactions
     ///     - transaction hashes are calculated from their respective variant,
     ///       with ChainId set to `SEPOLIA_TESTNET`
-    pub fn with_n_blocks(n: usize) -> Vec<Block> {
-        let mut rng = rand::thread_rng();
-        with_n_blocks_and_rng(n, &mut rng)
-    }
-
-    /// Same as [`with_n_blocks`] except caller can specify additional
-    /// configuration
-    pub fn with_n_blocks_and_config(n: usize, config: Config) -> Vec<Block> {
-        let mut rng = rand::thread_rng();
-        with_n_blocks_rng_and_config(n, &mut rng, config)
-    }
-
-    /// Same as [`with_n_blocks`] except caller can specify the rng used
-    pub fn with_n_blocks_and_rng<R: Rng>(n: usize, rng: &mut R) -> Vec<Block> {
-        with_n_blocks_rng_and_config(n, rng, Default::default())
-    }
-
-    /// Same as [`with_n_blocks`] except caller can specify the rng used and
-    /// additional configuration
     pub fn with_n_blocks_rng_and_config<R: Rng>(
         n: usize,
         rng: &mut R,
@@ -579,8 +582,10 @@ mod init {
             header.starknet_version = StarknetVersion::V_0_13_2;
             header.number =
                 BlockNumber::new_or_panic(i.try_into().expect("u64 is at least as wide as usize"));
-            header.state_commitment =
-                StateCommitment::calculate(header.storage_commitment, header.class_commitment);
+            // Will be fixed after inserting tries
+            header.state_commitment = StateCommitment::ZERO;
+            //     StateCommitment::calculate(header.storage_commitment,
+            // header.class_commitment);
 
             // There must be at least 1 transaction per block
             let transaction_data = fake_non_empty_with_rng::<
@@ -639,7 +644,6 @@ mod init {
                 .map(|(_, _, events)| events.len())
                 .sum();
 
-            let state_commitment = header.state_commitment;
             let num_cairo_classes = rng.gen_range(0..=0);
             let num_sierra_classes = rng.gen_range(0..=10);
 
@@ -686,8 +690,9 @@ mod init {
                 state_update: StateUpdate {
                     // Will be fixed after block hash computation
                     block_hash: BlockHash::ZERO,
-                    state_commitment,
-                    // Will be fixed after block hash computation
+                    // Will be fixed after inserting tries
+                    state_commitment: StateCommitment::ZERO,
+                    // Will be fixed after inserting tries
                     parent_state_commitment: StateCommitment::ZERO,
                     declared_cairo_classes,
                     declared_sierra_classes,
@@ -740,11 +745,11 @@ mod init {
                 state_update,
                 ..
             } = init.get_mut(0).unwrap();
-            header.header.state_commitment = StateCommitment::calculate(
-                header.header.storage_commitment,
-                header.header.class_commitment,
-            );
-            state_update.parent_state_commitment = StateCommitment::ZERO;
+            // header.header.state_commitment = StateCommitment::calculate(
+            //     header.header.storage_commitment,
+            //     header.header.class_commitment,
+            // );
+            // state_update.parent_state_commitment = StateCommitment::ZERO;
 
             for i in 1..n {
                 let (parent_state_commitment, deployed_in_parent) = init
@@ -777,15 +782,15 @@ mod init {
                     ..
                 } = init.get_mut(i).unwrap();
 
-                header.header.state_commitment = StateCommitment::calculate(
-                    header.header.storage_commitment,
-                    header.header.class_commitment,
-                );
+                // header.header.state_commitment = StateCommitment::calculate(
+                //     header.header.storage_commitment,
+                //     header.header.class_commitment,
+                // );
 
                 //
                 // Fix state updates
                 //
-                state_update.parent_state_commitment = parent_state_commitment;
+                // state_update.parent_state_commitment = parent_state_commitment;
 
                 let num_deployed_in_parent = deployed_in_parent.len();
 
@@ -810,7 +815,6 @@ mod init {
             }
 
             // Compute state diff length and commitment
-            // Generate definitions for the implicitly declared classes
             for Block {
                 header:
                     SignedBlockHeader {
@@ -826,72 +830,9 @@ mod init {
                 ..
             } in init.iter_mut()
             {
-                // CHANGE: no implicitly declared classes
-                //
-                //
-                // All remaining Deploys in the current block should also be
-                // added to `declared_cairo_classes` because Cairo0 Deploys
-                // were not initially preceded by an explicit declare
-                // transaction
-                // let implicitly_declared = state_update
-                //     .contract_updates
-                //     .iter_mut()
-                //     .filter_map(|(_, update)| match &mut update.class {
-                //         Some(ContractClassUpdate::Deploy(class_hash)) => {
-                //             let def = serde_json::to_vec(
-                //                 &Faker.fake_with_rng::<class_definition::Cairo<'_>, _>(rng),
-                //             )
-                //             .unwrap();
-                //             let new_hash = compute_class_hash(&def).unwrap().hash();
-                //             *class_hash = new_hash;
-                //             Some((new_hash, def))
-                //         }
-                //         Some(ContractClassUpdate::Replace(_)) | None => None,
-                //     })
-                //     .collect::<Vec<_>>();
-
-                // state_update.declared_cairo_classes.extend(
-                //     implicitly_declared
-                //         .iter()
-                //         .map(|(class_hash, _)| *class_hash),
-                // );
-                // cairo_defs.extend(implicitly_declared);
-
                 *state_diff_length = state_update.state_diff_length();
                 *state_diff_commitment = state_update.compute_state_diff_commitment();
             }
-
-            // Compute the block hash, update parent block hash with the correct
-            // value let Block {
-            //     header,
-            //     state_update,
-            //     ..
-            // } = init.get_mut(0).unwrap();
-            // header.header.parent_hash = BlockHash::ZERO;
-
-            // header.header.hash =
-            // (config.calculate_block_hash)(&header.header);
-
-            // state_update.block_hash = header.header.hash;
-
-            // for i in 1..n {
-            //     let parent_hash = init
-            //         .get(i - 1)
-            //         .map(|Block { header, .. }| header.header.hash)
-            //         .unwrap();
-            //     let Block {
-            //         header,
-            //         state_update,
-            //         ..
-            //     } = init.get_mut(i).unwrap();
-
-            //     header.header.parent_hash = parent_hash;
-
-            //     header.header.hash =
-            // (config.calculate_block_hash)(&header.header);
-
-            //     state_update.block_hash = header.header.hash;
-            // }
         }
 
         init
