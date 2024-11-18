@@ -47,8 +47,8 @@ use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
-#[cfg(test)]
-mod fixture;
+// #[cfg(test)]
+// mod fixture;
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
@@ -718,7 +718,7 @@ mod tests {
             StorageCommitment,
             TransactionCommitment,
         };
-        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::fake2::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
         use serde::Deserialize;
         use serde_with::{serde_as, DisplayFromStr};
@@ -987,7 +987,7 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::fake2::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_transaction_stream;
@@ -999,58 +999,46 @@ mod tests {
             pub storage: Storage,
         }
 
-        async fn setup(num_blocks: usize) -> Setup {
-            setup_inner(num_blocks, Box::new(calculate_transaction_commitment))
-        }
-
-        async fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
-            setup_inner(num_blocks, Box::new(|_, _| Ok(Faker.fake())))
-        }
-
-        fn setup_inner(
-            num_blocks: usize,
-            calculate_transaction_commitment: fake_storage::TransactionCommitmentFn,
-        ) -> Setup {
-            let storage = StorageBuilder::in_memory().unwrap();
-            let (inserted, blocks) = fake_storage::with_n_blocks_and_config2(
-                &storage,
+        fn setup(num_blocks: usize) -> Setup {
+            setup_inner(
                 num_blocks,
-                fake_storage::Config {
-                    calculate_transaction_commitment,
-                    // Purge transaction data before insertion into the DB.
-                    modify_storage: Box::new(|blocks| {
-                        blocks.iter_mut().for_each(|b| {
-                            b.transaction_data = Default::default();
-                        })
-                    }),
+                Config {
+                    calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                     ..Default::default()
                 },
-            );
+            )
+        }
 
-            let txns = blocks
+        fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
+            setup_inner(num_blocks, Default::default())
+        }
+
+        fn setup_inner(num_blocks: usize, config: Config) -> Setup {
+            let blocks = fake_storage::generate::with_config(num_blocks, config);
+            let only_headers = blocks
                 .iter()
-                .map(|block| {
-                    block
-                        .transaction_data
-                        .iter()
-                        .map(|x| x.0.hash)
-                        .collect::<Vec<_>>()
+                .map(|block| Block {
+                    header: block.header.clone(),
+                    ..Default::default()
                 })
                 .collect::<Vec<_>>();
+            let storage = StorageBuilder::in_memory().unwrap();
+            fake_storage::fill(&storage, &only_headers, None);
 
-            let txns_inserted = inserted
-                .iter()
-                .map(|block| {
-                    block
-                        .transaction_data
-                        .iter()
-                        .map(|x| x.0.hash)
-                        .collect::<Vec<_>>()
-                })
-                .collect::<Vec<_>>();
-
-            eprintln!("{:#?}", txns);
-            eprintln!("{:#?}", txns_inserted);
+            // let (inserted, blocks) = fake_storage::with_n_blocks_and_config2(
+            //     &storage,
+            //     num_blocks,
+            //     fake_storage::Config {
+            //         calculate_transaction_commitment,
+            //         // Purge transaction data before insertion into the DB.
+            //         modify_storage: Box::new(|blocks| {
+            //             blocks.iter_mut().for_each(|b| {
+            //                 b.transaction_data = Default::default();
+            //             })
+            //         }),
+            //         ..Default::default()
+            //     },
+            // );
 
             let streamed_transactions = blocks
                 .iter()
@@ -1085,12 +1073,12 @@ mod tests {
 
         #[tokio::test]
         async fn happy_path() {
-            const NUM_BLOCKS: usize = 1;
+            const NUM_BLOCKS: usize = 10;
             let Setup {
                 streamed_transactions,
                 expected_transactions,
                 storage,
-            } = setup(NUM_BLOCKS).await;
+            } = setup(NUM_BLOCKS);
 
             handle_transaction_stream(
                 stream::iter(streamed_transactions),
@@ -1126,7 +1114,7 @@ mod tests {
                 streamed_transactions,
                 storage,
                 ..
-            } = setup(1).await;
+            } = setup(1);
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
@@ -1147,7 +1135,7 @@ mod tests {
                 streamed_transactions,
                 storage,
                 ..
-            } = setup_commitment_mismatch(1).await;
+            } = setup_commitment_mismatch(1);
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
@@ -1179,7 +1167,7 @@ mod tests {
             let Setup {
                 streamed_transactions,
                 ..
-            } = setup(1).await;
+            } = setup(1);
             assert_matches!(
                 handle_transaction_stream(
                     stream::iter(streamed_transactions),
@@ -1202,7 +1190,7 @@ mod tests {
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake::{self as fake_storage, Block, Config};
+        use pathfinder_storage::fake2::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_state_diff_stream;
@@ -1215,113 +1203,59 @@ mod tests {
             pub storage: Storage,
         }
 
-        fn setup2(num_blocks: usize) -> Setup {
-            let dummy_storage = StorageBuilder::in_memory().unwrap();
-            let (blocks, _) = fake_storage::with_n_blocks_and_config2(
-                &dummy_storage,
-                num_blocks,
-                Config {
-                    update_tries: Arc::new(update_starknet_state),
-                    // Purge state diff data before insertion into the DB.
-                    // modify_storage: Box::new(|blocks| {
-                    //     blocks
-                    //         .iter_mut()
-                    //         .for_each(|block| block.state_update = Default::default())
-                    // }),
-                    ..Default::default()
-                },
-            );
-
-            let storage = StorageBuilder::in_memory().unwrap();
-            fake_storage::fill(&storage, &blocks);
-
-            let streamed_state_diffs = blocks
-                .iter()
-                .map(|block| {
-                    Result::<PeerData<_>, _>::Ok(PeerData::for_tests((
-                        block.state_update.clone().into(),
-                        block.header.header.number,
-                    )))
-                })
-                .collect::<Vec<_>>();
-            let expected_state_diffs = blocks
-                .iter()
-                .map(|block| block.state_update.clone().into())
-                .collect::<Vec<_>>();
-
-            Setup {
-                streamed_state_diffs,
-                expected_state_diffs,
-                storage: dummy_storage,
-            }
-        }
-
         async fn setup(num_blocks: usize) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let dummy_storage = StorageBuilder::in_memory().unwrap();
-                let (blocks, _) = fake_storage::with_n_blocks_and_config2(
-                    &dummy_storage,
+                let blocks = fake_storage::generate::with_config(
                     num_blocks,
                     Config {
                         update_tries: Arc::new(update_starknet_state),
-                        // Purge state diff data before insertion into the DB.
-                        // modify_storage: Box::new(|blocks| {
-                        //     blocks
-                        //         .iter_mut()
-                        //         .for_each(|block| block.state_update = Default::default())
-                        // }),
                         ..Default::default()
                     },
                 );
-
                 let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &blocks);
+                let headers_and_txns = blocks
+                    .iter()
+                    .map(|block| Block {
+                        header: block.header.clone(),
+                        transaction_data: block.transaction_data.clone(),
+                        ..Default::default()
+                    })
+                    .collect::<Vec<_>>();
+                fake_storage::fill(&storage, &blocks, None);
 
-                // let mut blocks = super::fixture::blocks()[..num_blocks].to_vec();
+                // let dummy_storage = StorageBuilder::in_memory().unwrap();
+                // let (blocks, _) = fake_storage::with_n_blocks_and_config2(
+                //     &dummy_storage,
+                //     num_blocks,
+                //     Config {
+                //         update_tries: Arc::new(update_starknet_state),
+                //         // Purge state diff data before insertion into the DB.
+                //         // modify_storage: Box::new(|blocks| {
+                //         //     blocks
+                //         //         .iter_mut()
+                //         //         .for_each(|block| block.state_update = Default::default())
+                //         // }),
+                //         ..Default::default()
+                //     },
+                // );
+
+                // let storage = StorageBuilder::in_memory().unwrap();
+                // fake_storage::fill(&storage, &blocks);
+
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
                         Result::<PeerData<_>, _>::Ok(PeerData::for_tests((
-                            block.state_update.clone().into(),
+                            block.state_update.as_ref().unwrap().clone().into(),
                             block.header.header.number,
                         )))
                     })
                     .collect::<Vec<_>>();
-                // let mut implicit_declarations = HashSet::new();
                 let expected_state_diffs = blocks
                     .iter()
-                    .map(|block| {
-                        block.state_update.clone().into()
-
-                        // // Cairo0 Deploy should also count as implicit
-                        // declaration the first time //
-                        // it happens
-                        // let mut state_diff: StateUpdateData =
-                        // block.state_update.clone().into();
-                        // block
-                        //     .state_update
-                        //     .contract_updates
-                        //     .iter()
-                        //     .for_each(|(_, v)| {
-                        //         v.class.as_ref().inspect(|class_update| {
-                        //             if let
-                        // ContractClassUpdate::Deploy(class_hash) =
-                        // class_update {
-                        // if !implicit_declarations.contains(class_hash) {
-                        //
-                        // state_diff.declared_cairo_classes.insert(*
-                        // class_hash);
-                        // implicit_declarations.insert(*class_hash);
-                        //                 }
-                        //             }
-                        //         });
-                        //     });
-                        // state_diff
-                    })
+                    .map(|block| block.state_update.as_ref().unwrap().clone().into())
                     .collect::<Vec<_>>();
 
-                // let storage = StorageBuilder::in_memory().unwrap();
-                // fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_state_diffs,
                     expected_state_diffs,
@@ -1451,7 +1385,7 @@ mod tests {
             TransactionHash,
         };
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::fake2::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_10_TUPLES_INTEGRATION as CAIRO,
@@ -1526,6 +1460,7 @@ mod tests {
                     let mut block = Block::default();
                     block.header.header.number = BlockNumber::GENESIS + n;
                     block.header.header.hash = Faker.fake();
+                    block.state_update = Some(Default::default());
                     block
                 };
                 let mut blocks = vec![fake_block(0), fake_block(1)];
@@ -1542,8 +1477,16 @@ mod tests {
                     Default::default()
                 };
 
-                blocks[1].state_update.declared_cairo_classes = [cairo_hash].into();
-                blocks[1].state_update.declared_sierra_classes = [
+                blocks[1]
+                    .state_update
+                    .as_mut()
+                    .unwrap()
+                    .declared_cairo_classes = [cairo_hash].into();
+                blocks[1]
+                    .state_update
+                    .as_mut()
+                    .unwrap()
+                    .declared_sierra_classes = [
                     (sierra0_hash, Default::default()),
                     (sierra2_hash, Default::default()),
                 ]
@@ -1597,7 +1540,7 @@ mod tests {
                 .into();
 
                 let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &blocks);
+                fake_storage::fill(&storage, &blocks, None);
                 Setup {
                     streamed_classes,
                     declared_classes,
@@ -1741,8 +1684,8 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake::Config;
-        use pathfinder_storage::{fake as fake_storage, StorageBuilder};
+        use pathfinder_storage::fake2::{fill, Block, Config, EventCommitmentFn};
+        use pathfinder_storage::{fake2 as fake_storage, StorageBuilder};
 
         use super::super::handle_event_stream;
         use super::*;
@@ -1754,63 +1697,88 @@ mod tests {
             pub storage: Storage,
         }
 
-        async fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
-            tokio::task::spawn_blocking(move || {
-                let storage = StorageBuilder::in_memory().unwrap();
-                let (_, blocks) = fake_storage::with_n_blocks_and_config2(
-                    &storage,
-                    num_blocks,
-                    Config {
-                        calculate_event_commitment: Box::new(move |a, b| {
-                            if compute_event_commitments {
-                                calculate_event_commitment(a, b)
-                            } else {
-                                Ok(Faker.fake())
-                            }
-                        }),
-                        // Purge events before insertion into the DB.
-                        modify_storage: Box::new(|blocks| {
-                            blocks.iter_mut().for_each(|block| {
-                                block
-                                    .transaction_data
-                                    .iter_mut()
-                                    .for_each(|(_, _, events)| events.clear())
-                            })
-                        }),
-                        ..Default::default()
-                    },
-                );
-                let streamed_events = blocks
-                    .iter()
-                    .map(|block| {
-                        Result::Ok(PeerData::for_tests((
-                            block.header.header.number,
-                            block
-                                .transaction_data
-                                .iter()
-                                .map(|(tx, _, events)| (tx.hash, events.clone()))
-                                .collect::<Vec<_>>(),
-                        )))
-                    })
-                    .collect::<Vec<_>>();
-                let expected_events = blocks
-                    .iter()
-                    .map(|block| {
+        fn setup(num_blocks: usize) -> Setup {
+            setup_inner(
+                num_blocks,
+                Config {
+                    calculate_event_commitment: Box::new(calculate_event_commitment),
+                    ..Default::default()
+                },
+            )
+        }
+
+        fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
+            setup_inner(num_blocks, Default::default())
+        }
+
+        fn setup_inner(num_blocks: usize, config: Config) -> Setup {
+            let blocks = fake_storage::generate::with_config(num_blocks, config);
+            let without_events = blocks
+                .iter()
+                .cloned()
+                .map(|mut block| {
+                    block
+                        .transaction_data
+                        .iter_mut()
+                        .for_each(|(_, _, e)| e.clear());
+                    block
+                })
+                .collect::<Vec<_>>();
+            let storage = StorageBuilder::in_memory().unwrap();
+            fill(&storage, &without_events, None);
+
+            // let storage = StorageBuilder::in_memory().unwrap();
+            // let (_, blocks) = fake_storage::with_n_blocks_and_config2(
+            //     &storage,
+            //     num_blocks,
+            //     Config {
+            //         calculate_event_commitment: Box::new(move |a, b| {
+            //             if compute_event_commitments {
+            //                 calculate_event_commitment(a, b)
+            //             } else {
+            //                 Ok(Faker.fake())
+            //             }
+            //         }),
+            //         // Purge events before insertion into the DB.
+            //         modify_storage: Box::new(|blocks| {
+            //             blocks.iter_mut().for_each(|block| {
+            //                 block
+            //                     .transaction_data
+            //                     .iter_mut()
+            //                     .for_each(|(_, _, events)| events.clear())
+            //             })
+            //         }),
+            //         ..Default::default()
+            //     },
+            // );
+            let streamed_events = blocks
+                .iter()
+                .map(|block| {
+                    Result::Ok(PeerData::for_tests((
+                        block.header.header.number,
                         block
                             .transaction_data
                             .iter()
-                            .map(|x| (x.0.hash, x.2.clone()))
-                            .collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<_>>();
-                Setup {
-                    streamed_events,
-                    expected_events,
-                    storage,
-                }
-            })
-            .await
-            .unwrap()
+                            .map(|(tx, _, events)| (tx.hash, events.clone()))
+                            .collect::<Vec<_>>(),
+                    )))
+                })
+                .collect::<Vec<_>>();
+            let expected_events = blocks
+                .iter()
+                .map(|block| {
+                    block
+                        .transaction_data
+                        .iter()
+                        .map(|x| (x.0.hash, x.2.clone()))
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            Setup {
+                streamed_events,
+                expected_events,
+                storage,
+            }
         }
 
         #[tokio::test]
@@ -1820,7 +1788,7 @@ mod tests {
                 streamed_events,
                 expected_events,
                 storage,
-            } = setup(NUM_BLOCKS, true).await;
+            } = setup(NUM_BLOCKS);
 
             handle_event_stream(stream::iter(streamed_events), storage.clone())
                 .await
@@ -1851,7 +1819,7 @@ mod tests {
                 streamed_events,
                 expected_events,
                 storage,
-            } = setup(NUM_BLOCKS, false).await;
+            } = setup_commitment_mismatch(NUM_BLOCKS);
             let expected_peer_id = streamed_events[0].as_ref().unwrap().peer;
 
             assert_matches::assert_matches!(

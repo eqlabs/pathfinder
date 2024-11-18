@@ -1031,10 +1031,13 @@ mod tests {
     #[case::partially_present("UPDATE block_headers SET event_count = 0 WHERE number > 4", 5)]
     #[case::all_present("", 0)]
     fn event_counts(#[case] sql: &str, #[case] num_of_missing_counts: usize) {
-        use crate::fake;
+        use crate::fake2;
 
+        let faked = fake2::generate::n_blocks(10);
         let storage = StorageBuilder::in_memory().unwrap();
-        let (faked, _) = fake::with_n_blocks_and_config2(&storage, 10, Default::default());
+        fake2::fill(&storage, &faked, None);
+        // let (faked, _) = fake::with_n_blocks_and_config2(&storage, 10,
+        // Default::default());
 
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();

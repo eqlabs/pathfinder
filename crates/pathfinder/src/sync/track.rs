@@ -916,7 +916,7 @@ mod tests {
     use p2p::PeerData;
     use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
-    use pathfinder_storage::fake::{self, Block, Config};
+    use pathfinder_storage::fake2::{self, Block, Config};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
@@ -932,9 +932,7 @@ mod tests {
     #[tokio::test]
     async fn happy_path() {
         const N: usize = 10;
-        let dummy_storage = StorageBuilder::in_memory().unwrap();
-        let (blocks, _) = fake::with_n_blocks_and_config2(
-            &dummy_storage,
+        let blocks = fake2::generate::with_config(
             N,
             Config {
                 calculate_block_hash: Box::new(|header: &BlockHeader| {
@@ -944,9 +942,25 @@ mod tests {
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
                 update_tries: Arc::new(update_starknet_state),
-                ..Default::default()
             },
         );
+
+        // let dummy_storage = StorageBuilder::in_memory().unwrap();
+        // let (blocks, _) = fake::with_n_blocks_and_config2(
+        //     &dummy_storage,
+        //     N,
+        //     Config {
+        //         calculate_block_hash: Box::new(|header: &BlockHeader| {
+        //             compute_final_hash(&BlockHeaderData::from_header(header))
+        //         }),
+        //         calculate_transaction_commitment:
+        // Box::new(calculate_transaction_commitment),
+        //         calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+        //         calculate_event_commitment: Box::new(calculate_event_commitment),
+        //         update_tries: Arc::new(update_starknet_state),
+        //         ..Default::default()
+        //     },
+        // );
 
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
         let latest = (number, hash);
@@ -1021,7 +1035,10 @@ mod tests {
                 expected.header.header.state_diff_length
             );
             pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
-            pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                state_update_data,
+                expected.state_update.unwrap().into()
+            );
             pretty_assertions_sorted::assert_eq!(
                 cairo_defs,
                 expected.cairo_defs.into_iter().collect::<HashMap<_, _>>()
@@ -1095,6 +1112,7 @@ mod tests {
                 .unwrap()
                 .state_update
                 .clone()
+                .unwrap()
                 .into();
 
             assert_eq!(sd.state_diff_length() as u64, state_diff_length);

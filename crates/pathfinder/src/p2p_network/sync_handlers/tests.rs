@@ -138,7 +138,8 @@ mod prop {
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
-    use pathfinder_storage::fake::Block;
+    // use pathfinder_storage::fake::Block;
+    use pathfinder_storage::fake2::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
 
@@ -247,14 +248,15 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|Block { header, state_update, .. }|
+                .map(|Block { header, state_update, .. }| {
+                    let state_update = state_update.unwrap();
                     (
                         header.header.number, // Block number
                         state_update.contract_updates.into_iter().map(|(k, v)| (k, v.into())).collect::<HashMap<_,_>>(),
                         state_update.system_contract_updates,
                         state_update.declared_sierra_classes,
                         state_update.declared_cairo_classes,
-                    )
+                    )}
             ).collect::<Vec<_>>();
             // Run the handler
             let request = StateDiffsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
@@ -512,7 +514,8 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use pathfinder_storage::fake::{with_n_blocks_rng_and_config2, Block, Config};
+        // use pathfinder_storage::fake::{with_n_blocks_rng_and_config2, Block, Config};
+        use pathfinder_storage::fake2::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
@@ -525,8 +528,7 @@ mod prop {
             let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let (initializer, _) = with_n_blocks_rng_and_config2(
-                &storage,
+            let blocks = generate::with_rng_and_config(
                 num_blocks.try_into().unwrap(),
                 &mut rng,
                 Config {
@@ -534,14 +536,29 @@ mod prop {
                     ..Default::default()
                 },
             );
-            (storage, initializer)
+            fill(&storage, &blocks, None);
+
+            (storage, blocks)
+
+            // let (initializer, _) = with_n_blocks_rng_and_config2(
+            //     &storage,
+            //     num_blocks.try_into().unwrap(),
+            //     &mut rng,
+            //     Config {
+            //         calculate_receipt_commitment:
+            // Box::new(calculate_receipt_commitment),
+            //         ..Default::default()
+            //     },
+            // );
+            // (storage, initializer)
         }
     }
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
         use p2p_proto::common::{Direction, Step};
-        use pathfinder_storage::fake::Block;
+        // use pathfinder_storage::fake::Block;
+        use pathfinder_storage::fake2::Block;
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
 

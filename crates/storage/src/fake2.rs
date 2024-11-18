@@ -55,6 +55,7 @@ pub type TransactionCommitmentFn =
 pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
 pub type EventCommitmentFn =
     Box<dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) -> anyhow::Result<EventCommitment>>;
+// TODO make it a box
 pub type UpdateTriesFn = Arc<
     dyn Fn(
         &crate::Transaction<'_>,
@@ -229,7 +230,7 @@ pub mod generate {
         blocks
     }
 
-    pub fn generate_inner<R: Rng>(
+    fn generate_inner<R: Rng>(
         n: usize,
         rng: &mut R,
         calculate_transaction_commitment: TransactionCommitmentFn,

@@ -77,7 +77,7 @@ pub fn counts_stream(
 mod tests {
     use futures::StreamExt;
     use pathfinder_common::{BlockHeader, SignedBlockHeader, StateUpdate};
-    use pathfinder_storage::fake::Block;
+    use pathfinder_storage::fake2::Block;
 
     use super::*;
     use crate::sync::{class_definitions, events, state_updates, transactions};
@@ -113,15 +113,13 @@ mod tests {
     }
 
     fn expected_class_definition_counts(b: Block) -> usize {
-        let Block {
-            state_update:
-                StateUpdate {
-                    declared_cairo_classes,
-                    declared_sierra_classes,
-                    ..
-                },
+        let Block { state_update, .. } = b;
+        let StateUpdate {
+            declared_cairo_classes,
+            declared_sierra_classes,
             ..
-        } = b;
+        } = state_update.unwrap();
+
         declared_cairo_classes.len() + declared_sierra_classes.len()
     }
 
@@ -165,11 +163,14 @@ mod tests {
         const DB_LEN: usize = 5;
         let ok_len = len.min(DB_LEN);
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let (blocks, _) = pathfinder_storage::fake::with_n_blocks_and_config2(
-            &storage,
-            DB_LEN,
-            Default::default(),
-        );
+        let blocks = pathfinder_storage::fake2::generate::n_blocks(DB_LEN);
+        pathfinder_storage::fake2::fill(&storage, &blocks, None);
+
+        // let (blocks, _) = pathfinder_storage::fake::with_n_blocks_and_config2(
+        //     &storage,
+        //     DB_LEN,
+        //     Default::default(),
+        // );
         let expected = blocks.into_iter().map(count_extractor).collect::<Vec<_>>();
         let stream = super::counts_stream(
             storage.clone(),
