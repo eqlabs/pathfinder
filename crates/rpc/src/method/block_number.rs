@@ -7,6 +7,7 @@ pub struct Output(pathfinder_common::BlockNumber);
 
 crate::error::generate_rpc_error_subset!(Error: NoBlocks);
 
+/// Get the latest block number.
 pub async fn block_number(context: RpcContext) -> Result<Output, Error> {
     let span = tracing::Span::current();
 

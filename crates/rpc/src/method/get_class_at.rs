@@ -10,8 +10,8 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound)
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: BlockId,
-    contract_address: ContractAddress,
+    block_id: pathfinder_common::BlockId,
+    contract_address: pathfinder_common::ContractAddress,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -54,6 +54,7 @@ impl SerializeForVersion for Output {
     }
 }
 
+/// Get a contract class.
 pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractClass, Error> {
     let span = tracing::Span::current();
 

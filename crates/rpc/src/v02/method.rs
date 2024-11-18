@@ -9,7 +9,6 @@ mod get_storage_at;
 pub(crate) mod get_transaction_by_block_id_and_index;
 pub(crate) mod get_transaction_by_hash;
 
-pub(crate) use block_hash_and_number::{block_hash_and_number, block_number};
 pub(crate) use chain_id::chain_id;
 pub(crate) use get_block_transaction_count::get_block_transaction_count;
 pub(crate) use get_class::get_class;
