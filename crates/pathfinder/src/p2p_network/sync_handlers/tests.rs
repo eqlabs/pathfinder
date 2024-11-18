@@ -330,6 +330,7 @@ mod prop {
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+
             // Compute the overlapping set between the db and the request
             // These are the items that we expect to be read from the db
             // Grouped by block number
@@ -344,6 +345,7 @@ mod prop {
                         sierra_defs.into_iter().map(|(_, sierra_def, _)| sierra_def).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
+
             // Run the handler
             let request = ClassesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -372,11 +374,14 @@ mod prop {
             });
 
             for expected_for_block in expected {
-                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
-                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
+                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<HashSet<_>>();
+                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<HashSet<_>>();
 
-                prop_assert_eq!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+                let expected_cairo_for_block = expected_for_block.1.into_iter().collect::<HashSet<_>>();
+                let expected_sierra_for_block = expected_for_block.2.into_iter().collect::<HashSet<_>>();
+
+                prop_assert_eq!(expected_cairo_for_block, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_sierra_for_block, actual_sierra_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }

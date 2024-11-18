@@ -370,6 +370,10 @@ pub fn with_n_blocks_rng_and_config2<R: Rng>(
 
 // Computes block hashes, updates parent block hashes with the correct values
 fn compute_block_hashes(blocks: &mut [Block], calculate_block_hash: BlockHashFn) {
+    if blocks.is_empty() {
+        return;
+    }
+
     let Block {
         header,
         state_update,
@@ -440,13 +444,13 @@ fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
                 .unwrap();
 
             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-                db.insert_cairo_class(*cairo_hash, definition).unwrap()
+                db.update_cairo_class(*cairo_hash, definition).unwrap()
             });
 
             sierra_defs
                 .iter()
                 .for_each(|(sierra_hash, sierra_definition, casm_definition)| {
-                    db.insert_sierra_class(
+                    db.update_sierra_class(
                         sierra_hash,
                         sierra_definition,
                         state_update
