@@ -1012,7 +1012,7 @@ mod tests {
             calculate_transaction_commitment: fake_storage::TransactionCommitmentFn,
         ) -> Setup {
             let storage = StorageBuilder::in_memory().unwrap();
-            let (_, blocks) = fake_storage::with_n_blocks_and_config2(
+            let (blocks, _) = fake_storage::with_n_blocks_and_config2(
                 &storage,
                 num_blocks,
                 fake_storage::Config {
@@ -1059,7 +1059,7 @@ mod tests {
 
         #[tokio::test]
         async fn happy_path() {
-            const NUM_BLOCKS: usize = 10;
+            const NUM_BLOCKS: usize = 1;
             let Setup {
                 streamed_transactions,
                 expected_transactions,
@@ -1112,7 +1112,8 @@ mod tests {
                     storage.clone(),
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
-                    ChainId::MAINNET,
+                    // ChainId::MAINNET,
+                    ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
                 .await,

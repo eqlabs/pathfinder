@@ -25,16 +25,7 @@ use pathfinder_common::{
 };
 use rand::Rng;
 
-use crate::{Storage, StorageBuilder, StorageManager};
-
-// TODO merge the apis, hide the init api, leave a storage filler api, remove
-// unused apis
-
-// Summary [ 157.075s] 1099 tests run: 1097 passed (4 slow), 2 failed, 22
-// skipped FAIL [ 156.606s] pathfinder
-// p2p_network::sync_handlers::tests::prop::get_classes FAIL [   0.146s]
-// pathfinder-rpc
-// method::subscribe_transaction_status::tests::transaction_status_streaming
+use crate::{Storage, StorageBuilder};
 
 pub type ModifyStorageFn = Box<dyn Fn(&mut [Block])>;
 pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
@@ -94,7 +85,7 @@ pub struct Block {
 //     let mut rng = rand::thread_rng();
 //     with_n_blocks_and_rng(storage, n, &mut rng)
 // }
-
+/*
 /// Inserts trie data into the DB and updates headers and state updates with
 /// computed commitments.
 pub fn insert_tries(
@@ -133,8 +124,8 @@ pub fn insert_tries(
         state_update.parent_state_commitment = parent_state_commitment;
     }
 }
-
-pub fn insert_tries2(
+ */
+fn insert_tries2(
     db: &crate::Transaction<'_>,
     storage: Storage,
     blocks: &[Block],
@@ -315,20 +306,6 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
     insert_block_data(&tx, blocks);
 
     tx.commit().unwrap();
-}
-
-fn insert_state_update_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
-    blocks.iter().for_each(
-        |Block {
-             header,
-             state_update,
-             ..
-         }| {
-            db.insert_block_header(&header.header).unwrap();
-            db.insert_state_update(header.header.number, state_update)
-                .unwrap();
-        },
-    );
 }
 
 fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
