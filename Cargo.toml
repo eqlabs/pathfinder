@@ -43,7 +43,7 @@ opt-level = 3
 version = "0.14.4"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.80"
+rust-version = "1.82"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
