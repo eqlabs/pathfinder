@@ -144,6 +144,30 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
             let mut l2_blocks = state.notifications.l2_blocks.subscribe();
             let mut reorgs = state.notifications.reorgs.subscribe();
 
+            let ignore_pending_until_block = match params.block_id {
+                Some(BlockId::Latest) => {
+                    // If we're explicitly subscribing to the latest block we should ignore
+                    // _current_ pending updates. That is, we ignore pending
+                    // updates completely until the block number in the pending block
+                    // is greater than the _current_ latest block number + 1.
+                    let storage = state.storage.clone();
+                    let current_latest =
+                        tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+                            let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+                            let db = conn.transaction().map_err(RpcError::InternalError)?;
+                            let latest_block = db
+                                .block_number(pathfinder_storage::BlockId::Latest)
+                                .map_err(RpcError::InternalError)?;
+                            Ok(latest_block)
+                        })
+                        .await
+                        .map_err(|e| RpcError::InternalError(e.into()))??;
+
+                    current_latest.map(|block| block + 1)
+                }
+                _ => None,
+            };
+
             if let Some(first_block) = params.block_id {
                 // When subscribing starting from the pending block we must not send historical
                 // updates based on storage state.
@@ -167,19 +191,21 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
 
             let mut pending_data = state.pending_data.0.clone();
             let pending = pending_data.borrow_and_update().clone();
-            if pending
-                .block
-                .transactions
-                .iter()
-                .any(|tx| tx.hash == tx_hash)
-            {
-                if sender
-                    .send(pending.number, FinalityStatus::Received, None)
-                    .await
-                    .is_err()
+            if ignore_pending_until_block.is_none_or(|ignore_until| pending.number > ignore_until) {
+                if pending
+                    .block
+                    .transactions
+                    .iter()
+                    .any(|tx| tx.hash == tx_hash)
                 {
-                    // Subscription closing.
-                    break;
+                    if sender
+                        .send(pending.number, FinalityStatus::Received, None)
+                        .await
+                        .is_err()
+                    {
+                        // Subscription closing.
+                        break;
+                    }
                 }
             }
 
@@ -245,19 +271,21 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                             break 'reorg;
                         }
                         let pending = pending_data.borrow_and_update().clone();
-                        if pending
-                            .block
-                            .transactions
-                            .iter()
-                            .any(|tx| tx.hash == tx_hash)
-                        {
-                            if sender
-                                .send(pending.number, FinalityStatus::Received, None)
-                                .await
-                                .is_err()
+                        if ignore_pending_until_block.is_none_or(|ignore_until| pending.number > ignore_until) {
+                                if pending
+                                .block
+                                .transactions
+                                .iter()
+                                .any(|tx| tx.hash == tx_hash)
                             {
-                                // Subscription closing.
-                                break;
+                                if sender
+                                    .send(pending.number, FinalityStatus::Received, None)
+                                    .await
+                                    .is_err()
+                                {
+                                    // Subscription closing.
+                                    break;
+                                }
                             }
                         }
                     }
