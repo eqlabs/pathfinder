@@ -1,9 +1,11 @@
+use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::async_trait;
 use pathfinder_common::receipt::ExecutionStatus;
 use pathfinder_common::{BlockId, BlockNumber, TransactionHash};
+use pathfinder_storage::Storage;
 use reply::transaction_status as status;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply;
@@ -139,80 +141,27 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                 last_execution_status: None,
                 last_block_number: BlockNumber::GENESIS, // Initial value not important.
             };
-            let mut pending_data = state.pending_data.0.clone();
             let mut l2_blocks = state.notifications.l2_blocks.subscribe();
             let mut reorgs = state.notifications.reorgs.subscribe();
-            let storage = state.storage.clone();
+
             if let Some(first_block) = params.block_id {
-                // Check if we have the transaction in our database, and if so, send the
-                // relevant transaction status updates.
-                let (first_block, l1_state, tx_with_receipt) =
-                    tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
-                        let mut conn = storage.connection().map_err(RpcError::InternalError)?;
-                        let db = conn.transaction().map_err(RpcError::InternalError)?;
-                        let first_block = db
-                            .block_number(first_block.try_into().map_err(|_| {
-                                RpcError::InvalidParams("block cannot be pending".to_string())
-                            })?)
-                            .map_err(RpcError::InternalError)?;
-                        let l1_block_number =
-                            db.latest_l1_state().map_err(RpcError::InternalError)?;
-                        let tx_with_receipt = db
-                            .transaction_with_receipt(tx_hash)
-                            .map_err(RpcError::InternalError)?;
-                        Ok((first_block, l1_block_number, tx_with_receipt))
-                    })
-                    .await
-                    .map_err(|e| RpcError::InternalError(e.into()))??;
-                let first_block = first_block
-                    .ok_or_else(|| RpcError::ApplicationError(ApplicationError::BlockNotFound))?;
-                if let Some((_, receipt, _, block_number)) = tx_with_receipt {
-                    // We already have the transaction in the database.
-                    if let Some(parent) = block_number.parent() {
-                        // This transaction was pending in the parent block.
-                        if first_block <= parent {
-                            if sender
-                                .send(parent, FinalityStatus::Received, None)
-                                .await
-                                .is_err()
-                            {
-                                // Subscription closing.
-                                break;
-                            }
-                        }
+                match send_historical_updates(
+                    state.storage.clone(),
+                    first_block,
+                    tx_hash,
+                    &mut sender,
+                )
+                .await?
+                {
+                    ControlFlow::Break(()) => {
+                        // Subscription closing.
+                        break;
                     }
-                    if first_block <= block_number {
-                        if sender
-                            .send(
-                                block_number,
-                                FinalityStatus::AcceptedOnL2,
-                                Some(receipt.execution_status.clone()),
-                            )
-                            .await
-                            .is_err()
-                        {
-                            // Subscription closing.
-                            break;
-                        }
-                    }
-                    if let Some(l1_state) = l1_state {
-                        if l1_state.block_number >= block_number {
-                            if sender
-                                .send(
-                                    l1_state.block_number,
-                                    FinalityStatus::AcceptedOnL1,
-                                    Some(receipt.execution_status.clone()),
-                                )
-                                .await
-                                .is_err()
-                            {
-                                // Subscription closing.
-                                break;
-                            }
-                        }
-                    }
+                    ControlFlow::Continue(()) => {}
                 }
             }
+
+            let mut pending_data = state.pending_data.0.clone();
             let pending = pending_data.borrow_and_update().clone();
             if pending
                 .block
@@ -229,6 +178,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                     break;
                 }
             }
+
             // Stream transaction status updates.
             let mut interval = tokio::time::interval(if cfg!(test) {
                 Duration::from_secs(5)
@@ -377,6 +327,87 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
         }
         Ok(())
     }
+}
+
+#[allow(clippy::collapsible_if)]
+async fn send_historical_updates(
+    storage: Storage,
+    first_block: BlockId,
+    tx_hash: TransactionHash,
+    sender: &mut Sender<'_>,
+) -> Result<ControlFlow<()>, RpcError> {
+    // Check if we have the transaction in our database, and if so, send the
+    // relevant transaction status updates.
+    let (first_block, l1_state, tx_with_receipt) =
+        tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+            let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+            let db = conn.transaction().map_err(RpcError::InternalError)?;
+            let first_block = db
+                .block_number(
+                    first_block.try_into().map_err(|_| {
+                        RpcError::InvalidParams("block cannot be pending".to_string())
+                    })?,
+                )
+                .map_err(RpcError::InternalError)?;
+            let l1_block_number = db.latest_l1_state().map_err(RpcError::InternalError)?;
+            let tx_with_receipt = db
+                .transaction_with_receipt(tx_hash)
+                .map_err(RpcError::InternalError)?;
+            Ok((first_block, l1_block_number, tx_with_receipt))
+        })
+        .await
+        .map_err(|e| RpcError::InternalError(e.into()))??;
+    let first_block =
+        first_block.ok_or_else(|| RpcError::ApplicationError(ApplicationError::BlockNotFound))?;
+    if let Some((_, receipt, _, block_number)) = tx_with_receipt {
+        // We already have the transaction in the database.
+        if let Some(parent) = block_number.parent() {
+            // This transaction was pending in the parent block.
+            if first_block <= parent {
+                if sender
+                    .send(parent, FinalityStatus::Received, None)
+                    .await
+                    .is_err()
+                {
+                    // Subscription closing.
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+        }
+
+        if first_block <= block_number {
+            if sender
+                .send(
+                    block_number,
+                    FinalityStatus::AcceptedOnL2,
+                    Some(receipt.execution_status.clone()),
+                )
+                .await
+                .is_err()
+            {
+                // Subscription closing.
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+
+        if let Some(l1_state) = l1_state {
+            if l1_state.block_number >= block_number {
+                if sender
+                    .send(
+                        l1_state.block_number,
+                        FinalityStatus::AcceptedOnL1,
+                        Some(receipt.execution_status.clone()),
+                    )
+                    .await
+                    .is_err()
+                {
+                    // Subscription closing.
+                    return Ok(ControlFlow::Break(()));
+                }
+            }
+        }
+    }
+    Ok(ControlFlow::Continue(()))
 }
 
 struct Sender<'a> {
