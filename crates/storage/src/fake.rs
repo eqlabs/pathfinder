@@ -205,8 +205,8 @@ pub fn with_n_blocks_rng_and_config2<R: Rng>(
     let mut inserted_blocks = blocks.clone();
     modify_storage(&mut inserted_blocks);
 
-    insert_block_data(&db, &blocks);
-    insert_tries2(&db, storage.clone(), &blocks, update_tries);
+    insert_block_data(&db, &inserted_blocks);
+    insert_tries2(&db, storage.clone(), &inserted_blocks, update_tries);
 
     // // COMMENT HERE
     // insert_state_update_data(&db, &blocks);
@@ -321,6 +321,12 @@ fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
             db.insert_block_header(&header.header).unwrap();
             db.insert_signature(header.header.number, &header.signature)
                 .unwrap();
+
+            // eprintln!(
+            //     "inserting transaction data for block {}, {:#?}",
+            //     header.header.number, transaction_data
+            // );
+
             db.insert_transaction_data(
                 header.header.number,
                 &transaction_data

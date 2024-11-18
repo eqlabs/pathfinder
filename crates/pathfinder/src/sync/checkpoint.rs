@@ -1012,7 +1012,7 @@ mod tests {
             calculate_transaction_commitment: fake_storage::TransactionCommitmentFn,
         ) -> Setup {
             let storage = StorageBuilder::in_memory().unwrap();
-            let (blocks, _) = fake_storage::with_n_blocks_and_config2(
+            let (inserted, blocks) = fake_storage::with_n_blocks_and_config2(
                 &storage,
                 num_blocks,
                 fake_storage::Config {
@@ -1026,6 +1026,32 @@ mod tests {
                     ..Default::default()
                 },
             );
+
+            let txns = blocks
+                .iter()
+                .map(|block| {
+                    block
+                        .transaction_data
+                        .iter()
+                        .map(|x| x.0.hash)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            let txns_inserted = inserted
+                .iter()
+                .map(|block| {
+                    block
+                        .transaction_data
+                        .iter()
+                        .map(|x| x.0.hash)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+
+            eprintln!("{:#?}", txns);
+            eprintln!("{:#?}", txns_inserted);
+
             let streamed_transactions = blocks
                 .iter()
                 .map(|block| {
@@ -1065,11 +1091,6 @@ mod tests {
                 expected_transactions,
                 storage,
             } = setup(NUM_BLOCKS).await;
-
-            let x = expected_transactions
-                .iter()
-                .map(|x| x.iter().map(|y| y.0.hash).collect::<Vec<_>>())
-                .collect::<Vec<_>>();
 
             handle_transaction_stream(
                 stream::iter(streamed_transactions),
@@ -1112,8 +1133,7 @@ mod tests {
                     storage.clone(),
                     // Causes mismatches for all transaction hashes because setup assumes
                     // ChainId::SEPOLIA_TESTNET
-                    // ChainId::MAINNET,
-                    ChainId::SEPOLIA_TESTNET,
+                    ChainId::MAINNET,
                     BlockNumber::GENESIS,
                 )
                 .await,
