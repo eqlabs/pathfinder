@@ -1001,26 +1001,26 @@ mod tests {
 
         async fn setup(num_blocks: usize) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let storage = StorageBuilder::in_memory().unwrap();
+                let (_, blocks) = fake_storage::with_n_blocks_and_config2(
+                    &storage,
+                    num_blocks,
+                    fake_storage::Config {
+                        calculate_transaction_commitment: Box::new(
+                            calculate_transaction_commitment,
+                        ),
+                        // Purge transaction data before insertion into the DB.
+                        modify_storage: Box::new(|blocks| {
+                            blocks.iter_mut().for_each(|b| {
+                                b.transaction_data = Default::default();
+                            })
+                        }),
+                        ..Default::default()
+                    },
+                );
                 let streamed_transactions = blocks
-                    .iter_mut()
+                    .iter()
                     .map(|block| {
-                        let transaction_commitment = calculate_transaction_commitment(
-                            block
-                                .transaction_data
-                                .iter()
-                                .map(|(t, _, _)| t.clone())
-                                .collect::<Vec<_>>()
-                                .as_slice(),
-                            block
-                                .header
-                                .header
-                                .starknet_version
-                                .max(StarknetVersion::V_0_13_2),
-                        )
-                        .unwrap();
-                        block.header.header.transaction_commitment = transaction_commitment;
-
                         anyhow::Result::Ok(PeerData::for_tests((
                             block
                                 .transaction_data
@@ -1041,13 +1041,7 @@ mod tests {
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>();
-                blocks.iter_mut().for_each(|b| {
-                    // Purge transaction data.
-                    b.transaction_data = Default::default();
-                });
 
-                let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_transactions,
                     expected_transactions,
@@ -1061,12 +1055,11 @@ mod tests {
         async fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
             use fake::{Fake, Faker};
             tokio::task::spawn_blocking(move || {
-                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let storage = StorageBuilder::in_memory().unwrap();
+                let mut blocks = fake_storage::with_n_blocks(&storage, num_blocks);
                 let streamed_transactions = blocks
-                    .iter_mut()
+                    .iter()
                     .map(|block| {
-                        block.header.header.transaction_commitment = Faker.fake();
-
                         anyhow::Result::Ok(PeerData::for_tests((
                             block
                                 .transaction_data
@@ -1077,13 +1070,11 @@ mod tests {
                         )))
                     })
                     .collect::<Vec<_>>();
+                // Purge transaction data.
                 blocks.iter_mut().for_each(|b| {
-                    // Purge transaction data.
                     b.transaction_data = Default::default();
                 });
 
-                let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_transactions,
                     expected_transactions: Vec::default(),
@@ -1688,6 +1679,7 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
+        use pathfinder_storage::fake::Config;
         use pathfinder_storage::{fake as fake_storage, StorageBuilder};
 
         use super::super::handle_event_stream;
@@ -1702,7 +1694,30 @@ mod tests {
 
         async fn setup(num_blocks: usize, compute_event_commitments: bool) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let storage = StorageBuilder::in_memory().unwrap();
+                let (_, blocks) = fake_storage::with_n_blocks_and_config2(
+                    &storage,
+                    num_blocks,
+                    Config {
+                        calculate_event_commitment: Box::new(move |a, b| {
+                            if compute_event_commitments {
+                                calculate_event_commitment(a, b)
+                            } else {
+                                Ok(Faker.fake())
+                            }
+                        }),
+                        // Purge events before insertion into the DB.
+                        modify_storage: Box::new(|blocks| {
+                            blocks.iter_mut().for_each(|block| {
+                                block
+                                    .transaction_data
+                                    .iter_mut()
+                                    .for_each(|(_, _, events)| events.clear())
+                            })
+                        }),
+                        ..Default::default()
+                    },
+                );
                 let streamed_events = blocks
                     .iter()
                     .map(|block| {
@@ -1726,32 +1741,6 @@ mod tests {
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>();
-
-                let storage = StorageBuilder::in_memory().unwrap();
-                blocks.iter_mut().for_each(|block| {
-                    if compute_event_commitments {
-                        block.header.header.event_commitment = calculate_event_commitment(
-                            &block
-                                .transaction_data
-                                .iter()
-                                .map(|(tx, _, events)| (tx.hash, events.as_slice()))
-                                .collect::<Vec<_>>(),
-                            block
-                                .header
-                                .header
-                                .starknet_version
-                                .max(StarknetVersion::V_0_13_2),
-                        )
-                        .unwrap();
-                    }
-                    // Purge events
-                    block
-                        .transaction_data
-                        .iter_mut()
-                        .for_each(|(_, _, events)| events.clear());
-                    block.cairo_defs.iter_mut().for_each(|(_, def)| def.clear());
-                });
-                fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_events,
                     expected_events,

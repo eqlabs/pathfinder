@@ -507,8 +507,7 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use pathfinder_storage::fake::init::Config;
-        use pathfinder_storage::fake::{with_n_blocks_rng_and_config, Block};
+        use pathfinder_storage::fake::{with_n_blocks_rng_and_config2, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
@@ -521,7 +520,7 @@ mod prop {
             let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let initializer = with_n_blocks_rng_and_config(
+            let (initializer, _) = with_n_blocks_rng_and_config2(
                 &storage,
                 num_blocks.try_into().unwrap(),
                 &mut rng,

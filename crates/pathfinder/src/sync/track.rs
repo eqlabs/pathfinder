@@ -910,8 +910,7 @@ mod tests {
     use p2p::PeerData;
     use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
-    use pathfinder_storage::fake::init::Config;
-    use pathfinder_storage::fake::{self, Block, Config2, Config3};
+    use pathfinder_storage::fake::{self, Block, Config};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
@@ -928,7 +927,7 @@ mod tests {
     async fn happy_path() {
         const N: usize = 1;
         let dummy_storage = StorageBuilder::in_memory().unwrap();
-        let blocks = fake::with_n_blocks_and_config2(
+        let (blocks, _) = fake::with_n_blocks_and_config2(
             &dummy_storage,
             N,
             Config {
@@ -938,14 +937,8 @@ mod tests {
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
-            },
-            Config2 {
                 update_tries: Box::new(update_starknet_state),
-            },
-            Config3 {
-                calculate_block_hash: Box::new(|header: &BlockHeader| {
-                    compute_final_hash(&BlockHeaderData::from_header(header))
-                }),
+                ..Default::default()
             },
         );
 
