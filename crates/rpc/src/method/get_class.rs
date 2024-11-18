@@ -4,7 +4,7 @@ use pathfinder_common::{BlockId, ClassHash};
 use crate::context::RpcContext;
 use crate::dto;
 use crate::dto::serialize::SerializeForVersion;
-use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
 

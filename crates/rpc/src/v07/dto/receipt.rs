@@ -2,7 +2,7 @@ use pathfinder_common::prelude::*;
 use pathfinder_serde::H256AsNoLeadingZerosHexStr;
 use serde::Serialize;
 
-use crate::v02::types::reply::BlockStatus;
+use crate::types::reply::BlockStatus;
 use crate::v06::method::get_transaction_receipt::types as v06;
 use crate::PendingData;
 

@@ -111,7 +111,7 @@ pub mod types {
     use serde_with::serde_as;
 
     use crate::felt::{RpcFelt, RpcFelt251};
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
     use crate::v06::types::PriceUnit;
 
     /// L2 transaction receipt as returned by the RPC API.

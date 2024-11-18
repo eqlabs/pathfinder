@@ -5,7 +5,7 @@ use serde::de::Error;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
-use crate::v02::types::request::BroadcastedTransaction;
+use crate::types::request::BroadcastedTransaction;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -193,7 +193,7 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
-    use crate::v02::types::request::{
+    use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
         BroadcastedInvokeTransaction,
@@ -202,12 +202,7 @@ mod tests {
         BroadcastedInvokeTransactionV3,
         BroadcastedTransaction,
     };
-    use crate::v02::types::{
-        ContractClass,
-        DataAvailabilityMode,
-        ResourceBounds,
-        SierraContractClass,
-    };
+    use crate::types::{ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass};
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");

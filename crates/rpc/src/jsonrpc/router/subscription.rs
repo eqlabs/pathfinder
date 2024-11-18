@@ -818,7 +818,7 @@ mod tests {
         SubscriptionMessage,
     };
     use crate::pending::PendingWatcher;
-    use crate::v02::types::syncing::Syncing;
+    use crate::types::syncing::Syncing;
     use crate::{Notifications, SyncState};
 
     #[tokio::test]

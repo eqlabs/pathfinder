@@ -1,13 +1,14 @@
 //! Common data structures used by the JSON-RPC API methods.
 
 pub(crate) mod class;
+pub mod syncing;
+
 pub use class::*;
 use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
 use serde::de::Error;
 use serde_with::serde_as;
 
 use crate::dto::{U128Hex, U64Hex};
-pub mod syncing;
 
 #[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ResourceBounds {
@@ -809,7 +810,7 @@ pub mod request {
     mod tests {
         macro_rules! fixture {
             ($file_name:literal) => {
-                include_str!(concat!("../../fixtures/0.6.0/", $file_name)).replace(&[' ', '\n'], "")
+                include_str!(concat!("../fixtures/0.6.0/", $file_name)).replace(&[' ', '\n'], "")
             };
         }
 
@@ -834,7 +835,7 @@ pub mod request {
 
             use super::super::*;
             use crate::dto::DeserializeForVersion;
-            use crate::v02::types::{
+            use crate::types::{
                 CairoContractClass,
                 ContractEntryPoints,
                 DataAvailabilityMode,

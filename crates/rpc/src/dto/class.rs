@@ -3,7 +3,7 @@ use serde_with::ser::SerializeAsWrap;
 use super::U64Hex;
 use crate::dto::serialize::SerializeForVersion;
 use crate::dto::{serialize, Felt};
-use crate::v02::types;
+use crate::types;
 
 pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
 pub struct ContractClass<'a>(pub &'a types::SierraContractClass);

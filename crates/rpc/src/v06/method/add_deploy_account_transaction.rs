@@ -4,7 +4,7 @@ use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
-use crate::v02::types::request::{
+use crate::types::request::{
     BroadcastedDeployAccountTransaction,
     BroadcastedDeployAccountTransactionV1,
 };
@@ -218,8 +218,8 @@ mod tests {
 
     use super::*;
     use crate::dto::serialize::{self, SerializeForVersion};
-    use crate::v02::types::request::BroadcastedDeployAccountTransactionV3;
-    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
+    use crate::types::request::BroadcastedDeployAccountTransactionV3;
+    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",
