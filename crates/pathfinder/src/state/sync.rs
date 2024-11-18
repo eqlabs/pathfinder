@@ -1139,41 +1139,59 @@ pub fn update_starknet_state(
     }
     .with_verify_hashes(verify_hashes);
 
-    let (send, recv) = std::sync::mpsc::channel();
+    // let (send, recv) = std::sync::mpsc::channel();
 
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            let result: Result<Vec<_>, _> = state_update
-                .contract_updates
-                .par_iter()
-                .map_init(
-                    || storage.clone().connection(),
-                    |connection, (contract_address, update)| {
-                        let connection = match connection {
-                            Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
-                        };
-                        let transaction = connection.transaction()?;
-                        update_contract_state(
-                            **contract_address,
-                            update.storage,
-                            *update.nonce,
-                            update.class.as_ref().map(|x| x.class_hash()),
-                            &transaction,
-                            verify_hashes,
-                            block,
-                        )
-                    },
-                )
-                .collect();
-            let _ = send.send(result);
+    let result: Result<Vec<_>, _> = state_update
+        .contract_updates
+        .iter()
+        .map(|(contract_address, update)| {
+            update_contract_state(
+                **contract_address,
+                update.storage,
+                *update.nonce,
+                update.class.as_ref().map(|x| x.class_hash()),
+                &transaction,
+                verify_hashes,
+                block,
+            )
         })
-    });
+        .collect();
 
-    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+    // rayon::scope(|s| {
+    //     s.spawn(|_| {
+    //         let result: Result<Vec<_>, _> = state_update
+    //             .contract_updates
+    //             .par_iter()
+    //             .map_init(
+    //                 || storage.clone().connection(),
+    //                 |connection, (contract_address, update)| {
+    //                     let connection = match connection {
+    //                         Ok(connection) => connection,
+    //                         Err(e) => anyhow::bail!(
+    //                             "Failed to create database connection in rayon
+    // thread: {}",                             e
+    //                         ),
+    //                     };
+    //                     let transaction = connection.transaction()?;
+    //                     update_contract_state(
+    //                         **contract_address,
+    //                         update.storage,
+    //                         *update.nonce,
+    //                         update.class.as_ref().map(|x| x.class_hash()),
+    //                         &transaction,
+    //                         verify_hashes,
+    //                         block,
+    //                     )
+    //                 },
+    //             )
+    //             .collect();
+    //         let _ = send.send(result);
+    //     })
+    // });
+
+    // let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+
+    let contract_update_results = result?;
 
     for contract_update_result in contract_update_results.into_iter() {
         storage_commitment_tree
@@ -1197,7 +1215,13 @@ pub fn update_starknet_state(
             verify_hashes,
             block,
         )
-        .context("Update system contract state")?;
+        .with_context(|| {
+            format!(
+                "Update system contract state, contract: {contract}, storage: {:?}, block: {block}",
+                update.storage
+            )
+        })?;
+        // .context("Update system contract state")?;
 
         storage_commitment_tree
             .set(*contract, update_result.state_hash)

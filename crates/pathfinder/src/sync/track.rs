@@ -819,6 +819,12 @@ impl ProcessStage for StoreBlock {
 
         db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
+        // THIS WAS A BUG AND WOULD NOT WORK WITH MORE THAN 1 block
+        //  |
+        // VVVV
+        // it has to be before trie updates
+        db.insert_state_update_data(block_number, &state_diff)
+            .context("Inserting state update data")?;
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
@@ -850,8 +856,6 @@ impl ProcessStage for StoreBlock {
 
         db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
             .context("Updating storage and class commitments")?;
-        db.insert_state_update_data(block_number, &state_diff)
-            .context("Inserting state update data")?;
 
         classes.into_iter().try_for_each(
             |CompiledClass {
@@ -898,6 +902,8 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use futures::{stream, Stream, StreamExt};
     use p2p::client::types::{
         ClassDefinition,
@@ -925,7 +931,7 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path() {
-        const N: usize = 1;
+        const N: usize = 10;
         let dummy_storage = StorageBuilder::in_memory().unwrap();
         let (blocks, _) = fake::with_n_blocks_and_config2(
             &dummy_storage,
@@ -937,7 +943,7 @@ mod tests {
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
-                update_tries: Box::new(update_starknet_state),
+                update_tries: Arc::new(update_starknet_state),
                 ..Default::default()
             },
         );

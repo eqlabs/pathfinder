@@ -1181,11 +1181,12 @@ mod tests {
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake::{self as fake_storage, Block};
+        use pathfinder_storage::fake::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_state_diff_stream;
         use super::*;
+        use crate::state::update_starknet_state;
 
         struct Setup {
             pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,
@@ -1193,9 +1194,69 @@ mod tests {
             pub storage: Storage,
         }
 
+        fn setup2(num_blocks: usize) -> Setup {
+            let dummy_storage = StorageBuilder::in_memory().unwrap();
+            let (blocks, _) = fake_storage::with_n_blocks_and_config2(
+                &dummy_storage,
+                num_blocks,
+                Config {
+                    update_tries: Arc::new(update_starknet_state),
+                    // Purge state diff data before insertion into the DB.
+                    // modify_storage: Box::new(|blocks| {
+                    //     blocks
+                    //         .iter_mut()
+                    //         .for_each(|block| block.state_update = Default::default())
+                    // }),
+                    ..Default::default()
+                },
+            );
+
+            let storage = StorageBuilder::in_memory().unwrap();
+            fake_storage::fill(&storage, &blocks);
+
+            let streamed_state_diffs = blocks
+                .iter()
+                .map(|block| {
+                    Result::<PeerData<_>, _>::Ok(PeerData::for_tests((
+                        block.state_update.clone().into(),
+                        block.header.header.number,
+                    )))
+                })
+                .collect::<Vec<_>>();
+            let expected_state_diffs = blocks
+                .iter()
+                .map(|block| block.state_update.clone().into())
+                .collect::<Vec<_>>();
+
+            Setup {
+                streamed_state_diffs,
+                expected_state_diffs,
+                storage: dummy_storage,
+            }
+        }
+
         async fn setup(num_blocks: usize) -> Setup {
             tokio::task::spawn_blocking(move || {
-                let mut blocks = super::fixture::blocks()[..num_blocks].to_vec();
+                let dummy_storage = StorageBuilder::in_memory().unwrap();
+                let (blocks, _) = fake_storage::with_n_blocks_and_config2(
+                    &dummy_storage,
+                    num_blocks,
+                    Config {
+                        update_tries: Arc::new(update_starknet_state),
+                        // Purge state diff data before insertion into the DB.
+                        // modify_storage: Box::new(|blocks| {
+                        //     blocks
+                        //         .iter_mut()
+                        //         .for_each(|block| block.state_update = Default::default())
+                        // }),
+                        ..Default::default()
+                    },
+                );
+
+                let storage = StorageBuilder::in_memory().unwrap();
+                fake_storage::fill(&storage, &blocks);
+
+                // let mut blocks = super::fixture::blocks()[..num_blocks].to_vec();
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
@@ -1205,33 +1266,41 @@ mod tests {
                         )))
                     })
                     .collect::<Vec<_>>();
-                let mut implicit_declarations = HashSet::new();
+                // let mut implicit_declarations = HashSet::new();
                 let expected_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        // Cairo0 Deploy should also count as implicit declaration the first time
+                        block.state_update.clone().into()
+
+                        // // Cairo0 Deploy should also count as implicit
+                        // declaration the first time //
                         // it happens
-                        let mut state_diff: StateUpdateData = block.state_update.clone().into();
-                        block
-                            .state_update
-                            .contract_updates
-                            .iter()
-                            .for_each(|(_, v)| {
-                                v.class.as_ref().inspect(|class_update| {
-                                    if let ContractClassUpdate::Deploy(class_hash) = class_update {
-                                        if !implicit_declarations.contains(class_hash) {
-                                            state_diff.declared_cairo_classes.insert(*class_hash);
-                                            implicit_declarations.insert(*class_hash);
-                                        }
-                                    }
-                                });
-                            });
-                        state_diff
+                        // let mut state_diff: StateUpdateData =
+                        // block.state_update.clone().into();
+                        // block
+                        //     .state_update
+                        //     .contract_updates
+                        //     .iter()
+                        //     .for_each(|(_, v)| {
+                        //         v.class.as_ref().inspect(|class_update| {
+                        //             if let
+                        // ContractClassUpdate::Deploy(class_hash) =
+                        // class_update {
+                        // if !implicit_declarations.contains(class_hash) {
+                        //
+                        // state_diff.declared_cairo_classes.insert(*
+                        // class_hash);
+                        // implicit_declarations.insert(*class_hash);
+                        //                 }
+                        //             }
+                        //         });
+                        //     });
+                        // state_diff
                     })
                     .collect::<Vec<_>>();
 
-                let storage = StorageBuilder::in_memory().unwrap();
-                fake_storage::fill(&storage, &blocks);
+                // let storage = StorageBuilder::in_memory().unwrap();
+                // fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_state_diffs,
                     expected_state_diffs,
@@ -1244,7 +1313,7 @@ mod tests {
 
         #[tokio::test]
         async fn happy_path() {
-            const NUM_BLOCKS: usize = 2;
+            const NUM_BLOCKS: usize = 10;
             let Setup {
                 streamed_state_diffs,
                 expected_state_diffs,

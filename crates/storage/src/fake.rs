@@ -1,4 +1,4 @@
-//! Create fake blockchain data for test purposes
+//! Create fake blockchain storage for test purposes
 use std::sync::Arc;
 
 use fake::{Fake, Faker};
@@ -25,7 +25,7 @@ use pathfinder_common::{
 };
 use rand::Rng;
 
-use crate::Storage;
+use crate::{Storage, StorageBuilder, StorageManager};
 
 // TODO merge the apis, hide the init api, leave a storage filler api, remove
 // unused apis
@@ -43,7 +43,7 @@ pub type TransactionCommitmentFn =
 pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
 pub type EventCommitmentFn =
     Box<dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) -> anyhow::Result<EventCommitment>>;
-pub type UpdateTriesFn = Box<
+pub type UpdateTriesFn = Arc<
     dyn Fn(
         &crate::Transaction<'_>,
         StateUpdateRef<'_>,
@@ -72,7 +72,7 @@ impl Default for Config {
             calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
             calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
             calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
-            update_tries: Box::new(|_, _, _, _, _| Ok((Faker.fake(), Faker.fake()))),
+            update_tries: Arc::new(|_, _, _, _, _| Ok((Faker.fake(), Faker.fake()))),
             modify_storage: Box::new(|_| {}),
         }
     }
@@ -134,192 +134,29 @@ pub fn insert_tries(
     }
 }
 
-// /// Initialize [`Storage`] with a slice of already generated blocks
-// pub fn fill_with_config2(
-//     storage: &Storage,
-//     blocks: &[Block],
-//     update_tries: UpdateTriesFn,
-// ) -> Vec<(StorageCommitment, ClassCommitment)> {
-//     let mut connection = storage.connection().unwrap();
-//     let tx = connection.transaction().unwrap();
-
-//     let mut computed_commitments = Vec::with_capacity(blocks.len());
-
-//     blocks.iter().for_each(
-//         |Block {
-//              header,
-//              transaction_data,
-//              state_update,
-//              cairo_defs,
-//              sierra_defs,
-//              ..
-//          }| {
-//             tx.insert_block_header(&header.header).unwrap();
-//             tx.insert_signature(header.header.number, &header.signature)
-//                 .unwrap();
-//             tx.insert_transaction_data(
-//                 header.header.number,
-//                 &transaction_data
-//                     .iter()
-//                     .cloned()
-//                     .map(|(tx, receipt, ..)| (tx, receipt))
-//                     .collect::<Vec<_>>(),
-//                 Some(
-//                     &transaction_data
-//                         .iter()
-//                         .cloned()
-//                         .map(|(_, _, events)| events)
-//                         .collect::<Vec<_>>(),
-//                 ),
-//             )
-//             .unwrap();
-
-//             let (storage_commitment, class_commitment) = update_tries(
-//                 &tx,
-//                 state_update.into(),
-//                 false,
-//                 header.header.number,
-//                 storage.clone(),
-//             )
-//             .unwrap();
-
-//             computed_commitments.push((storage_commitment,
-// class_commitment));
-
-//             tx.update_storage_and_class_commitments(
-//                 header.header.number,
-//                 storage_commitment,
-//                 class_commitment,
-//             )
-//             .unwrap();
-
-//             // TODO insert_state_update_data
-//             tx.insert_state_update(header.header.number, state_update)
-//                 .unwrap();
-
-//             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-//                 tx.insert_cairo_class(*cairo_hash, definition).unwrap()
-//             });
-
-//             sierra_defs
-//                 .iter()
-//                 .for_each(|(sierra_hash, sierra_definition, casm_definition)|
-// {                     tx.insert_sierra_class(
-//                         sierra_hash,
-//                         sierra_definition,
-//                         state_update
-//                             .declared_sierra_classes
-//                             .get(sierra_hash)
-//                             .unwrap(),
-//                         casm_definition,
-//                     )
-//                     .unwrap()
-//                 });
-//         },
-//     );
-//     tx.commit().unwrap();
-
-//     computed_commitments
-// }
-
-// /// Initialize [`Storage`] with a slice of already generated blocks
-// pub fn fill(storage: &Storage, blocks: &[Block]) {
-//     let mut connection = storage.connection().unwrap();
-//     let tx = connection.transaction().unwrap();
-
-//     blocks.iter().for_each(
-//         |Block {
-//              header,
-//              transaction_data,
-//              state_update,
-//              cairo_defs,
-//              sierra_defs,
-//              ..
-//          }| {
-//             tx.insert_block_header(&header.header).unwrap();
-//             tx.insert_signature(header.header.number, &header.signature)
-//                 .unwrap();
-//             tx.insert_transaction_data(
-//                 header.header.number,
-//                 &transaction_data
-//                     .iter()
-//                     .cloned()
-//                     .map(|(tx, receipt, ..)| (tx, receipt))
-//                     .collect::<Vec<_>>(),
-//                 Some(
-//                     &transaction_data
-//                         .iter()
-//                         .cloned()
-//                         .map(|(_, _, events)| events)
-//                         .collect::<Vec<_>>(),
-//                 ),
-//             )
-//             .unwrap();
-
-//             // let (storage_commitment, class_commitment) =
-// update_starknet_state(             //     &db,
-//             //     (&state_diff).into(),
-//             //     self.verify_tree_hashes,
-//             //     block_number,
-//             //     self.storage.clone(),
-//             // )
-//             // .unwrap();
-
-//             // db.update_storage_and_class_commitments(
-//             //     block_number,
-//             //     storage_commitment,
-//             //     class_commitment,
-//             // )
-//             // .context("Updating storage and class commitments")?;
-//             // db.insert_state_update_data(block_number, &state_diff)
-//             //     .context("Inserting state update data")?;
-
-//             // TODO insert_state_update_data
-//             tx.insert_state_update(header.header.number, state_update)
-//                 .unwrap();
-
-//             cairo_defs.iter().for_each(|(cairo_hash, definition)| {
-//                 tx.insert_cairo_class(*cairo_hash, definition).unwrap()
-//             });
-
-//             sierra_defs
-//                 .iter()
-//                 .for_each(|(sierra_hash, sierra_definition, casm_definition)|
-// {                     tx.insert_sierra_class(
-//                         sierra_hash,
-//                         sierra_definition,
-//                         state_update
-//                             .declared_sierra_classes
-//                             .get(sierra_hash)
-//                             .unwrap(),
-//                         casm_definition,
-//                     )
-//                     .unwrap()
-//                 });
-//         },
-//     );
-//     tx.commit().unwrap();
-// }
-
-// /// Same as [`with_n_blocks`] except caller can specify the rng used
-// pub fn with_n_blocks_and_rng<R: Rng>(storage: &Storage, n: usize, rng: &mut
-// R) -> Vec<Block> {     let blocks = init::with_n_blocks_and_rng(n, rng);
-//     fill(storage, &blocks);
-//     blocks
-// }
-
-// /// Same as [`with_n_blocks`] except caller can specify the rng and
-// additional /// configuration
-// pub fn with_n_blocks_rng_and_config<R: Rng>(
-//     storage: &Storage,
-//     n: usize,
-//     rng: &mut R,
-//     config: init::Config,
-// ) -> Vec<Block> {
-//     let blocks = init::with_n_blocks_rng_and_config(n, rng, config);
-//     fill(storage, &blocks);
-//     blocks
-// }
+pub fn insert_tries2(
+    db: &crate::Transaction<'_>,
+    storage: Storage,
+    blocks: &[Block],
+    update_tries: UpdateTriesFn,
+) {
+    blocks.iter().for_each(
+        |Block {
+             header,
+             state_update,
+             ..
+         }| {
+            update_tries(
+                &db,
+                state_update.into(),
+                false,
+                header.header.number,
+                storage.clone(),
+            )
+            .unwrap();
+        },
+    );
+}
 
 /// ### Important
 ///
@@ -350,22 +187,93 @@ pub fn with_n_blocks_rng_and_config2<R: Rng>(
             calculate_event_commitment,
         },
     );
+    // Compute class, storage and state commitments and update them in the generated
+    // blocks
+    update_commitments(&mut blocks, update_tries.clone());
+    // Compute block hashes and update them in the generated blocks
+    compute_block_hashes(&mut blocks, calculate_block_hash);
+
+    // TODO
+    // 1. dummy in memory DB
+    // 2. insert headers with invalid hashes - they don't matter, we need the block
+    //    numbers in the DB because of foreign key constraints
+    // 3. insert state updates (they rely on that foreign key)
+    // 4. insert tries (they rely on the state updates)
+    // 5. now we have the class and storage commitments, and the state commitment
+    // 6. now insert everything in the correct order:
+    //    - headers
+    //    - signatures
+    //    - transaction data
+    //    - state updates
+    //    - update tries
+    //    - cairo defs
 
     let mut db = storage.connection().unwrap();
     let db = db.transaction().unwrap();
-    // Tries go into the DB first, headers are updated with the computed commitments
-    insert_tries(&db, storage.clone(), &mut blocks, update_tries);
-    // Block hashes can be computed now
-    compute_block_hashes(&mut blocks, calculate_block_hash);
+
     let mut inserted_blocks = blocks.clone();
-    // Apply additional modifications
     modify_storage(&mut inserted_blocks);
-    // All the block data is inserted into the DB
-    insert_block_data(&db, &inserted_blocks);
+
+    insert_block_data(&db, &blocks);
+    insert_tries2(&db, storage.clone(), &blocks, update_tries);
+
+    // // COMMENT HERE
+    // insert_state_update_data(&db, &blocks);
+    // // TODO fix comment
+    // // Tries go into the DB first, headers are updated with the computed
+    // commitments insert_tries(&db, storage.clone(), &mut blocks,
+    // update_tries); // Block hashes can be computed now
+    // compute_block_hashes(&mut blocks, calculate_block_hash);
+    // let mut inserted_blocks = blocks.clone();
+    // // Apply additional modifications
+    // modify_storage(&mut inserted_blocks);
+    // // All the block data is inserted into the DB
+    // insert_block_data(&db, &inserted_blocks);
 
     db.commit().unwrap();
 
     (inserted_blocks, blocks)
+}
+
+// Updates class, storage and state commitments
+fn update_commitments(blocks: &mut [Block], update_tries: UpdateTriesFn) {
+    // This dummy db is only necessary to build the tries whose roots are the
+    // storage and class commitments
+    let dummy_storage = StorageBuilder::in_memory().unwrap();
+    let mut db = dummy_storage.connection().unwrap();
+    let db = db.transaction().unwrap();
+
+    for Block {
+        header,
+        state_update,
+        ..
+    } in blocks.iter_mut()
+    {
+        // Required because of foreign key constraint
+        db.insert_block_header(&header.header).unwrap();
+        // Required for the tries
+        db.insert_state_update(header.header.number, state_update)
+            .unwrap();
+        let (storage_commitment, class_commitment) = update_tries(
+            &db,
+            state_update.into(),
+            false,
+            header.header.number,
+            dummy_storage.clone(),
+        )
+        .unwrap();
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        header.header.storage_commitment = storage_commitment;
+        header.header.class_commitment = class_commitment;
+        header.header.state_commitment = state_commitment;
+        state_update.state_commitment = state_commitment;
+    }
+
+    for i in 1..blocks.len() {
+        let parent_state_commitment = blocks.get(i - 1).unwrap().header.header.state_commitment;
+        let Block { state_update, .. } = blocks.get_mut(i).unwrap();
+        state_update.parent_state_commitment = parent_state_commitment;
+    }
 }
 
 // Computes block hashes, updates parent block hashes with the correct values
@@ -409,6 +317,20 @@ pub fn fill(storage: &Storage, blocks: &[Block]) {
     tx.commit().unwrap();
 }
 
+fn insert_state_update_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
+    blocks.iter().for_each(
+        |Block {
+             header,
+             state_update,
+             ..
+         }| {
+            db.insert_block_header(&header.header).unwrap();
+            db.insert_state_update(header.header.number, state_update)
+                .unwrap();
+        },
+    );
+}
+
 fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
     blocks.iter().for_each(
         |Block {
@@ -439,7 +361,6 @@ fn insert_block_data(db: &crate::Transaction<'_>, blocks: &[Block]) {
             )
             .unwrap();
 
-            // TODO insert_state_update_data
             db.insert_state_update(header.header.number, state_update)
                 .unwrap();
 
@@ -497,46 +418,23 @@ mod init {
         ChainId,
         ClassHash,
         ContractAddress,
-        EventCommitment,
-        ReceiptCommitment,
         SierraHash,
         SignedBlockHeader,
         StarknetVersion,
         StateCommitment,
         StateUpdate,
-        TransactionCommitment,
-        TransactionHash,
         TransactionIndex,
     };
     use rand::seq::IteratorRandom;
     use rand::Rng;
     use starknet_gateway_types::class_hash::compute_class_hash;
 
-    use super::{Block, *};
-
-    // pub type TransactionCommitmentFn =
-    //     Box<dyn Fn(&[Transaction], StarknetVersion) ->
-    // anyhow::Result<TransactionCommitment>>; pub type ReceiptCommitmentFn =
-    // Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
-    // pub type EventCommitmentFn = Box<
-    //     dyn Fn(&[(TransactionHash, &[Event])], StarknetVersion) ->
-    // anyhow::Result<EventCommitment>, >;
-
+    use super::*;
     pub struct Config {
         pub calculate_transaction_commitment: TransactionCommitmentFn,
         pub calculate_receipt_commitment: ReceiptCommitmentFn,
         pub calculate_event_commitment: EventCommitmentFn,
     }
-
-    // impl Default for Config {
-    //     fn default() -> Self {
-    //         Self {
-    //             calculate_transaction_commitment: Arc::new(|_, _|
-    // Ok(Faker.fake())),             calculate_receipt_commitment: Box::new(|_|
-    // Ok(Faker.fake())),             calculate_event_commitment: Box::new(|_,
-    // _| Ok(Faker.fake())),         }
-    //     }
-    // }
 
     /// Create fake blocks and state updates with __limited consistency
     /// guarantees__:
