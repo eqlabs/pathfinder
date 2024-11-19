@@ -1,7 +1,9 @@
 use blockifier::execution::stack_trace::{
     gen_tx_execution_error_trace,
+    ErrorStackSegment,
     ErrorStack as BlockifierErrorStack,
 };
+
 use blockifier::transaction::errors::TransactionExecutionError;
 use pathfinder_common::{ClassHash, ContractAddress, EntryPoint};
 
@@ -29,20 +31,23 @@ pub enum Frame {
     StringFrame(String),
 }
 
-impl From<blockifier::execution::stack_trace::Frame> for Frame {
-    fn from(value: blockifier::execution::stack_trace::Frame) -> Self {
+impl From<ErrorStackSegment> for Frame {
+    fn from(value: ErrorStackSegment) -> Self {
         match value {
-            blockifier::execution::stack_trace::Frame::EntryPoint(entry_point) => {
+            ErrorStackSegment::EntryPoint(entry_point) => {
                 Frame::CallFrame(CallFrame {
                     storage_address: ContractAddress(entry_point.storage_address.0.into_felt()),
                     class_hash: ClassHash(entry_point.class_hash.0.into_felt()),
                     selector: entry_point.selector.map(|s| EntryPoint(s.0.into_felt())),
                 })
             }
-            blockifier::execution::stack_trace::Frame::Vm(vm_exception) => {
+            ErrorStackSegment::Cairo1RevertSummary(revert_summary) => {
+                Frame::StringFrame(format!("{:?}", revert_summary))
+            },
+            ErrorStackSegment::Vm(vm_exception) => {
                 Frame::StringFrame(String::from(&vm_exception))
             }
-            blockifier::execution::stack_trace::Frame::StringFrame(string_frame) => {
+            ErrorStackSegment::StringFrame(string_frame) => {
                 Frame::StringFrame(string_frame)
             }
         }
