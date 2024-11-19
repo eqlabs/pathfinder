@@ -279,98 +279,36 @@ pub async fn batch_update_starknet_state(
 
         let PeerData { peer, data: merged } = merge_state_updates(state_updates);
 
-        let state_update_ref: StateUpdateRef<'_> = (&merged).into();
-
-        update_starknet_state_impl(
-            &peer,
-            db,
-            state_update_ref,
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db,
+            (&merged).into(),
             verify_tree_hashes,
             tail,
-            storage,
-        )?;
+            storage.clone(),
+        )
+        .context("Updating Starknet state")?;
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let expected_state_commitment = db
+            .state_commitment(tail.into())
+            .context("Querying state commitment")?
+            .context("State commitment not found")?;
+        if state_commitment != expected_state_commitment {
+            tracing::debug!(
+            %peer,
+            %tail,
+            actual_storage_commitment=%storage_commitment,
+            actual_class_commitment=%class_commitment,
+            actual_state_commitment=%state_commitment,
+            %expected_state_commitment,
+            "State root mismatch");
+            return Err(SyncError::StateRootMismatch(peer));
+        }
+        db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
+            .context("Updating storage and class commitments")?;
+        db.commit().context("Committing db transaction")?;
 
         Ok(PeerData::new(peer, tail))
     })
     .await
     .context("Joining blocking task")?
-}
-
-// TODO REMOVE
-pub struct UpdateStarknetState {
-    pub storage: pathfinder_storage::Storage,
-    pub connection: pathfinder_storage::Connection,
-    pub current_block: BlockNumber,
-    pub verify_tree_hashes: bool,
-}
-
-// TODO REMOVE
-impl ProcessStage for UpdateStarknetState {
-    type Input = StateUpdateData;
-    type Output = BlockNumber;
-
-    const NAME: &'static str = "StateDiff::UpdateStarknetState";
-
-    fn map(&mut self, peer: &PeerId, state_update: Self::Input) -> Result<Self::Output, SyncError> {
-        let mut db = self
-            .connection
-            .transaction()
-            .context("Creating database transaction")?;
-
-        let tail = self.current_block;
-
-        db.insert_state_update_data(self.current_block, &state_update)
-            .context("Inserting state update data")?;
-
-        update_starknet_state_impl(
-            peer,
-            db,
-            (&state_update).into(),
-            self.verify_tree_hashes,
-            tail,
-            self.storage.clone(),
-        )?;
-
-        self.current_block += 1;
-
-        Ok(tail)
-    }
-}
-
-fn update_starknet_state_impl(
-    peer: &PeerId,
-    db: pathfinder_storage::Transaction<'_>,
-    state_update_ref: StateUpdateRef<'_>,
-    verify_tree_hashes: bool,
-    tail: BlockNumber,
-    storage: Storage,
-) -> Result<(), SyncError> {
-    let (storage_commitment, class_commitment) = update_starknet_state(
-        &db,
-        state_update_ref,
-        verify_tree_hashes,
-        tail,
-        storage.clone(),
-    )
-    .context("Updating Starknet state")?;
-    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-    let expected_state_commitment = db
-        .state_commitment(tail.into())
-        .context("Querying state commitment")?
-        .context("State commitment not found")?;
-    if state_commitment != expected_state_commitment {
-        tracing::debug!(
-        %peer,
-        %tail,
-        actual_storage_commitment=%storage_commitment,
-        actual_class_commitment=%class_commitment,
-        actual_state_commitment=%state_commitment,
-        %expected_state_commitment,
-        "State root mismatch");
-        return Err(SyncError::StateRootMismatch(*peer));
-    }
-    db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
-        .context("Updating storage and class commitments")?;
-    db.commit().context("Committing db transaction")?;
-    Ok(())
 }
