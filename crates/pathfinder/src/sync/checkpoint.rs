@@ -718,7 +718,7 @@ mod tests {
             StorageCommitment,
             TransactionCommitment,
         };
-        use pathfinder_storage::fake2::{self as fake_storage, Block};
+        use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
         use serde::Deserialize;
         use serde_with::{serde_as, DisplayFromStr};
@@ -987,7 +987,7 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake2::{self as fake_storage, Block, Config};
+        use pathfinder_storage::fake::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_transaction_stream;
@@ -1190,7 +1190,7 @@ mod tests {
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake2::{self as fake_storage, Block, Config};
+        use pathfinder_storage::fake::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_state_diff_stream;
@@ -1385,7 +1385,7 @@ mod tests {
             TransactionHash,
         };
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake2::{self as fake_storage, Block};
+        use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_10_TUPLES_INTEGRATION as CAIRO,
@@ -1684,8 +1684,8 @@ mod tests {
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
-        use pathfinder_storage::fake2::{fill, Block, Config, EventCommitmentFn};
-        use pathfinder_storage::{fake2 as fake_storage, StorageBuilder};
+        use pathfinder_storage::fake::{fill, Block, Config, EventCommitmentFn};
+        use pathfinder_storage::{fake as fake_storage, StorageBuilder};
 
         use super::super::handle_event_stream;
         use super::*;

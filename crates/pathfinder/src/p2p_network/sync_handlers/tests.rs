@@ -139,7 +139,7 @@ mod prop {
     };
     use pathfinder_crypto::Felt;
     // use pathfinder_storage::fake::Block;
-    use pathfinder_storage::fake2::Block;
+    use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
 
@@ -515,7 +515,7 @@ mod prop {
     /// Fixtures for prop tests
     mod fixtures {
         // use pathfinder_storage::fake::{with_n_blocks_rng_and_config2, Block, Config};
-        use pathfinder_storage::fake2::{fill, generate, Block, Config};
+        use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
@@ -558,7 +558,7 @@ mod prop {
     mod overlapping {
         use p2p_proto::common::{Direction, Step};
         // use pathfinder_storage::fake::Block;
-        use pathfinder_storage::fake2::Block;
+        use pathfinder_storage::fake::Block;
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
 

@@ -449,7 +449,7 @@ pub(crate) mod types {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::BlockNumber;
-    use pathfinder_storage::fake2::Block;
+    use pathfinder_storage::fake::Block;
     use serde_json::json;
 
     use super::types::StateUpdate;
@@ -474,9 +474,9 @@ mod tests {
 
     /// Add some dummy state updates to the context for testing
     fn context_with_state_updates() -> (Vec<types::StateUpdate>, RpcContext) {
-        let blocks = pathfinder_storage::fake2::generate::n_blocks(3);
+        let blocks = pathfinder_storage::fake::generate::n_blocks(3);
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        pathfinder_storage::fake2::fill(&storage, &blocks, None);
+        pathfinder_storage::fake::fill(&storage, &blocks, None);
 
         // let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
 

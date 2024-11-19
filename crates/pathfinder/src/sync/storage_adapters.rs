@@ -77,7 +77,7 @@ pub fn counts_stream(
 mod tests {
     use futures::StreamExt;
     use pathfinder_common::{BlockHeader, SignedBlockHeader, StateUpdate};
-    use pathfinder_storage::fake2::Block;
+    use pathfinder_storage::fake::Block;
 
     use super::*;
     use crate::sync::{class_definitions, events, state_updates, transactions};
@@ -163,8 +163,8 @@ mod tests {
         const DB_LEN: usize = 5;
         let ok_len = len.min(DB_LEN);
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let blocks = pathfinder_storage::fake2::generate::n_blocks(DB_LEN);
-        pathfinder_storage::fake2::fill(&storage, &blocks, None);
+        let blocks = pathfinder_storage::fake::generate::n_blocks(DB_LEN);
+        pathfinder_storage::fake::fill(&storage, &blocks, None);
 
         // let (blocks, _) = pathfinder_storage::fake::with_n_blocks_and_config2(
         //     &storage,

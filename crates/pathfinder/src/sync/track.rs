@@ -916,7 +916,7 @@ mod tests {
     use p2p::PeerData;
     use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
-    use pathfinder_storage::fake2::{self, Block, Config};
+    use pathfinder_storage::fake::{self, Block, Config};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
@@ -932,7 +932,7 @@ mod tests {
     #[tokio::test]
     async fn happy_path() {
         const N: usize = 10;
-        let blocks = fake2::generate::with_config(
+        let blocks = fake::generate::with_config(
             N,
             Config {
                 calculate_block_hash: Box::new(|header: &BlockHeader| {
