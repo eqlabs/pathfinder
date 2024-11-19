@@ -392,7 +392,7 @@ impl Cache {
     }
 
     fn locked_cache(&self) -> MutexGuard<'_, SizedCache<CacheKey, BloomFilter>> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner())
+        self.0.lock().unwrap()
     }
 
     pub fn get(
