@@ -819,10 +819,6 @@ impl ProcessStage for StoreBlock {
 
         db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
-        // THIS WAS A BUG AND WOULD NOT WORK WITH MORE THAN 1 block
-        //  |
-        // VVVV
-        // it has to be before trie updates
         db.insert_state_update_data(block_number, &state_diff)
             .context("Inserting state update data")?;
 
@@ -834,13 +830,6 @@ impl ProcessStage for StoreBlock {
             self.storage.clone(),
         )
         .context("Updating Starknet state")?;
-
-        // eprintln!("StoreBlock {block_number} classes:
-        // {classes:?}",); eprintln!("StoreBlock {block_number} transactions:
-        // {transactions:?}",); eprintln!("StoreBlock {block_number} state_diff:
-        // {state_diff:?}",); eprintln!("StoreBlock {block_number} computed
-        // storage_commitment: {storage_commitment}",); eprintln!("StoreBlock
-        // {block_number} computed class_commitment:   {class_commitment}",);
 
         // Ensure that roots match.
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
@@ -902,6 +891,8 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use futures::{stream, Stream, StreamExt};
@@ -945,23 +936,6 @@ mod tests {
             },
         );
 
-        // let dummy_storage = StorageBuilder::in_memory().unwrap();
-        // let (blocks, _) = fake::with_n_blocks_and_config2(
-        //     &dummy_storage,
-        //     N,
-        //     Config {
-        //         calculate_block_hash: Box::new(|header: &BlockHeader| {
-        //             compute_final_hash(&BlockHeaderData::from_header(header))
-        //         }),
-        //         calculate_transaction_commitment:
-        // Box::new(calculate_transaction_commitment),
-        //         calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
-        //         calculate_event_commitment: Box::new(calculate_event_commitment),
-        //         update_tries: Arc::new(update_starknet_state),
-        //         ..Default::default()
-        //     },
-        // );
-
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
         let latest = (number, hash);
 
@@ -969,7 +943,14 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let storage = StorageBuilder::in_memory().unwrap();
+        let db_dir = tempfile::TempDir::new().unwrap();
+        let mut db_path = PathBuf::from(db_dir.path());
+        db_path.push("db.sqlite");
+        let storage = pathfinder_storage::StorageBuilder::file(db_path)
+            .migrate()
+            .unwrap()
+            .create_pool(NonZeroU32::new(100).unwrap())
+            .unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),
@@ -995,10 +976,6 @@ mod tests {
         let mut db = storage.connection().unwrap();
         let db = db.transaction().unwrap();
         for mut expected in blocks {
-            // TODO p2p sync does not update class and storage tries yet
-            // expected.header.header.class_commitment = ClassCommitment::ZERO;
-            // expected.header.header.storage_commitment = StorageCommitment::ZERO;
-
             let block_number = expected.header.header.number;
             let block_id = block_number.into();
             let header = db.block_header(block_id).unwrap().unwrap();

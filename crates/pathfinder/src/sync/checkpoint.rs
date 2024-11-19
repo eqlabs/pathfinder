@@ -1182,6 +1182,9 @@ mod tests {
     }
 
     mod handle_state_diff_stream {
+        use std::num::NonZeroU32;
+        use std::path::PathBuf;
+
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
@@ -1208,11 +1211,22 @@ mod tests {
                 let blocks = fake_storage::generate::with_config(
                     num_blocks,
                     Config {
-                        update_tries: Arc::new(update_starknet_state_single_threaded),
+                        // update_tries: Arc::new(update_starknet_state_single_threaded),
+                        update_tries: Arc::new(update_starknet_state),
                         ..Default::default()
                     },
                 );
-                let storage = StorageBuilder::in_memory().unwrap();
+
+                let db_dir = tempfile::TempDir::new().unwrap();
+                let mut db_path = PathBuf::from(db_dir.path());
+                db_path.push("db.sqlite");
+                let storage = pathfinder_storage::StorageBuilder::file(db_path)
+                    .migrate()
+                    .unwrap()
+                    .create_pool(NonZeroU32::new(100).unwrap())
+                    .unwrap();
+
+                // let storage = StorageBuilder::in_memory().unwrap();
                 let headers_and_txns = blocks
                     .iter()
                     .map(|block| Block {
@@ -1221,26 +1235,7 @@ mod tests {
                         ..Default::default()
                     })
                     .collect::<Vec<_>>();
-                fake_storage::fill(&storage, &blocks, None);
-
-                // let dummy_storage = StorageBuilder::in_memory().unwrap();
-                // let (blocks, _) = fake_storage::with_n_blocks_and_config2(
-                //     &dummy_storage,
-                //     num_blocks,
-                //     Config {
-                //         update_tries: Arc::new(update_starknet_state),
-                //         // Purge state diff data before insertion into the DB.
-                //         // modify_storage: Box::new(|blocks| {
-                //         //     blocks
-                //         //         .iter_mut()
-                //         //         .for_each(|block| block.state_update = Default::default())
-                //         // }),
-                //         ..Default::default()
-                //     },
-                // );
-
-                // let storage = StorageBuilder::in_memory().unwrap();
-                // fake_storage::fill(&storage, &blocks);
+                fake_storage::fill(&storage, &headers_and_txns, None);
 
                 let streamed_state_diffs = blocks
                     .iter()

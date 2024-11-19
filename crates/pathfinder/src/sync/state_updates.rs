@@ -36,7 +36,7 @@ use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
-use crate::state::update_starknet_state;
+use crate::state::{update_starknet_state, update_starknet_state_single_threaded};
 use crate::sync::error::SyncError;
 use crate::sync::stream::ProcessStage;
 
