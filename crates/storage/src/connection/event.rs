@@ -69,12 +69,28 @@ pub struct PageOfEvents {
 
 impl Transaction<'_> {
     #[cfg(feature = "aggregate_bloom")]
+    pub fn reconstruct_running_aggregate(&self) -> anyhow::Result<()> {
+        let aggregate = reconstruct_running_aggregate(self.inner())?;
+        let mut running_aggregate = match self.running_aggregate.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("Poisoned lock in reconstruct_running_aggregate");
+                poisoned.into_inner()
+            }
+        };
+
+        *running_aggregate = aggregate;
+
+        Ok(())
+    }
+
     /// Upsert the [aggregate event bloom filter](AggregateBloom) for the given
     /// block number. This function operates under the assumption that
     /// blocks are _never_ skipped so even if there are no events for a
     /// block, this function should still be called with an empty iterator.
     /// When testing it is fine to skip blocks, as long as the block at the end
     /// of the current range is not skipped.
+    #[cfg(feature = "aggregate_bloom")]
     pub(super) fn upsert_block_events_aggregate<'a>(
         &self,
         block_number: BlockNumber,
@@ -617,6 +633,95 @@ impl Transaction<'_> {
 
         Ok(aggregates)
     }
+}
+
+/// Reconstruct the [aggregate](crate::bloom::AggregateBloom) for the range of
+/// blocks between the last stored `to_block` in the aggregate Bloom filter
+/// table and the last overall block in the database. This is needed because the
+/// aggregate Bloom filter for each [block
+/// range](crate::bloom::AggregateBloom::BLOCK_RANGE_LEN) is stored once the
+/// range is complete, before that it is kept in memory and can be lost upon
+/// shutdown.
+#[cfg(feature = "aggregate_bloom")]
+pub fn reconstruct_running_aggregate(
+    tx: &rusqlite::Transaction<'_>,
+) -> anyhow::Result<AggregateBloom> {
+    use super::transaction;
+
+    let mut last_to_block_stmt = tx.prepare(
+        r"
+        SELECT to_block
+        FROM starknet_events_filters_aggregate
+        ORDER BY from_block DESC LIMIT 1
+        ",
+    )?;
+    let mut events_to_reconstruct_stmt = tx.prepare(
+        r"
+        SELECT events
+        FROM transactions
+        WHERE block_number >= :first_running_aggregate_block
+        ",
+    )?;
+
+    let last_to_block = last_to_block_stmt
+        .query_row([], |row| row.get::<_, u64>(0))
+        .optional()
+        .context("Querying last stored aggregate to_block")?;
+
+    let first_running_aggregate_block = match last_to_block {
+        Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
+        // Aggregate Bloom filter table is empty -> reconstruct running aggregate
+        // from the genesis block.
+        None => BlockNumber::GENESIS,
+    };
+
+    let events_to_reconstruct: Vec<Option<Vec<Vec<Event>>>> = events_to_reconstruct_stmt
+        .query_and_then(
+            named_params![":first_running_aggregate_block": &first_running_aggregate_block],
+            |row| {
+                let events: Option<transaction::dto::EventsForBlock> = row
+                    .get_optional_blob(0)?
+                    .map(|events_blob| -> anyhow::Result<_> {
+                        let events = transaction::compression::decompress_events(events_blob)
+                            .context("Decompressing events")?;
+                        let events: transaction::dto::EventsForBlock =
+                            bincode::serde::decode_from_slice(&events, bincode::config::standard())
+                                .context("Deserializing events")?
+                                .0;
+
+                        Ok(events)
+                    })
+                    .transpose()?;
+
+                Ok(events.map(|events| {
+                    events
+                        .events()
+                        .into_iter()
+                        .map(|e| e.into_iter().map(Into::into).collect())
+                        .collect()
+                }))
+            },
+        )
+        .context("Querying events to reconstruct")?
+        .collect::<anyhow::Result<_>>()?;
+
+    let mut running_aggregate = AggregateBloom::new(first_running_aggregate_block);
+
+    for (block, events_for_block) in events_to_reconstruct.iter().enumerate() {
+        if let Some(events) = events_for_block {
+            let block_number = first_running_aggregate_block + block as u64;
+
+            let mut bloom = BloomFilter::new();
+            for event in events.iter().flatten() {
+                bloom.set_keys(&event.keys);
+                bloom.set_address(&event.from_address);
+            }
+
+            running_aggregate.add_bloom(&bloom, block_number);
+        }
+    }
+
+    Ok(running_aggregate)
 }
 
 fn continuation_token(

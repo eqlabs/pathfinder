@@ -665,6 +665,11 @@ async fn rollback_to_anchor(
             head -= 1;
         }
 
+        #[cfg(feature = "aggregate_bloom")]
+        transaction
+            .reconstruct_running_aggregate()
+            .context("Reconstructing running aggregate bloom")?;
+
         Ok(())
     })
     .await
