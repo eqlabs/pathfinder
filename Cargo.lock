@@ -1556,7 +1556,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#b652ffa96643c1b555bf233860554334632b5f7c"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -1566,7 +1566,6 @@ dependencies = [
  "cached",
  "cairo-lang-casm 2.9.0-dev.0",
  "cairo-lang-runner",
- "cairo-lang-sierra 2.9.0-dev.0",
  "cairo-lang-starknet-classes",
  "cairo-vm",
  "derive_more 0.99.18",
@@ -1585,7 +1584,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sha3",
  "starknet-types-core",
  "starknet_api",
  "strum 0.25.0",
@@ -7307,7 +7305,7 @@ dependencies = [
 [[package]]
 name = "papyrus_config"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#b652ffa96643c1b555bf233860554334632b5f7c"
 dependencies = [
  "clap",
  "itertools 0.12.1",
@@ -9687,7 +9685,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.0.0"
-source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#a07960dd08e29993e6b97d076a680579924fc60a"
+source = "git+https://github.com/eqlabs/sequencer?branch=starkware/main#b652ffa96643c1b555bf233860554334632b5f7c"
 dependencies = [
  "bitvec",
  "cairo-lang-runner",
