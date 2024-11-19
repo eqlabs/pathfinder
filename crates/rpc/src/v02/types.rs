@@ -13,6 +13,8 @@ pub mod syncing;
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub l1_data_gas: Option<ResourceBound>,
 }
 
 impl crate::dto::DeserializeForVersion for ResourceBounds {
@@ -21,6 +23,7 @@ impl crate::dto::DeserializeForVersion for ResourceBounds {
             Ok(Self {
                 l1_gas: value.deserialize("l1_gas")?,
                 l2_gas: value.deserialize("l2_gas")?,
+                l1_data_gas: value.deserialize_optional("l1_data_gas")?,
             })
         })
     }
@@ -907,6 +910,7 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
+                                l1_data_gas: None,
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -976,6 +980,7 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
+                                l1_data_gas: None,
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![
@@ -1006,6 +1011,10 @@ pub mod request {
                                     max_amount: ResourceAmount(0),
                                     max_price_per_unit: ResourcePricePerUnit(0),
                                 },
+                                l1_data_gas: Some(ResourceBound {
+                                    max_amount: ResourceAmount(0x3333),
+                                    max_price_per_unit: ResourcePricePerUnit(0x4444),
+                                }),
                             },
                             tip: Tip(0x1234),
                             paymaster_data: vec![

@@ -800,6 +800,14 @@ pub mod transaction {
         pub l1_gas: ResourceBound,
         #[serde(rename = "L2_GAS")]
         pub l2_gas: ResourceBound,
+        // Introduced in Starknet v0.13.4. This has to be optional because not sending it to the
+        // gateway is not equivalent to sending an explicit zero bound.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "L1_DATA_GAS"
+        )]
+        pub l1_data_gas: Option<ResourceBound>,
     }
 
     impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
@@ -816,6 +824,8 @@ pub mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                // TODO: add this when adding support for Starknet 0.13.4
+                l1_data_gas: None,
             }
         }
     }

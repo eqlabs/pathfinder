@@ -1225,6 +1225,7 @@ pub(crate) mod tests {
                                 max_amount: ResourceAmount(10000),
                                 max_price_per_unit: ResourcePricePerUnit(100000000),
                             },
+                            l1_data_gas: None,
                         },
                         tip: Tip(0),
                         paymaster_data: vec![],
