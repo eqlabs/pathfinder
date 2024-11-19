@@ -294,6 +294,7 @@ mod tests {
                 .unwrap();
 
             tx.commit().unwrap();
+            drop(db);
 
             let context =
                 RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet).with_storage(storage);
@@ -501,6 +502,7 @@ mod tests {
             tx.insert_state_update(block_number, &state_update).unwrap();
 
             tx.commit().unwrap();
+            drop(connection);
 
             let input = Input {
                 request: FunctionCall {

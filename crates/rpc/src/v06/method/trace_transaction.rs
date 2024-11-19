@@ -385,6 +385,7 @@ pub mod tests {
             .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
+        drop(connection);
 
         // The tracing succeeds.
         trace_transaction(

@@ -1390,7 +1390,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn block_updates() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1439,7 +1443,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1491,7 +1499,11 @@ mod tests {
         // A bug caused reorg'd block numbers to be skipped. This
         // was due to the expected block number not being updated
         // when handling the reorg.
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1552,7 +1564,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg_to_genesis() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1591,7 +1607,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_cairo_contract() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1630,7 +1650,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_sierra_contract() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1671,7 +1695,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn consumer_should_ignore_duplicate_blocks() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
 

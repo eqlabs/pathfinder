@@ -1171,6 +1171,7 @@ async fn reorg(
 #[cfg(test)]
 mod tests {
     mod sync {
+        use std::num::NonZeroU32;
         use std::sync::LazyLock;
 
         use assert_matches::assert_matches;
@@ -1330,7 +1331,11 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
-            let storage = StorageBuilder::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                pathfinder_storage::TriePruneMode::Archive,
+                NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
@@ -1358,7 +1363,11 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>>> {
-            let storage = StorageBuilder::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                pathfinder_storage::TriePruneMode::Archive,
+                NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
@@ -1844,7 +1853,11 @@ mod tests {
                     chain: Chain::SepoliaTestnet,
                     chain_id: ChainId::SEPOLIA_TESTNET,
                     block_validation_mode: MODE,
-                    storage: StorageBuilder::in_memory().unwrap(),
+                    storage: StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                        pathfinder_storage::TriePruneMode::Archive,
+                        NonZeroU32::new(5).unwrap(),
+                    )
+                    .unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
                     fetch_casm_from_fgw: false,

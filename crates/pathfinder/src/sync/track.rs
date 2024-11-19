@@ -928,7 +928,11 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),
