@@ -20,7 +20,7 @@ use pathfinder_common::{
 };
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
-use pathfinder_merkle_tree::contract_state::update_contract_state;
+use pathfinder_merkle_tree::contract_state::{update_contract_state, ContractStateUpdateResult};
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
@@ -1132,14 +1132,78 @@ pub fn update_starknet_state(
 ) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
     use rayon::prelude::*;
 
-    let mut storage_commitment_tree = match block.parent() {
+    let storage_commitment_tree = match block.parent() {
         Some(parent) => StorageCommitmentTree::load(transaction, parent)
             .context("Loading storage commitment tree")?,
         None => StorageCommitmentTree::empty(transaction),
     }
     .with_verify_hashes(verify_hashes);
 
-    // let (send, recv) = std::sync::mpsc::channel();
+    let (send, recv) = std::sync::mpsc::channel();
+
+    rayon::scope(|s| {
+        s.spawn(|_| {
+            let result: Result<Vec<_>, _> = state_update
+                .contract_updates
+                .par_iter()
+                .map_init(
+                    || storage.clone().connection(),
+                    |connection, (contract_address, update)| {
+                        let connection = match connection {
+                            Ok(connection) => connection,
+                            Err(e) => anyhow::bail!(
+                                "Failed to create database connection in rayon thread: {}",
+                                e
+                            ),
+                        };
+                        let transaction = connection.transaction()?;
+                        update_contract_state(
+                            **contract_address,
+                            update.storage,
+                            *update.nonce,
+                            update.class.as_ref().map(|x| x.class_hash()),
+                            &transaction,
+                            verify_hashes,
+                            block,
+                        )
+                    },
+                )
+                .collect();
+            let _ = send.send(result);
+        })
+    });
+
+    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
+
+    update_starknet_state_inner(
+        transaction,
+        state_update,
+        verify_hashes,
+        block,
+        storage,
+        storage_commitment_tree,
+        contract_update_results,
+    )
+}
+
+/// `mode=memory&cache=shared` friendly version of `update_starknet_state`,
+/// which is used to construct state tries in fake storage.
+#[cfg(test)]
+pub fn update_starknet_state_single_threaded(
+    transaction: &Transaction<'_>,
+    state_update: StateUpdateRef<'_>,
+    verify_hashes: bool,
+    block: BlockNumber,
+    // we need this so that we can create extra read-only transactions for
+    // parallel contract state updates
+    storage: Storage,
+) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+    let storage_commitment_tree = match block.parent() {
+        Some(parent) => StorageCommitmentTree::load(transaction, parent)
+            .context("Loading storage commitment tree")?,
+        None => StorageCommitmentTree::empty(transaction),
+    }
+    .with_verify_hashes(verify_hashes);
 
     let result: Result<Vec<_>, _> = state_update
         .contract_updates
@@ -1156,6 +1220,57 @@ pub fn update_starknet_state(
             )
         })
         .collect();
+    let contract_update_results = result?;
+
+    update_starknet_state_inner(
+        transaction,
+        state_update,
+        verify_hashes,
+        block,
+        storage,
+        storage_commitment_tree,
+        contract_update_results,
+    )
+}
+
+fn update_starknet_state_inner(
+    transaction: &Transaction<'_>,
+    state_update: StateUpdateRef<'_>,
+    verify_hashes: bool,
+    block: BlockNumber,
+    // we need this so that we can create extra read-only transactions for
+    // parallel contract state updates
+    storage: Storage,
+    mut storage_commitment_tree: StorageCommitmentTree<'_>,
+    contract_update_results: Vec<ContractStateUpdateResult>,
+) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+    // use rayon::prelude::*;
+
+    // let mut storage_commitment_tree = match block.parent() {
+    //     Some(parent) => StorageCommitmentTree::load(transaction, parent)
+    //         .context("Loading storage commitment tree")?,
+    //     None => StorageCommitmentTree::empty(transaction),
+    // }
+    // .with_verify_hashes(verify_hashes);
+
+    // let result: Result<Vec<_>, _> = state_update
+    //     .contract_updates
+    //     .iter()
+    //     .map(|(contract_address, update)| {
+    //         update_contract_state(
+    //             **contract_address,
+    //             update.storage,
+    //             *update.nonce,
+    //             update.class.as_ref().map(|x| x.class_hash()),
+    //             &transaction,
+    //             verify_hashes,
+    //             block,
+    //         )
+    //     })
+    //     .collect();
+    // let contract_update_results = result?;
+
+    // let (send, recv) = std::sync::mpsc::channel();
 
     // rayon::scope(|s| {
     //     s.spawn(|_| {
@@ -1191,8 +1306,6 @@ pub fn update_starknet_state(
 
     // let contract_update_results = recv.recv().context("Panic on rayon thread")??;
 
-    let contract_update_results = result?;
-
     for contract_update_result in contract_update_results.into_iter() {
         storage_commitment_tree
             .set(
@@ -1215,13 +1328,7 @@ pub fn update_starknet_state(
             verify_hashes,
             block,
         )
-        .with_context(|| {
-            format!(
-                "Update system contract state, contract: {contract}, storage: {:?}, block: {block}",
-                update.storage
-            )
-        })?;
-        // .context("Update system contract state")?;
+        .context("Update system contract state")?;
 
         storage_commitment_tree
             .set(*contract, update_result.state_hash)

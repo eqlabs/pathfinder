@@ -138,7 +138,6 @@ mod prop {
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
-    // use pathfinder_storage::fake::Block;
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
@@ -514,7 +513,6 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        // use pathfinder_storage::fake::{with_n_blocks_rng_and_config2, Block, Config};
         use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
@@ -539,25 +537,12 @@ mod prop {
             fill(&storage, &blocks, None);
 
             (storage, blocks)
-
-            // let (initializer, _) = with_n_blocks_rng_and_config2(
-            //     &storage,
-            //     num_blocks.try_into().unwrap(),
-            //     &mut rng,
-            //     Config {
-            //         calculate_receipt_commitment:
-            // Box::new(calculate_receipt_commitment),
-            //         ..Default::default()
-            //     },
-            // );
-            // (storage, initializer)
         }
     }
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
         use p2p_proto::common::{Direction, Step};
-        // use pathfinder_storage::fake::Block;
         use pathfinder_storage::fake::Block;
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;

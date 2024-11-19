@@ -71,7 +71,7 @@ pub struct SystemContractUpdateRef<'a> {
     pub storage: StorageRef<'a>,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub enum StorageRef<'a> {
     HashMap(&'a HashMap<StorageAddress, StorageValue>),
     Vec(&'a Vec<(StorageAddress, StorageValue)>),

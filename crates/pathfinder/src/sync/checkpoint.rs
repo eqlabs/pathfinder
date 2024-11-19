@@ -1195,7 +1195,7 @@ mod tests {
 
         use super::super::handle_state_diff_stream;
         use super::*;
-        use crate::state::update_starknet_state;
+        use crate::state::{update_starknet_state, update_starknet_state_single_threaded};
 
         struct Setup {
             pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,
@@ -1208,7 +1208,7 @@ mod tests {
                 let blocks = fake_storage::generate::with_config(
                     num_blocks,
                     Config {
-                        update_tries: Arc::new(update_starknet_state),
+                        update_tries: Arc::new(update_starknet_state_single_threaded),
                         ..Default::default()
                     },
                 );
