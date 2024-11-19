@@ -166,11 +166,6 @@ mod tests {
         let blocks = pathfinder_storage::fake::generate::n_blocks(DB_LEN);
         pathfinder_storage::fake::fill(&storage, &blocks, None);
 
-        // let (blocks, _) = pathfinder_storage::fake::with_n_blocks_and_config2(
-        //     &storage,
-        //     DB_LEN,
-        //     Default::default(),
-        // );
         let expected = blocks.into_iter().map(count_extractor).collect::<Vec<_>>();
         let stream = super::counts_stream(
             storage.clone(),

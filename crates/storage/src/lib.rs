@@ -7,7 +7,6 @@ mod prelude;
 
 mod bloom;
 mod connection;
-// pub mod fake;
 pub mod fake;
 mod params;
 mod schema;

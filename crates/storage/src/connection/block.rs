@@ -1036,8 +1036,6 @@ mod tests {
         let faked = fake::generate::n_blocks(10);
         let storage = StorageBuilder::in_memory().unwrap();
         fake::fill(&storage, &faked, None);
-        // let (faked, _) = fake::with_n_blocks_and_config2(&storage, 10,
-        // Default::default());
 
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();

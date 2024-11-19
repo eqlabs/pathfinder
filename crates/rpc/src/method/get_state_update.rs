@@ -128,10 +128,6 @@ mod tests {
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
         pathfinder_storage::fake::fill(&storage, &blocks, None);
 
-        // let (blocks, _) =
-        //     pathfinder_storage::fake::with_n_blocks_and_config2(&storage, 3,
-        // Default::default());
-
         let state_updates = blocks
             .into_iter()
             .map(|Block { state_update, .. }| state_update.unwrap())
