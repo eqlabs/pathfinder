@@ -1,12 +1,9 @@
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 use blockifier::execution::contract_class::ContractClass;
-use blockifier::state::errors::StateError;
-use blockifier::state::state_api::StateResult;
 use cached::{Cached, SizedCache};
 use pathfinder_common::BlockNumber;
 use starknet_api::core::ClassHash as StarknetClassHash;
-use tracing::warn;
 
 pub static GLOBAL_CACHE: LazyLock<LruContractCache> = LazyLock::new(LruContractCache::new);
 
@@ -25,15 +22,12 @@ impl LruContractCache {
         Self(Mutex::new(SizedCache::with_size(128)))
     }
 
-    fn locked_cache(&self) -> StateResult<MutexGuard<'_, SizedCache<StarknetClassHash, Entry>>> {
-        self.0.lock().map_err(|err| {
-            warn!("Contract class cache lock is poisoned. Cause: {}.", err);
-            StateError::StateReadError("Poisoned lock".to_string())
-        })
+    fn locked_cache(&self) -> MutexGuard<'_, SizedCache<StarknetClassHash, Entry>> {
+        self.0.lock().unwrap()
     }
 
-    pub fn get(&self, class_hash: &StarknetClassHash) -> StateResult<Option<Entry>> {
-        Ok(self.locked_cache()?.cache_get(class_hash).cloned())
+    pub fn get(&self, class_hash: &StarknetClassHash) -> Option<Entry> {
+        self.locked_cache().cache_get(class_hash).cloned()
     }
 
     pub fn set(
@@ -41,15 +35,13 @@ impl LruContractCache {
         class_hash: StarknetClassHash,
         contract_class: ContractClass,
         block_number: BlockNumber,
-    ) -> StateResult<()> {
-        self.locked_cache()?.cache_set(
+    ) {
+        self.locked_cache().cache_set(
             class_hash,
             Entry {
                 definition: contract_class.clone(),
                 height: block_number,
             },
         );
-
-        Ok(())
     }
 }
