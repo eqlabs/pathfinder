@@ -932,7 +932,7 @@ mod tests {
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
-                update_tries: Arc::new(update_starknet_state),
+                update_tries: Box::new(update_starknet_state),
             },
         );
 
@@ -943,14 +943,7 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let db_dir = tempfile::TempDir::new().unwrap();
-        let mut db_path = PathBuf::from(db_dir.path());
-        db_path.push("db.sqlite");
-        let storage = pathfinder_storage::StorageBuilder::file(db_path)
-            .migrate()
-            .unwrap()
-            .create_pool(NonZeroU32::new(100).unwrap())
-            .unwrap();
+        let storage = pathfinder_storage::StorageBuilder::in_tempdir().unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),

@@ -172,10 +172,6 @@ impl Sync {
         tracing::info!(next_block=%next, "Track sync started");
 
         loop {
-            // TODO (done): if a block was stored, then next and parent_hash should have
-            // moved forward
-            // TODO: track sync should check for the l1 anchor and bail if there's a
-            // mismatch, falling back to checkpoint sync
             let mut result = track::Sync {
                 latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
                 p2p: self.p2p.clone(),

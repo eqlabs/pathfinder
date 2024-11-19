@@ -47,9 +47,6 @@ use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
 use crate::sync::{class_definitions, events, headers, state_updates, transactions};
 
-// #[cfg(test)]
-// mod fixture;
-
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
 pub struct Sync {
@@ -1025,21 +1022,6 @@ mod tests {
             let storage = StorageBuilder::in_memory().unwrap();
             fake_storage::fill(&storage, &only_headers, None);
 
-            // let (inserted, blocks) = fake_storage::with_n_blocks_and_config2(
-            //     &storage,
-            //     num_blocks,
-            //     fake_storage::Config {
-            //         calculate_transaction_commitment,
-            //         // Purge transaction data before insertion into the DB.
-            //         modify_storage: Box::new(|blocks| {
-            //             blocks.iter_mut().for_each(|b| {
-            //                 b.transaction_data = Default::default();
-            //             })
-            //         }),
-            //         ..Default::default()
-            //     },
-            // );
-
             let streamed_transactions = blocks
                 .iter()
                 .map(|block| {
@@ -1198,7 +1180,7 @@ mod tests {
 
         use super::super::handle_state_diff_stream;
         use super::*;
-        use crate::state::{update_starknet_state, update_starknet_state_single_threaded};
+        use crate::state::update_starknet_state;
 
         struct Setup {
             pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,
@@ -1211,22 +1193,13 @@ mod tests {
                 let blocks = fake_storage::generate::with_config(
                     num_blocks,
                     Config {
-                        // update_tries: Arc::new(update_starknet_state_single_threaded),
-                        update_tries: Arc::new(update_starknet_state),
+                        update_tries: Box::new(update_starknet_state),
                         ..Default::default()
                     },
                 );
 
-                let db_dir = tempfile::TempDir::new().unwrap();
-                let mut db_path = PathBuf::from(db_dir.path());
-                db_path.push("db.sqlite");
-                let storage = pathfinder_storage::StorageBuilder::file(db_path)
-                    .migrate()
-                    .unwrap()
-                    .create_pool(NonZeroU32::new(100).unwrap())
-                    .unwrap();
+                let storage = pathfinder_storage::StorageBuilder::in_tempdir().unwrap();
 
-                // let storage = StorageBuilder::in_memory().unwrap();
                 let headers_and_txns = blocks
                     .iter()
                     .map(|block| Block {
@@ -1722,30 +1695,6 @@ mod tests {
             let storage = StorageBuilder::in_memory().unwrap();
             fill(&storage, &without_events, None);
 
-            // let storage = StorageBuilder::in_memory().unwrap();
-            // let (_, blocks) = fake_storage::with_n_blocks_and_config2(
-            //     &storage,
-            //     num_blocks,
-            //     Config {
-            //         calculate_event_commitment: Box::new(move |a, b| {
-            //             if compute_event_commitments {
-            //                 calculate_event_commitment(a, b)
-            //             } else {
-            //                 Ok(Faker.fake())
-            //             }
-            //         }),
-            //         // Purge events before insertion into the DB.
-            //         modify_storage: Box::new(|blocks| {
-            //             blocks.iter_mut().for_each(|block| {
-            //                 block
-            //                     .transaction_data
-            //                     .iter_mut()
-            //                     .for_each(|(_, _, events)| events.clear())
-            //             })
-            //         }),
-            //         ..Default::default()
-            //     },
-            // );
             let streamed_events = blocks
                 .iter()
                 .map(|block| {

@@ -217,6 +217,19 @@ impl StorageBuilder {
         storage.create_pool(NonZeroU32::new(5).unwrap())
     }
 
+    /// A workaround for scenarios where a test requires multiple parallel
+    /// connections and shared cache causes locking errors if the connection
+    /// pool is larger than 1 and timeouts otherwise.
+    pub fn in_tempdir() -> anyhow::Result<Storage> {
+        let db_dir = tempfile::TempDir::new()?;
+        let mut db_path = PathBuf::from(db_dir.path());
+        db_path.push("db.sqlite");
+        crate::StorageBuilder::file(db_path)
+            .migrate()
+            .unwrap()
+            .create_pool(NonZeroU32::new(32).unwrap())
+    }
+
     /// Performs the database schema migration and returns a [storage
     /// manager](StorageManager).
     ///
