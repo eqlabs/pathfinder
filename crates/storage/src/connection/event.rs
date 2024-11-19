@@ -89,13 +89,7 @@ impl Transaction<'_> {
             ",
         )?;
 
-        let mut running_aggregate = match self.running_aggregate.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::error!("Poisoned lock in upsert_block_events_aggregate");
-                poisoned.into_inner()
-            }
-        };
+        let mut running_aggregate = self.running_aggregate.lock().unwrap();
 
         let mut bloom = BloomFilter::new();
         for event in events {
