@@ -501,6 +501,7 @@ mod tests {
     use pathfinder_common::receipt::{ExecutionStatus, Receipt};
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
+        transaction_hash,
         BlockHash,
         BlockHeader,
         BlockNumber,
@@ -817,170 +818,248 @@ mod tests {
 
     #[tokio::test]
     async fn transaction_status_streaming() {
-        test_transaction_status_streaming(|subscription_id| {
-            vec![
-                TestEvent::Pending(PendingData {
-                    block: PendingBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(2)),
-                            variant: Default::default(),
-                        }],
-                        ..Default::default()
-                    }
-                    .into(),
-                    state_update: Default::default(),
-                    number: BlockNumber::GENESIS + 1,
-                }),
-                TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 1,
-                        block_hash: BlockHash(Felt::from_u64(1)),
-                        ..Default::default()
-                    }
-                    .into(),
-                ),
-                TestEvent::Pending(PendingData {
-                    block: PendingBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(1)),
-                            variant: Default::default(),
-                        }],
-                        ..Default::default()
-                    }
-                    .into(),
-                    state_update: Default::default(),
-                    number: BlockNumber::GENESIS + 2,
-                }),
-                TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 2,
-                        block_hash: BlockHash(Felt::from_u64(2)),
-                        transaction_receipts: vec![(
-                            Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(1)),
-                                ..Default::default()
-                            },
-                            vec![],
-                        )],
-                        ..Default::default()
-                    }
-                    .into(),
-                ),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
-                                "finality_status": "RECEIVED",
-                            }
-                        },
-                        "subscription_id": subscription_id
-                    }
-                })),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
-                                "finality_status": "ACCEPTED_ON_L2",
-                                "execution_status": "SUCCEEDED"
-                            }
-                        },
-                        "subscription_id": subscription_id
-                    }
-                })),
-                // Irrelevant block.
-                TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 3,
-                        block_hash: BlockHash(Felt::from_u64(3)),
-                        transaction_receipts: vec![(
-                            Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(5)),
-                                ..Default::default()
-                            },
-                            vec![],
-                        )],
-                        ..Default::default()
-                    }
-                    .into(),
-                ),
-                TestEvent::L1State(EthereumStateUpdate {
-                    state_root: Default::default(),
-                    block_number: BlockNumber::GENESIS + 3,
-                    block_hash: Default::default(),
-                }),
-                TestEvent::L2Block(
-                    Block {
-                        block_number: BlockNumber::GENESIS + 4,
-                        block_hash: BlockHash(Felt::from_u64(4)),
-                        transaction_receipts: vec![(
-                            Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(5)),
-                                ..Default::default()
-                            },
-                            vec![],
-                        )],
-                        ..Default::default()
-                    }
-                    .into(),
-                ),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
-                                "finality_status": "ACCEPTED_ON_L1",
-                                "execution_status": "SUCCEEDED"
-                            }
-                        },
-                        "subscription_id": subscription_id
-                    }
-                })),
-                TestEvent::Reorg(Reorg {
-                    first_block_number: BlockNumber::GENESIS + 4,
-                    first_block_hash: BlockHash(Felt::from_u64(4)),
-                    last_block_number: BlockNumber::GENESIS + 5,
-                    last_block_hash: BlockHash(Felt::from_u64(5)),
-                }),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionReorg",
-                    "params": {
-                        "subscription_id": subscription_id,
-                        "result": {
-                            "first_block_number": 4,
-                            "first_block_hash": "0x4",
-                            "last_block_number": 5,
-                            "last_block_hash": "0x5",
+        test_transaction_status_streaming(
+            |_| {},
+            |subscription_id| {
+                vec![
+                    TestEvent::Pending(PendingData {
+                        block: PendingBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(2)),
+                                variant: Default::default(),
+                            }],
+                            ..Default::default()
                         }
-                    }
-                })),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
-                                "finality_status": "RECEIVED",
+                        .into(),
+                        state_update: Default::default(),
+                        number: BlockNumber::GENESIS + 1,
+                    }),
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 1,
+                            block_hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::Pending(PendingData {
+                        block: PendingBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(1)),
+                                variant: Default::default(),
+                            }],
+                            ..Default::default()
+                        }
+                        .into(),
+                        state_update: Default::default(),
+                        number: BlockNumber::GENESIS + 2,
+                    }),
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 2,
+                            block_hash: BlockHash(Felt::from_u64(2)),
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(1)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                    // Irrelevant block.
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 3,
+                            block_hash: BlockHash(Felt::from_u64(3)),
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(5)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::L1State(EthereumStateUpdate {
+                        state_root: Default::default(),
+                        block_number: BlockNumber::GENESIS + 3,
+                        block_hash: Default::default(),
+                    }),
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 4,
+                            block_hash: BlockHash(Felt::from_u64(4)),
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(5)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L1",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                    TestEvent::Reorg(Reorg {
+                        first_block_number: BlockNumber::GENESIS + 4,
+                        first_block_hash: BlockHash(Felt::from_u64(4)),
+                        last_block_number: BlockNumber::GENESIS + 5,
+                        last_block_hash: BlockHash(Felt::from_u64(5)),
+                    }),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionReorg",
+                        "params": {
+                            "subscription_id": subscription_id,
+                            "result": {
+                                "first_block_number": 4,
+                                "first_block_hash": "0x4",
+                                "last_block_number": 5,
+                                "last_block_hash": "0x5",
                             }
+                        }
+                    })),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                ]
+            },
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn subscribing_to_pending_ignores_historical_updates() {
+        test_transaction_status_streaming(
+            |db| {
+                let block_number = BlockNumber::GENESIS + 1;
+                let tx_hash = transaction_hash!("0xdeadbeef");
+                db.insert_block_header(&BlockHeader {
+                    hash: BlockHash(Felt::from_u64(1)),
+                    number: block_number,
+                    parent_hash: BlockHash(Felt::from_u64(1)),
+                    ..Default::default()
+                })
+                .unwrap();
+                db.insert_transaction_data(
+                    block_number,
+                    &[(
+                        Transaction {
+                            hash: tx_hash,
+                            variant: Default::default(),
                         },
-                        "subscription_id": subscription_id
-                    }
-                })),
-            ]
-        })
+                        Receipt {
+                            transaction_hash: tx_hash,
+                            transaction_index: TransactionIndex::new_or_panic(0),
+                            execution_status: ExecutionStatus::Succeeded,
+                            ..Default::default()
+                        },
+                    )],
+                    Some(&[vec![]]),
+                )
+                .unwrap();
+            },
+            |subscription_id| {
+                vec![
+                    TestEvent::L1State(EthereumStateUpdate {
+                        state_root: Default::default(),
+                        block_number: BlockNumber::GENESIS + 2,
+                        block_hash: Default::default(),
+                    }),
+                    // Irrelevant block.
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 2,
+                            block_hash: BlockHash(Felt::from_u64(3)),
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(5)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0xdeadbeef",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                ]
+            },
+        )
         .await;
     }
 
     async fn test_transaction_status_streaming(
+        setup_additional_blocks: impl FnOnce(&pathfinder_storage::Transaction) + Send + 'static,
         events: impl FnOnce(serde_json::Value) -> Vec<TestEvent>,
     ) {
         let (router, pending_sender) = setup().await;
@@ -996,6 +1075,7 @@ mod tests {
                     ..Default::default()
                 })
                 .unwrap();
+                setup_additional_blocks(&db);
                 db.commit().unwrap();
             }
         })
