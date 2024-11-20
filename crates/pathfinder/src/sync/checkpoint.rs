@@ -1262,7 +1262,7 @@ mod tests {
                 stream::iter(streamed_state_diffs),
                 storage.clone(),
                 BlockNumber::GENESIS,
-                false,
+                true,
             )
             .await
             .unwrap();

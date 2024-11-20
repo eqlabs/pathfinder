@@ -953,7 +953,7 @@ mod tests {
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::default(),
             block_hash_db: None,
-            verify_tree_hashes: false,
+            verify_tree_hashes: true,
         };
 
         let mut start_number = BlockNumber::GENESIS;
