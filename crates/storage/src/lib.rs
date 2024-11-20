@@ -194,7 +194,25 @@ impl StorageBuilder {
 
     /// Convenience function for tests to create an in-memory database with a
     /// specific trie prune mode.
+    ///
+    /// Note that most of the time we _do_ want to use a pool size of 1. We're
+    /// using shared cache mode with our in-memory DB to allow multiple
+    /// connections from within the same process. This means that in
+    /// contrast to a file-based DB we immediately get locking errors in
+    /// case of concurrent writes -- a pool size of one avoids this.
     pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
+        Self::in_memory_with_trie_pruning_and_pool_size(
+            trie_prune_mode,
+            NonZeroU32::new(1).unwrap(),
+        )
+    }
+
+    /// Convenience function for tests to create an in-memory database with a
+    /// specific trie prune mode.
+    pub fn in_memory_with_trie_pruning_and_pool_size(
+        trie_prune_mode: TriePruneMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
@@ -224,7 +242,7 @@ impl StorageBuilder {
         }
 
         storage.trie_prune_mode = trie_prune_mode;
-        storage.create_pool(NonZeroU32::new(5).unwrap())
+        storage.create_pool(pool_size)
     }
 
     /// Performs the database schema migration and returns a [storage

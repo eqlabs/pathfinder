@@ -468,6 +468,7 @@ mod tests {
         )
         .unwrap();
         tx.commit().unwrap();
+        drop(conn);
 
         let input = GetProofInput {
             block_id: BlockId::Latest,

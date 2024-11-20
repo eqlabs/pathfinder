@@ -815,7 +815,11 @@ mod tests {
                     .map(PeerData::for_tests)
                     .collect::<Vec<_>>(),
                 expected_headers,
-                storage: StorageBuilder::in_memory().unwrap(),
+                storage: StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap(),
                 // https://alpha-sepolia.starknet.io/feeder_gateway/get_public_key
                 public_key: public_key!(
                     "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
@@ -1051,7 +1055,11 @@ mod tests {
                     b.transaction_data = Default::default();
                 });
 
-                let storage = StorageBuilder::in_memory().unwrap();
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_transactions,
@@ -1087,7 +1095,11 @@ mod tests {
                     b.transaction_data = Default::default();
                 });
 
-                let storage = StorageBuilder::in_memory().unwrap();
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_transactions,
@@ -1272,7 +1284,11 @@ mod tests {
                     })
                     .collect::<Vec<_>>();
 
-                let storage = StorageBuilder::in_memory().unwrap();
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_state_diffs,

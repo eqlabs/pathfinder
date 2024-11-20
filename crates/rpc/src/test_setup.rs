@@ -20,7 +20,11 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
     version: StarknetVersion,
     customize_state_update: F,
 ) -> (Storage, BlockHeader, ContractAddress, ContractAddress) {
-    let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
+    let storage = pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+        pathfinder_storage::TriePruneMode::Archive,
+        std::num::NonZeroU32::new(2).unwrap(),
+    )
+    .unwrap();
     let mut db = storage.connection().unwrap();
     let tx = db.transaction().unwrap();
 
