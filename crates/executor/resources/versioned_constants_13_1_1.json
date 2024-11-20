@@ -41,6 +41,7 @@
     "segment_arena_cells": true,
     "disable_cairo0_redeclaration": false,
     "enable_stateful_compression": false,
+    "ignore_inner_event_resources": false,
     "enable_reverts": false,
     "os_constants": {
         "nop_entry_point_offset": -1,

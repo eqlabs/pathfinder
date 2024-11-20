@@ -390,13 +390,13 @@ mod tests {
             unit: PriceUnit::Wei,
         };
         let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
+            l1_gas_consumed: 15.into(),
             l1_gas_price: 1.into(),
             l1_data_gas_consumed: 224.into(),
             l1_data_gas_price: 2.into(),
             l2_gas_consumed: 400000.into(),
             l2_gas_price: 1.into(),
-            overall_fee: 400464.into(),
+            overall_fee: 400463.into(),
             unit: PriceUnit::Wei,
         };
         let invoke_expected = FeeEstimate {
