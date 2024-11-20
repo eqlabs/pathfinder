@@ -1042,8 +1042,10 @@ mod tests {
     fn event_counts(#[case] sql: &str, #[case] num_of_missing_counts: usize) {
         use crate::fake;
 
+        let faked = fake::generate::n_blocks(10);
         let storage = StorageBuilder::in_memory().unwrap();
-        let faked = fake::with_n_blocks(&storage, 10);
+        fake::fill(&storage, &faked, None);
+
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
         if !sql.is_empty() {
