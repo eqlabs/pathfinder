@@ -85,10 +85,8 @@ impl ProcessStage for CalculateHashes {
     );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
-        // TODO remove the placeholder
-        let peer = &PeerId::random();
         let (transactions, block_number, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
