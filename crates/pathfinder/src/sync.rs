@@ -7,7 +7,15 @@ use std::time::Duration;
 use anyhow::Context;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
-use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::client::peer_agnostic::traits::{
+    BlockClient,
+    ClassStream,
+    EventStream,
+    HeaderStream,
+    StateDiffStream,
+    StreamItem,
+    TransactionStream,
+};
 use p2p::PeerData;
 use pathfinder_common::error::AnyhowExt;
 use pathfinder_common::{
@@ -42,9 +50,9 @@ mod transactions;
 
 const CHECKPOINT_MARGIN: u64 = 10;
 
-pub struct Sync {
+pub struct Sync<P> {
     pub storage: pathfinder_storage::Storage,
-    pub p2p: P2PClient,
+    pub p2p: P,
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
     pub fgw_client: GatewayClient,
@@ -55,7 +63,18 @@ pub struct Sync {
     pub verify_tree_hashes: bool,
 }
 
-impl Sync {
+impl<P> Sync<P>
+where
+    P: BlockClient
+        + ClassStream
+        + EventStream
+        + HeaderStream
+        + StateDiffStream
+        + TransactionStream
+        + Clone
+        + Send
+        + 'static,
+{
     pub async fn run(self) -> anyhow::Result<()> {
         let (next, parent_hash) = self.checkpoint_sync().await?;
 
