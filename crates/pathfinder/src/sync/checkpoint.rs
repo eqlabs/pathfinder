@@ -7,6 +7,7 @@ use anyhow::Context;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::traits::{
+    BlockClient,
     ClassStream,
     EventStream,
     HeaderStream,
@@ -14,7 +15,6 @@ use p2p::client::peer_agnostic::traits::{
     StreamItem,
     TransactionStream,
 };
-use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
@@ -49,9 +49,9 @@ use crate::sync::{class_definitions, events, headers, state_updates, transaction
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
-pub struct Sync {
+pub struct Sync<P> {
     pub storage: Storage,
-    pub p2p: P2PClient,
+    pub p2p: P,
     // TODO: merge these two inside the client.
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
@@ -63,11 +63,21 @@ pub struct Sync {
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
-impl Sync {
+impl<P> Sync<P>
+where
+    P: ClassStream
+        + EventStream
+        + HeaderStream
+        + StateDiffStream
+        + TransactionStream
+        + Clone
+        + Send
+        + 'static,
+{
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Storage,
-        p2p: P2PClient,
+        p2p: P,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
         fgw_client: Client,
         chain: Chain,

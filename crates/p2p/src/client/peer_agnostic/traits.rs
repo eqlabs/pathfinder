@@ -33,7 +33,7 @@ pub trait TransactionStream {
         start: BlockNumber,
         stop: BlockNumber,
         transaction_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>>;
+    ) -> impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>> + Send;
 }
 
 pub trait StateDiffStream {
@@ -47,7 +47,7 @@ pub trait StateDiffStream {
         start: BlockNumber,
         stop: BlockNumber,
         state_diff_length_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>>;
+    ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>> + Send;
 }
 
 pub trait ClassStream {
@@ -56,7 +56,7 @@ pub trait ClassStream {
         start: BlockNumber,
         stop: BlockNumber,
         declared_class_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-    ) -> impl Stream<Item = StreamItem<ClassDefinition>>;
+    ) -> impl Stream<Item = StreamItem<ClassDefinition>> + Send;
 }
 
 pub trait EventStream {
