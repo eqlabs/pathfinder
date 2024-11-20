@@ -64,10 +64,11 @@ pub struct Sync<L, P> {
 }
 
 impl<L, P> Sync<L, P> {
+    /// `next` and `parent_hash` will be advanced each time a block is stored.
     pub async fn run<SequencerClient: GatewayApi + Clone + Send + 'static>(
         self,
-        next: BlockNumber,
-        parent_hash: BlockHash,
+        next: &mut BlockNumber,
+        parent_hash: &mut BlockHash,
         fgw: SequencerClient,
     ) -> Result<(), SyncError>
     where
@@ -82,10 +83,10 @@ impl<L, P> Sync<L, P> {
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
             latest_onchain: self.latest.clone(),
-            start: next,
+            start: *next,
         }
         .spawn()
-        .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
+        .pipe(headers::ForwardContinuity::new(*next, *parent_hash), 100)
         .pipe(
             headers::VerifyHashAndSignature::new(
                 self.chain,
@@ -140,7 +141,7 @@ impl<L, P> Sync<L, P> {
         let classes = ClassSource {
             p2p: self.p2p.clone(),
             declarations: declarations_1,
-            start: next,
+            start: *next,
         }
         .spawn()
         .pipe(class_definitions::VerifyLayout, 10)
@@ -174,6 +175,15 @@ impl<L, P> Sync<L, P> {
             10,
         )
         .into_stream()
+        .inspect_ok(
+            |PeerData {
+                 data: (stored_block_number, stored_block_hash),
+                 ..
+             }| {
+                *next = *stored_block_number + 1;
+                *parent_hash = *stored_block_hash;
+            },
+        )
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
     }
@@ -201,7 +211,6 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                // TODO: handle reorgs correctly
                 let mut headers =
                     Box::pin(p2p.clone().header_stream(start, latest_onchain.0, false));
 
@@ -724,6 +733,7 @@ struct BlockData {
     pub classes: Vec<CompiledClass>,
 }
 
+/// If successful, returns the stored block's number and hash.
 struct StoreBlock {
     connection: pathfinder_storage::Connection,
     // We need this so that we can create extra read-only transactions for parallel contract state
@@ -750,7 +760,7 @@ impl StoreBlock {
 impl ProcessStage for StoreBlock {
     const NAME: &'static str = "Blocks::Persist";
     type Input = BlockData;
-    type Output = ();
+    type Output = (BlockNumber, BlockHash);
 
     fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let BlockData {
@@ -809,6 +819,8 @@ impl ProcessStage for StoreBlock {
 
         db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
+        db.insert_state_update_data(block_number, &state_diff)
+            .context("Inserting state update data")?;
 
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db,
@@ -833,8 +845,6 @@ impl ProcessStage for StoreBlock {
 
         db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
             .context("Updating storage and class commitments")?;
-        db.insert_state_update_data(block_number, &state_diff)
-            .context("Inserting state update data")?;
 
         classes.into_iter().try_for_each(
             |CompiledClass {
@@ -870,7 +880,8 @@ impl ProcessStage for StoreBlock {
         let result = db
             .commit()
             .context("Committing transaction")
-            .map_err(Into::into);
+            .map_err(Into::into)
+            .map(|_| (block_number, header.hash));
 
         tracing::debug!(number=%block_number, "Block stored");
 
@@ -880,6 +891,10 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
     use futures::{stream, Stream, StreamExt};
     use p2p::client::types::{
         ClassDefinition,
@@ -892,8 +907,7 @@ mod tests {
     use p2p::PeerData;
     use p2p_proto::common::Hash;
     use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
-    use pathfinder_storage::fake::init::Config;
-    use pathfinder_storage::fake::{self, Block};
+    use pathfinder_storage::fake::{self, Block, Config};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
@@ -909,7 +923,7 @@ mod tests {
     #[tokio::test]
     async fn happy_path() {
         const N: usize = 10;
-        let blocks = fake::init::with_n_blocks_and_config(
+        let blocks = fake::generate::with_config(
             N,
             Config {
                 calculate_block_hash: Box::new(|header: &BlockHeader| {
@@ -918,6 +932,7 @@ mod tests {
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
+                update_tries: Box::new(update_starknet_state),
             },
         );
 
@@ -928,11 +943,7 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
-            pathfinder_storage::TriePruneMode::Archive,
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
+        let storage = pathfinder_storage::StorageBuilder::in_tempdir().unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),
@@ -945,17 +956,19 @@ mod tests {
             verify_tree_hashes: false,
         };
 
-        sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
+        let mut start_number = BlockNumber::GENESIS;
+        let mut parent_hash = BlockHash::default();
+
+        sync.run(&mut start_number, &mut parent_hash, FakeFgw)
             .await
             .unwrap();
+
+        assert_eq!(start_number, number + 1);
+        assert_eq!(parent_hash, hash);
 
         let mut db = storage.connection().unwrap();
         let db = db.transaction().unwrap();
         for mut expected in blocks {
-            // TODO p2p sync does not update class and storage tries yet
-            expected.header.header.class_commitment = ClassCommitment::ZERO;
-            expected.header.header.storage_commitment = StorageCommitment::ZERO;
-
             let block_number = expected.header.header.number;
             let block_id = block_number.into();
             let header = db.block_header(block_id).unwrap().unwrap();
@@ -992,7 +1005,10 @@ mod tests {
                 expected.header.header.state_diff_length
             );
             pretty_assertions_sorted::assert_eq!(transaction_data, expected.transaction_data);
-            pretty_assertions_sorted::assert_eq!(state_update_data, expected.state_update.into());
+            pretty_assertions_sorted::assert_eq!(
+                state_update_data,
+                expected.state_update.unwrap().into()
+            );
             pretty_assertions_sorted::assert_eq!(
                 cairo_defs,
                 expected.cairo_defs.into_iter().collect::<HashMap<_, _>>()
@@ -1066,6 +1082,7 @@ mod tests {
                 .unwrap()
                 .state_update
                 .clone()
+                .unwrap()
                 .into();
 
             assert_eq!(sd.state_diff_length() as u64, state_diff_length);

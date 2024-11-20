@@ -182,7 +182,7 @@ impl Sync {
                 block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
                 verify_tree_hashes: self.verify_tree_hashes,
             }
-            .run(next, parent_hash, self.fgw_client.clone())
+            .run(&mut next, &mut parent_hash, self.fgw_client.clone())
             .await;
 
             match result {
