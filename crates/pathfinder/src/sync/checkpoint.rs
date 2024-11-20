@@ -984,6 +984,8 @@ mod tests {
     }
 
     mod handle_transaction_stream {
+        use std::num::NonZeroU32;
+
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
@@ -994,7 +996,7 @@ mod tests {
         use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block, Config};
-        use pathfinder_storage::StorageBuilder;
+        use pathfinder_storage::{StorageBuilder, TriePruneMode};
 
         use super::super::handle_transaction_stream;
         use super::*;
@@ -1028,7 +1030,11 @@ mod tests {
                     ..Default::default()
                 })
                 .collect::<Vec<_>>();
-            let storage = StorageBuilder::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                TriePruneMode::Archive,
+                NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
             fake_storage::fill(&storage, &only_headers, None);
 
             let streamed_transactions = blocks
