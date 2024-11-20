@@ -113,15 +113,13 @@ mod tests {
     }
 
     fn expected_class_definition_counts(b: Block) -> usize {
-        let Block {
-            state_update:
-                StateUpdate {
-                    declared_cairo_classes,
-                    declared_sierra_classes,
-                    ..
-                },
+        let Block { state_update, .. } = b;
+        let StateUpdate {
+            declared_cairo_classes,
+            declared_sierra_classes,
             ..
-        } = b;
+        } = state_update.unwrap();
+
         declared_cairo_classes.len() + declared_sierra_classes.len()
     }
 
@@ -165,10 +163,10 @@ mod tests {
         const DB_LEN: usize = 5;
         let ok_len = len.min(DB_LEN);
         let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
-        let expected = pathfinder_storage::fake::with_n_blocks(&storage, DB_LEN)
-            .into_iter()
-            .map(count_extractor)
-            .collect::<Vec<_>>();
+        let blocks = pathfinder_storage::fake::generate::n_blocks(DB_LEN);
+        pathfinder_storage::fake::fill(&storage, &blocks, None);
+
+        let expected = blocks.into_iter().map(count_extractor).collect::<Vec<_>>();
         let stream = super::counts_stream(
             storage.clone(),
             BlockNumber::GENESIS,
