@@ -16,12 +16,12 @@ use starknet_api::transaction::fields::{
     ValidResourceBounds,
 };
 
-use crate::v02::types::request::{
+use crate::types::request::{
     BroadcastedDeployAccountTransaction,
     BroadcastedInvokeTransaction,
     BroadcastedTransaction,
 };
-use crate::v02::types::SierraContractClass;
+use crate::types::SierraContractClass;
 
 pub enum ExecutionStateError {
     BlockNotFound,
@@ -41,7 +41,7 @@ pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,
     chain_id: ChainId,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
-    use crate::v02::types::request::BroadcastedDeclareTransaction;
+    use crate::types::request::BroadcastedDeclareTransaction;
 
     let class_info = match &transaction {
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(tx)) => {

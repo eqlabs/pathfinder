@@ -3,7 +3,7 @@ use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
 
 use crate::context::RpcContext;
-use crate::v02::types::reply::BlockStatus;
+use crate::types::reply::BlockStatus;
 use crate::v06::types::TransactionWithHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -95,7 +95,7 @@ mod types {
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
 
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
     use crate::v06::types::TransactionWithHash;
 
     /// L2 Block as returned by the RPC API.

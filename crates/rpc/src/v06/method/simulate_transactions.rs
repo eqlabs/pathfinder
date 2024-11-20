@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use self::dto::SimulatedTransaction;
 use crate::context::RpcContext;
 use crate::executor::ExecutionStateError;
-use crate::v02::types::request::BroadcastedTransaction;
+use crate::types::request::BroadcastedTransaction;
 
 #[derive(Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
@@ -183,7 +183,7 @@ pub mod dto {
 
     use super::*;
     use crate::felt::RpcFelt;
-    use crate::v03::method::get_state_update::types::StateDiff;
+    use crate::method::get_state_update::types::StateDiff;
     use crate::v06::method::call::FunctionCall;
     use crate::v06::types::PriceUnit;
 
@@ -803,12 +803,9 @@ pub(crate) mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::{
-        BroadcastedDeclareTransaction,
-        BroadcastedDeclareTransactionV1,
-    };
-    use crate::v02::types::ContractClass;
-    use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    use crate::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    use crate::types::request::{BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1};
+    use crate::types::ContractClass;
     use crate::v06::method::call::FunctionCall;
     use crate::v06::types::PriceUnit;
 
@@ -992,7 +989,7 @@ pub(crate) mod tests {
 
         const DECLARE_GAS_CONSUMED: u64 = 2225;
         use super::dto::*;
-        use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
+        use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
 
         pretty_assertions_sorted::assert_eq!(
             result,
@@ -1127,14 +1124,14 @@ pub(crate) mod tests {
             };
 
             use super::*;
-            use crate::v02::types::request::{
+            use crate::types::request::{
                 BroadcastedDeclareTransactionV2,
                 BroadcastedInvokeTransaction,
                 BroadcastedInvokeTransactionV1,
                 BroadcastedInvokeTransactionV3,
                 BroadcastedTransaction,
             };
-            use crate::v02::types::{ResourceBound, ResourceBounds};
+            use crate::types::{ResourceBound, ResourceBounds};
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
                 let contract_class = ContractClass::from_definition_bytes(SIERRA_DEFINITION)
@@ -1225,12 +1222,13 @@ pub(crate) mod tests {
                                 max_amount: ResourceAmount(10000),
                                 max_price_per_unit: ResourcePricePerUnit(100000000),
                             },
+                            l1_data_gas: None,
                         },
                         tip: Tip(0),
                         paymaster_data: vec![],
                         account_deployment_data: vec![],
-                        nonce_data_availability_mode: crate::v02::types::DataAvailabilityMode::L1,
-                        fee_data_availability_mode: crate::v02::types::DataAvailabilityMode::L1,
+                        nonce_data_availability_mode: crate::types::DataAvailabilityMode::L1,
+                        fee_data_availability_mode: crate::types::DataAvailabilityMode::L1,
                         sender_address: account_contract_address,
                         calldata: vec![
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
@@ -1251,7 +1249,7 @@ pub(crate) mod tests {
 
             use super::dto::*;
             use super::*;
-            use crate::v03::method::get_state_update::types::{
+            use crate::method::get_state_update::types::{
                 DeclaredSierraClass,
                 StorageDiff,
                 StorageEntry,

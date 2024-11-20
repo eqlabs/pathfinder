@@ -5,7 +5,7 @@ use serde_with::serde_as;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
-use crate::v02::types::request::BroadcastedTransaction;
+use crate::types::request::BroadcastedTransaction;
 use crate::v06::types::PriceUnit;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -230,7 +230,7 @@ pub(crate) mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::BroadcastedInvokeTransaction;
+    use crate::types::request::BroadcastedInvokeTransaction;
 
     mod parsing {
         use serde_json::json;
@@ -239,7 +239,7 @@ pub(crate) mod tests {
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
-                crate::v02::types::request::BroadcastedInvokeTransactionV1 {
+                crate::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
@@ -319,14 +319,14 @@ pub(crate) mod tests {
         use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
 
         use super::*;
-        use crate::v02::types::request::{
+        use crate::types::request::{
             BroadcastedDeclareTransaction,
             BroadcastedDeclareTransactionV2,
             BroadcastedInvokeTransactionV0,
             BroadcastedInvokeTransactionV1,
             BroadcastedInvokeTransactionV3,
         };
-        use crate::v02::types::{
+        use crate::types::{
             ContractClass,
             DataAvailabilityMode,
             ResourceBounds,

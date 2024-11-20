@@ -9,7 +9,7 @@ use starknet_gateway_types::request::add_transaction::{
 
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::types::request::BroadcastedDeclareTransaction;
+use crate::types::request::BroadcastedDeclareTransaction;
 
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
@@ -291,13 +291,13 @@ mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::{
+    use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
     };
-    use crate::v02::types::{
+    use crate::types::{
         CairoContractClass,
         ContractClass,
         DataAvailabilityMode,
@@ -354,7 +354,7 @@ mod tests {
 
             use super::super::*;
             use crate::dto::serialize::{self, SerializeForVersion};
-            use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+            use crate::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -448,7 +448,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV2;
+            use crate::types::request::BroadcastedDeclareTransactionV2;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -709,6 +709,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],

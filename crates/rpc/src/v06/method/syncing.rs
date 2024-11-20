@@ -9,7 +9,7 @@ pub async fn syncing(context: RpcContext) -> Result<SyncingOutput, SyncingError>
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = { context.sync_status.status.read().await.clone() };
 
-    use crate::v02::types::syncing::Syncing;
+    use crate::types::syncing::Syncing;
     let value = match value {
         Syncing::False(_) => SyncingOutput::False,
         Syncing::Status(status) => {
@@ -110,7 +110,7 @@ mod tests {
     async fn syncing() {
         use pathfinder_common::BlockNumber;
 
-        use crate::v02::types::syncing::{NumberedBlock, Status as V2Status, Syncing as V2Syncing};
+        use crate::types::syncing::{NumberedBlock, Status as V2Status, Syncing as V2Syncing};
 
         let status = V2Syncing::Status(V2Status {
             starting: NumberedBlock::from(("aabb", 1)),
@@ -138,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn not_syncing() {
-        let status = crate::v02::types::syncing::Syncing::False(false);
+        let status = crate::types::syncing::Syncing::False(false);
 
         let context = RpcContext::for_tests();
         *context.sync_status.status.write().await = status;

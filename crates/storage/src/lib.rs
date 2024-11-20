@@ -194,7 +194,25 @@ impl StorageBuilder {
 
     /// Convenience function for tests to create an in-memory database with a
     /// specific trie prune mode.
+    ///
+    /// Note that most of the time we _do_ want to use a pool size of 1. We're
+    /// using shared cache mode with our in-memory DB to allow multiple
+    /// connections from within the same process. This means that in
+    /// contrast to a file-based DB we immediately get locking errors in
+    /// case of concurrent writes -- a pool size of one avoids this.
     pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
+        Self::in_memory_with_trie_pruning_and_pool_size(
+            trie_prune_mode,
+            NonZeroU32::new(1).unwrap(),
+        )
+    }
+
+    /// Convenience function for tests to create an in-memory database with a
+    /// specific trie prune mode.
+    pub fn in_memory_with_trie_pruning_and_pool_size(
+        trie_prune_mode: TriePruneMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
@@ -224,7 +242,7 @@ impl StorageBuilder {
         }
 
         storage.trie_prune_mode = trie_prune_mode;
-        storage.create_pool(NonZeroU32::new(5).unwrap())
+        storage.create_pool(pool_size)
     }
 
     /// Performs the database schema migration and returns a [storage
@@ -272,7 +290,7 @@ impl StorageBuilder {
         }
 
         #[cfg(feature = "aggregate_bloom")]
-        let running_aggregate = reconstruct_running_aggregate(&mut connection)
+        let running_aggregate = event::reconstruct_running_aggregate(&connection.transaction()?)
             .context("Reconstructing running aggregate bloom filter")?;
 
         connection
@@ -512,100 +530,6 @@ fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
         |row| row.get::<_, usize>(0),
     )?;
     Ok(version)
-}
-
-/// Reconstruct the [aggregate](bloom::AggregateBloom) for the range of blocks
-/// between the last stored to_block in the aggregate Bloom filter table and the
-/// last overall block in the database. This is needed because the aggregate
-/// Bloom filter for each [block range](bloom::AggregateBloom::BLOCK_RANGE_LEN)
-/// is stored once the range is complete, before that it is kept in memory and
-/// can be lost upon shutdown.
-#[cfg(feature = "aggregate_bloom")]
-fn reconstruct_running_aggregate(
-    connection: &mut rusqlite::Connection,
-) -> anyhow::Result<AggregateBloom> {
-    use bloom::BloomFilter;
-    use params::{named_params, RowExt};
-    use pathfinder_common::event::Event;
-    use transaction;
-
-    let tx = connection
-        .transaction()
-        .context("Creating database transaction")?;
-    let mut select_last_to_block_stmt = tx.prepare(
-        r"
-        SELECT to_block
-        FROM starknet_events_filters_aggregate
-        ORDER BY from_block DESC LIMIT 1
-        ",
-    )?;
-    let mut events_to_reconstruct_stmt = tx.prepare(
-        r"
-        SELECT events
-        FROM transactions
-        WHERE block_number >= :first_running_aggregate_block
-        ",
-    )?;
-
-    let last_to_block = select_last_to_block_stmt
-        .query_row([], |row| row.get::<_, u64>(0))
-        .optional()
-        .context("Querying last stored aggregate to_block")?;
-
-    let first_running_aggregate_block = match last_to_block {
-        Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
-        // Aggregate Bloom filter table is empty -> reconstruct running aggregate
-        // from the genesis block.
-        None => BlockNumber::GENESIS,
-    };
-
-    let events_to_reconstruct: Vec<Option<Vec<Vec<Event>>>> = events_to_reconstruct_stmt
-        .query_and_then(
-            named_params![":first_running_aggregate_block": &first_running_aggregate_block],
-            |row| {
-                let events: Option<transaction::dto::EventsForBlock> = row
-                    .get_optional_blob(0)?
-                    .map(|events_blob| -> anyhow::Result<_> {
-                        let events = transaction::compression::decompress_events(events_blob)
-                            .context("Decompressing events")?;
-                        let events: transaction::dto::EventsForBlock =
-                            bincode::serde::decode_from_slice(&events, bincode::config::standard())
-                                .context("Deserializing events")?
-                                .0;
-
-                        Ok(events)
-                    })
-                    .transpose()?;
-
-                Ok(events.map(|events| {
-                    events
-                        .events()
-                        .into_iter()
-                        .map(|e| e.into_iter().map(Into::into).collect())
-                        .collect()
-                }))
-            },
-        )
-        .context("Querying events to reconstruct")?
-        .collect::<anyhow::Result<_>>()?;
-
-    let mut running_aggregate = AggregateBloom::new(first_running_aggregate_block);
-
-    for (block, events_for_block) in events_to_reconstruct.iter().enumerate() {
-        if let Some(events) = events_for_block {
-            let block_number = first_running_aggregate_block + block as u64;
-
-            let mut bloom = BloomFilter::new();
-            for event in events.iter().flatten() {
-                bloom.set_keys(&event.keys);
-                bloom.set_address(&event.from_address);
-            }
-
-            running_aggregate.add_bloom(&bloom, block_number);
-        }
-    }
-
-    Ok(running_aggregate)
 }
 
 #[cfg(test)]

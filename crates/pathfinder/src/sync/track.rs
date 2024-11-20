@@ -143,9 +143,9 @@ impl<L, P> Sync<L, P> {
             start: next,
         }
         .spawn()
-        .pipe_each(class_definitions::VerifyLayout, 10)
-        .pipe_each(class_definitions::VerifyHash, 10)
-        .pipe_each(
+        .pipe(class_definitions::VerifyLayout, 10)
+        .pipe(class_definitions::VerifyHash, 10)
+        .pipe(
             class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
         )
@@ -928,7 +928,11 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),

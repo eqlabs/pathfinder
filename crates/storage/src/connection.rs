@@ -5,7 +5,7 @@ use std::sync::Mutex;
 mod block;
 mod class;
 mod ethereum;
-mod event;
+pub(crate) mod event;
 mod reference;
 mod reorg_counter;
 mod signature;

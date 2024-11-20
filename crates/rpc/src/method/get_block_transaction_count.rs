@@ -5,7 +5,7 @@ use crate::context::RpcContext;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: BlockId,
+    block_id: pathfinder_common::BlockId,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -23,6 +23,7 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 #[derive(Debug)]
 pub struct Output(u64);
 
+/// Get the number of transactions in a block.
 pub async fn get_block_transaction_count(
     context: RpcContext,
     input: Input,

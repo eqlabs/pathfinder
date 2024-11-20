@@ -104,7 +104,7 @@ mod tests {
     /// # Important
     ///
     /// `BlockId` parsing is tested in
-    /// [`get_block`][crate::rpc::v02::method::get_block::tests::parsing]
+    /// [`get_block`][crate::rpc::method::get_block::tests::parsing]
     /// and is not repeated here.
     #[rstest::rstest]
     #[case::positional(json!(["1", "2", "latest"]))]

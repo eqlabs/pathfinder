@@ -1,14 +1,14 @@
 use crate::context::RpcContext;
-use crate::v02::method::get_transaction_by_block_id_and_index::{
-    get_transaction_by_block_id_and_index_impl,
+use crate::method::get_transaction_by_block_id_and_index::{
+    get_transaction_by_block_id_and_index as get_transaction_by_block_id_and_index_impl,
     GetTransactionByBlockIdAndIndexError,
-    GetTransactionByBlockIdAndIndexInput,
+    Input,
 };
 use crate::v06::types::TransactionWithHash;
 
 pub async fn get_transaction_by_block_id_and_index(
     context: RpcContext,
-    input: GetTransactionByBlockIdAndIndexInput,
+    input: Input,
 ) -> Result<TransactionWithHash, GetTransactionByBlockIdAndIndexError> {
     get_transaction_by_block_id_and_index_impl(context, input)
         .await

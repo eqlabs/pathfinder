@@ -6,7 +6,7 @@ use super::serialize::SerializeForVersion;
 use super::{DeserializeForVersion, Value};
 use crate::dto::serialize::{self, Serializer};
 
-pub struct SyncStatus<'a>(pub &'a crate::v02::types::syncing::Status);
+pub struct SyncStatus<'a>(pub &'a crate::types::syncing::Status);
 
 pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
@@ -309,8 +309,8 @@ mod tests {
 
     #[test]
     fn sync_status() {
-        use crate::v02::types::syncing::NumberedBlock;
-        let status = crate::v02::types::syncing::Status {
+        use crate::types::syncing::NumberedBlock;
+        let status = crate::types::syncing::Status {
             starting: NumberedBlock {
                 number: pathfinder_common::BlockNumber::GENESIS,
                 hash: block_hash!("0x123"),
