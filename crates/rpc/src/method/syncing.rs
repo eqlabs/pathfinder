@@ -1,5 +1,5 @@
 use crate::context::RpcContext;
-use crate::v02::types::syncing::Syncing;
+use crate::types::syncing::Syncing;
 
 crate::error::generate_rpc_error_subset!(Error);
 
@@ -39,7 +39,7 @@ mod tests {
     use pathfinder_common::{block_hash, BlockNumber};
 
     use super::*;
-    use crate::v02::types::syncing::{NumberedBlock, Status};
+    use crate::types::syncing::{NumberedBlock, Status};
 
     #[tokio::test]
     async fn not_started_yet() {

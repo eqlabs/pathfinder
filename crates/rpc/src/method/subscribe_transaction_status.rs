@@ -457,7 +457,7 @@ mod tests {
     use crate::context::{RpcConfig, RpcContext};
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
-    use crate::v02::types::syncing::Syncing;
+    use crate::types::syncing::Syncing;
     use crate::{v08, Notifications, PendingData, Reorg, SubscriptionId, SyncState};
 
     #[tokio::test]

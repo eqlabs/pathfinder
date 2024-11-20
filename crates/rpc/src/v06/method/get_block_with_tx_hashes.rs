@@ -3,7 +3,7 @@ use pathfinder_common::BlockId;
 use serde::Deserialize;
 
 use crate::context::RpcContext;
-use crate::v02::types::reply::BlockStatus;
+use crate::types::reply::BlockStatus;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(Copy, Clone))]
@@ -79,7 +79,7 @@ mod types {
     use pathfinder_common::{BlockHeader, TransactionHash};
     use serde::Serialize;
 
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
 
     /// L2 Block as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

@@ -4,14 +4,14 @@ use pathfinder_common::{BlockId, ClassHash};
 use crate::context::RpcContext;
 use crate::dto;
 use crate::dto::serialize::SerializeForVersion;
-use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: BlockId,
-    class_hash: ClassHash,
+    block_id: pathfinder_common::BlockId,
+    class_hash: pathfinder_common::ClassHash,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -40,6 +40,7 @@ impl From<ContractClass> for Output {
     }
 }
 
+/// Get a contract class.
 pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = tokio::task::spawn_blocking(move || -> Result<Output, Error> {

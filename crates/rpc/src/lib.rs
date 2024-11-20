@@ -11,8 +11,7 @@ mod pathfinder;
 mod pending;
 #[cfg(test)]
 mod test_setup;
-pub mod v02;
-pub mod v03;
+pub mod types;
 pub mod v06;
 pub mod v07;
 pub mod v08;
@@ -39,7 +38,7 @@ use tower_http::ServiceBuilderExt;
 use crate::jsonrpc::rpc_handler;
 use crate::jsonrpc::websocket::websocket_handler;
 pub use crate::jsonrpc::websocket::{BlockHeader, TopicBroadcasters};
-use crate::v02::types::syncing::Syncing;
+use crate::types::syncing::Syncing;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
@@ -832,7 +831,7 @@ mod tests {
 
     #[test]
     fn roundtrip_syncing() {
-        use crate::v02::types::syncing::{NumberedBlock, Status, Syncing};
+        use crate::types::syncing::{NumberedBlock, Status, Syncing};
 
         let examples = [
             (line!(), "false", Syncing::False(false)),

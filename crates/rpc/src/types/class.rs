@@ -488,10 +488,12 @@ impl From<SierraEntryPoint> for pathfinder_common::class_definition::SelectorAnd
 #[cfg(test)]
 mod tests {
 
+    use super::ContractEntryPoint;
+
     mod contract_entry_point {
         use pathfinder_common::felt;
 
-        use crate::v02::types::ContractEntryPoint;
+        use super::ContractEntryPoint;
 
         #[test]
         fn with_hex_offset() {
@@ -559,7 +561,7 @@ mod tests {
         use pathfinder_executor::parse_deprecated_class_definition;
 
         use crate::dto::DeserializeForVersion;
-        use crate::v02::types::CairoContractClass;
+        use crate::types::CairoContractClass;
 
         #[test]
         fn convert_deprecated_class_definition_without_debug_info_into_starknet_api_type() {
