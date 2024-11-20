@@ -247,14 +247,15 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|Block { header, state_update, .. }|
+                .map(|Block { header, state_update, .. }| {
+                    let state_update = state_update.unwrap();
                     (
                         header.header.number, // Block number
                         state_update.contract_updates.into_iter().map(|(k, v)| (k, v.into())).collect::<HashMap<_,_>>(),
                         state_update.system_contract_updates,
                         state_update.declared_sierra_classes,
                         state_update.declared_cairo_classes,
-                    )
+                    )}
             ).collect::<Vec<_>>();
             // Run the handler
             let request = StateDiffsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
@@ -330,6 +331,7 @@ mod prop {
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+
             // Compute the overlapping set between the db and the request
             // These are the items that we expect to be read from the db
             // Grouped by block number
@@ -344,6 +346,7 @@ mod prop {
                         sierra_defs.into_iter().map(|(_, sierra_def, _)| sierra_def).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
+
             // Run the handler
             let request = ClassesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -372,11 +375,14 @@ mod prop {
             });
 
             for expected_for_block in expected {
-                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
-                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
+                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<HashSet<_>>();
+                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<HashSet<_>>();
 
-                prop_assert_eq!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+                let expected_cairo_for_block = expected_for_block.1.into_iter().collect::<HashSet<_>>();
+                let expected_sierra_for_block = expected_for_block.2.into_iter().collect::<HashSet<_>>();
+
+                prop_assert_eq!(expected_cairo_for_block, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_sierra_for_block, actual_sierra_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -507,8 +513,7 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use pathfinder_storage::fake::init::Config;
-        use pathfinder_storage::fake::{with_n_blocks_rng_and_config, Block};
+        use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
@@ -521,8 +526,7 @@ mod prop {
             let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let initializer = with_n_blocks_rng_and_config(
-                &storage,
+            let blocks = generate::with_rng_and_config(
                 num_blocks.try_into().unwrap(),
                 &mut rng,
                 Config {
@@ -530,7 +534,9 @@ mod prop {
                     ..Default::default()
                 },
             );
-            (storage, initializer)
+            fill(&storage, &blocks, None);
+
+            (storage, blocks)
         }
     }
 
