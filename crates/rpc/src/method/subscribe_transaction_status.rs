@@ -152,7 +152,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                         let db = conn.transaction().map_err(RpcError::InternalError)?;
                         let first_block = db
                             .block_number(first_block.try_into().map_err(|_| {
-                                RpcError::InvalidParams("block cannot be pending".to_string())
+                                RpcError::ApplicationError(ApplicationError::CallOnPending)
                             })?)
                             .map_err(RpcError::InternalError)?;
                         let l1_block_number =
