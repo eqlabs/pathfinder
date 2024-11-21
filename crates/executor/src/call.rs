@@ -5,7 +5,6 @@ use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionCont
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
-use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
@@ -43,7 +42,6 @@ pub fn call(
         ..Default::default()
     };
 
-    let mut resources = ExecutionResources::default();
     let mut context = EntryPointExecutionContext::new_invoke(
         Arc::new(TransactionContext {
             block_context,
@@ -54,7 +52,7 @@ pub fn call(
 
     let mut remaining_gas = call_entry_point.initial_gas;
     let call_info = call_entry_point
-        .execute(&mut state, &mut resources, &mut context, &mut remaining_gas)
+        .execute(&mut state, &mut context, &mut remaining_gas)
         .map_err(|e| {
             CallError::from_entry_point_execution_error(
                 e,
