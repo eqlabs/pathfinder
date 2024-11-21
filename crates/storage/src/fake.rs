@@ -33,6 +33,8 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
+use pathfinder_crypto::signature::SignatureError;
+use pathfinder_crypto::Felt;
 use rand::seq::IteratorRandom;
 use rand::Rng;
 use starknet_gateway_types::class_hash::compute_class_hash;
@@ -49,6 +51,7 @@ pub struct Block {
 }
 
 pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
+pub type SignBlockHashFn = Box<dyn Fn(BlockHash) -> Result<(Felt, Felt), SignatureError>>;
 pub type TransactionCommitmentFn =
     Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
 pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
@@ -66,6 +69,7 @@ pub type UpdateTriesFn = Box<
 
 pub struct Config {
     pub calculate_block_hash: BlockHashFn,
+    pub sign_block_hash: SignBlockHashFn,
     pub calculate_transaction_commitment: TransactionCommitmentFn,
     pub calculate_receipt_commitment: ReceiptCommitmentFn,
     pub calculate_event_commitment: EventCommitmentFn,
@@ -76,6 +80,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             calculate_block_hash: Box::new(|_| Faker.fake()),
+            sign_block_hash: Box::new(|_| Ok((Faker.fake(), Faker.fake()))),
             calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
             calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
             calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
@@ -195,6 +200,8 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
 /// - transactions
 ///     - transaction hashes are calculated from their respective variant
 pub mod generate {
+    use pathfinder_common::{BlockCommitmentSignature, BlockCommitmentSignatureElem};
+
     use super::*;
 
     pub fn n_blocks(n: usize) -> Vec<Block> {
@@ -208,6 +215,7 @@ pub mod generate {
     pub fn with_rng_and_config<R: Rng>(n: usize, rng: &mut R, config: Config) -> Vec<Block> {
         let Config {
             calculate_block_hash,
+            sign_block_hash,
             calculate_transaction_commitment,
             calculate_receipt_commitment,
             calculate_event_commitment,
@@ -223,7 +231,7 @@ pub mod generate {
         );
 
         update_commitments(&mut blocks, update_tries);
-        compute_block_hashes(&mut blocks, calculate_block_hash);
+        compute_block_hashes(&mut blocks, calculate_block_hash, sign_block_hash);
         blocks
     }
 
@@ -470,8 +478,13 @@ pub mod generate {
         }
     }
 
-    // Computes block hashes, updates parent block hashes with the correct values
-    fn compute_block_hashes(blocks: &mut [Block], calculate_block_hash: BlockHashFn) {
+    /// Computes block hashes, updates parent block hashes with the correct
+    /// values, computes block hash signatures, updates those too
+    fn compute_block_hashes(
+        blocks: &mut [Block],
+        calculate_block_hash: BlockHashFn,
+        sign_block_hash: SignBlockHashFn,
+    ) {
         if blocks.is_empty() {
             return;
         }
@@ -483,6 +496,11 @@ pub mod generate {
         } = blocks.get_mut(0).unwrap();
         header.header.parent_hash = BlockHash::ZERO;
         header.header.hash = calculate_block_hash(&header.header);
+        let (r, s) = sign_block_hash(header.header.hash).unwrap();
+        header.signature = BlockCommitmentSignature {
+            r: BlockCommitmentSignatureElem(r),
+            s: BlockCommitmentSignatureElem(s),
+        };
         state_update.as_mut().unwrap().block_hash = header.header.hash;
 
         for i in 1..blocks.len() {
@@ -498,6 +516,11 @@ pub mod generate {
 
             header.header.parent_hash = parent_hash;
             header.header.hash = calculate_block_hash(&header.header);
+            let (r, s) = sign_block_hash(header.header.hash).unwrap();
+            header.signature = BlockCommitmentSignature {
+                r: BlockCommitmentSignatureElem(r),
+                s: BlockCommitmentSignatureElem(s),
+            };
             state_update.as_mut().unwrap().block_hash = header.header.hash;
         }
     }
