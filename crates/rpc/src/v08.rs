@@ -38,7 +38,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_subscribePendingTransactions",        SubscribePendingTransactions)
         .register("starknet_subscribeEvents",                     SubscribeEvents)
         .register("starknet_subscribeTransactionStatus",          SubscribeTransactionStatus)
-        .register("starknet_specVersion",                         || "0.8.0-rc0")
+        .register("starknet_specVersion",                         || "0.8.0-rc1")
         .register("starknet_syncing",                             crate::method::syncing)
         .register("starknet_traceBlockTransactions",              crate::method::trace_block_transactions)
         .register("starknet_traceTransaction",                    crate::method::trace_transaction)
