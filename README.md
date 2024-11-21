@@ -275,11 +275,12 @@ This can be used to interact with a custom Starknet gateway, or to use a gateway
 
 You can interact with Starknet using the JSON-RPC API. Pathfinder supports the official Starknet RPC API and in addition supplements this with its own pathfinder specific extensions such as `pathfinder_getProof`.
 
-Currently, pathfinder supports `v0.6` and `v0.7` versions of the Starknet JSON-RPC specification.
+Currently, pathfinder supports `v0.6`, `v0.7` and `v0.8` versions of the Starknet JSON-RPC specification.
 The `path` of the URL used to access the JSON-RPC server determines which version of the API is served:
 
 - the `v0.6.0` API is exposed on the `/rpc/v0_6` path via HTTP and on `/ws/rpc/v0_6` via Websocket
 - the `v0.7.0` API is exposed on the `/rpc/v0_7` path via HTTP and on `/ws/rpc/v0_7` via Websocket
+- the `v0.8.0-rc1` API is exposed on the `/rpc/v0_8` path via both HTTP and Websocket
 - the pathfinder extension API is exposed on `/rpc/pathfinder/v0.1` and `/rpc/pathfinder/v0_1` via HTTP and `/ws/rpc/pathfinder/v0_1` via Websocket.
 
 Version of the API, which is served on the root (`/`) path via HTTP and on `/ws` via Websocket, can be configured via the pathfinder parameter `--rpc.root-version` (or the `RPC_ROOT_VERSION` environment variable).
