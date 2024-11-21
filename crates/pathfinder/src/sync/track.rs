@@ -891,10 +891,6 @@ impl ProcessStage for StoreBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
     use futures::{stream, Stream, StreamExt};
     use p2p::client::types::{
         ClassDefinition,
@@ -903,38 +899,15 @@ mod tests {
         Receipt as P2PReceipt,
         StateDiffsError,
     };
-    use p2p::libp2p::PeerId;
-    use p2p::PeerData;
-    use p2p_proto::common::Hash;
-    use pathfinder_common::{BlockHeader, ReceiptCommitment, SignedBlockHeader};
     use pathfinder_storage::fake::{self, Block, Config};
-    use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
     use super::*;
-    use crate::state::block_hash::{
-        calculate_event_commitment,
-        calculate_receipt_commitment,
-        calculate_transaction_commitment,
-        compute_final_hash,
-        BlockHeaderData,
-    };
+    use crate::sync::tests::generate_fake_blocks;
 
     #[tokio::test]
     async fn happy_path() {
-        const N: usize = 10;
-        let blocks = fake::generate::with_config(
-            N,
-            Config {
-                calculate_block_hash: Box::new(|header: &BlockHeader| {
-                    compute_final_hash(&BlockHeaderData::from_header(header))
-                }),
-                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
-                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
-                calculate_event_commitment: Box::new(calculate_event_commitment),
-                update_tries: Box::new(update_starknet_state),
-            },
-        );
+        let (public_key, blocks) = generate_fake_blocks(10);
 
         let BlockHeader { hash, number, .. } = blocks.last().unwrap().header.header;
         let latest = (number, hash);
@@ -951,7 +924,7 @@ mod tests {
             storage: storage.clone(),
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
-            public_key: PublicKey::default(),
+            public_key,
             block_hash_db: None,
             verify_tree_hashes: true,
         };

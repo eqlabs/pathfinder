@@ -302,6 +302,7 @@ impl LatestStream {
 
 #[cfg(test)]
 mod tests {
+    use fake::{Fake, Faker};
     use futures::stream;
     use p2p::client::types::{
         ClassDefinition,
@@ -316,6 +317,8 @@ mod tests {
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{BlockHeader, BlockId, ClassHash, SignedBlockHeader, TransactionHash};
+    use pathfinder_crypto::signature::ecdsa_sign;
+    use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::fake::{generate, Block, Config};
     use pathfinder_storage::StorageBuilder;
@@ -331,38 +334,61 @@ mod tests {
     };
     use crate::state::update_starknet_state;
 
-    #[test]
-    fn checkpoint_restarts_after_recoverable_error() {
+    /// Generate a fake chain of blocks as in
+    /// [`pathfinder_storage::fake::generate`] but with additional
+    /// guarantees:
+    /// - all commitments computed correctly
+    /// - all block hashes computed correctly
+    /// - all blocks signed with the same private key
+    ///
+    /// Returns: public key, generated blocks.
+    pub fn generate_fake_blocks(num_blocks: usize) -> (PublicKey, Vec<Block>) {
+        let private_key = Faker.fake();
+        let public_key = PublicKey(pathfinder_crypto::signature::get_pk(private_key).unwrap());
         let blocks = generate::with_config(
-            20,
+            num_blocks,
             Config {
                 calculate_block_hash: Box::new(|header: &BlockHeader| {
                     compute_final_hash(&BlockHeaderData::from_header(header))
                 }),
+                sign_block_hash: Box::new(move |block_hash| ecdsa_sign(private_key, block_hash.0)),
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
                 update_tries: Box::new(update_starknet_state),
             },
         );
-        let s = Sync {
+        (public_key, blocks)
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn checkpoint_restarts_after_recoverable_error() {
+        let (public_key, blocks) = generate_fake_blocks(20);
+        let last_header = &blocks.last().unwrap().header.header;
+        let mid_header = &blocks[9].header.header;
+        let sync = Sync {
             storage: StorageBuilder::in_tempdir().unwrap(),
-            p2p: todo!(),
-            eth_client: EthereumClient::new("unused").unwrap(),
+            p2p: FakeP2PClient {
+                blocks: blocks.clone(),
+            },
+            // We use `l1_checkpoint_override` instead
+            eth_client: EthereumClient::new("https://unused.com").unwrap(),
             eth_address: H160::zero(), // Unused
             fgw_client: FakeFgw {
-                head: (BlockNumber::new_or_panic(10), BlockHash::ZERO),
+                head: (last_header.number, last_header.hash),
             },
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::ZERO, // TODO
             l1_checkpoint_override: Some(EthereumStateUpdate {
-                state_root: todo!(),
-                block_number: BlockNumber::new_or_panic(9),
-                block_hash: todo!(),
+                state_root: mid_header.state_commitment,
+                block_number: mid_header.number,
+                block_hash: mid_header.hash,
             }),
             verify_tree_hashes: true,
         };
+
+        sync.run().await.unwrap();
 
         // TODO
         // 2 cases here:

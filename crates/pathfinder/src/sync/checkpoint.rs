@@ -708,10 +708,7 @@ mod tests {
 
     mod handle_header_stream {
         use assert_matches::assert_matches;
-        use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::libp2p::PeerId;
-        use p2p_proto::header;
         use pathfinder_common::{
             public_key,
             BlockCommitmentSignature,
@@ -731,13 +728,13 @@ mod tests {
             StorageCommitment,
             TransactionCommitment,
         };
-        use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
+        use rstest::rstest;
         use serde::Deserialize;
         use serde_with::{serde_as, DisplayFromStr};
 
-        use super::super::handle_header_stream;
         use super::*;
+        use crate::sync::tests::generate_fake_blocks;
 
         struct Setup {
             pub streamed_headers: Vec<PeerData<SignedBlockHeader>>,
@@ -745,6 +742,7 @@ mod tests {
             pub storage: Storage,
             pub head: (BlockNumber, BlockHash),
             pub public_key: PublicKey,
+            pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
         }
 
         #[serde_as]
@@ -805,7 +803,7 @@ mod tests {
             }
         }
 
-        async fn setup() -> Setup {
+        fn setup_from_fixture() -> Setup {
             let expected_headers =
                 serde_json::from_str::<Vec<Fixture>>(include_str!("fixtures/sepolia_headers.json"))
                     .unwrap()
@@ -832,18 +830,47 @@ mod tests {
                 public_key: public_key!(
                     "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
                 ),
+                block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(
+                    Chain::SepoliaTestnet,
+                )),
             }
         }
 
-        #[tokio::test]
-        async fn happy_path() {
+        fn setup_from_fake(num_blocks: usize) -> Setup {
+            let (public_key, blocks) = generate_fake_blocks(num_blocks);
+            let expected_headers = blocks.into_iter().map(|b| b.header).collect::<Vec<_>>();
+            let hdr = &expected_headers.last().unwrap().header;
+
+            Setup {
+                head: (hdr.number, hdr.hash),
+                streamed_headers: expected_headers
+                    .iter()
+                    .rev()
+                    .cloned()
+                    .map(PeerData::for_tests)
+                    .collect::<Vec<_>>(),
+                expected_headers,
+                storage: StorageBuilder::in_tempdir().unwrap(),
+                public_key,
+                block_hash_db: None,
+            }
+        }
+
+        // These two cases are an implicit verification that [`storage::fake::generate`]
+        // is just good enough for tests.
+        #[rstest]
+        #[case::from_fixture(setup_from_fixture())]
+        #[case::from_fake(setup_from_fake(10))]
+        #[test_log::test(tokio::test)]
+        async fn happy_path(#[case] setup: Setup) {
             let Setup {
                 streamed_headers,
                 expected_headers,
                 storage,
                 head,
                 public_key,
-            } = setup().await;
+                block_hash_db,
+            } = setup;
 
             handle_header_stream(
                 stream::iter(streamed_headers),
@@ -851,9 +878,7 @@ mod tests {
                 Chain::SepoliaTestnet,
                 ChainId::SEPOLIA_TESTNET,
                 public_key,
-                Some(pathfinder_block_hashes::BlockHashDb::new(
-                    Chain::SepoliaTestnet,
-                )),
+                block_hash_db,
                 storage.clone(),
             )
             .await
@@ -878,6 +903,7 @@ mod tests {
 
             pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
         }
+
         #[tokio::test]
         async fn discontinuity() {
             let Setup {
@@ -886,7 +912,7 @@ mod tests {
                 head,
                 public_key,
                 ..
-            } = setup().await;
+            } = setup_from_fixture();
 
             streamed_headers.last_mut().unwrap().data.header.number = BlockNumber::new_or_panic(3);
 
@@ -915,7 +941,7 @@ mod tests {
                 head,
                 public_key,
                 ..
-            } = setup().await;
+            } = setup_from_fixture();
 
             assert_matches!(
                 handle_header_stream(
@@ -933,29 +959,30 @@ mod tests {
             );
         }
 
-        // TODO readd once the signature verification is enabled
-        // #[tokio::test]
-        // async fn bad_signature() {
-        //     let Setup {
-        //         streamed_headers,
-        //         storage,
-        //         head,
-        //         ..
-        //     } = setup().await;
+        #[tokio::test]
+        async fn bad_signature() {
+            let Setup {
+                streamed_headers,
+                storage,
+                head,
+                block_hash_db,
+                ..
+            } = setup_from_fixture();
 
-        //     assert_matches!(
-        //         handle_header_stream(
-        //             stream::iter(streamed_headers),
-        //             head,
-        //             Chain::SepoliaTestnet,
-        //             ChainId::SEPOLIA_TESTNET,
-        //             PublicKey::ZERO, // Invalid public key
-        //             storage.clone(),
-        //         )
-        //         .await,
-        //         Err(SyncError::BadHeaderSignature(_))
-        //     );
-        // }
+            assert_matches!(
+                handle_header_stream(
+                    stream::iter(streamed_headers),
+                    head,
+                    Chain::SepoliaTestnet,
+                    ChainId::SEPOLIA_TESTNET,
+                    PublicKey::ZERO, // Invalid public key
+                    block_hash_db,
+                    storage.clone(),
+                )
+                .await,
+                Err(SyncError::BadHeaderSignature(_))
+            );
+        }
 
         #[tokio::test]
         async fn db_failure() {
@@ -965,7 +992,7 @@ mod tests {
                 head,
                 public_key,
                 ..
-            } = setup().await;
+            } = setup_from_fixture();
 
             let mut db = storage.connection().unwrap();
             let db = db.transaction().unwrap();
