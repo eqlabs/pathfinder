@@ -50,12 +50,12 @@ mod transactions;
 
 const CHECKPOINT_MARGIN: u64 = 10;
 
-pub struct Sync<P> {
+pub struct Sync<P, G> {
     pub storage: pathfinder_storage::Storage,
     pub p2p: P,
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
-    pub fgw_client: GatewayClient,
+    pub fgw_client: G,
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
@@ -63,7 +63,7 @@ pub struct Sync<P> {
     pub verify_tree_hashes: bool,
 }
 
-impl<P> Sync<P>
+impl<P, G> Sync<P, G>
 where
     P: BlockClient
         + ClassStream
@@ -74,6 +74,7 @@ where
         + Clone
         + Send
         + 'static,
+    G: GatewayApi + Clone + Send + 'static,
 {
     pub async fn run(self) -> anyhow::Result<()> {
         let (next, parent_hash) = self.checkpoint_sync().await?;
@@ -250,7 +251,10 @@ impl Stream for LatestStream {
 }
 
 impl LatestStream {
-    fn spawn(fgw: GatewayClient, head_poll_interval: Duration) -> Self {
+    fn spawn<G>(fgw: G, head_poll_interval: Duration) -> Self
+    where
+        G: GatewayApi + Clone + Send + 'static,
+    {
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
@@ -311,22 +315,44 @@ mod tests {
     use pathfinder_common::event::Event;
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::transaction::Transaction;
-    use pathfinder_common::{BlockId, ClassHash, SignedBlockHeader, TransactionHash};
+    use pathfinder_common::{BlockHeader, BlockId, ClassHash, SignedBlockHeader, TransactionHash};
     use pathfinder_ethereum::EthereumClient;
-    use pathfinder_storage::fake::Block;
+    use pathfinder_storage::fake::{generate, Block, Config};
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::error::SequencerError;
 
     use super::*;
+    use crate::state::block_hash::{
+        calculate_event_commitment,
+        calculate_receipt_commitment,
+        calculate_transaction_commitment,
+        compute_final_hash,
+        BlockHeaderData,
+    };
+    use crate::state::update_starknet_state;
 
     #[test]
     fn checkpoint_restarts_after_recoverable_error() {
+        let blocks = generate::with_config(
+            20,
+            Config {
+                calculate_block_hash: Box::new(|header: &BlockHeader| {
+                    compute_final_hash(&BlockHeaderData::from_header(header))
+                }),
+                calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
+                calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                calculate_event_commitment: Box::new(calculate_event_commitment),
+                update_tries: Box::new(update_starknet_state),
+            },
+        );
         let s = Sync {
             storage: StorageBuilder::in_tempdir().unwrap(),
             p2p: todo!(),
             eth_client: EthereumClient::new("unused").unwrap(),
             eth_address: H160::zero(), // Unused
-            fgw_client: todo!(),
+            fgw_client: FakeFgw {
+                head: (BlockNumber::new_or_panic(10), BlockHash::ZERO),
+            },
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::ZERO, // TODO

@@ -49,13 +49,13 @@ use crate::sync::{class_definitions, events, headers, state_updates, transaction
 
 /// Provides P2P sync capability for blocks secured by L1.
 #[derive(Clone)]
-pub struct Sync<P> {
+pub struct Sync<P, G> {
     pub storage: Storage,
     pub p2p: P,
     // TODO: merge these two inside the client.
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
-    pub fgw_client: Client,
+    pub fgw_client: G,
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
@@ -63,7 +63,7 @@ pub struct Sync<P> {
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
-impl<P> Sync<P>
+impl<P, G> Sync<P, G>
 where
     P: ClassStream
         + EventStream
@@ -73,13 +73,14 @@ where
         + Clone
         + Send
         + 'static,
+    G: GatewayApi + Clone + Send + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Storage,
         p2p: P,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
-        fgw_client: Client,
+        fgw_client: G,
         chain: Chain,
         chain_id: ChainId,
         public_key: PublicKey,
