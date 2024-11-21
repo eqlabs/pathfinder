@@ -4704,7 +4704,7 @@ checksum = "42012b0f064e01aa58b545fe3727f90f7dd4020f4a3ea735b50344965f5a57e9"
 
 [[package]]
 name = "gateway-test-utils"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "reqwest",
  "serde_json",
@@ -6433,7 +6433,7 @@ dependencies = [
 
 [[package]]
 name = "make-stream"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "tokio",
  "tokio-stream",
@@ -7034,7 +7034,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p2p"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7076,7 +7076,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "fake",
@@ -7097,7 +7097,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_proto_derive"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7106,7 +7106,7 @@ dependencies = [
 
 [[package]]
 name = "p2p_stream"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7235,7 +7235,7 @@ checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
 
 [[package]]
 name = "pathfinder"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -7302,7 +7302,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-block-hashes"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -7310,7 +7310,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-common"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "bitvec",
@@ -7335,7 +7335,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-compiler"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "cairo-lang-starknet 1.0.0-alpha.6",
@@ -7356,7 +7356,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-crypto"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "ark-ff 0.4.2",
  "assert_matches",
@@ -7373,7 +7373,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-ethereum"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "alloy",
  "anyhow",
@@ -7393,7 +7393,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-executor"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "blockifier",
@@ -7413,7 +7413,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-merkle-tree"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "bitvec",
@@ -7429,7 +7429,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-retry"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "tokio",
  "tokio-retry",
@@ -7437,7 +7437,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-rpc"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -7490,7 +7490,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-serde"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "num-bigint 0.4.6",
@@ -7505,7 +7505,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-storage"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -9350,7 +9350,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-client"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -9383,7 +9383,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-test-fixtures"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
@@ -9391,7 +9391,7 @@ dependencies = [
 
 [[package]]
 name = "starknet-gateway-types"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -9630,7 +9630,7 @@ dependencies = [
 
 [[package]]
 name = "tagged"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "fake",
  "pretty_assertions_sorted",
@@ -9639,7 +9639,7 @@ dependencies = [
 
 [[package]]
 name = "tagged-debug-derive"
-version = "0.14.4"
+version = "0.15.0"
 dependencies = [
  "proc-macro2",
  "quote",
