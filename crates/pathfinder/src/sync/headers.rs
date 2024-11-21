@@ -159,7 +159,6 @@ pub struct BackwardContinuity {
 
 /// Ensures that the block hash and signature are correct.
 pub struct VerifyHashAndSignature {
-    chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
     block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
@@ -247,13 +246,11 @@ impl ProcessStage for VerifyHashAndSignature {
 
 impl VerifyHashAndSignature {
     pub fn new(
-        chain: Chain,
         chain_id: ChainId,
         public_key: PublicKey,
         block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     ) -> Self {
         Self {
-            chain,
             chain_id,
             public_key,
             block_hash_db,

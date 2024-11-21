@@ -630,6 +630,8 @@ fn start_p2p_sync(
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    use pathfinder_block_hashes::BlockHashDb;
+
     let sync = pathfinder_lib::sync::Sync {
         storage,
         p2p: p2p_client,
@@ -637,10 +639,10 @@ fn start_p2p_sync(
         eth_address: pathfinder_context.l1_core_address,
         fgw_client: pathfinder_context.gateway,
         chain_id: pathfinder_context.network_id,
-        chain: pathfinder_context.network,
         public_key: gateway_public_key,
         l1_checkpoint_override,
         verify_tree_hashes,
+        block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
     tokio::spawn(sync.run())
 }

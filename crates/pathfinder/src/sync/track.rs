@@ -56,7 +56,6 @@ pub struct Sync<L, P> {
     pub latest: L,
     pub p2p: P,
     pub storage: Storage,
-    pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
@@ -89,7 +88,6 @@ impl<L, P> Sync<L, P> {
         .pipe(headers::ForwardContinuity::new(*next, *parent_hash), 100)
         .pipe(
             headers::VerifyHashAndSignature::new(
-                self.chain,
                 self.chain_id,
                 self.public_key,
                 self.block_hash_db,
@@ -922,7 +920,6 @@ mod tests {
             latest: futures::stream::iter(vec![latest]),
             p2p,
             storage: storage.clone(),
-            chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key,
             block_hash_db: None,

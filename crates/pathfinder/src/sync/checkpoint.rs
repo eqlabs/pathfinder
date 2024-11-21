@@ -56,7 +56,6 @@ pub struct Sync<P, G> {
     pub eth_client: pathfinder_ethereum::EthereumClient,
     pub eth_address: H160,
     pub fgw_client: G,
-    pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub verify_tree_hashes: bool,
@@ -81,11 +80,11 @@ where
         p2p: P,
         ethereum: (pathfinder_ethereum::EthereumClient, H160),
         fgw_client: G,
-        chain: Chain,
         chain_id: ChainId,
         public_key: PublicKey,
         l1_anchor_override: Option<EthereumStateUpdate>,
         verify_tree_hashes: bool,
+        block_hash_db: Option<BlockHashDb>,
     ) -> Self {
         Self {
             storage,
@@ -93,11 +92,10 @@ where
             eth_client: ethereum.0,
             eth_address: ethereum.1,
             fgw_client,
-            chain,
             chain_id,
             public_key,
             verify_tree_hashes,
-            block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(chain)),
+            block_hash_db,
         }
     }
 
@@ -175,7 +173,6 @@ where
             handle_header_stream(
                 self.p2p.clone().header_stream(gap.tail, gap.head, true),
                 gap.head(),
-                self.chain,
                 self.chain_id,
                 self.public_key,
                 self.block_hash_db.clone(),
@@ -309,7 +306,6 @@ where
 async fn handle_header_stream(
     stream: impl Stream<Item = PeerData<SignedBlockHeader>> + Send + 'static,
     head: (BlockNumber, BlockHash),
-    chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
     block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
@@ -319,7 +315,7 @@ async fn handle_header_stream(
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
-            headers::VerifyHashAndSignature::new(chain, chain_id, public_key, block_hash_db),
+            headers::VerifyHashAndSignature::new(chain_id, public_key, block_hash_db),
             10,
         )
         .try_chunks(1000, 10)
@@ -875,7 +871,6 @@ mod tests {
             handle_header_stream(
                 stream::iter(streamed_headers),
                 head,
-                Chain::SepoliaTestnet,
                 ChainId::SEPOLIA_TESTNET,
                 public_key,
                 block_hash_db,
@@ -920,7 +915,6 @@ mod tests {
                 handle_header_stream(
                     stream::iter(streamed_headers),
                     head,
-                    Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
                     Some(pathfinder_block_hashes::BlockHashDb::new(
@@ -948,7 +942,6 @@ mod tests {
                     stream::iter(streamed_headers),
                     head,
                     // Causes mismatches for all block hashes because setup assumes Sepolia
-                    Chain::Mainnet,
                     ChainId::MAINNET,
                     public_key,
                     None,
@@ -973,7 +966,6 @@ mod tests {
                 handle_header_stream(
                     stream::iter(streamed_headers),
                     head,
-                    Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     PublicKey::ZERO, // Invalid public key
                     block_hash_db,
@@ -1007,7 +999,6 @@ mod tests {
                 handle_header_stream(
                     stream::iter(streamed_headers),
                     head,
-                    Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
                     Some(pathfinder_block_hashes::BlockHashDb::new(
