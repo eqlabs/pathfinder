@@ -295,3 +295,334 @@ impl LatestStream {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use futures::stream;
+    use p2p::client::types::{
+        ClassDefinition,
+        ClassDefinitionsError,
+        EventsForBlockByTransaction,
+        EventsResponseStreamFailure,
+        Receipt as P2PReceipt,
+        StateDiffsError,
+    };
+    use p2p::libp2p::PeerId;
+    use pathfinder_common::event::Event;
+    use pathfinder_common::state_update::StateUpdateData;
+    use pathfinder_common::transaction::Transaction;
+    use pathfinder_common::{BlockId, ClassHash, SignedBlockHeader, TransactionHash};
+    use pathfinder_ethereum::EthereumClient;
+    use pathfinder_storage::fake::Block;
+    use pathfinder_storage::StorageBuilder;
+    use starknet_gateway_types::error::SequencerError;
+
+    use super::*;
+
+    #[test]
+    fn checkpoint_restarts_after_recoverable_error() {
+        let s = Sync {
+            storage: StorageBuilder::in_tempdir().unwrap(),
+            p2p: todo!(),
+            eth_client: EthereumClient::new("unused").unwrap(),
+            eth_address: H160::zero(), // Unused
+            fgw_client: todo!(),
+            chain: Chain::SepoliaTestnet,
+            chain_id: ChainId::SEPOLIA_TESTNET,
+            public_key: PublicKey::ZERO, // TODO
+            l1_checkpoint_override: Some(EthereumStateUpdate {
+                state_root: todo!(),
+                block_number: BlockNumber::new_or_panic(9),
+                block_hash: todo!(),
+            }),
+            verify_tree_hashes: true,
+        };
+
+        // TODO
+        // 2 cases here:
+        // - recoverable error
+        // - premature end of "current" stream
+    }
+
+    #[test]
+    fn track_restarts_after_recoverable_error() {
+        // TODO
+        // 2 cases here:
+        // - recoverable error
+        // - premature end of "current" stream
+
+        // Check if tracking has restarted from the last stored block
+        // ie if next and parent_hash have advanced
+    }
+
+    #[test]
+    fn checkpoint_stops_after_fatal_error() {
+        // TODO
+    }
+
+    #[test]
+    fn track_stops_after_fatal_error() {
+        // TODO
+    }
+
+    #[derive(Clone)]
+    struct FakeP2PClient {
+        pub blocks: Vec<Block>,
+    }
+
+    impl FakeP2PClient {
+        fn blocks<T, F>(
+            mut self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            reverse: bool,
+            map_fn: F,
+        ) -> Vec<T>
+        where
+            F: FnMut(Block) -> T,
+        {
+            let mut blocks = self
+                .blocks
+                .into_iter()
+                .take_while(move |b| {
+                    let n = b.header.header.number;
+                    n >= start && n <= stop
+                })
+                .collect::<Vec<_>>();
+
+            if reverse {
+                blocks.reverse();
+            }
+
+            blocks.into_iter().map(map_fn).collect()
+        }
+    }
+
+    impl HeaderStream for FakeP2PClient {
+        fn header_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            reverse: bool,
+        ) -> impl Stream<Item = PeerData<SignedBlockHeader>> + Send {
+            stream::iter(self.blocks(start, stop, reverse, |block| {
+                PeerData::for_tests(block.header)
+            }))
+        }
+    }
+
+    impl TransactionStream for FakeP2PClient {
+        fn transaction_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            // transaction_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send +
+            // 'static,
+            _: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        ) -> impl Stream<Item = StreamItem<(p2p::client::types::TransactionData, BlockNumber)>> + Send
+        {
+            stream::iter(self.blocks(start, stop, false, |block| {
+                Ok(PeerData::for_tests((
+                    block
+                        .transaction_data
+                        .into_iter()
+                        .map(|(t, r, _)| (t, r.into()))
+                        .collect(),
+                    block.header.header.number,
+                )))
+            }))
+        }
+    }
+
+    impl StateDiffStream for FakeP2PClient {
+        fn state_diff_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            // state_diff_length_stream: impl Stream<Item = anyhow::Result<usize>> + Send +
+            // 'static,
+            _: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>> + Send {
+            stream::iter(self.blocks(start, stop, false, |block| {
+                Ok(PeerData::for_tests((
+                    block.state_update.unwrap().into(),
+                    block.header.header.number,
+                )))
+            }))
+        }
+    }
+
+    impl ClassStream for FakeP2PClient {
+        fn class_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            // declared_class_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send +
+            // 'static,
+            _: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        ) -> impl Stream<Item = StreamItem<ClassDefinition>> + Send {
+            stream::iter(
+                self.blocks(start, stop, false, |block| {
+                    let block_number = block.header.header.number;
+                    block
+                        .cairo_defs
+                        .into_iter()
+                        .map(move |(hash, definition)| {
+                            Ok(PeerData::for_tests(ClassDefinition::Cairo {
+                                block_number,
+                                definition,
+                                hash,
+                            }))
+                        })
+                        .chain(block.sierra_defs.into_iter().map(
+                            move |(hash, sierra_definition, _)| {
+                                Ok(PeerData::for_tests(ClassDefinition::Sierra {
+                                    block_number,
+                                    sierra_definition,
+                                    hash,
+                                }))
+                            },
+                        ))
+                })
+                .into_iter()
+                .flatten(),
+            )
+        }
+    }
+
+    impl EventStream for FakeP2PClient {
+        fn event_stream(
+            self,
+            start: BlockNumber,
+            stop: BlockNumber,
+            // event_count_stream: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+            _: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
+        ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>> {
+            stream::iter(self.blocks(start, stop, false, |block| {
+                Ok(PeerData::for_tests((
+                    block.header.header.number,
+                    block
+                        .transaction_data
+                        .into_iter()
+                        .map(|(t, _, e)| (t.hash, e))
+                        .collect(),
+                )))
+            }))
+        }
+    }
+
+    impl BlockClient for FakeP2PClient {
+        async fn transactions_for_block(
+            self,
+            block: BlockNumber,
+        ) -> Option<(
+            PeerId,
+            impl Stream<Item = anyhow::Result<(Transaction, P2PReceipt)>> + Send,
+        )> {
+            let tr = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .transaction_data
+                .iter()
+                .map(|(t, r, e)| Ok((t.clone(), P2PReceipt::from(r.clone()))))
+                .collect::<Vec<anyhow::Result<(Transaction, P2PReceipt)>>>();
+
+            Some((PeerId::random(), stream::iter(tr)))
+        }
+
+        async fn state_diff_for_block(
+            self,
+            block: BlockNumber,
+            state_diff_length: u64,
+        ) -> Result<Option<(PeerId, StateUpdateData)>, StateDiffsError> {
+            let sd: StateUpdateData = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .state_update
+                .clone()
+                .unwrap()
+                .into();
+
+            assert_eq!(sd.state_diff_length() as u64, state_diff_length);
+
+            Ok(Some((PeerId::random(), sd)))
+        }
+
+        async fn class_definitions_for_block(
+            self,
+            block: BlockNumber,
+            declared_classes_count: u64,
+        ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
+            let b = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap();
+            let defs = b
+                .cairo_defs
+                .iter()
+                .map(|(h, x)| ClassDefinition::Cairo {
+                    block_number: block,
+                    definition: x.clone(),
+                    hash: *h,
+                })
+                .chain(
+                    b.sierra_defs
+                        .iter()
+                        .map(|(h, x, _)| ClassDefinition::Sierra {
+                            block_number: block,
+                            sierra_definition: x.clone(),
+                            hash: *h,
+                        }),
+                )
+                .collect::<Vec<ClassDefinition>>();
+
+            Ok(Some((PeerId::random(), defs)))
+        }
+
+        async fn events_for_block(
+            self,
+            block: BlockNumber,
+        ) -> Option<(
+            PeerId,
+            impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>> + Send,
+        )> {
+            let e = self
+                .blocks
+                .iter()
+                .find(|b| b.header.header.number == block)
+                .unwrap()
+                .transaction_data
+                .iter()
+                .flat_map(|(t, _, e)| e.iter().map(move |e| (t.hash, e.clone())))
+                .map(Ok)
+                .collect::<Vec<_>>();
+
+            Some((PeerId::random(), stream::iter(e)))
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakeFgw {
+        head: (BlockNumber, BlockHash),
+    }
+
+    #[async_trait::async_trait]
+    impl GatewayApi for FakeFgw {
+        async fn pending_casm_by_hash(&self, _: ClassHash) -> Result<bytes::Bytes, SequencerError> {
+            Ok(bytes::Bytes::from_static(b"I'm from the fgw!"))
+        }
+
+        async fn block_header(
+            &self,
+            block: BlockId,
+        ) -> Result<(BlockNumber, BlockHash), SequencerError> {
+            assert_eq!(block, BlockId::Latest);
+            Ok(self.head)
+        }
+    }
+}
