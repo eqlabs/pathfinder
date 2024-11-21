@@ -238,9 +238,7 @@ impl ProcessStage for VerifyHashAndSignature {
         }
 
         if !self.verify_signature(&input) {
-            // TODO: make this an error once state diff commitments and
-            // signatures are fixed on the feeder gateway return
-            // Err(SyncError2::BadHeaderSignature);
+            return Err(SyncError::BadHeaderSignature(*peer));
         }
 
         Ok(input)
