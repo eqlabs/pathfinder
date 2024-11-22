@@ -736,6 +736,8 @@ mod tests {
                 batch_concurrency_limit: 64.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1024.try_into().unwrap(),
                 get_events_max_uncached_bloom_filters_to_load: 1024.try_into().unwrap(),
+                #[cfg(feature = "aggregate_bloom")]
+                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

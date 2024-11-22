@@ -250,7 +250,11 @@ pub async fn get_events(
 
             let start = std::time::Instant::now();
             let page_from_aggregate = transaction
-                .events_from_aggregate(&filter, context.config.get_events_max_blocks_to_scan)
+                .events_from_aggregate(
+                    &filter,
+                    context.config.get_events_max_blocks_to_scan,
+                    context.config.get_events_max_bloom_filters_to_load,
+                )
                 .map_err(|e| match e {
                     EventFilterError::Internal(e) => GetEventsError::Internal(e),
                     EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),

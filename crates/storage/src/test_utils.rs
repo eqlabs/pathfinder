@@ -50,11 +50,13 @@ pub(crate) fn create_blocks(block_numbers: &[usize]) -> Vec<BlockHeader> {
         .collect::<Vec<_>>()
 }
 
-/// Creates a custom test set of N transactions and receipts.
+/// Creates a custom test set of transactions and receipts.
 pub(crate) fn create_transactions_and_receipts(
-    n: usize,
+    block_count: usize,
+    transactions_per_block: usize,
 ) -> Vec<(Transaction, Receipt, Vec<Event>)> {
-    let transactions = (0..n).map(|i| match i % TRANSACTIONS_PER_BLOCK {
+    let n = block_count * transactions_per_block;
+    let transactions = (0..n).map(|i| match i % transactions_per_block {
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => Transaction {
             hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
             variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
@@ -131,7 +133,7 @@ pub(crate) fn create_transactions_and_receipts(
             transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
             ..Default::default()
         };
-        let events = if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
+        let events = if i % transactions_per_block < EVENTS_PER_BLOCK {
             vec![pathfinder_common::event::Event {
                 from_address: ContractAddress::new_or_panic(
                     Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
@@ -208,7 +210,7 @@ pub fn setup_custom_test_storage(
 
     let headers = create_blocks(block_numbers);
     let transactions_and_receipts =
-        create_transactions_and_receipts(block_numbers.len() * transactions_per_block);
+        create_transactions_and_receipts(block_numbers.len(), transactions_per_block);
 
     for (i, header) in headers.iter().enumerate() {
         tx.insert_block_header(header).unwrap();
