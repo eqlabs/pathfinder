@@ -661,12 +661,15 @@ mod tests {
             LazyLock::new(|| NonZeroUsize::new(10).unwrap());
         static MAX_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
             LazyLock::new(|| NonZeroUsize::new(1000).unwrap());
+        #[cfg(feature = "aggregate_bloom")]
+        static MAX_AGGREGATE_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
+            LazyLock::new(|| NonZeroUsize::new(3).unwrap());
 
         let blocks = [0, 1, 2, 3, 4, 5];
         let transactions_per_block = 2;
         let headers = create_blocks(&blocks);
         let transactions_and_receipts =
-            create_transactions_and_receipts(blocks.len() * transactions_per_block);
+            create_transactions_and_receipts(blocks.len(), transactions_per_block);
         let emitted_events = extract_events(&headers, &transactions_and_receipts);
         let insert_block_data = |tx: &Transaction<'_>, idx: usize| {
             let header = &headers[idx];
@@ -718,7 +721,11 @@ mod tests {
         };
 
         let events_from_aggregate_before = tx
-            .events_from_aggregate(&filter, *MAX_BLOCKS_TO_SCAN)
+            .events_from_aggregate(
+                &filter,
+                *MAX_BLOCKS_TO_SCAN,
+                *MAX_AGGREGATE_BLOOM_FILTERS_TO_LOAD,
+            )
             .unwrap()
             .events;
         let events_before = tx
@@ -750,7 +757,11 @@ mod tests {
         }
 
         let events_from_aggregate_after = tx
-            .events_from_aggregate(&filter, *MAX_BLOCKS_TO_SCAN)
+            .events_from_aggregate(
+                &filter,
+                *MAX_BLOCKS_TO_SCAN,
+                *MAX_AGGREGATE_BLOOM_FILTERS_TO_LOAD,
+            )
             .unwrap()
             .events;
         let events_after = tx

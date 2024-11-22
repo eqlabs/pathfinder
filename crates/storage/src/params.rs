@@ -133,6 +133,7 @@ to_sql_builtin!(
     Vec<u8>,
     &[u8],
     isize,
+    usize,
     i64,
     i32,
     i16,
