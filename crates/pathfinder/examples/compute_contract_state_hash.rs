@@ -28,12 +28,12 @@ fn main() -> anyhow::Result<()> {
         })
         .take(4)
         .try_fold(None, |acc, next| {
-            let nth = next.0 + 1;
+            let nth = next.0;
             let next = next
                 .1
-                .with_context(|| format!("Failed to parse {nth} parameter"))?;
-            let next = if nth < 2 {
-                next.with_context(|| format!("Missing {nth} parameter"))?
+                .with_context(|| format!("Failed to parse {nth}. parameter"))?;
+            let next = if nth <= 2 {
+                next.with_context(|| format!("Missing {nth}. parameter"))?
             } else {
                 next.unwrap_or(Felt::ZERO)
             };
