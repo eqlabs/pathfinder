@@ -90,8 +90,6 @@ impl ProcessStage for CalculateHashes {
 
         let (transactions, block_number, version, expected_commitment) = input;
 
-        tracing::error!(%block_number,"Transactions::Hashes");
-
         let transactions = transactions
             .into_par_iter()
             .map(|(tx, r)| {
@@ -177,8 +175,6 @@ impl ProcessStage for VerifyCommitment {
             version,
             block_number,
         } = transactions;
-
-        tracing::error!(%block_number,"Transactions::Verify");
 
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
         // This computation can only fail in case of internal trie error which is always
