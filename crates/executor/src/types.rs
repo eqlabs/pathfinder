@@ -217,7 +217,7 @@ pub struct MsgToL1 {
     pub from_address: Felt,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct InnerCallExecutionResources {
     pub l1_gas: u128,
     pub l2_gas: u128,
