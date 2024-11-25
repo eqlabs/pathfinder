@@ -4,7 +4,7 @@ use goose::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
-use crate::requests::v05::*;
+use crate::requests::v08::*;
 
 /// Script from Starkware that contain some heavy-weight calls mixed with
 /// wallet-like calls.
@@ -102,7 +102,7 @@ async fn post_request<T: DeserializeOwned>(
     request: &'static str,
 ) -> MethodResult<RpcResult<T>> {
     let request_builder = user
-        .get_request_builder(&GooseMethod::Post, "/rpc/v0_6")?
+        .get_request_builder(&GooseMethod::Post, "/rpc/v0_8")?
         .header("Content-Type", "application/json")
         .body(request);
     let goose_request = GooseRequest::builder()
