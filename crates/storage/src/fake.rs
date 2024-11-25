@@ -45,6 +45,11 @@ use crate::{Storage, StorageBuilder};
 pub struct Block {
     pub header: SignedBlockHeader,
     pub transaction_data: Vec<(Transaction, Receipt, Vec<Event>)>,
+    /// Wrapping in an [`Option`] allows for easy removal of the state update if
+    /// the caller wishes to fill the db with _partial_ block data.
+    /// [`generate`] will always populate this field with some fake state
+    /// update and the user can choose to remove it prior to calling
+    /// [`fill`] by setting it to `None`.
     pub state_update: Option<StateUpdate>,
     pub cairo_defs: Vec<(ClassHash, Vec<u8>)>, // Cairo 0 definitions
     pub sierra_defs: Vec<(SierraHash, Vec<u8>, Vec<u8>)>, // Sierra + Casm definitions
