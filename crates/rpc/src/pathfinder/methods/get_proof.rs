@@ -267,7 +267,8 @@ pub async fn get_proof(
 
         let contract_proof = storage_root_idx
             .map(|idx| {
-                // Generate a proof for this contract, creating a "non-membership" proof if the contract does not exist.
+                // Generate a proof for this contract, creating a "non-membership" proof if the
+                // contract does not exist.
                 StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address, idx)
                     .unwrap_or_default()
                     .into_iter()
