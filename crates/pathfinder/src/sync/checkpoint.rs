@@ -281,6 +281,24 @@ impl Sync {
             return Ok(());
         };
 
+        // TODO:
+        // Replace `start` with the code below once individual aggregate filters
+        // are removed.
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            if let Some(start_aggregate) =
+                events::next_missing_aggregate(self.storage.clone(), stop)?
+            {
+                if start_aggregate != start {
+                    tracing::error!(
+                        "Running event filter block mismatch. Expected: {}, got: {}",
+                        start,
+                        start_aggregate
+                    );
+                }
+            }
+        }
+
         let event_stream = self.p2p.clone().event_stream(
             start,
             stop,
@@ -667,7 +685,7 @@ async fn rollback_to_anchor(
 
         #[cfg(feature = "aggregate_bloom")]
         transaction
-            .reconstruct_running_aggregate()
+            .reconstruct_running_event_filter()
             .context("Reconstructing running aggregate bloom")?;
 
         Ok(())
