@@ -478,8 +478,12 @@ mod tests {
         };
 
         tokio::select! {
-            _ = tokio::time::timeout(Duration::from_secs(10), sync.run()) => (),
-            _ = sync_done_watch(storage.clone(), expected_last_synced_block) => (),
+            result = tokio::time::timeout(Duration::from_secs(10), sync.run()) => match result {
+                Ok(Ok(())) => unreachable!("Sync does not exit upon success, sync_done_watch should have been triggered"),
+                Ok(Err(e)) => tracing::debug!(%e, "Sync failed with a fatal error"),
+                Err(_) => tracing::debug!("Test timed out"),
+            },
+            _ = sync_done_watch(storage.clone(), expected_last_synced_block) => tracing::debug!("Sync completion detected"),
         }
 
         assert!(error_trigger.all_errors_triggered());
