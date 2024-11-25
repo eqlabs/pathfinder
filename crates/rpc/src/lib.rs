@@ -12,7 +12,6 @@ mod pending;
 #[cfg(test)]
 mod test_setup;
 pub mod types;
-pub mod v06;
 pub mod v07;
 pub mod v08;
 
@@ -44,7 +43,6 @@ const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, PartialOrd)]
 pub enum RpcVersion {
-    V06,
     #[default]
     V07,
     V08,
@@ -54,7 +52,6 @@ pub enum RpcVersion {
 impl RpcVersion {
     fn to_str(self) -> &'static str {
         match self {
-            RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
             RpcVersion::V08 => "v0.8",
             RpcVersion::PathfinderV01 => "v0.1",
@@ -164,13 +161,11 @@ impl RpcServer {
             }
         }
 
-        let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
         let v08_routes = v08::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
-            RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
             RpcVersion::V08 => v08_routes.clone(),
             RpcVersion::PathfinderV01 => {
@@ -183,8 +178,6 @@ impl RpcServer {
             // used by monitoring bots to check service health.
             .route("/", get(empty_body).post(rpc_handler))
             .with_state(default_router.clone())
-            .route("/rpc/v0_6", post(rpc_handler))
-            .with_state(v06_routes.clone())
             .route("/rpc/v0_7", post(rpc_handler))
             .with_state(v07_routes.clone())
             // TODO Uncomment once RPC 0.8 is ready.
@@ -198,8 +191,6 @@ impl RpcServer {
             router
                 .route("/ws", get(websocket_handler))
                 .with_state(default_router)
-                .route("/ws/rpc/v0_6", get(websocket_handler))
-                .with_state(v06_routes)
                 .route("/ws/rpc/v0_7", get(websocket_handler))
                 .with_state(v07_routes)
                 .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
@@ -950,16 +941,6 @@ mod tests {
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
-
-    #[case::v0_6_api("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::HttpOnly)]
-    #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
-    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
-    #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
-    #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::HttpOnly)]
-    #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
-    #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
     #[case::pathfinder("/ws/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[], Api::WebsocketOnly)]
