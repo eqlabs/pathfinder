@@ -1,10 +1,9 @@
 #![allow(dead_code, unused_variables)]
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::sync::{Arc, RwLock};
 
 use anyhow::Context;
-use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::traits::{
     BlockClient,
