@@ -12,7 +12,10 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError {
+        revert_error: String,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
 }
 
 impl From<anyhow::Error> for CallError {
@@ -27,8 +30,9 @@ impl From<pathfinder_executor::CallError> for CallError {
         match value {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
-            ContractError(error) => Self::ContractError {
+            ContractError(error, error_stack) => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
+                revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -51,8 +55,12 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
-            CallError::ContractError { revert_error } => ApplicationError::ContractError {
+            CallError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => ApplicationError::ContractError {
                 revert_error: Some(revert_error),
+                revert_error_stack,
             },
             CallError::Internal(e) => ApplicationError::Internal(e),
             CallError::Custom(e) => ApplicationError::Custom(e),
@@ -65,6 +73,12 @@ impl From<CallError> for ApplicationError {
 pub struct CallInput {
     pub request: FunctionCall,
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for CallInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
 }
 
 #[derive(Clone, serde::Deserialize, serde::Serialize, Debug, PartialEq, Eq)]
@@ -144,6 +158,8 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
+        use crate::RpcVersion;
 
         #[test]
         fn positional_args() {
@@ -152,7 +168,8 @@ mod tests {
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<CallInput>(positional).unwrap();
+            let input = CallInput::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                .unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -171,7 +188,8 @@ mod tests {
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<CallInput>(named).unwrap();
+            let input =
+                CallInput::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
             let expected = CallInput {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -221,8 +239,8 @@ mod tests {
 
             // Empty genesis block
             let header = BlockHeader::builder()
-                .with_number(BlockNumber::GENESIS)
-                .with_timestamp(BlockTimestamp::new_or_panic(0))
+                .number(BlockNumber::GENESIS)
+                .timestamp(BlockTimestamp::new_or_panic(0))
                 .finalize_with_hash(BlockHash(felt!("0xb00")));
             tx.insert_block_header(&header).unwrap();
 
@@ -234,9 +252,9 @@ mod tests {
                 .unwrap();
 
             let header = BlockHeader::builder()
-                .with_number(block1_number)
-                .with_timestamp(BlockTimestamp::new_or_panic(1))
-                .with_eth_l1_gas_price(GasPrice(1))
+                .number(block1_number)
+                .timestamp(BlockTimestamp::new_or_panic(1))
+                .eth_l1_gas_price(GasPrice(1))
                 .finalize_with_hash(block1_hash);
             tx.insert_block_header(&header).unwrap();
 
@@ -257,6 +275,7 @@ mod tests {
                 .unwrap();
 
             tx.commit().unwrap();
+            drop(db);
 
             let context =
                 RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet).with_storage(storage);
@@ -411,6 +430,10 @@ mod tests {
                         price_in_fri: Default::default(),
                     },
                     l1_data_gas_price: Default::default(),
+                    l2_gas_price: GasPrices {
+                        price_in_wei: last_block_header.eth_l2_gas_price,
+                        price_in_fri: last_block_header.strk_l2_gas_price,
+                    },
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,
@@ -451,7 +474,7 @@ mod tests {
                 .unwrap();
 
             let header = BlockHeader::builder()
-                .with_number(block_number)
+                .number(block_number)
                 .finalize_with_hash(block_hash!("0xb02"));
             tx.insert_block_header(&header).unwrap();
 
@@ -462,6 +485,7 @@ mod tests {
             tx.insert_state_update(block_number, &state_update).unwrap();
 
             tx.commit().unwrap();
+            drop(connection);
 
             let input = CallInput {
                 request: FunctionCall {

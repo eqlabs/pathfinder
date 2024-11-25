@@ -1,24 +1,44 @@
 use pathfinder_common::{ContractAddress, TransactionHash};
+use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
 use crate::context::RpcContext;
-use crate::v02::types::request::{
+use crate::types::request::{
     BroadcastedDeployAccountTransaction,
     BroadcastedDeployAccountTransactionV1,
 };
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Transaction {
-    #[serde(rename = "DEPLOY_ACCOUNT")]
     DeployAccount(BroadcastedDeployAccountTransaction),
 }
 
-#[derive(Debug, serde::Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+impl crate::dto::DeserializeForVersion for Transaction {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let tag: String = value.deserialize_serde("type")?;
+            if tag != "DEPLOY_ACCOUNT" {
+                return Err(serde_json::Error::custom("Invalid transaction type"));
+            }
+            BroadcastedDeployAccountTransaction::deserialize(value).map(Self::DeployAccount)
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     deploy_account_transaction: Transaction,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                deploy_account_transaction: value.deserialize("deploy_account_transaction")?,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,7 +51,7 @@ pub struct Output {
 pub enum AddDeployAccountTransactionError {
     ClassHashNotFound,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     DuplicateTransaction,
@@ -46,7 +66,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
         match value {
             ClassHashNotFound => Self::ClassHashNotFound,
             InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            InsufficientMaxFee => Self::InsufficientMaxFee,
+            InsufficientResourcesForValidate => Self::InsufficientResourcesForValidate,
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
             ValidationFailure(message) => Self::ValidationFailureV06(message),
             DuplicateTransaction => Self::DuplicateTransaction,
@@ -80,7 +100,7 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
                 AddDeployAccountTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeployAccountTransactionError::InsufficientMaxFee
+                AddDeployAccountTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeployAccountTransactionError::InvalidTransactionNonce
@@ -225,8 +245,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::BroadcastedDeployAccountTransactionV3;
-    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
+    use crate::dto::serialize::{self, SerializeForVersion};
+    use crate::types::request::BroadcastedDeployAccountTransactionV3;
+    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",
@@ -246,16 +267,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_input_named() {
-        let json = format!("{{\"deploy_account_transaction\":{INPUT_JSON}}}");
-        let input: Input = serde_json::from_str(&json).expect("parse named input");
+        let json: serde_json::Value =
+            serde_json::from_str(&format!("{{\"deploy_account_transaction\":{INPUT_JSON}}}"))
+                .unwrap();
+        let input: Input = crate::dto::Value::new(json, crate::RpcVersion::V07)
+            .deserialize()
+            .unwrap();
 
         assert_eq!(input, get_input());
     }
 
     #[tokio::test]
     async fn test_parse_input_positional() {
-        let json = format!("[{INPUT_JSON}]");
-        let input: Input = serde_json::from_str(&json).expect("parse positional input");
+        let json: serde_json::Value = serde_json::from_str(&format!("[{INPUT_JSON}]")).unwrap();
+        let input: Input = crate::dto::Value::new(json, crate::RpcVersion::V07)
+            .deserialize()
+            .unwrap();
 
         assert_eq!(input, get_input());
     }
@@ -277,7 +304,9 @@ mod tests {
         let error = AddDeployAccountTransactionError::from(starknet_error);
         let error = crate::error::ApplicationError::from(error);
         let error = crate::jsonrpc::RpcError::from(error);
-        let error = serde_json::to_value(error).unwrap();
+        let error = error
+            .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         let expected = serde_json::json!({
             "code": 63,
@@ -360,6 +389,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],

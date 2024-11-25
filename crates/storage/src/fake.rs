@@ -133,7 +133,7 @@ pub mod init {
 
     use super::Block;
 
-    pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> anyhow::Result<BlockHash>>;
+    pub type BlockHashFn = Box<dyn Fn(&BlockHeader) -> BlockHash>;
     pub type TransactionCommitmentFn =
         Box<dyn Fn(&[Transaction], StarknetVersion) -> anyhow::Result<TransactionCommitment>>;
     pub type ReceiptCommitmentFn = Box<dyn Fn(&[Receipt]) -> anyhow::Result<ReceiptCommitment>>;
@@ -151,7 +151,7 @@ pub mod init {
     impl Default for Config {
         fn default() -> Self {
             Self {
-                calculate_block_hash: Box::new(|_| Ok(Faker.fake())),
+                calculate_block_hash: Box::new(|_| Faker.fake()),
                 calculate_transaction_commitment: Box::new(|_, _| Ok(Faker.fake())),
                 calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
                 calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
@@ -222,7 +222,7 @@ pub mod init {
 
         for i in 0..n {
             let mut header: BlockHeader = Faker.fake_with_rng(rng);
-            header.starknet_version = StarknetVersion::new(0, 13, 2, 0);
+            header.starknet_version = StarknetVersion::V_0_13_2;
             header.number =
                 BlockNumber::new_or_panic(i.try_into().expect("u64 is at least as wide as usize"));
             header.storage_commitment = Default::default();
@@ -383,7 +383,6 @@ pub mod init {
                     SignedBlockHeader {
                         header:
                             BlockHeader {
-                                starknet_version,
                                 state_diff_length,
                                 state_diff_commitment,
                                 ..
@@ -424,8 +423,7 @@ pub mod init {
                 cairo_defs.extend(implicitly_declared);
 
                 *state_diff_length = state_update.state_diff_length();
-                *state_diff_commitment =
-                    state_update.compute_state_diff_commitment(*starknet_version);
+                *state_diff_commitment = state_update.compute_state_diff_commitment();
             }
 
             // Compute the block hash, update parent block hash with the correct value
@@ -436,7 +434,7 @@ pub mod init {
             } = init.get_mut(0).unwrap();
             header.header.parent_hash = BlockHash::ZERO;
 
-            header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
+            header.header.hash = (config.calculate_block_hash)(&header.header);
 
             state_update.block_hash = header.header.hash;
 
@@ -453,7 +451,7 @@ pub mod init {
 
                 header.header.parent_hash = parent_hash;
 
-                header.header.hash = (config.calculate_block_hash)(&header.header).unwrap();
+                header.header.hash = (config.calculate_block_hash)(&header.header);
 
                 state_update.block_hash = header.header.hash;
             }

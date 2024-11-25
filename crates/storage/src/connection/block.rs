@@ -23,8 +23,8 @@ impl Transaction<'_> {
         // Insert the header
         self.inner().execute(
         r"INSERT INTO block_headers 
-                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment,  state_diff_commitment,  state_diff_length)
-            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment, :state_diff_commitment, :state_diff_length)",
+                   ( number,  hash,  parent_hash,  storage_commitment,  timestamp,  eth_l1_gas_price,  strk_l1_gas_price,  eth_l1_data_gas_price,  strk_l1_data_gas_price,  eth_l2_gas_price,  strk_l2_gas_price,  sequencer_address,  version,  transaction_commitment,  event_commitment,  state_commitment,  class_commitment,  transaction_count,  event_count,  l1_da_mode,  receipt_commitment,  state_diff_commitment,  state_diff_length)
+            VALUES (:number, :hash, :parent_hash, :storage_commitment, :timestamp, :eth_l1_gas_price, :strk_l1_gas_price, :eth_l1_data_gas_price, :strk_l1_data_gas_price, :eth_l2_gas_price, :strk_l2_gas_price, :sequencer_address, :version, :transaction_commitment, :event_commitment, :state_commitment, :class_commitment, :transaction_count, :event_count, :l1_da_mode, :receipt_commitment, :state_diff_commitment, :state_diff_length)",
         named_params! {
             ":number": &header.number,
             ":hash": &header.hash,
@@ -35,6 +35,8 @@ impl Transaction<'_> {
             ":strk_l1_gas_price": &header.strk_l1_gas_price.to_be_bytes().as_slice(),
             ":eth_l1_data_gas_price": &header.eth_l1_data_gas_price.to_be_bytes().as_slice(),
             ":strk_l1_data_gas_price": &header.strk_l1_data_gas_price.to_be_bytes().as_slice(),
+            ":eth_l2_gas_price": &header.eth_l2_gas_price.to_be_bytes().as_slice(),
+            ":strk_l2_gas_price": &header.strk_l2_gas_price.to_be_bytes().as_slice(),
             ":sequencer_address": &header.sequencer_address,
             ":version": &header.starknet_version.as_u32(),
             ":transaction_commitment": &header.transaction_commitment,
@@ -114,6 +116,15 @@ impl Transaction<'_> {
     ///
     /// This includes block header, block body and state update information.
     pub fn purge_block(&self, block: BlockNumber) -> anyhow::Result<()> {
+        self.inner()
+            .execute(
+                r"
+                DELETE FROM starknet_events_filters_aggregate 
+                WHERE from_block <= :block AND to_block >= :block
+                ",
+                named_params![":block": &block],
+            )
+            .context("Deleting aggregate bloom filter")?;
         self.inner()
             .execute(
                 "DELETE FROM starknet_events_filters WHERE block_number = ?",
@@ -358,6 +369,27 @@ impl Transaction<'_> {
         Ok(header)
     }
 
+    /// Return all block headers from a range, inclusive on both ends.
+    pub fn block_range(
+        &self,
+        from: BlockNumber,
+        to: BlockNumber,
+    ) -> anyhow::Result<Vec<BlockHeader>> {
+        let sql =
+            "SELECT * FROM block_headers WHERE number >= $1 AND number <= $2 ORDER BY number ASC";
+        let mut stmt = self
+            .inner()
+            .prepare_cached(sql)
+            .context("Preparing block header query")?;
+        let mut headers = Vec::new();
+        let mut rows = stmt.query(params![&from, &to])?;
+        while let Some(row) = rows.next()? {
+            let header = parse_row_as_header(row)?;
+            headers.push(header);
+        }
+        Ok(headers)
+    }
+
     pub fn state_commitment(&self, block: BlockId) -> anyhow::Result<Option<StateCommitment>> {
         let sql = match block {
             BlockId::Latest => {
@@ -592,6 +624,12 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
     let strk_l1_data_gas_price = row
         .get_optional_gas_price("strk_l1_data_gas_price")?
         .unwrap_or(GasPrice::ZERO);
+    let eth_l2_gas_price = row
+        .get_optional_gas_price("eth_l2_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
+    let strk_l2_gas_price = row
+        .get_optional_gas_price("strk_l2_gas_price")?
+        .unwrap_or(GasPrice::ZERO);
     let sequencer_address = row.get_sequencer_address("sequencer_address")?;
     let transaction_commitment = row.get_transaction_commitment("transaction_commitment")?;
     let event_commitment = row.get_event_commitment("event_commitment")?;
@@ -616,6 +654,8 @@ fn parse_row_as_header(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockHeader>
         strk_l1_gas_price,
         eth_l1_data_gas_price,
         strk_l1_data_gas_price,
+        eth_l2_gas_price,
+        strk_l2_gas_price,
         sequencer_address,
         class_commitment,
         event_commitment,
@@ -667,6 +707,8 @@ mod tests {
             strk_l1_gas_price: GasPrice(33),
             eth_l1_data_gas_price: GasPrice(34),
             strk_l1_data_gas_price: GasPrice(35),
+            eth_l2_gas_price: GasPrice(36),
+            strk_l2_gas_price: GasPrice(36),
             sequencer_address: sequencer_address_bytes!(b"sequencer address genesis"),
             starknet_version: StarknetVersion::default(),
             class_commitment,
@@ -683,32 +725,36 @@ mod tests {
         };
         let header1 = genesis
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(12))
-            .with_eth_l1_gas_price(GasPrice(34))
-            .with_strk_l1_gas_price(GasPrice(35))
-            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
-            .with_event_commitment(event_commitment_bytes!(b"event commitment 1"))
-            .with_class_commitment(class_commitment_bytes!(b"class commitment 1"))
-            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
-            .with_calculated_state_commitment()
-            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
-            .with_l1_da_mode(L1DataAvailabilityMode::Calldata)
-            .with_receipt_commitment(receipt_commitment_bytes!(b"block 1 receipt commitment"))
+            .timestamp(BlockTimestamp::new_or_panic(12))
+            .eth_l1_gas_price(GasPrice(34))
+            .strk_l1_gas_price(GasPrice(35))
+            .eth_l2_gas_price(GasPrice(36))
+            .strk_l2_gas_price(GasPrice(37))
+            .sequencer_address(sequencer_address_bytes!(b"sequencer address 1"))
+            .event_commitment(event_commitment_bytes!(b"event commitment 1"))
+            .class_commitment(class_commitment_bytes!(b"class commitment 1"))
+            .storage_commitment(storage_commitment_bytes!(b"storage commitment 1"))
+            .calculated_state_commitment()
+            .transaction_commitment(transaction_commitment_bytes!(b"tx commitment 1"))
+            .l1_da_mode(L1DataAvailabilityMode::Calldata)
+            .receipt_commitment(receipt_commitment_bytes!(b"block 1 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 1 hash"));
 
         let header2 = header1
             .child_builder()
-            .with_eth_l1_gas_price(GasPrice(38))
-            .with_strk_l1_gas_price(GasPrice(39))
-            .with_timestamp(BlockTimestamp::new_or_panic(15))
-            .with_sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
-            .with_event_commitment(event_commitment_bytes!(b"event commitment 2"))
-            .with_class_commitment(class_commitment_bytes!(b"class commitment 2"))
-            .with_storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
-            .with_calculated_state_commitment()
-            .with_transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
-            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
-            .with_receipt_commitment(receipt_commitment_bytes!(b"block 2 receipt commitment"))
+            .eth_l1_gas_price(GasPrice(38))
+            .strk_l1_gas_price(GasPrice(39))
+            .eth_l2_gas_price(GasPrice(40))
+            .strk_l2_gas_price(GasPrice(41))
+            .timestamp(BlockTimestamp::new_or_panic(15))
+            .sequencer_address(sequencer_address_bytes!(b"sequencer address 2"))
+            .event_commitment(event_commitment_bytes!(b"event commitment 2"))
+            .class_commitment(class_commitment_bytes!(b"class commitment 2"))
+            .storage_commitment(storage_commitment_bytes!(b"storage commitment 2"))
+            .calculated_state_commitment()
+            .transaction_commitment(transaction_commitment_bytes!(b"tx commitment 2"))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .receipt_commitment(receipt_commitment_bytes!(b"block 2 receipt commitment"))
             .finalize_with_hash(block_hash_bytes!(b"block 2 hash"));
 
         let headers = vec![genesis, header1, header2];

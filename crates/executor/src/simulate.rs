@@ -22,6 +22,7 @@ use pathfinder_common::{
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
+use crate::error_stack::ErrorStack;
 use crate::transaction::transaction_hash;
 use crate::types::{
     DataAvailabilityResources,
@@ -51,6 +52,7 @@ enum CacheItem {
 struct ExecutionError {
     transaction_index: usize,
     error: String,
+    error_stack: ErrorStack,
 }
 
 impl From<ExecutionError> for TransactionExecutionError {
@@ -58,6 +60,7 @@ impl From<ExecutionError> for TransactionExecutionError {
         Self::ExecutionError {
             transaction_index: value.transaction_index,
             error: value.error,
+            error_stack: value.error_stack,
         }
     }
 }
@@ -116,7 +119,8 @@ pub fn simulate(
         match tx_info {
             Ok(tx_info) => {
                 if let Some(revert_error) = &tx_info.revert_error {
-                    tracing::trace!(%revert_error, "Transaction reverted");
+                    let revert_string = revert_error.to_string();
+                    tracing::trace!(revert_error=%revert_string, "Transaction reverted");
                 }
 
                 tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction simulation finished");
@@ -193,6 +197,7 @@ pub fn trace(
                 let err = ExecutionError {
                     transaction_index: transaction_idx,
                     error: e.to_string(),
+                    error_stack: e.into(),
                 };
                 let mut cache = cache.0.lock().unwrap();
                 let _ = sender.send(Err(err.clone()));
@@ -363,6 +368,9 @@ fn to_trace(
     let execution_resources = ExecutionResources {
         computation_resources,
         data_availability,
+        l1_gas: execution_info.transaction_receipt.gas.l1_gas,
+        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
+        l2_gas: 0,
     };
 
     match transaction_type {
@@ -384,7 +392,7 @@ fn to_trace(
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
             validate_invocation,
             execute_invocation: if let Some(reason) = execution_info.revert_error {
-                ExecuteInvocation::RevertedReason(reason)
+                ExecuteInvocation::RevertedReason(reason.to_string())
             } else {
                 ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
             },

@@ -492,12 +492,10 @@ fn resolve_signature(
             s: BlockCommitmentSignatureElem::ZERO,
         });
 
-    Ok(starknet_gateway_types::reply::BlockSignature::V1(
-        starknet_gateway_types::reply::BlockSignatureV1 {
-            block_hash: header.hash,
-            signature: [signature.r, signature.s],
-        },
-    ))
+    Ok(starknet_gateway_types::reply::BlockSignature {
+        block_hash: header.hash,
+        signature: [signature.r, signature.s],
+    })
 }
 
 #[tracing::instrument(level = "trace", skip(tx))]

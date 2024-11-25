@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 
-use serde::Serialize;
 use serde_json::{json, Value};
+
+use crate::dto::serialize;
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub enum RpcError {
@@ -40,19 +42,19 @@ impl RpcError {
         }
     }
 
-    pub fn message(&self) -> Cow<'_, str> {
+    pub fn message(&self, version: RpcVersion) -> Cow<'_, str> {
         match self {
             RpcError::ParseError(..) => "Parse error".into(),
             RpcError::InvalidRequest(..) => "Invalid request".into(),
             RpcError::MethodNotFound { .. } => "Method not found".into(),
             RpcError::InvalidParams(..) => "Invalid params".into(),
             RpcError::InternalError(_) => "Internal error".into(),
-            RpcError::ApplicationError(e) => e.to_string().into(),
+            RpcError::ApplicationError(e) => e.message(version).into(),
             RpcError::WebsocketSubscriptionClosed { .. } => "Websocket subscription closed".into(),
         }
     }
 
-    pub fn data(&self) -> Option<Value> {
+    pub fn data(&self, version: RpcVersion) -> Option<Value> {
         match self {
             RpcError::WebsocketSubscriptionClosed {
                 subscription_id,
@@ -61,7 +63,7 @@ impl RpcError {
                 "id": subscription_id,
                 "reason": reason,
             })),
-            RpcError::ApplicationError(e) => e.data(),
+            RpcError::ApplicationError(e) => e.data(version),
             RpcError::InternalError(_) => None,
             RpcError::MethodNotFound => None,
             RpcError::ParseError(e) | RpcError::InvalidRequest(e) | RpcError::InvalidParams(e) => {
@@ -73,19 +75,17 @@ impl RpcError {
     }
 }
 
-impl Serialize for RpcError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
+impl serialize::SerializeForVersion for RpcError {
+    fn serialize(
+        &self,
+        serializer: serialize::Serializer,
+    ) -> Result<serialize::Ok, serialize::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("code", &self.code())?;
+        obj.serialize_field("message", &self.message(serializer.version))?;
 
-        let mut obj = serializer.serialize_map(Some(2))?;
-        obj.serialize_entry("code", &self.code())?;
-        obj.serialize_entry("message", &self.message())?;
-
-        if let Some(data) = self.data() {
-            obj.serialize_entry("data", &data)?;
+        if let Some(data) = self.data(serializer.version) {
+            obj.serialize_field("data", &data)?;
         }
 
         obj.end()

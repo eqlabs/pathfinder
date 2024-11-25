@@ -120,10 +120,18 @@ impl Transaction<'_> {
             .prepare_cached(
                 r"INSERT INTO class_definitions (block_number, hash) VALUES (?1, ?2)
                 ON CONFLICT(hash)
-                    DO UPDATE SET block_number=excluded.block_number
-                    WHERE block_number IS NULL",
+                    DO UPDATE SET block_number=IFNULL(block_number,excluded.block_number)
+                RETURNING block_number",
             )
             .context("Preparing class hash and block number upsert statement")?;
+
+        let mut insert_redeclared_class = self
+            .inner()
+            .prepare_cached(
+                r"INSERT INTO redeclared_classes (class_hash, block_number) VALUES (?, ?)",
+            )
+            .context("Preparing redeclared class insert statement")?;
+
         // OR IGNORE is required to handle legacy syncing logic, where the casm
         // definition is inserted before the state update
         let mut insert_casm_hash = self
@@ -212,6 +220,20 @@ impl Transaction<'_> {
             .keys()
             .map(|sierra| ClassHash(sierra.0));
         let cairo = declared_cairo_classes.iter().copied();
+
+        let declared_classes = sierra.chain(cairo);
+
+        for class in declared_classes {
+            let declared_at = upsert_declared_at
+                .query_row(params![&block_number, &class], |row| {
+                    row.get_block_number(0)
+                })?;
+            if declared_at != block_number {
+                tracing::debug!(%declared_at, %block_number, class_hash=%class, "Re-declared class");
+                insert_redeclared_class.execute(params![&class, &block_number])?;
+            }
+        }
+
         // Older cairo 0 classes were never declared, but instead got implicitly
         // declared on first deployment. Until such classes disappear we need to
         // cater for them here. This works because the sql only updates the row
@@ -223,10 +245,10 @@ impl Transaction<'_> {
                 _ => None,
             });
 
-        let declared_classes = sierra.chain(cairo).chain(deployed);
-
-        for class in declared_classes {
-            upsert_declared_at.execute(params![&block_number, &class])?;
+        for class in deployed {
+            let _ = upsert_declared_at.query_row(params![&block_number, &class], |row| {
+                row.get_block_number(0)
+            })?;
         }
 
         for (sierra_hash, casm_hash) in declared_sierra_classes {
@@ -394,6 +416,22 @@ impl Transaction<'_> {
         }
 
         let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT class_hash FROM redeclared_classes WHERE block_number = ?")
+            .context("Preparing re-declared class query statement")?;
+
+        let mut redeclared_classes = stmt
+            .query_map(params![&block_number], |row| row.get_class_hash(0))
+            .context("Querying re-declared classes")?;
+        while let Some(class_hash) = redeclared_classes
+            .next()
+            .transpose()
+            .context("Iterating over re-declared classes")?
+        {
+            state_update = state_update.with_declared_cairo_class(class_hash);
+        }
+
+        let mut stmt = self
         .inner().prepare_cached(
             r"SELECT
                 cu1.contract_address AS contract_address,
@@ -480,13 +518,12 @@ impl Transaction<'_> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                r"
-                SELECT COUNT(block_number)
-                FROM canonical_blocks
-                LEFT JOIN class_definitions ON canonical_blocks.number = class_definitions.block_number
-                WHERE number >= ?
-                GROUP BY canonical_blocks.number
-                ORDER BY canonical_blocks.number ASC
+                r"SELECT
+                  (SELECT COUNT(block_number) FROM class_definitions WHERE block_number=block_headers.number) +
+                  (SELECT COUNT(block_number) FROM redeclared_classes WHERE block_number=block_headers.number)
+                FROM block_headers
+                WHERE block_headers.number >= ?
+                ORDER BY block_headers.number ASC
                 LIMIT ?",
             )
             .context("Preparing get number of declared classes statement")?;
@@ -531,6 +568,23 @@ impl Transaction<'_> {
             .context("Iterating over class declaration query rows")?
         {
             result.push(class_hash);
+        }
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT class_hash FROM redeclared_classes WHERE block_number = ?")
+            .context("Preparing re-declared class query")?;
+
+        let mut redeclared_classes = stmt
+            .query_map(params![&block_number], |row| row.get_class_hash(0))
+            .context("Querying re-declared classes")?;
+
+        while let Some(class_hash) = redeclared_classes
+            .next()
+            .transpose()
+            .context("Iterating over re-declared classes")?
+        {
+            result.push(class_hash)
         }
 
         Ok(Some(result))
@@ -1212,6 +1266,34 @@ mod tests {
             // non-existent state update
             let non_existent = tx.state_update((header.number + 1).into()).unwrap();
             assert_eq!(non_existent, None);
+        }
+
+        #[test]
+        fn redeclared_classes() {
+            let (mut db, _state_update, header) = setup();
+
+            let tx = db.transaction().unwrap();
+            let new_header = header
+                .child_builder()
+                .finalize_with_hash(block_hash!("0xabcdee"));
+            let new_state_update = StateUpdate::default()
+                .with_block_hash(new_header.hash)
+                .with_declared_cairo_class(CAIRO_HASH);
+            tx.insert_block_header(&new_header).unwrap();
+            tx.insert_state_update(new_header.number, &new_state_update)
+                .unwrap();
+
+            tx.commit().unwrap();
+
+            let tx = db.transaction().unwrap();
+
+            let result = tx.state_update(new_header.number.into()).unwrap().unwrap();
+            assert_eq!(result, new_state_update);
+
+            let result = tx
+                .declared_classes_counts(new_header.number, NonZeroUsize::new(1).unwrap())
+                .unwrap();
+            assert_eq!(result[0], 1);
         }
 
         #[test]

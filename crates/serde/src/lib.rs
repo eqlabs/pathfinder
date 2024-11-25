@@ -256,6 +256,7 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<8>(s).map(|b| Tip(u64::from_be_bytes(b)))
 );
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct U64AsHexStr(pub u64);
 
 impl serde::Serialize for U64AsHexStr {

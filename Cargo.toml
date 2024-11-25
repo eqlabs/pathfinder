@@ -5,6 +5,7 @@ exclude = [
     "utils/pathfinder-probe",
 ]
 members = [
+    "crates/block-hashes",
     "crates/common",
     "crates/compiler",
     "crates/crypto",
@@ -14,6 +15,7 @@ members = [
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
     "crates/gateway-types",
+    "crates/make-stream",
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_proto",
@@ -38,7 +40,7 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-version = "0.14.4"
+version = "0.15.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.80"
@@ -69,6 +71,7 @@ console-subscriber = "0.1.10"
 const-decoder = "0.3.0"
 const_format = "0.2.31"
 criterion = "0.5.1"
+dashmap = "6.1"
 env_logger = "0.10.0"
 fake = "2.8.0"
 ff = "0.13"
@@ -83,10 +86,10 @@ hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
 keccak-hash = "0.10.0"
-libp2p = { version = "0.53.0", default-features = false }
+libp2p = { version = "0.54.1", default-features = false }
 libp2p-identity = "0.2.2"
-libp2p-plaintext = "0.41.0"
-libp2p-swarm-test = "0.3.0"
+libp2p-plaintext = "0.42.0"
+libp2p-swarm-test = "0.4.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 mime = "0.3"
@@ -132,7 +135,7 @@ tokio-tungstenite = "0.21"
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
 tracing = "0.1.37"
-tracing-subscriber = "0.3.18"
+tracing-subscriber = { version = "0.3.18", features = ["json"] }
 unsigned-varint = "0.8.0"
 url = "2.4.1"
 vergen = { version = "8", default-features = false }

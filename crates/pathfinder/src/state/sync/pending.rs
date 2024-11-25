@@ -17,6 +17,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     storage: Storage,
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
+    fetch_casm_from_fgw: bool,
 ) {
     let mut prev_tx_count = 0;
     let mut prev_hash = BlockHash::default();
@@ -56,7 +57,14 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         // fail when querying a desync'd feeder gateway which isn't aware of the
         // new pending classes. In this case, ignore the new pending data as it
         // is incomplete.
-        match super::l2::download_new_classes(&state_update, &sequencer, storage.clone()).await {
+        match super::l2::download_new_classes(
+            &state_update,
+            &sequencer,
+            storage.clone(),
+            fetch_casm_from_fgw,
+        )
+        .await
+        {
             Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
             Ok(downloaded_classes) => {
                 if let Err(e) = super::l2::emit_events_for_downloaded_classes(
@@ -152,6 +160,7 @@ mod tests {
             ..Default::default()
         },
         l1_data_gas_price: Default::default(),
+        l2_gas_price: Default::default(),
         parent_hash: NEXT_BLOCK.parent_block_hash,
         sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
         status: Status::Pending,
@@ -197,6 +206,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 latest,
                 current,
+                false,
             )
             .await
         });
@@ -269,6 +279,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
+                false,
             )
             .await
         });

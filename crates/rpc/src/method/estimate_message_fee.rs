@@ -84,12 +84,14 @@ pub async fn estimate_message_fee(
     let result = result.pop().unwrap();
 
     Ok(Output(pathfinder_executor::types::FeeEstimate {
-        gas_consumed: result.gas_consumed,
-        gas_price: result.gas_price,
+        l1_gas_consumed: result.l1_gas_consumed,
+        l1_gas_price: result.l1_gas_price,
+        l1_data_gas_consumed: result.l1_data_gas_consumed,
+        l1_data_gas_price: result.l1_data_gas_price,
+        l2_gas_consumed: result.l2_gas_consumed,
+        l2_gas_price: result.l2_gas_price,
         overall_fee: result.overall_fee,
         unit: result.unit,
-        data_gas_consumed: result.data_gas_consumed,
-        data_gas_price: result.data_gas_price,
     }))
 }
 
@@ -155,7 +157,10 @@ pub enum EstimateMessageFeeError {
     Internal(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError {
+        revert_error: String,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
     Custom(anyhow::Error),
 }
 
@@ -169,8 +174,11 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateMessageFee
     fn from(c: pathfinder_executor::TransactionExecutionError) -> Self {
         use pathfinder_executor::TransactionExecutionError::*;
         match c {
-            ExecutionError { error, .. } => Self::ContractError {
+            ExecutionError {
+                error, error_stack, ..
+            } => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
+                revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -193,11 +201,13 @@ impl From<EstimateMessageFeeError> for ApplicationError {
         match value {
             EstimateMessageFeeError::BlockNotFound => ApplicationError::BlockNotFound,
             EstimateMessageFeeError::ContractNotFound => ApplicationError::ContractNotFound,
-            EstimateMessageFeeError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
-            }
+            EstimateMessageFeeError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => ApplicationError::ContractError {
+                revert_error: Some(revert_error),
+                revert_error_stack,
+            },
             EstimateMessageFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateMessageFeeError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -255,21 +265,21 @@ mod tests {
 
             if !matches!(mode, Setup::_SkipBlock) {
                 let header = BlockHeader::builder()
-                    .with_number(BlockNumber::GENESIS)
-                    .with_timestamp(BlockTimestamp::new_or_panic(0))
-                    .with_l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
-                    .with_strk_l1_data_gas_price(GasPrice(0x10))
-                    .with_eth_l1_data_gas_price(GasPrice(0x12))
+                    .number(BlockNumber::GENESIS)
+                    .timestamp(BlockTimestamp::new_or_panic(0))
+                    .l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
+                    .strk_l1_data_gas_price(GasPrice(0x10))
+                    .eth_l1_data_gas_price(GasPrice(0x12))
                     .finalize_with_hash(BlockHash(felt!("0xb00")));
                 tx.insert_block_header(&header).unwrap();
 
                 let header = BlockHeader::builder()
-                    .with_number(block1_number)
-                    .with_timestamp(BlockTimestamp::new_or_panic(1))
-                    .with_eth_l1_gas_price(GasPrice(2))
-                    .with_eth_l1_data_gas_price(GasPrice(1))
-                    .with_starknet_version(StarknetVersion::new(0, 13, 1, 0))
-                    .with_l1_da_mode(L1DataAvailabilityMode::Blob)
+                    .number(block1_number)
+                    .timestamp(BlockTimestamp::new_or_panic(1))
+                    .eth_l1_gas_price(GasPrice(2))
+                    .eth_l1_data_gas_price(GasPrice(1))
+                    .starknet_version(StarknetVersion::new(0, 13, 1, 0))
+                    .l1_da_mode(L1DataAvailabilityMode::Blob)
                     .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
             }
@@ -309,10 +319,12 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = super::Output(pathfinder_executor::types::FeeEstimate {
-            gas_consumed: 14647.into(),
-            gas_price: 2.into(),
-            data_gas_consumed: 128.into(),
-            data_gas_price: 1.into(),
+            l1_gas_consumed: 14647.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 128.into(),
+            l1_data_gas_price: 1.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 0.into(),
             overall_fee: 29422.into(),
             unit: pathfinder_executor::types::PriceUnit::Wei,
         });

@@ -21,6 +21,12 @@ pub struct TraceTransactionInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for TraceTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TraceTransactionOutput(pub TransactionTrace);
 
@@ -30,7 +36,6 @@ pub enum TraceTransactionError {
     Custom(anyhow::Error),
     TxnHashNotFound,
     NoTraceAvailable(TraceError),
-    ContractError { revert_error: String },
 }
 
 impl From<ExecutionStateError> for TraceTransactionError {
@@ -49,6 +54,7 @@ impl From<TransactionExecutionError> for TraceTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
                 "Transaction execution failed at index {}: {}",
                 transaction_index,
@@ -89,11 +95,6 @@ impl From<TraceTransactionError> for ApplicationError {
             TraceTransactionError::TxnHashNotFound => ApplicationError::TxnHashNotFound,
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
-            }
-            TraceTransactionError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
             }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
             TraceTransactionError::Custom(e) => ApplicationError::Custom(e),
@@ -256,7 +257,14 @@ pub async fn trace_transaction_impl(
 
 #[cfg(test)]
 pub mod tests {
-    use pathfinder_common::{block_hash, transaction_hash, BlockHeader, Chain, SequencerAddress};
+    use pathfinder_common::{
+        block_hash,
+        transaction_hash,
+        BlockHeader,
+        BlockNumber,
+        Chain,
+        SequencerAddress,
+    };
     use pathfinder_crypto::Felt;
 
     use super::super::trace_block_transactions::tests::{
@@ -304,6 +312,19 @@ pub mod tests {
         let context = RpcContext::for_tests_on(Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`.
+        (0..619596)
+            .collect::<Vec<_>>()
+            .chunks(pathfinder_storage::BLOCK_RANGE_LEN as usize)
+            .map(|range| *range.last().unwrap() as u64)
+            .for_each(|block| {
+                let block = BlockNumber::new_or_panic(block);
+                transaction
+                    .insert_transaction_data(block, &[], None)
+                    .unwrap();
+            });
+
         let block: starknet_gateway_types::reply::Block =
             serde_json::from_str(include_str!("../../../fixtures/mainnet-619596.json")).unwrap();
         let transaction_count = block.transactions.len();
@@ -321,6 +342,8 @@ pub mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
@@ -362,6 +385,7 @@ pub mod tests {
             .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
+        drop(connection);
 
         // The tracing succeeds.
         trace_transaction(

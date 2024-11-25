@@ -33,13 +33,29 @@ pub trait DeserializeForVersion: Sized {
 #[derive(Debug)]
 pub struct Value {
     data: serde_json::Value,
-    version: RpcVersion,
+    pub version: RpcVersion,
     /// The name of the field that this value was deserialized from. None if
     /// this is a root value.
     name: Option<&'static str>,
 }
 
 impl Value {
+    pub fn new(data: serde_json::Value, version: RpcVersion) -> Self {
+        Self {
+            data,
+            version,
+            name: None,
+        }
+    }
+
+    pub fn is_string(&self) -> bool {
+        self.data.is_string()
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.data.is_null()
+    }
+
     pub fn deserialize<T: DeserializeForVersion>(self) -> Result<T, serde_json::Error> {
         T::deserialize(self)
     }
@@ -55,32 +71,49 @@ impl Value {
         self,
         cb: impl FnOnce(&mut Map) -> Result<T, serde_json::Error>,
     ) -> Result<T, serde_json::Error> {
-        let serde_json::Value::Object(map) = self.data else {
-            return Err(serde_json::Error::custom(match self.name {
-                Some(name) => format!("expected object for \"{name}\""),
-                None => "expected object".to_string(),
-            }));
+        let data = match self.data {
+            serde_json::Value::Object(map) => MapOrArray::Map(map),
+            serde_json::Value::Array(values) => MapOrArray::Array { values, offset: 0 },
+            _ => {
+                return Err(serde_json::Error::custom(match self.name {
+                    Some(name) => format!("expected object or array for \"{name}\""),
+                    None => "expected object or array".to_string(),
+                }))
+            }
         };
         let mut map = Map {
-            data: map,
+            data,
             version: self.version,
         };
         let result = cb(&mut map)?;
-        if !map.data.is_empty() {
-            let fields = map
-                .data
-                .keys()
-                .map(|key| format!("\"{key}\""))
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(serde_json::Error::custom(format!(
-                "unexpected field{}: {fields}{}",
-                if map.data.len() == 1 { "" } else { "s" },
-                match self.name {
-                    Some(name) => format!(" for \"{name}\""),
-                    None => Default::default(),
-                },
-            )));
+        match map.data {
+            MapOrArray::Map(map) => {
+                if !map.is_empty() {
+                    let fields = map
+                        .keys()
+                        .map(|key| format!("\"{key}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(serde_json::Error::custom(format!(
+                        "unexpected field{}: {fields}{}",
+                        if map.len() == 1 { "" } else { "s" },
+                        match self.name {
+                            Some(name) => format!(" for \"{name}\""),
+                            None => Default::default(),
+                        },
+                    )));
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                if offset < values.len() {
+                    return Err(serde_json::Error::custom(format!(
+                        "expected {} field{}, got {}",
+                        values.len(),
+                        if values.len() == 1 { "" } else { "s" },
+                        offset,
+                    )));
+                }
+            }
         }
         Ok(result)
     }
@@ -109,25 +142,93 @@ impl Value {
 }
 
 pub struct Map {
-    data: serde_json::value::Map<String, serde_json::Value>,
+    data: MapOrArray,
     version: RpcVersion,
 }
 
+enum MapOrArray {
+    Map(serde_json::value::Map<String, serde_json::Value>),
+    Array {
+        values: Vec<serde_json::Value>,
+        offset: usize,
+    },
+}
+
 impl Map {
+    pub fn contains_key(&self, key: &'static str) -> bool {
+        match &self.data {
+            MapOrArray::Map(data) => data.contains_key(key),
+            MapOrArray::Array { values, offset } => false,
+        }
+    }
+
     pub fn deserialize<T: DeserializeForVersion>(
         &mut self,
         key: &'static str,
     ) -> Result<T, serde_json::Error> {
-        let value = self
-            .data
-            .remove(key)
-            .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?;
-        Value {
-            data: value,
-            name: Some(key),
-            version: self.version,
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key).ok_or_else(|| {
+                    serde_json::Error::custom(format!("missing field: \"{key}\""))
+                })?;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize()
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values
+                    .get_mut(*offset)
+                    .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?
+                    .take();
+                *offset += 1;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize()
+            }
         }
-        .deserialize()
+    }
+
+    pub fn deserialize_optional<T: DeserializeForVersion>(
+        &mut self,
+        key: &'static str,
+    ) -> Result<Option<T>, serde_json::Error> {
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key);
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        Ok(Some(value.deserialize()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values.get_mut(*offset).map(|value| value.take());
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        *offset += 1;
+                        Ok(Some(value.deserialize()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
     }
 
     // TODO This should be removed once all existing DTOs have been migrated.
@@ -135,16 +236,70 @@ impl Map {
         &mut self,
         key: &'static str,
     ) -> Result<T, serde_json::Error> {
-        let value = self
-            .data
-            .remove(key)
-            .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?;
-        Value {
-            data: value,
-            name: Some(key),
-            version: self.version,
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key).ok_or_else(|| {
+                    serde_json::Error::custom(format!("missing field: \"{key}\""))
+                })?;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_serde()
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values
+                    .get_mut(*offset)
+                    .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?
+                    .take();
+                *offset += 1;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_serde()
+            }
         }
-        .deserialize_serde()
+    }
+
+    // TODO This should be removed once all existing DTOs have been migrated.
+    pub fn deserialize_optional_serde<T: for<'a> serde::Deserialize<'a>>(
+        &mut self,
+        key: &'static str,
+    ) -> Result<Option<T>, serde_json::Error> {
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key);
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        Ok(Some(value.deserialize_serde()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values.get_mut(*offset).map(|value| value.take());
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        *offset += 1;
+                        Ok(Some(value.deserialize_serde()?))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
     }
 
     pub fn deserialize_map<T>(
@@ -152,16 +307,70 @@ impl Map {
         key: &'static str,
         cb: impl Fn(&mut Map) -> Result<T, serde_json::Error>,
     ) -> Result<T, serde_json::Error> {
-        let value = self
-            .data
-            .remove(key)
-            .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?;
-        Value {
-            data: value,
-            name: Some(key),
-            version: self.version,
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key).ok_or_else(|| {
+                    serde_json::Error::custom(format!("missing field: \"{key}\""))
+                })?;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_map(cb)
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values
+                    .get_mut(*offset)
+                    .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?
+                    .take();
+                *offset += 1;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_map(cb)
+            }
         }
-        .deserialize_map(cb)
+    }
+
+    pub fn deserialize_optional_map<T>(
+        &mut self,
+        key: &'static str,
+        cb: impl Fn(&mut Map) -> Result<T, serde_json::Error>,
+    ) -> Result<Option<T>, serde_json::Error> {
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key);
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        Ok(Some(value.deserialize_map(cb)?))
+                    }
+                    None => Ok(None),
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values.get_mut(*offset).map(|value| value.take());
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        *offset += 1;
+                        Ok(Some(value.deserialize_map(cb)?))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
     }
 
     pub fn deserialize_array<T>(
@@ -169,15 +378,69 @@ impl Map {
         key: &'static str,
         cb: impl Fn(Value) -> Result<T, serde_json::Error>,
     ) -> Result<Vec<T>, serde_json::Error> {
-        let value = self
-            .data
-            .remove(key)
-            .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?;
-        Value {
-            data: value,
-            name: Some(key),
-            version: self.version,
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key).ok_or_else(|| {
+                    serde_json::Error::custom(format!("missing field: \"{key}\""))
+                })?;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_array(cb)
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values
+                    .get_mut(*offset)
+                    .ok_or_else(|| serde_json::Error::custom(format!("missing field: \"{key}\"")))?
+                    .take();
+                *offset += 1;
+                Value {
+                    data: value,
+                    name: Some(key),
+                    version: self.version,
+                }
+                .deserialize_array(cb)
+            }
         }
-        .deserialize_array(cb)
+    }
+
+    pub fn deserialize_optional_array<T>(
+        &mut self,
+        key: &'static str,
+        cb: impl Fn(Value) -> Result<T, serde_json::Error>,
+    ) -> Result<Option<Vec<T>>, serde_json::Error> {
+        match &mut self.data {
+            MapOrArray::Map(data) => {
+                let value = data.remove(key);
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        Ok(Some(value.deserialize_array(cb)?))
+                    }
+                    None => Ok(None),
+                }
+            }
+            MapOrArray::Array { values, offset } => {
+                let value = values.get_mut(*offset).map(|value| value.take());
+                match value {
+                    Some(value) => {
+                        let value = Value {
+                            data: value,
+                            name: Some(key),
+                            version: self.version,
+                        };
+                        *offset += 1;
+                        Ok(Some(value.deserialize_array(cb)?))
+                    }
+                    None => Ok(None),
+                }
+            }
+        }
     }
 }

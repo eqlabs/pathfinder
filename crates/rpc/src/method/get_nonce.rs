@@ -3,11 +3,21 @@ use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 
 use crate::context::RpcContext;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
     contract_address: ContractAddress,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                contract_address: value.deserialize("contract_address").map(ContractAddress)?,
+            })
+        })
+    }
 }
 
 #[derive(Debug)]

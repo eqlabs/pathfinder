@@ -14,11 +14,14 @@ use pathfinder_crypto::Felt;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
+pub mod casm_class;
 pub mod class_definition;
 pub mod consts;
+pub mod error;
 pub mod event;
 pub mod hash;
 mod header;
+mod l1;
 mod macros;
 pub mod prelude;
 pub mod receipt;
@@ -29,6 +32,7 @@ pub mod transaction;
 pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
+pub use l1::{L1BlockNumber, L1TransactionHash};
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 
@@ -459,6 +463,12 @@ impl StarknetVersion {
         let [a, b, c, d] = version.to_le_bytes();
         StarknetVersion(a, b, c, d)
     }
+
+    pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
+
+    // TODO: version at which block hash definition changes taken from
+    // Starkware implementation but might yet change
+    pub const V_0_13_4: Self = Self::new(0, 13, 4, 0);
 }
 
 impl FromStr for StarknetVersion {
@@ -508,7 +518,6 @@ macros::felt_newtypes!(
         CallResultValue,
         ClassCommitment,
         ClassCommitmentLeafHash,
-        ClassHash,
         ConstructorParam,
         ContractAddressSalt,
         ContractNonce,
@@ -536,9 +545,10 @@ macros::felt_newtypes!(
         TransactionSignatureElem,
     ];
     [
+        CasmHash,
+        ClassHash,
         ContractAddress,
         SierraHash,
-        CasmHash,
         StorageAddress,
     ]
 );

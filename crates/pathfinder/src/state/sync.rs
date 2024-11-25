@@ -4,14 +4,13 @@ pub mod l2;
 mod pending;
 pub mod revert;
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::state_update::{ContractUpdate, SystemContractUpdate};
+use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
@@ -23,8 +22,8 @@ use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::contract_state::update_contract_state;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
-use pathfinder_rpc::v02::types::syncing::{self, NumberedBlock, Syncing};
-use pathfinder_rpc::{PendingData, SyncState, TopicBroadcasters};
+use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
+use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
@@ -34,6 +33,13 @@ use tokio::sync::watch::Sender as WatchSender;
 
 use crate::state::l1::L1SyncContext;
 use crate::state::l2::{BlockChain, L2SyncContext};
+
+/// Delay before restarting L1 or L2 tasks if they fail. This delay helps
+/// prevent DoS if these tasks are crashing.
+#[cfg(not(test))]
+pub const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
+#[cfg(test)]
+pub const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::ZERO;
 
 #[derive(Debug)]
 pub enum SyncEvent {
@@ -82,12 +88,14 @@ pub struct SyncContext<G, E> {
     pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
     pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 impl<G, E> From<&SyncContext<G, E>> for L1SyncContext<E>
@@ -117,6 +125,7 @@ where
             storage: value.storage.clone(),
             sequencer_public_key: value.sequencer_public_key,
             fetch_concurrency: value.fetch_concurrency,
+            fetch_casm_from_fgw: value.fetch_casm_from_fgw,
         }
     }
 }
@@ -190,12 +199,14 @@ where
         pending_data,
         block_validation_mode: _,
         websocket_txs,
+        notifications,
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
         gossiper,
         sequencer_public_key: _,
         fetch_concurrency: _,
+        fetch_casm_from_fgw,
     } = context;
 
     let mut db_conn = storage
@@ -204,6 +215,7 @@ where
 
     let (event_sender, event_receiver) = mpsc::channel(8);
 
+    // Get the latest block from the database
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l2_head = tx
@@ -214,11 +226,13 @@ where
         Ok(l2_head)
     })?;
 
+    // Get the latest block from the sequencer
     let gateway_latest = sequencer
         .head()
         .await
         .context("Fetching latest block from gateway")?;
 
+    // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
     let mut latest_handle = tokio::spawn(l2::poll_latest(
         sequencer.clone(),
@@ -245,6 +259,7 @@ where
     // open even if the producer task fails.
     let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
+    // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
@@ -268,6 +283,7 @@ where
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         websocket_txs,
+        notifications,
     };
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
 
@@ -278,14 +294,8 @@ where
         storage.clone(),
         rx_latest.clone(),
         rx_current.clone(),
+        fetch_casm_from_fgw,
     ));
-
-    /// Delay before restarting L1 or L2 tasks if they fail. This delay helps
-    /// prevent DoS if these tasks are crashing.
-    #[cfg(not(test))]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::from_secs(60);
-    #[cfg(test)]
-    const RESET_DELAY_ON_FAILURE: std::time::Duration = std::time::Duration::ZERO;
 
     loop {
         tokio::select! {
@@ -299,6 +309,7 @@ where
                     storage.clone(),
                     rx_latest.clone(),
                     rx_current.clone(),
+                    fetch_casm_from_fgw,
                 ));
             },
             _ = &mut latest_handle => {
@@ -440,6 +451,7 @@ struct ConsumerContext {
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub websocket_txs: Option<TopicBroadcasters>,
+    pub notifications: Notifications,
 }
 
 async fn consumer(
@@ -453,6 +465,7 @@ async fn consumer(
         pending_data,
         verify_tree_hashes,
         mut websocket_txs,
+        mut notifications,
     } = context;
 
     let mut last_block_start = std::time::Instant::now();
@@ -519,6 +532,7 @@ async fn consumer(
                     verify_tree_hashes,
                     storage.clone(),
                     &mut websocket_txs,
+                    &mut notifications,
                 )
                 .await
                 .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -594,7 +608,7 @@ async fn consumer(
             }
             Reorg(reorg_tail) => {
                 tracing::trace!("Reorg L2 state to block {}", reorg_tail);
-                l2_reorg(&mut db_conn, reorg_tail)
+                l2_reorg(&mut db_conn, reorg_tail, &mut notifications)
                     .await
                     .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
@@ -824,7 +838,11 @@ async fn l1_update(
             }
         }
 
-        transaction.commit().context("Commit database transaction")
+        transaction
+            .commit()
+            .context("Commit database transaction")?;
+
+        Ok(())
     })
 }
 
@@ -844,6 +862,7 @@ async fn l2_update(
     // parallel contract state updates
     storage: Storage,
     websocket_txs: &mut Option<TopicBroadcasters>,
+    notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
@@ -851,11 +870,7 @@ async fn l2_update(
             .context("Create database transaction")?;
         let (storage_commitment, class_commitment) = update_starknet_state(
             &transaction,
-            StarknetStateUpdate {
-                contract_updates: &state_update.contract_updates,
-                system_contract_updates: &state_update.system_contract_updates,
-                declared_sierra_classes: &state_update.declared_sierra_classes,
-            },
+            (&state_update).into(),
             verify_tree_hashes,
             block.block_number,
             storage,
@@ -893,6 +908,8 @@ async fn l2_update(
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             // Default value for Starknet <0.13.1 is zero
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
@@ -967,7 +984,7 @@ async fn l2_update(
             .context("Commit database transaction")?;
 
         if let Some(sender) = websocket_txs {
-            if let Err(e) = sender.new_head.send_if_receiving(header.into()) {
+            if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
                 tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
                 // Disable websocket entirely so that the closed channel doesn't spam this
                 // error. It is unlikely that any error here wouldn't simply repeat
@@ -976,7 +993,7 @@ async fn l2_update(
                 return Ok(());
             }
             if sender.l2_blocks.receiver_count() > 0 {
-                if let Err(e) = sender.l2_blocks.send(block.into()) {
+                if let Err(e) = sender.l2_blocks.send(block.clone().into()) {
                     tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
                     *websocket_txs = None;
                     return Ok(());
@@ -984,13 +1001,30 @@ async fn l2_update(
             }
         }
 
+        notifications
+            .block_headers
+            .send(header.into())
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+        notifications
+            .l2_blocks
+            .send(block.into())
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+
         Ok(())
     })?;
 
     Ok(())
 }
 
-async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyhow::Result<()> {
+async fn l2_reorg(
+    connection: &mut Connection,
+    reorg_tail: BlockNumber,
+    notifications: &mut Notifications,
+) -> anyhow::Result<()> {
     tokio::task::block_in_place(move || {
         let transaction = connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -1001,6 +1035,15 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             .context("Querying latest block number")?
             .context("Latest block number is none during reorg")?
             .0;
+
+        let reorg_tail_hash = transaction
+            .block_hash(reorg_tail.into())
+            .context("Fetching first block hash")?
+            .context("Expected first block hash to exist")?;
+        let head_hash = transaction
+            .block_hash(head.into())
+            .context("Fetching last block hash")?
+            .context("Expected last block hash to exist")?;
 
         transaction
             .increment_reorg_counter()
@@ -1039,6 +1082,11 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             head -= 1;
         }
 
+        #[cfg(feature = "aggregate_bloom")]
+        transaction
+            .reconstruct_running_aggregate()
+            .context("Reconstructing running aggregate bloom")?;
+
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
         if let Some(l1_l2_head) = l1_l2_head {
@@ -1055,19 +1103,32 @@ async fn l2_reorg(connection: &mut Connection, reorg_tail: BlockNumber) -> anyho
             }
         }
 
-        transaction.commit().context("Commit database transaction")
-    })
-}
+        transaction
+            .commit()
+            .context("Commit database transaction")?;
 
-pub struct StarknetStateUpdate<'a> {
-    pub contract_updates: &'a HashMap<ContractAddress, ContractUpdate>,
-    pub system_contract_updates: &'a HashMap<ContractAddress, SystemContractUpdate>,
-    pub declared_sierra_classes: &'a HashMap<SierraHash, CasmHash>,
+        notifications
+            .reorgs
+            .send(
+                Reorg {
+                    first_block_number: reorg_tail,
+                    first_block_hash: reorg_tail_hash,
+                    last_block_number: head,
+                    last_block_hash: head_hash,
+                }
+                .into(),
+            )
+            // Ignore errors in case nobody is listening. New listeners may subscribe in the
+            // future.
+            .ok();
+
+        Ok(())
+    })
 }
 
 pub fn update_starknet_state(
     transaction: &Transaction<'_>,
-    state_update: StarknetStateUpdate<'_>,
+    state_update: StateUpdateRef<'_>,
     verify_hashes: bool,
     block: BlockNumber,
     // we need this so that we can create extra read-only transactions for
@@ -1102,9 +1163,9 @@ pub fn update_starknet_state(
                         };
                         let transaction = connection.transaction()?;
                         update_contract_state(
-                            *contract_address,
-                            &update.storage,
-                            update.nonce,
+                            **contract_address,
+                            update.storage,
+                            *update.nonce,
                             update.class.as_ref().map(|x| x.class_hash()),
                             &transaction,
                             verify_hashes,
@@ -1134,7 +1195,7 @@ pub fn update_starknet_state(
     for (contract, update) in state_update.system_contract_updates {
         let update_result = update_contract_state(
             *contract,
-            &update.storage,
+            update.storage,
             None,
             None,
             transaction,
@@ -1334,7 +1395,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn block_updates() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1359,6 +1424,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1382,7 +1448,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1408,6 +1478,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1433,7 +1504,11 @@ mod tests {
         // A bug caused reorg'd block numbers to be skipped. This
         // was due to the expected block number not being updated
         // when handling the reorg.
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1471,6 +1546,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1493,7 +1569,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn reorg_to_genesis() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
@@ -1519,6 +1599,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1531,7 +1612,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_cairo_contract() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1556,6 +1641,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1569,7 +1655,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn new_sierra_contract() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
         let mut connection = storage.connection().unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
@@ -1596,6 +1686,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());
@@ -1609,7 +1700,11 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn consumer_should_ignore_duplicate_blocks() {
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
 
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
 
@@ -1639,6 +1734,7 @@ mod tests {
             pending_data: tx,
             verify_tree_hashes: false,
             websocket_txs: None,
+            notifications: Default::default(),
         };
 
         let (tx, _rx) = tokio::sync::watch::channel(Default::default());

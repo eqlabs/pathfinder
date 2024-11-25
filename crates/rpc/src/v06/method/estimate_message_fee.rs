@@ -23,7 +23,10 @@ pub enum EstimateMessageFeeError {
     Internal(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
-    ContractError { revert_error: String },
+    ContractError {
+        revert_error: String,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
     Custom(anyhow::Error),
 }
 
@@ -37,8 +40,11 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateMessageFee
     fn from(c: pathfinder_executor::TransactionExecutionError) -> Self {
         use pathfinder_executor::TransactionExecutionError::*;
         match c {
-            ExecutionError { error, .. } => Self::ContractError {
+            ExecutionError {
+                error, error_stack, ..
+            } => Self::ContractError {
                 revert_error: format!("Execution error: {}", error),
+                revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -61,11 +67,13 @@ impl From<EstimateMessageFeeError> for ApplicationError {
         match value {
             EstimateMessageFeeError::BlockNotFound => ApplicationError::BlockNotFound,
             EstimateMessageFeeError::ContractNotFound => ApplicationError::ContractNotFound,
-            EstimateMessageFeeError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
-            }
+            EstimateMessageFeeError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => ApplicationError::ContractError {
+                revert_error: Some(revert_error),
+                revert_error_stack,
+            },
             EstimateMessageFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateMessageFeeError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -77,6 +85,12 @@ impl From<EstimateMessageFeeError> for ApplicationError {
 pub struct EstimateMessageFeeInput {
     pub message: MsgFromL1,
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for EstimateMessageFeeInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
 }
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -95,12 +109,14 @@ pub async fn estimate_message_fee(
         estimate_message_fee_impl(context, input, L1BlobDataAvailability::Disabled).await?;
 
     Ok(FeeEstimate {
-        gas_consumed: result.gas_consumed,
-        gas_price: result.gas_price,
+        l1_gas_consumed: result.l1_gas_consumed,
+        l1_gas_price: result.l1_gas_price,
+        l1_data_gas_consumed: Some(result.l1_data_gas_consumed),
+        l1_data_gas_price: Some(result.l1_data_gas_price),
+        l2_gas_consumed: result.l2_gas_consumed,
+        l2_gas_price: result.l2_gas_price,
         overall_fee: result.overall_fee,
         unit: result.unit.into(),
-        data_gas_consumed: None,
-        data_gas_price: None,
     })
 }
 
@@ -347,15 +363,15 @@ mod tests {
 
             if !matches!(mode, Setup::SkipBlock) {
                 let header = BlockHeader::builder()
-                    .with_number(BlockNumber::GENESIS)
-                    .with_timestamp(BlockTimestamp::new_or_panic(0))
+                    .number(BlockNumber::GENESIS)
+                    .timestamp(BlockTimestamp::new_or_panic(0))
                     .finalize_with_hash(BlockHash(felt!("0xb00")));
                 tx.insert_block_header(&header).unwrap();
 
                 let header = BlockHeader::builder()
-                    .with_number(block1_number)
-                    .with_timestamp(BlockTimestamp::new_or_panic(1))
-                    .with_eth_l1_gas_price(GasPrice(1))
+                    .number(block1_number)
+                    .timestamp(BlockTimestamp::new_or_panic(1))
+                    .eth_l1_gas_price(GasPrice(1))
                     .finalize_with_hash(block1_hash);
                 tx.insert_block_header(&header).unwrap();
             }
@@ -397,12 +413,14 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee() {
         let expected = FeeEstimate {
-            gas_consumed: 16302.into(),
-            gas_price: 1.into(),
+            l1_gas_consumed: 16302.into(),
+            l1_gas_price: 1.into(),
+            l1_data_gas_consumed: Some(0.into()),
+            l1_data_gas_price: Some(1.into()),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 0.into(),
             overall_fee: 16302.into(),
             unit: PriceUnit::Wei,
-            data_gas_consumed: None,
-            data_gas_price: None,
         };
 
         let rpc = setup(Setup::Full).await.expect("RPC context");

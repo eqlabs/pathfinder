@@ -1,6 +1,7 @@
 pub(crate) mod call;
 pub(crate) mod class;
 pub(crate) mod error;
+pub(crate) mod error_stack;
 pub(crate) mod estimate;
 pub(crate) mod execution_state;
 pub(crate) mod felt;
@@ -19,6 +20,7 @@ pub use blockifier::versioned_constants::VersionedConstants;
 pub use call::call;
 pub use class::{parse_casm_definition, parse_deprecated_class_definition};
 pub use error::{CallError, TransactionExecutionError};
+pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;
 pub use execution_state::{
     ExecutionState,

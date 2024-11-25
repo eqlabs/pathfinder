@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::channel::mpsc as fmpsc;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::common::{Direction, Iteration};
@@ -22,7 +22,7 @@ use p2p_proto::state::{
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
     BlockNumber,
     CasmHash,
@@ -37,7 +37,6 @@ use pathfinder_common::{
     TransactionIndex,
 };
 use tokio::sync::{mpsc, RwLock};
-use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(test)]
 mod fixtures;
@@ -61,8 +60,9 @@ use crate::client::types::{
     ClassDefinition,
     ClassDefinitionsError,
     EventsForBlockByTransaction,
-    IncorrectStateDiffCount,
+    EventsResponseStreamFailure,
     Receipt,
+    StateDiffsError,
     TransactionData,
 };
 use crate::peer_data::PeerData;
@@ -116,14 +116,32 @@ impl Client {
                 return peers.iter().copied().collect::<Vec<_>>();
             }
 
-            let mut peers = self
-                .inner
-                .get_closest_peers(PeerId::random())
-                .await
-                .unwrap_or_default();
+            // TODO known peers abstraction should not poll
+            //
+            // Loop until we find at least a single peer.
+            // 1. After the process is spawned the first outgoing query may start earlier
+            //    than the `kad` protocol is pushed in from `identify/push` resulting in a
+            //    `kind: ConnectionRefused, error: "protocol not supported"` error.
+            // 2. Initially there may be no other peers but maybe we're running a local test
+            //    and the other peer pops up in a few seconds.
+            // Either way we don't want to wait for the bootstrap timeout or the
+            // `Decaying::DEFAULT_TIMEOUT`, whichever kicks in first.
+            let peers = loop {
+                let mut peers = self
+                    .inner
+                    .get_closest_peers(PeerId::random())
+                    .await
+                    .unwrap_or_default();
+                // We could be on the list
+                peers.remove(self.inner.peer_id());
 
-            // We could be on the list
-            peers.remove(self.inner.peer_id());
+                if peers.is_empty() {
+                    tracing::info!("No peers found in DHT, retrying");
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                } else {
+                    break peers;
+                }
+            };
 
             let peers_vec = peers.iter().copied().collect::<Vec<_>>();
 
@@ -131,6 +149,7 @@ impl Client {
             peers_vec
         };
         peers.shuffle(&mut rand::thread_rng());
+
         peers
     }
 }
@@ -278,7 +297,7 @@ impl BlockClient for Client {
         block: BlockNumber,
     ) -> Option<(
         PeerId,
-        impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>>,
+        impl Stream<Item = anyhow::Result<(Transaction, Receipt)>>,
     )> {
         let request = TransactionsRequest {
             iteration: Iteration {
@@ -302,19 +321,25 @@ impl BlockClient for Client {
             };
 
             let stream = stream
-                .take_while(|x| std::future::ready(!matches!(x, &TransactionsResponse::Fin)))
+                .try_take_while(|x| {
+                    std::future::ready(Ok(!matches!(x, &TransactionsResponse::Fin)))
+                })
                 .enumerate()
-                .map(|(i, x)| -> anyhow::Result<_> {
+                .map(move |(i, x)| -> anyhow::Result<_> {
                     match x {
-                        TransactionsResponse::Fin => unreachable!("Already handled Fin above"),
-                        TransactionsResponse::TransactionWithReceipt(tx_with_receipt) => Ok((
-                            TransactionVariant::try_from_dto(tx_with_receipt.transaction)?,
+                        Ok(TransactionsResponse::Fin) => unreachable!("Already handled Fin above"),
+                        Ok(TransactionsResponse::TransactionWithReceipt(tx_with_receipt)) => Ok((
+                            Transaction::try_from_dto(tx_with_receipt.transaction)?,
                             Receipt::try_from((
                                 tx_with_receipt.receipt,
                                 TransactionIndex::new(i.try_into().unwrap())
                                     .ok_or_else(|| anyhow::anyhow!("Invalid transaction index"))?,
                             ))?,
                         )),
+                        Err(error) => {
+                            tracing::debug!(%peer, %error, "Transaction response stream failed");
+                            Err(error.into())
+                        }
                     }
                 });
 
@@ -328,7 +353,7 @@ impl BlockClient for Client {
         self,
         block: BlockNumber,
         state_diff_length: u64,
-    ) -> Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount> {
+    ) -> Result<Option<(PeerId, StateUpdateData)>, StateDiffsError> {
         let request = StateDiffsRequest {
             iteration: Iteration {
                 start: block.get().into(),
@@ -355,18 +380,18 @@ impl BlockClient for Client {
 
             while let Some(resp) = stream.next().await {
                 match resp {
-                    StateDiffsResponse::ContractDiff(ContractDiff {
+                    Ok(StateDiffsResponse::ContractDiff(ContractDiff {
                         address,
                         nonce,
                         class_hash,
                         values,
                         domain: _,
-                    }) => {
+                    })) => {
                         match current_count.checked_sub(values.len().try_into().unwrap()) {
                             Some(x) => current_count = x,
                             None => {
                                 tracing::debug!(%peer, "Too many storage diffs: {} > {}", values.len(), current_count);
-                                return Err(IncorrectStateDiffCount(peer));
+                                return Err(StateDiffsError::IncorrectStateDiffCount(peer));
                             }
                         }
                         let address = ContractAddress(address.0);
@@ -397,7 +422,7 @@ impl BlockClient for Client {
                                     Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many nonce updates");
-                                        return Err(IncorrectStateDiffCount(peer));
+                                        return Err(StateDiffsError::IncorrectStateDiffCount(peer));
                                     }
                                 }
                                 update.nonce = Some(ContractNonce(nonce));
@@ -408,22 +433,22 @@ impl BlockClient for Client {
                                     Some(x) => current_count = x,
                                     None => {
                                         tracing::debug!(%peer, "Too many deployed contracts");
-                                        return Err(IncorrectStateDiffCount(peer));
+                                        return Err(StateDiffsError::IncorrectStateDiffCount(peer));
                                     }
                                 }
                                 update.class = Some(ContractClassUpdate::Deploy(class_hash));
                             }
                         }
                     }
-                    StateDiffsResponse::DeclaredClass(DeclaredClass {
+                    Ok(StateDiffsResponse::DeclaredClass(DeclaredClass {
                         class_hash,
                         compiled_class_hash,
-                    }) => {
+                    })) => {
                         match current_count.checked_sub(1) {
                             Some(x) => current_count = x,
                             None => {
                                 tracing::debug!(%peer, "Too many declared classes");
-                                return Err(IncorrectStateDiffCount(peer));
+                                return Err(StateDiffsError::IncorrectStateDiffCount(peer));
                             }
                         }
                         if let Some(compiled_class_hash) = compiled_class_hash {
@@ -436,12 +461,16 @@ impl BlockClient for Client {
                                 .insert(ClassHash(class_hash.0));
                         }
                     }
-                    StateDiffsResponse::Fin => {
+                    Ok(StateDiffsResponse::Fin) => {
                         if current_count != 0 {
                             tracing::debug!(%peer, "Too few storage diffs");
-                            return Err(IncorrectStateDiffCount(peer));
+                            return Err(StateDiffsError::IncorrectStateDiffCount(peer));
                         }
                         return Ok(Some((peer, state_diff)));
+                    }
+                    Err(error) => {
+                        tracing::debug!(%peer, %error, "State diff response stream failed");
+                        return Err(StateDiffsError::ResponseStreamFailure(peer, error));
                     }
                 }
             }
@@ -481,31 +510,40 @@ impl BlockClient for Client {
 
             while let Some(resp) = stream.next().await {
                 match resp {
-                    ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                    Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
                         class,
                         domain: _,
-                    }) => {
+                        class_hash,
+                    })) => {
                         let definition = CairoDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::CairoDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Cairo {
                             block_number: block,
                             definition: definition.0,
+                            hash: ClassHash(class_hash.0),
                         });
                     }
-                    ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                    Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
                         class,
                         domain: _,
-                    }) => {
+                        class_hash,
+                    })) => {
                         let definition = SierraDefinition::try_from_dto(class)
                             .map_err(|_| ClassDefinitionsError::SierraDefinitionError(peer))?;
                         class_definitions.push(ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: definition.0,
+                            hash: SierraHash(class_hash.0),
                         });
                     }
-                    ClassesResponse::Fin => {
+                    Ok(ClassesResponse::Fin) => {
                         tracing::debug!(%peer, "Received FIN in class definitions source");
                         break;
+                    }
+                    Err(error) => {
+                        tracing::debug!(%peer, %error, "Class definition
+                        response stream failed");
+                        return Err(ClassDefinitionsError::ResponseStreamFailure(peer, error));
                     }
                 }
 
@@ -532,7 +570,10 @@ impl BlockClient for Client {
     async fn events_for_block(
         self,
         block: BlockNumber,
-    ) -> Option<(PeerId, impl Stream<Item = (TransactionHash, Event)>)> {
+    ) -> Option<(
+        PeerId,
+        impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>>,
+    )> {
         let request = EventsRequest {
             iteration: Iteration {
                 start: block.get().into(),
@@ -555,13 +596,17 @@ impl BlockClient for Client {
             };
 
             let stream = stream
-                .take_while(|x| std::future::ready(!matches!(x, &EventsResponse::Fin)))
-                .map(|x| match x {
-                    EventsResponse::Fin => unreachable!("Already handled Fin above"),
-                    EventsResponse::Event(event) => (
+                .try_take_while(|x| std::future::ready(Ok(!matches!(x, &EventsResponse::Fin))))
+                .map(move |x| match x {
+                    Ok(EventsResponse::Fin) => unreachable!("Already handled Fin above"),
+                    Ok(EventsResponse::Event(event)) => Ok((
                         TransactionHash(event.transaction_hash.0),
                         Event::from_dto(event),
-                    ),
+                    )),
+                    Err(error) => {
+                        tracing::debug!(%peer, %error, "Events response stream failed");
+                        Err(EventsResponseStreamFailure(peer, error))
+                    }
                 });
 
             return Some((peer, stream));
@@ -570,6 +615,9 @@ impl BlockClient for Client {
         None
     }
 }
+
+/// Maximum number of blocks to request in a single request
+const MAX_BLOCKS_COUNT: u64 = 500;
 
 mod header_stream {
     use super::*;
@@ -583,7 +631,8 @@ mod header_stream {
     ) -> impl Stream<Item = PeerData<SignedBlockHeader>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<BlockHeadersResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<BlockHeadersResponse>>>>
+            + Send,
     {
         let start: i64 = start.get().try_into().expect("block number <= i64::MAX");
         let stop: i64 = stop.get().try_into().expect("block number <= i64::MAX");
@@ -595,8 +644,7 @@ mod header_stream {
 
         tracing::trace!(?start, ?stop, ?dir, "Streaming headers");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             // Loop which refreshes peer set once we exhaust it.
             loop {
                 'next_peer: for peer in get_peers().await {
@@ -626,28 +674,29 @@ mod header_stream {
                     // with i.e. don't let them drip feed us etc.
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     async fn handle_response(
         peer: PeerId,
-        signed_header: BlockHeadersResponse,
+        signed_header: std::io::Result<BlockHeadersResponse>,
         direction: Direction,
         start: &mut i64,
         stop: i64,
         tx: mpsc::Sender<PeerData<SignedBlockHeader>>,
     ) -> Action {
         match signed_header {
-            BlockHeadersResponse::Header(hdr) => match SignedBlockHeader::try_from_dto(*hdr) {
+            Ok(BlockHeadersResponse::Header(hdr)) => match SignedBlockHeader::try_from_dto(*hdr) {
                 Ok(hdr) => {
                     if done(direction, *start, stop) {
-                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead");
+                        tracing::debug!(%peer, "Header stream Fin missing, got extra header instead, terminating");
                         return Action::TerminateStream;
                     }
 
-                    _ = tx.send(PeerData::new(peer, hdr)).await;
+                    if tx.send(PeerData::new(peer, hdr)).await.is_err() {
+                        tracing::debug!(%peer, "Failed to yield to stream, terminating");
+                        return Action::TerminateStream;
+                    }
 
                     *start = match direction {
                         Direction::Forward => *start + 1,
@@ -657,7 +706,7 @@ mod header_stream {
                     Action::NextResponse
                 }
                 Err(error) => {
-                    tracing::debug!(%peer, %error, "Header stream failed");
+                    tracing::debug!(%peer, %error, "Header stream failed, terminating");
                     if done(direction, *start, stop) {
                         return Action::TerminateStream;
                     }
@@ -665,8 +714,16 @@ mod header_stream {
                     Action::NextPeer
                 }
             },
-            BlockHeadersResponse::Fin => {
+            Ok(BlockHeadersResponse::Fin) => {
                 tracing::debug!(%peer, "Header stream Fin");
+                if done(direction, *start, stop) {
+                    return Action::TerminateStream;
+                }
+
+                Action::NextPeer
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "Header stream failed, terminating");
                 if done(direction, *start, stop) {
                     return Action::TerminateStream;
                 }
@@ -677,13 +734,14 @@ mod header_stream {
     }
 
     fn make_request(start: i64, stop: i64, dir: Direction) -> BlockHeadersRequest {
-        let limit = start.max(stop) - start.min(stop) + 1;
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
 
         BlockHeadersRequest {
             iteration: Iteration {
                 start: u64::try_from(start).expect("start >= 0").into(),
                 direction: dir,
-                limit: limit.try_into().expect("limit >= 0"),
+                limit,
                 step: 1.into(),
             },
         }
@@ -715,15 +773,15 @@ mod transaction_stream {
     ) -> impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<TransactionsResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<TransactionsResponse>>>>
+            + Send,
     {
         tracing::trace!(?start, ?stop, "Streaming Transactions");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
-            let mut counts_and_commitments_stream = Box::pin(counts_stream);
+        make_stream::from_future(move |tx| async move {
+            let mut expected_transaction_counts_stream = Box::pin(counts_stream);
 
-            let cnt = match try_next(&mut counts_and_commitments_stream).await {
+            let cnt = match try_next(&mut expected_transaction_counts_stream).await {
                 Ok(x) => x,
                 Err(e) => {
                     _ = tx.send(Err(e)).await;
@@ -768,7 +826,7 @@ mod transaction_stream {
                         if yield_block(
                             peer,
                             &mut progress,
-                            &mut counts_and_commitments_stream,
+                            &mut expected_transaction_counts_stream,
                             transactions,
                             &mut start,
                             stop,
@@ -783,9 +841,7 @@ mod transaction_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     /// ### Important
@@ -793,16 +849,16 @@ mod transaction_stream {
     /// Return None if the caller should move to the next peer
     fn handle_response(
         peer: PeerId,
-        response: TransactionsResponse,
+        response: std::io::Result<TransactionsResponse>,
         txn_idx: TransactionIndex,
-    ) -> Option<(TransactionVariant, Receipt)> {
+    ) -> Option<(Transaction, Receipt)> {
         match response {
-            TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
+            Ok(TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
                 transaction,
                 receipt,
-            }) => {
+            })) => {
                 if let (Ok(t), Ok(r)) = (
-                    TransactionVariant::try_from_dto(transaction),
+                    Transaction::try_from_dto(transaction),
                     Receipt::try_from((receipt, txn_idx)),
                 ) {
                     Some((t, r))
@@ -812,19 +868,28 @@ mod transaction_stream {
                     None
                 }
             }
-            TransactionsResponse::Fin => {
+            Ok(TransactionsResponse::Fin) => {
                 // This peer will not give us more blocks, move to the next peer
+                None
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "Transaction response stream failed");
                 None
             }
         }
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> TransactionsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         TransactionsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -841,16 +906,21 @@ mod transaction_stream {
         peer: PeerId,
         progress: &mut BlockProgress,
         count_stream: &mut (impl Stream<Item = anyhow::Result<usize>> + Unpin + Send + 'static),
-        transactions: Vec<(TransactionVariant, Receipt)>,
+        transactions: Vec<(Transaction, Receipt)>,
         start: &mut BlockNumber,
         stop: BlockNumber,
         tx: mpsc::Sender<StreamItem<(TransactionData, BlockNumber)>>,
     ) -> bool {
         tracing::trace!(block_number=%start, "All transactions received for block");
 
-        _ = tx
+        if tx
             .send(Ok(PeerData::new(peer, (transactions, *start))))
-            .await;
+            .await
+            .is_err()
+        {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
@@ -886,12 +956,12 @@ mod state_diff_stream {
     ) -> impl Stream<Item = StreamItem<(StateUpdateData, BlockNumber)>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<StateDiffsResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<StateDiffsResponse>>>>
+            + Send,
     {
         tracing::trace!(?start, ?stop, "Streaming state diffs");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut length_stream = Box::pin(length_stream);
 
             let cnt = match try_next(&mut length_stream).await {
@@ -952,9 +1022,7 @@ mod state_diff_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     /// ### Important
@@ -962,18 +1030,18 @@ mod state_diff_stream {
     /// Returns None if the caller should move to the next peer
     fn handle_response(
         peer: PeerId,
-        response: StateDiffsResponse,
+        response: std::io::Result<StateDiffsResponse>,
         state_diff: &mut StateUpdateData,
         progress: &mut BlockProgress,
     ) -> Option<()> {
         match response {
-            StateDiffsResponse::ContractDiff(ContractDiff {
+            Ok(StateDiffsResponse::ContractDiff(ContractDiff {
                 address,
                 nonce,
                 class_hash,
                 values,
                 domain: _,
-            }) => {
+            })) => {
                 let address = ContractAddress(address.0);
 
                 progress.checked_sub_assign(values.len())?;
@@ -1010,10 +1078,10 @@ mod state_diff_stream {
                     }
                 }
             }
-            StateDiffsResponse::DeclaredClass(DeclaredClass {
+            Ok(StateDiffsResponse::DeclaredClass(DeclaredClass {
                 class_hash,
                 compiled_class_hash,
-            }) => {
+            })) => {
                 progress.checked_sub_assign(1)?;
 
                 if let Some(compiled_class_hash) = compiled_class_hash {
@@ -1026,8 +1094,12 @@ mod state_diff_stream {
                         .insert(ClassHash(class_hash.0));
                 }
             }
-            StateDiffsResponse::Fin => {
+            Ok(StateDiffsResponse::Fin) => {
                 tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                return None;
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "State diff response stream failed");
                 return None;
             }
         }
@@ -1036,11 +1108,16 @@ mod state_diff_stream {
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> StateDiffsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         StateDiffsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1060,7 +1137,14 @@ mod state_diff_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "State diff received for block");
 
-        _ = tx.send(Ok(PeerData::new(peer, (state_diff, *start)))).await;
+        if tx
+            .send(Ok(PeerData::new(peer, (state_diff, *start))))
+            .await
+            .is_err()
+        {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
@@ -1096,12 +1180,12 @@ mod class_definition_stream {
     ) -> impl Stream<Item = StreamItem<ClassDefinition>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<ClassesResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<ClassesResponse>>>>
+            + Send,
     {
         tracing::trace!(?start, ?stop, "Streaming classes");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut declared_class_counts_stream = Box::pin(counts_stream);
 
             let cnt = match try_next(&mut declared_class_counts_stream).await {
@@ -1164,17 +1248,20 @@ mod class_definition_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> ClassesRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         ClassesRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1185,11 +1272,15 @@ mod class_definition_stream {
     /// Returns `None` if the caller should move to the next peer
     fn handle_response(
         peer: PeerId,
-        response: ClassesResponse,
+        response: std::io::Result<ClassesResponse>,
         block_number: BlockNumber,
     ) -> Option<ClassDefinition> {
         match response {
-            ClassesResponse::Class(p2p_proto::class::Class::Cairo0 { class, domain: _ }) => {
+            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo0 {
+                class,
+                domain: _,
+                class_hash,
+            })) => {
                 let Ok(CairoDefinition(definition)) = CairoDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Cairo definition failed to parse");
@@ -1199,9 +1290,14 @@ mod class_definition_stream {
                 Some(ClassDefinition::Cairo {
                     block_number,
                     definition,
+                    hash: ClassHash(class_hash.0),
                 })
             }
-            ClassesResponse::Class(p2p_proto::class::Class::Cairo1 { class, domain: _ }) => {
+            Ok(ClassesResponse::Class(p2p_proto::class::Class::Cairo1 {
+                class,
+                domain: _,
+                class_hash,
+            })) => {
                 let Ok(SierraDefinition(definition)) = SierraDefinition::try_from_dto(class) else {
                     // TODO punish the peer
                     tracing::debug!(%peer, "Sierra definition failed to parse");
@@ -1211,10 +1307,15 @@ mod class_definition_stream {
                 Some(ClassDefinition::Sierra {
                     block_number,
                     sierra_definition: definition,
+                    hash: SierraHash(class_hash.0),
                 })
             }
-            ClassesResponse::Fin => {
+            Ok(ClassesResponse::Fin) => {
                 tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                None
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "Class definition response stream failed");
                 None
             }
         }
@@ -1235,7 +1336,14 @@ mod class_definition_stream {
         tracing::trace!(block_number=%start, "All classes received for block");
 
         for class_definition in class_definitions {
-            _ = tx.send(Ok(PeerData::new(peer, class_definition))).await;
+            if tx
+                .send(Ok(PeerData::new(peer, class_definition)))
+                .await
+                .is_err()
+            {
+                tracing::debug!(%peer, "Failed to yield to stream, terminating");
+                return true;
+            }
         }
 
         if *start == stop {
@@ -1271,12 +1379,12 @@ mod event_stream {
     ) -> impl Stream<Item = StreamItem<EventsForBlockByTransaction>>
     where
         PF: Future<Output = Vec<PeerId>> + Send,
-        RF: Future<Output = anyhow::Result<fmpsc::Receiver<EventsResponse>>> + Send,
+        RF: Future<Output = anyhow::Result<fmpsc::Receiver<std::io::Result<EventsResponse>>>>
+            + Send,
     {
         tracing::trace!(?start, ?stop, "Streaming events");
 
-        let (tx, rx) = mpsc::channel(1);
-        tokio::spawn(async move {
+        make_stream::from_future(move |tx| async move {
             let mut counts_stream = Box::pin(counts_stream);
 
             let Some(Ok(cnt)) = counts_stream.next().await else {
@@ -1341,17 +1449,20 @@ mod event_stream {
                     return;
                 }
             }
-        });
-
-        ReceiverStream::new(rx)
+        })
     }
 
     fn make_request(start: BlockNumber, stop: BlockNumber) -> EventsRequest {
+        let start = start.get();
+        let stop = stop.get();
+        let limit = start.abs_diff(stop) + 1;
+        let limit = limit.min(MAX_BLOCKS_COUNT);
+
         EventsRequest {
             iteration: Iteration {
-                start: start.get().into(),
+                start: start.into(),
                 direction: Direction::Forward,
-                limit: stop.get() - start.get() + 1,
+                limit,
                 step: 1.into(),
             },
         }
@@ -1362,12 +1473,12 @@ mod event_stream {
     /// Returns true if the caller should move to the next peer
     fn handle_response(
         peer: PeerId,
-        response: EventsResponse,
+        response: std::io::Result<EventsResponse>,
         current_txn: &mut Option<TransactionHash>,
         events: &mut Vec<(TransactionHash, Vec<Event>)>,
     ) -> bool {
         match response {
-            EventsResponse::Event(event) => {
+            Ok(EventsResponse::Event(event)) => {
                 let txn_hash = TransactionHash(event.transaction_hash.0);
                 let Ok(event) = Event::try_from_dto(event) else {
                     // TODO punish the peer
@@ -1389,8 +1500,12 @@ mod event_stream {
 
                 false
             }
-            EventsResponse::Fin => {
+            Ok(EventsResponse::Fin) => {
                 tracing::debug!(%peer, "Received FIN, continuing with next peer");
+                true
+            }
+            Err(error) => {
+                tracing::debug!(%peer, %error, "Event response stream failed");
                 true
             }
         }
@@ -1410,7 +1525,14 @@ mod event_stream {
     ) -> bool {
         tracing::trace!(block_number=%start, "All events received for block");
 
-        _ = tx.send(Ok(PeerData::new(peer, (*start, events)))).await;
+        if tx
+            .send(Ok(PeerData::new(peer, (*start, events))))
+            .await
+            .is_err()
+        {
+            tracing::debug!(%peer, "Failed to yield to stream, terminating");
+            return true;
+        }
 
         if *start == stop {
             return true;
@@ -1435,14 +1557,15 @@ mod event_stream {
 
 async fn try_next<T>(
     count_stream: &mut (impl Stream<Item = anyhow::Result<T>> + Unpin + Send + 'static),
-) -> Result<T, PeerData<anyhow::Error>> {
+) -> Result<T, anyhow::Error> {
     match count_stream.next().await {
         Some(Ok(cnt)) => Ok(cnt),
-        Some(Err(e)) => Err(PeerData::new(PeerId::random(), e)),
-        None => Err(PeerData::new(
-            PeerId::random(),
-            anyhow::anyhow!("Count stream terminated prematurely"),
-        )),
+        // This is a non-recoverable error, because "Counter" streams fail only if the underlying
+        // database fails.
+        Some(Err(e)) => Err(e),
+        // This is a non-recoverable error, because we expect all the necessary headers that are the
+        // source of the stream to be in the database.
+        None => Err(anyhow::anyhow!("Count stream terminated prematurely")),
     }
 }
 
@@ -1489,10 +1612,14 @@ struct Decaying<T> {
 }
 
 impl<T: Default> Decaying<T> {
+    const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
+
     pub fn new(timeout: Duration) -> Self {
         Self {
             data: Default::default(),
-            last_update: Instant::now(),
+            last_update: Instant::now()
+                .checked_sub(Self::DEFAULT_TIMEOUT * 2)
+                .expect("Still valid Instant"),
             timeout,
         }
     }
@@ -1515,6 +1642,6 @@ impl<T: Default> Decaying<T> {
 
 impl<T: Default> Default for Decaying<T> {
     fn default() -> Self {
-        Self::new(Duration::from_secs(60))
+        Self::new(Self::DEFAULT_TIMEOUT)
     }
 }

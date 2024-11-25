@@ -4,7 +4,7 @@ use pathfinder_common::transaction::{Transaction, TransactionKind, TransactionVa
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
 use serde::ser::Error;
 
-use super::serialize;
+use super::{serialize, H256Hex};
 use crate::dto::serialize::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
 
@@ -16,10 +16,13 @@ pub enum TxnStatus {
     AcceptedOnL1,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TxnExecutionStatus {
     Succeeded,
-    Reverted,
+    Reverted {
+        // Revert reason optional for backward compatibility with gateway.
+        reason: Option<String>,
+    },
 }
 
 impl From<&pathfinder_common::receipt::ExecutionStatus> for TxnExecutionStatus {
@@ -27,7 +30,9 @@ impl From<&pathfinder_common::receipt::ExecutionStatus> for TxnExecutionStatus {
         use pathfinder_common::receipt::ExecutionStatus;
         match value {
             ExecutionStatus::Succeeded => Self::Succeeded,
-            ExecutionStatus::Reverted { .. } => Self::Reverted,
+            ExecutionStatus::Reverted { reason } => Self::Reverted {
+                reason: Some(reason.clone()),
+            },
         }
     }
 }
@@ -91,7 +96,7 @@ impl SerializeForVersion for TxnExecutionStatus {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         match self {
             TxnExecutionStatus::Succeeded => "SUCCEEDED",
-            TxnExecutionStatus::Reverted => "REVERTED",
+            TxnExecutionStatus::Reverted { .. } => "REVERTED",
         }
         .serialize(serializer)
     }
@@ -108,7 +113,12 @@ impl SerializeForVersion for TxnExecutionStatusWithRevertReason<'_> {
                 serializer.serialize_field("execution_status", &TxnExecutionStatus::Succeeded)?;
             }
             ExecutionStatus::Reverted { reason } => {
-                serializer.serialize_field("execution_status", &TxnExecutionStatus::Reverted)?;
+                serializer.serialize_field(
+                    "execution_status",
+                    &TxnExecutionStatus::Reverted {
+                        reason: Some(reason.clone()),
+                    },
+                )?;
                 serializer.serialize_field("revert_reason", reason)?;
             }
         }
@@ -277,7 +287,7 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"L1_HANDLER")?;
-        serializer.serialize_field("message_hash", &dto::NumAsHex::H256(&message_hash))?;
+        serializer.serialize_field("message_hash", &H256Hex(message_hash))?;
 
         serializer.end()
     }
@@ -362,11 +372,17 @@ impl SerializeForVersion for ExecutionResources<'_> {
 
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.flatten(&ComputationResources(self.0))?;
-        serializer.serialize_field(
-            "data_availability",
-            &DataAvailability(&self.0.data_availability),
-        )?;
+        if serializer.version < RpcVersion::V08 {
+            serializer.flatten(&ComputationResources(self.0))?;
+            serializer.serialize_field(
+                "data_availability",
+                &DataAvailability(&self.0.data_availability),
+            )?;
+        } else {
+            serializer.serialize_field("l1_gas", &self.0.total_gas_consumed.l1_gas)?;
+            serializer.serialize_field("l1_data_gas", &self.0.total_gas_consumed.l1_data_gas)?;
+            serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
+        }
 
         serializer.end()
     }
@@ -449,8 +465,9 @@ mod tests {
     }
 
     #[rstest]
-    #[case::accepted_on_l2(TxnExecutionStatus::Succeeded, "SUCCEEDED")]
-    #[case::accepted_on_l1(TxnExecutionStatus::Reverted, "REVERTED")]
+    #[case::succeeded(TxnExecutionStatus::Succeeded, "SUCCEEDED")]
+    #[case::reverted_missing_reason(TxnExecutionStatus::Reverted { reason: None }, "REVERTED")]
+    #[case::reverted_with_reason(TxnExecutionStatus::Reverted { reason: Some("Reverted because".to_string()) }, "REVERTED")]
     fn txn_execution_status(#[case] input: TxnExecutionStatus, #[case] expected: &str) {
         let expected = json!(expected);
         let encoded = input.serialize(Serializer::default()).unwrap();

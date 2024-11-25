@@ -34,6 +34,7 @@ libp2p = { workspace = true, features = [
     "tokio",
     "yamux",
 ] }
+make-stream = { path = "../make-stream" }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }

@@ -41,6 +41,7 @@ message Class {
         Cairo1Class cairo1 = 2;
     }
     uint32 domain = 3;
+    starknet.common.Hash class_hash = 4;
 }
 
 message ClassesRequest {

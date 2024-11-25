@@ -21,8 +21,7 @@ pub fn counts_stream(
         + Send
         + 'static,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    let (tx, rx) = mpsc::channel(1);
-    std::thread::spawn(move || {
+    make_stream::from_blocking(move |tx| {
         let mut batch = VecDeque::new();
 
         while start <= stop {
@@ -71,9 +70,7 @@ pub fn counts_stream(
         while let Some(counts) = batch.pop_front() {
             _ = tx.blocking_send(Ok(counts));
         }
-    });
-
-    ReceiverStream::new(rx)
+    })
 }
 
 #[cfg(test)]

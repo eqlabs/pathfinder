@@ -10,7 +10,6 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
-use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockNumber,
     ContractAddress,
@@ -24,7 +23,7 @@ use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
-use crate::tree::{MerkleTree, Visit};
+use crate::tree::{GetProofError, MerkleTree, TrieNodeWithHash, Visit};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to a
 /// Starknet contract's storage.
@@ -32,7 +31,7 @@ use crate::tree::{MerkleTree, Visit};
 /// It maps a contract's [storage addresses](StorageAddress) to their
 /// [values](StorageValue).
 ///
-/// Tree data is persisted by a sqlite table 'tree_contracts'.
+/// Tree data is persisted by a sqlite table 'trie_contracts'.
 pub struct ContractsStorageTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: ContractStorage<'tx>,
@@ -83,15 +82,8 @@ impl<'tx> ContractsStorageTree<'tx> {
         contract: ContractAddress,
         block: BlockNumber,
         key: &BitSlice<u8, Msb0>,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .contract_root_index(block, contract)
-            .context("Querying contract root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
+        root: u64,
+    ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
         let storage = ContractStorage {
             tx,
             block: Some(block),
@@ -99,6 +91,31 @@ impl<'tx> ContractsStorageTree<'tx> {
         };
 
         MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, key)
+    }
+
+    /// Generates proofs for the given list of `keys`. See
+    /// [`MerkleTree::get_proofs`]. Returns  [(`TrieNode`,
+    /// `Felt`)](TrieNodeWithHash) pairs where the second element is the
+    /// node hash.
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        contract: ContractAddress,
+        block: BlockNumber,
+        keys: &[StorageAddress],
+        root: u64,
+    ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
+        let storage = ContractStorage {
+            tx,
+            block: Some(block),
+            contract,
+        };
+
+        let keys = keys
+            .iter()
+            .map(|addr| addr.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
     }
 
     pub fn set(&mut self, address: StorageAddress, value: StorageValue) -> anyhow::Result<()> {
@@ -129,7 +146,7 @@ impl<'tx> ContractsStorageTree<'tx> {
 /// It maps each contract's [address](ContractAddress) to it's [state
 /// hash](ContractStateHash).
 ///
-/// Tree data is persisted by a sqlite table 'tree_global'.
+/// Tree data is persisted by a sqlite table 'trie_storage'.
 pub struct StorageCommitmentTree<'tx> {
     tree: MerkleTree<PedersenHash, 251>,
     storage: StorageTrieStorage<'tx>,
@@ -189,26 +206,43 @@ impl<'tx> StorageCommitmentTree<'tx> {
         Ok((commitment, update))
     }
 
-    /// Generates a proof for the given `key`. See [`MerkleTree::get_proof`].
+    /// Generates a proof for the given `address`.
+    /// See [`MerkleTree::get_proof`].
     pub fn get_proof(
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         address: &ContractAddress,
-    ) -> anyhow::Result<Option<Vec<TrieNode>>> {
-        let root = tx
-            .storage_root_index(block)
-            .context("Querying storage root index")?;
-
-        let Some(root) = root else {
-            return Ok(None);
-        };
-
+        root: u64,
+    ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
             block: Some(block),
         };
 
         MerkleTree::<PedersenHash, 251>::get_proof(root, &storage, address.view_bits())
+    }
+
+    /// Generates proofs for the given list of `addresses`. See
+    /// [`MerkleTree::get_proofs`]. Returns  [(`TrieNode`,
+    /// `Felt`)](TrieNodeWithHash) pairs where the second element is the
+    /// node hash.
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        addresses: &[ContractAddress],
+        root: u64,
+    ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
+        let storage = StorageTrieStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let keys = addresses
+            .iter()
+            .map(|addr| addr.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
     }
 
     /// See [`MerkleTree::dfs`]

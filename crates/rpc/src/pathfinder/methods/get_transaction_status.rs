@@ -11,6 +11,16 @@ pub struct GetGatewayTransactionInput {
 
 crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
 
+impl crate::dto::DeserializeForVersion for GetGatewayTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: TransactionHash(value.deserialize("transaction_hash")?),
+            })
+        })
+    }
+}
+
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
@@ -67,10 +77,10 @@ pub async fn get_transaction_status(
     use starknet_gateway_client::GatewayApi;
     context
         .sequencer
-        .transaction(input.transaction_hash)
+        .transaction_status(input.transaction_hash)
         .await
-        .context("Fetching transaction from gateway")
-        .map(|tx| tx.status.into())
+        .context("Fetching transaction status from gateway")
+        .map(|tx| tx.tx_status.into())
         .map_err(GetGatewayTransactionError::Internal)
 }
 
