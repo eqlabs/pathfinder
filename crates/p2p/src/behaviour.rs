@@ -1,5 +1,5 @@
 use std::collections::{HashMap, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
@@ -707,6 +707,19 @@ impl Behaviour {
             .find_map(|p| match p {
                 Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
                 Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                Protocol::Dns4(dns) | Protocol::Dns6(dns) => {
+                    // We only care about resolving to an IP address so any port is fine.
+                    let dns_with_port = format!("{}:0", dns);
+                    match dns_with_port.to_socket_addrs() {
+                        Ok(mut addrs) => addrs
+                            .find(|addr| addr.is_ipv4() || addr.is_ipv6())
+                            .map(|addr| addr.ip()),
+                        Err(e) => {
+                            tracing::info!("Failed to resolve DNS address '{}': {}", dns, e);
+                            None
+                        }
+                    }
+                }
                 _ => None,
             })
             .ok_or_else(|| {
