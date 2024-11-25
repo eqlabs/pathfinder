@@ -265,21 +265,16 @@ pub async fn get_proof(
             .storage_root_index(header.number)
             .context("Querying storage root index")?;
 
-        let contract_proof = if let Some(storage_root_idx) = storage_root_idx {
-            // Generate a proof for this contract. If the contract does not exist, this will
-            // be a "non membership" proof.
-            StorageCommitmentTree::get_proof(
-                &tx,
-                header.number,
-                &input.contract_address,
-                storage_root_idx,
-            )?
-            .into_iter()
-            .map(|(node, _)| node)
-            .collect()
-        } else {
-            Vec::new()
-        };
+        let contract_proof = storage_root_idx
+            .map(|idx| {
+                // Generate a proof for this contract, creating a "non-membership" proof if the contract does not exist.
+                StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address, idx)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(node, _)| node)
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let contract_proof = ProofNodes(contract_proof);
 
