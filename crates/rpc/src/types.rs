@@ -1,14 +1,43 @@
 //! Common data structures used by the JSON-RPC API methods.
 
 pub(crate) mod class;
+pub(crate) mod receipt;
 pub mod syncing;
+pub(crate) mod transaction;
 
 pub use class::*;
-use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
+use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, TransactionVersion};
 use serde::de::Error;
 use serde_with::serde_as;
 
 use crate::dto::{U128Hex, U64Hex};
+
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Deserialize))]
+pub enum PriceUnit {
+    #[serde(rename = "WEI")]
+    Wei,
+    #[serde(rename = "FRI")]
+    Fri,
+}
+
+impl PriceUnit {
+    pub fn for_transaction_version(version: &TransactionVersion) -> Self {
+        match version.without_query_version() {
+            0..=2 => PriceUnit::Wei,
+            _ => PriceUnit::Fri,
+        }
+    }
+}
+
+impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
+    fn from(value: pathfinder_executor::types::PriceUnit) -> Self {
+        match value {
+            pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
+            pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct ResourceBounds {
