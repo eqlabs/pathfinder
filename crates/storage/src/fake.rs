@@ -191,9 +191,9 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
 ///     - casm definitions for sierra classes are purely random Strings
 ///     - cairo class hashes and sierra class hashes are correctly calculated
 ///       from the definitions, casm hashes are random
+///     - fake sierra classes never compile successfully
 /// - transactions
-///     - transaction hashes are calculated from their respective variant, with
-///       ChainId set to `SEPOLIA_TESTNET`
+///     - transaction hashes are calculated from their respective variant
 pub mod generate {
     use super::*;
 
