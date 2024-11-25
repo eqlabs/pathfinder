@@ -12,6 +12,7 @@ message ResourceLimits {
 message ResourceBounds {
     ResourceLimits l1_gas = 1;
     ResourceLimits l2_gas = 2;
+    optional ResourceLimits l1_data_gas = 3;
 }
 
 message AccountSignature {

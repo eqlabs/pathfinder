@@ -721,6 +721,7 @@ pub(crate) mod dto {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: None,
             }
         }
     }

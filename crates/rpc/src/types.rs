@@ -35,6 +35,7 @@ impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
         Self {
             l1_gas: resource_bounds.l1_gas.into(),
             l2_gas: resource_bounds.l2_gas.into(),
+            l1_data_gas: resource_bounds.l1_data_gas.map(|g| g.into()),
         }
     }
 }

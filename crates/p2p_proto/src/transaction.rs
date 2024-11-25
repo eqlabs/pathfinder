@@ -17,6 +17,8 @@ pub struct ResourceLimits {
 pub struct ResourceBounds {
     pub l1_gas: ResourceLimits,
     pub l2_gas: ResourceLimits,
+    #[optional]
+    pub l1_data_gas: Option<ResourceLimits>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

@@ -188,6 +188,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                 resource_bounds: p2p_proto::transaction::ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                    l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                 },
                 tip: x.tip.0,
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -235,6 +236,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                     resource_bounds: p2p_proto::transaction::ResourceBounds {
                         l1_gas: x.resource_bounds.l1_gas.to_dto(),
                         l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                        l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                     },
                     tip: x.tip.0,
                     paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -269,6 +271,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                 resource_bounds: p2p_proto::transaction::ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                    l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                 },
                 tip: x.tip.0,
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -803,6 +806,16 @@ impl TryFromDto<p2p_proto::transaction::ResourceBounds> for ResourceBounds {
                 max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
                     dto.l2_gas.max_price_per_unit.try_into()?,
                 ),
+            },
+            l1_data_gas: if let Some(g) = dto.l1_data_gas {
+                Some(ResourceBound {
+                    max_amount: pathfinder_common::ResourceAmount(g.max_amount.try_into()?),
+                    max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                        g.max_price_per_unit.try_into()?,
+                    ),
+                })
+            } else {
+                None
             },
         })
     }

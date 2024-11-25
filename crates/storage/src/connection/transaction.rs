@@ -1323,6 +1323,7 @@ pub(crate) mod dto {
     pub struct ResourceBounds {
         pub l1_gas: ResourceBound,
         pub l2_gas: ResourceBound,
+        pub l1_data_gas: Option<ResourceBound>,
     }
 
     impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
@@ -1330,6 +1331,7 @@ pub(crate) mod dto {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: value.l1_data_gas.map(|g| g.into()),
             }
         }
     }
@@ -1339,6 +1341,7 @@ pub(crate) mod dto {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: value.l1_data_gas.map(|g| g.into()),
             }
         }
     }
