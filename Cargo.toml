@@ -64,6 +64,8 @@ cached = "0.44.0"
 # This one needs to match the version used by blockifier
 cairo-lang-starknet-classes = "=2.9.0-dev.0"
 # This one needs to match the version used by blockifier
+cairo-native = "=0.2.3"
+# This one needs to match the version used by blockifier
 cairo-native-runtime = "=0.2.3"
 # This one needs to match the version used by blockifier
 cairo-vm = "=1.0.1"

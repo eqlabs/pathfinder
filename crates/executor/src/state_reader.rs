@@ -1,6 +1,8 @@
 use blockifier::execution::contract_class::RunnableContractClass;
+use blockifier::execution::native::contract_class::NativeContractClassV1;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
+use cairo_vm::types::errors::program_errors::ProgramError;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
 use starknet_api::StarknetApiError;
@@ -59,6 +61,33 @@ impl<'tx> PathfinderStateReader<'tx> {
         if let Some((definition_block_number, casm_definition)) =
             casm_definition.map_err(map_anyhow_to_state_err)?
         {
+            // FIXME: unwraps
+            let sierra_definition = self
+                .transaction
+                .class_definition(pathfinder_class_hash)
+                .map_err(map_anyhow_to_state_err)?
+                .expect("Sierra class should be present if we have CASM");
+            let mut sierra_definition: serde_json::Value =
+                serde_json::from_slice(&sierra_definition)
+                    .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+            sierra_definition["abi"] =
+                serde_json::from_str(sierra_definition["abi"].as_str().unwrap())
+                    .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+
+            let sierra_class: cairo_lang_starknet_classes::contract_class::ContractClass =
+                serde_json::from_value(sierra_definition)
+                    .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+            let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
+                StateError::StateReadError(format!("Error parsing Sierra program: {}", e))
+            })?;
+            use cairo_native::executor::AotContractExecutor;
+            let contract_executor = AotContractExecutor::new(
+                &sierra_program,
+                &sierra_class.entry_points_by_type,
+                Default::default(),
+            )
+            .unwrap();
+
             let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
                 StateError::StateReadError(format!(
                     "Class definition is not valid UTF-8: {}",
@@ -72,10 +101,12 @@ impl<'tx> PathfinderStateReader<'tx> {
                 )
                 .map_err(StateError::ProgramError)?;
 
-            return Ok((
-                definition_block_number,
-                RunnableContractClass::V1(casm_class),
+            let runnable_class = RunnableContractClass::V1Native(NativeContractClassV1::new(
+                contract_executor,
+                casm_class,
             ));
+
+            return Ok((definition_block_number, runnable_class));
         }
 
         let definition = if self.ignore_block_number_for_classes {
