@@ -69,17 +69,10 @@ pub struct PageOfEvents {
 
 impl Transaction<'_> {
     #[cfg(feature = "aggregate_bloom")]
-    pub fn reconstruct_running_aggregate(&self) -> anyhow::Result<()> {
-        let aggregate = reconstruct_running_aggregate(self.inner())?;
-        let mut running_aggregate = match self.running_aggregate.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                tracing::error!("Poisoned lock in reconstruct_running_aggregate");
-                poisoned.into_inner()
-            }
-        };
-
-        *running_aggregate = aggregate;
+    pub fn reconstruct_running_event_filter(&self) -> anyhow::Result<()> {
+        let event_filter = reconstruct_running_event_filter(self.inner())?;
+        let mut running_event_filter = self.running_event_filter.lock().unwrap();
+        *running_event_filter = event_filter;
 
         Ok(())
     }
@@ -105,7 +98,7 @@ impl Transaction<'_> {
             ",
         )?;
 
-        let mut running_aggregate = self.running_aggregate.lock().unwrap();
+        let mut running_event_filter = self.running_event_filter.lock().unwrap();
 
         let mut bloom = BloomFilter::new();
         for event in events {
@@ -113,17 +106,22 @@ impl Transaction<'_> {
             bloom.set_address(&event.from_address);
         }
 
-        running_aggregate.add_bloom(&bloom, block_number);
+        running_event_filter.filter.add_bloom(&bloom, block_number);
+        running_event_filter.next_block = block_number + 1;
+
         // This check is the reason that blocks cannot be skipped, if they were we would
         // risk missing the last block of the current aggregate's range.
-        if block_number == running_aggregate.to_block {
+        if block_number == running_event_filter.filter.to_block {
             stmt.execute(params![
-                &running_aggregate.from_block,
-                &running_aggregate.to_block,
-                &running_aggregate.compress_bitmap()
+                &running_event_filter.filter.from_block,
+                &running_event_filter.filter.to_block,
+                &running_event_filter.filter.compress_bitmap()
             ])?;
 
-            *running_aggregate = AggregateBloom::new(running_aggregate.to_block + 1);
+            *running_event_filter = RunningEventFilter {
+                filter: AggregateBloom::new(block_number + 1),
+                next_block: block_number + 1,
+            };
         }
 
         Ok(())
@@ -218,6 +216,101 @@ impl Transaction<'_> {
 
             block_number += 1;
         }
+    }
+
+    #[cfg(feature = "aggregate_bloom")]
+    pub fn events_in_range_aggregate(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+        contract_address: Option<ContractAddress>,
+        keys: Vec<Vec<EventKey>>,
+    ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
+        let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
+            // No blocks in the database
+            return Ok((vec![], None));
+        };
+        if from_block > latest_block {
+            return Ok((vec![], None));
+        }
+
+        let filter = EventFilter {
+            contract_address,
+            keys,
+            page_size: usize::MAX - 1,
+            ..Default::default()
+        };
+
+        let aggregates = self.load_aggregate_bloom_range(from_block, to_block)?;
+
+        let blocks_to_scan = aggregates
+            .iter()
+            .flat_map(|aggregate| aggregate.blocks_for_filter(&filter))
+            .filter(|&block| (from_block..=to_block).contains(&block));
+
+        let key_filter_is_empty = filter.keys.iter().flatten().count() == 0;
+        let keys: Vec<std::collections::HashSet<_>> = filter
+            .keys
+            .iter()
+            .map(|keys| keys.iter().collect())
+            .collect();
+
+        let mut emitted_events = vec![];
+
+        for block in blocks_to_scan {
+            let Some(block_header) = self.block_header(crate::BlockId::Number(block))? else {
+                break;
+            };
+
+            let events = match self.events_for_block(block.into())? {
+                Some(events) => events,
+                // Reached the end of P2P (checkpoint) synced events.
+                None => break,
+            };
+
+            let events = events
+                .into_iter()
+                .flat_map(|(transaction_hash, events)| {
+                    events.into_iter().zip(std::iter::repeat(transaction_hash))
+                })
+                .filter(|(event, _)| match filter.contract_address {
+                    Some(address) => event.from_address == address,
+                    None => true,
+                })
+                .filter(|(event, _)| {
+                    if key_filter_is_empty {
+                        return true;
+                    }
+
+                    if event.keys.len() < keys.len() {
+                        return false;
+                    }
+
+                    event
+                        .keys
+                        .iter()
+                        .zip(keys.iter())
+                        .all(|(key, filter)| filter.is_empty() || filter.contains(key))
+                })
+                .map(|(event, tx_hash)| EmittedEvent {
+                    data: event.data.clone(),
+                    keys: event.keys.clone(),
+                    from_address: event.from_address,
+                    block_hash: block_header.hash,
+                    block_number: block_header.number,
+                    transaction_hash: tx_hash,
+                });
+
+            emitted_events.extend(events);
+        }
+
+        let last_scanned_block = if latest_block > to_block {
+            to_block
+        } else {
+            latest_block
+        };
+
+        Ok((emitted_events, Some(last_scanned_block)))
     }
 
     #[tracing::instrument(skip(self))]
@@ -412,7 +505,7 @@ impl Transaction<'_> {
 
             let events = match self.events_for_block(block.into())? {
                 Some(events) => events,
-                // Reached the end of P2P synced events.
+                // Reached the end of P2P (checkpoint) synced events.
                 None => {
                     return Ok(PageOfEvents {
                         events: emitted_events,
@@ -611,10 +704,7 @@ impl Transaction<'_> {
         })
     }
 
-    // TODO:
-    // Use this for `SubscribeEvents`
     #[cfg(feature = "aggregate_bloom")]
-    #[allow(dead_code)]
     fn load_aggregate_bloom_range(
         &self,
         start_block: BlockNumber,
@@ -655,14 +745,8 @@ impl Transaction<'_> {
         let should_include_running = aggregates.last().map_or(true, |a| end_block > a.to_block);
 
         if should_include_running {
-            let running_aggregate = match self.running_aggregate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    tracing::error!("Poisoned lock in load_aggregate_bloom_range");
-                    poisoned.into_inner()
-                }
-            };
-            aggregates.push(running_aggregate.clone());
+            let running_event_filter = self.running_event_filter.lock().unwrap();
+            aggregates.push(running_event_filter.filter.clone());
         }
 
         Ok(aggregates)
@@ -728,18 +812,24 @@ impl Transaction<'_> {
         let load_limit_reached = total_aggregate_filters > max_bloom_filters_to_load.get() as u64;
 
         if should_include_running && !load_limit_reached {
-            let running_aggregate = match self.running_aggregate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    tracing::error!("Poisoned lock in load_aggregate_bloom_range");
-                    poisoned.into_inner()
-                }
-            };
-            aggregates.push(running_aggregate.clone());
+            let running_event_filter = self.running_event_filter.lock().unwrap();
+            aggregates.push(running_event_filter.filter.clone());
         }
 
         Ok((aggregates, load_limit_reached))
     }
+
+    #[cfg(feature = "aggregate_bloom")]
+    pub fn next_block_without_events(&self) -> BlockNumber {
+        self.running_event_filter.lock().unwrap().next_block
+    }
+}
+
+#[cfg(feature = "aggregate_bloom")]
+#[derive(Debug)]
+pub(crate) struct RunningEventFilter {
+    filter: AggregateBloom,
+    next_block: BlockNumber,
 }
 
 /// Reconstruct the [aggregate](crate::bloom::AggregateBloom) for the range of
@@ -750,9 +840,9 @@ impl Transaction<'_> {
 /// range is complete, before that it is kept in memory and can be lost upon
 /// shutdown.
 #[cfg(feature = "aggregate_bloom")]
-pub fn reconstruct_running_aggregate(
+pub(crate) fn reconstruct_running_event_filter(
     tx: &rusqlite::Transaction<'_>,
-) -> anyhow::Result<AggregateBloom> {
+) -> anyhow::Result<RunningEventFilter> {
     use super::transaction;
 
     let mut last_to_block_stmt = tx.prepare(
@@ -766,7 +856,7 @@ pub fn reconstruct_running_aggregate(
         r"
         SELECT events
         FROM transactions
-        WHERE block_number >= :first_running_aggregate_block
+        WHERE block_number >= :first_runnining_event_filter_block
         ",
     )?;
 
@@ -775,7 +865,7 @@ pub fn reconstruct_running_aggregate(
         .optional()
         .context("Querying last stored aggregate to_block")?;
 
-    let first_running_aggregate_block = match last_to_block {
+    let first_runnining_event_filter_block = match last_to_block {
         Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
         // Aggregate Bloom filter table is empty -> reconstruct running aggregate
         // from the genesis block.
@@ -784,7 +874,7 @@ pub fn reconstruct_running_aggregate(
 
     let events_to_reconstruct: Vec<Option<Vec<Vec<Event>>>> = events_to_reconstruct_stmt
         .query_and_then(
-            named_params![":first_running_aggregate_block": &first_running_aggregate_block],
+            named_params![":first_runnining_event_filter_block": &first_runnining_event_filter_block],
             |row| {
                 let events: Option<transaction::dto::EventsForBlock> = row
                     .get_optional_blob(0)?
@@ -812,23 +902,27 @@ pub fn reconstruct_running_aggregate(
         .context("Querying events to reconstruct")?
         .collect::<anyhow::Result<_>>()?;
 
-    let mut running_aggregate = AggregateBloom::new(first_running_aggregate_block);
+    let mut aggregate = AggregateBloom::new(first_runnining_event_filter_block);
 
     for (block, events_for_block) in events_to_reconstruct.iter().enumerate() {
-        if let Some(events) = events_for_block {
-            let block_number = first_running_aggregate_block + block as u64;
+        let Some(events) = events_for_block else {
+            break;
+        };
 
-            let mut bloom = BloomFilter::new();
-            for event in events.iter().flatten() {
-                bloom.set_keys(&event.keys);
-                bloom.set_address(&event.from_address);
-            }
-
-            running_aggregate.add_bloom(&bloom, block_number);
+        let mut bloom = BloomFilter::new();
+        for event in events.iter().flatten() {
+            bloom.set_keys(&event.keys);
+            bloom.set_address(&event.from_address);
         }
+
+        let block_number = first_runnining_event_filter_block + block as u64;
+        aggregate.add_bloom(&bloom, block_number);
     }
 
-    Ok(running_aggregate)
+    Ok(RunningEventFilter {
+        filter: aggregate,
+        next_block: first_runnining_event_filter_block + events_to_reconstruct.len() as u64,
+    })
 }
 
 fn continuation_token(
@@ -1862,10 +1956,10 @@ mod tests {
             .unwrap();
         assert_eq!(inserted_aggregate_filter_count, 2);
 
-        let running_aggregate = tx.running_aggregate.lock().unwrap();
+        let running_event_filter = tx.running_event_filter.lock().unwrap();
         // Running aggregate starts from next block range.
         assert_eq!(
-            running_aggregate.from_block,
+            running_event_filter.filter.from_block,
             2 * AggregateBloom::BLOCK_RANGE_LEN
         );
     }

@@ -14,7 +14,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
-aggregate_bloom = []
+aggregate_bloom = ["pathfinder-storage/aggregate_bloom", "pathfinder-rpc/aggregate_bloom"]
 
 [dependencies]
 anyhow = { workspace = true }

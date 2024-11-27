@@ -20,10 +20,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use anyhow::Context;
-#[cfg(feature = "aggregate_bloom")]
-use bloom::AggregateBloom;
 pub use bloom::EVENT_KEY_FILTER_LIMIT;
 pub use connection::*;
+#[cfg(feature = "aggregate_bloom")]
+use event::RunningEventFilter;
 use pathfinder_common::{BlockHash, BlockNumber};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -96,7 +96,7 @@ struct Inner {
     pool: Pool<SqliteConnectionManager>,
     bloom_filter_cache: Arc<bloom::Cache>,
     #[cfg(feature = "aggregate_bloom")]
-    running_aggregate: Arc<Mutex<AggregateBloom>>,
+    running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
 
@@ -105,7 +105,7 @@ pub struct StorageManager {
     journal_mode: JournalMode,
     bloom_filter_cache: Arc<bloom::Cache>,
     #[cfg(feature = "aggregate_bloom")]
-    running_aggregate: Arc<Mutex<AggregateBloom>>,
+    running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
 
@@ -138,7 +138,7 @@ impl StorageManager {
             pool,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
             #[cfg(feature = "aggregate_bloom")]
-            running_aggregate: self.running_aggregate.clone(),
+            running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         }))
     }
@@ -303,8 +303,9 @@ impl StorageBuilder {
         }
 
         #[cfg(feature = "aggregate_bloom")]
-        let running_aggregate = event::reconstruct_running_aggregate(&connection.transaction()?)
-            .context("Reconstructing running aggregate bloom filter")?;
+        let running_event_filter =
+            event::reconstruct_running_event_filter(&connection.transaction()?)
+                .context("Reconstructing running aggregate bloom filter")?;
 
         connection
             .close()
@@ -316,7 +317,7 @@ impl StorageBuilder {
             journal_mode: self.journal_mode,
             bloom_filter_cache: Arc::new(bloom::Cache::with_size(self.bloom_filter_cache_size)),
             #[cfg(feature = "aggregate_bloom")]
-            running_aggregate: Arc::new(Mutex::new(running_aggregate)),
+            running_event_filter: Arc::new(Mutex::new(running_event_filter)),
             trie_prune_mode,
         })
     }
@@ -389,7 +390,7 @@ impl Storage {
             conn,
             self.0.bloom_filter_cache.clone(),
             #[cfg(feature = "aggregate_bloom")]
-            self.0.running_aggregate.clone(),
+            self.0.running_event_filter.clone(),
             self.0.trie_prune_mode,
         ))
     }
@@ -664,7 +665,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "aggregate_bloom")]
-    fn running_aggregate_reconstructed_after_shutdown() {
+    fn running_event_filter_reconstructed_after_shutdown() {
         use std::num::NonZeroUsize;
         use std::sync::LazyLock;
 

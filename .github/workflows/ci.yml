@@ -73,6 +73,7 @@ jobs:
           rm -rf ~/.cargo/git
       - run: |
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+          cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
           cargo clippy --workspace --all-targets --all-features --locked --manifest-path crates/load-test/Cargo.toml -- -D warnings -D rust_2018_idioms
 
 
