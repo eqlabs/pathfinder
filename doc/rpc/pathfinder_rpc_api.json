@@ -293,7 +293,7 @@
                 }
             },
             "PROOF_MISSING": {
-                "code": 10000,
+                "code": 10001,
                 "message": "Merkle trie proof is not available"
             },
             "SUBSCRIPTION_TXN_HASH_NOT_FOUND": {
