@@ -815,6 +815,7 @@ pub mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: value.l1_data_gas.map(|g| g.into()),
             }
         }
     }

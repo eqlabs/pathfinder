@@ -325,6 +325,7 @@ pub enum EntryPointType {
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
+    pub l1_data_gas: Option<ResourceBound>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Dummy)]
@@ -1103,6 +1104,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x2540be400),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 sender_address: contract_address!(
                     "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
@@ -1222,6 +1224,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 constructor_calldata: vec![call_param!(
                     "0x5cd65f3d7daea6c63939d659b8473ea0c5cd81576035a4d34e52fb06840196c"
@@ -1411,6 +1414,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 sender_address: contract_address!(
                     "0x35acd6dd6c5045d18ca6d0192af46b335a5402c02d41f46e4e77ea2c951d9a3"

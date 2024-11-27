@@ -233,7 +233,7 @@ pub mod init {
             // There must be at least 1 transaction per block
             let transaction_data = fake_non_empty_with_rng::<
                 Vec<_>,
-                crate::connection::transaction::dto::TransactionV1,
+                crate::connection::transaction::dto::TransactionV2,
             >(rng)
             .into_iter()
             .enumerate()
