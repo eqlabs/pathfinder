@@ -159,7 +159,6 @@ pub struct BackwardContinuity {
 
 /// Ensures that the block hash and signature are correct.
 pub struct VerifyHashAndSignature {
-    chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
     block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
@@ -238,9 +237,7 @@ impl ProcessStage for VerifyHashAndSignature {
         }
 
         if !self.verify_signature(&input) {
-            // TODO: make this an error once state diff commitments and
-            // signatures are fixed on the feeder gateway return
-            // Err(SyncError2::BadHeaderSignature);
+            return Err(SyncError::BadHeaderSignature(*peer));
         }
 
         Ok(input)
@@ -249,13 +246,11 @@ impl ProcessStage for VerifyHashAndSignature {
 
 impl VerifyHashAndSignature {
     pub fn new(
-        chain: Chain,
         chain_id: ChainId,
         public_key: PublicKey,
         block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     ) -> Self {
         Self {
-            chain,
             chain_id,
             public_key,
             block_hash_db,

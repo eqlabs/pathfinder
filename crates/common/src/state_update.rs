@@ -398,6 +398,12 @@ impl<'a> From<&'a StateUpdate> for StateUpdateRef<'a> {
     }
 }
 
+impl<'a> From<&'a mut StateUpdate> for StateUpdateRef<'a> {
+    fn from(state_update: &'a mut StateUpdate) -> Self {
+        Self::from(state_update as &'a StateUpdate)
+    }
+}
+
 impl<'a> From<&'a StateUpdateData> for StateUpdateRef<'a> {
     fn from(state_update: &'a StateUpdateData) -> Self {
         Self {
@@ -429,6 +435,12 @@ impl<'a> From<&'a StateUpdateData> for StateUpdateRef<'a> {
                 .collect(),
             declared_sierra_classes: &state_update.declared_sierra_classes,
         }
+    }
+}
+
+impl<'a> From<&'a mut StateUpdateData> for StateUpdateRef<'a> {
+    fn from(state_update: &'a mut StateUpdateData) -> Self {
+        Self::from(state_update as &'a StateUpdateData)
     }
 }
 
