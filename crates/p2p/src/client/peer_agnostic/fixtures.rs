@@ -13,7 +13,13 @@ use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDi
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransactionV0,
+    DeployTransactionV1,
+    TransactionVariant,
+};
 use pathfinder_common::{
     BlockHeader,
     BlockNumber,
@@ -37,10 +43,42 @@ use crate::client::peer_agnostic::Receipt;
 #[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestPeer(pub PeerId);
 
-#[derive(Clone, Dummy, PartialEq, TaggedDebug)]
+#[derive(Clone, PartialEq, TaggedDebug)]
 pub struct TestTxn {
     pub t: TransactionVariant,
     pub r: Receipt,
+}
+
+/// We want to simulate transactions as they're incoming via P2P, where
+/// contract_address for deploy and deploy account transactions is not
+/// propagated.
+impl<T> Dummy<T> for TestTxn {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        let mut t = Faker.fake_with_rng(rng);
+        match &mut t {
+            TransactionVariant::DeployV0(DeployTransactionV0 {
+                contract_address, ..
+            })
+            | TransactionVariant::DeployV1(DeployTransactionV1 {
+                contract_address, ..
+            })
+            | TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
+                contract_address,
+                ..
+            })
+            | TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
+                contract_address,
+                ..
+            }) => {
+                *contract_address = ContractAddress::ZERO;
+            }
+            _ => {}
+        };
+        Self {
+            t,
+            r: Faker.fake_with_rng(rng),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Dummy, PartialEq, TaggedDebug)]

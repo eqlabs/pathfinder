@@ -145,6 +145,56 @@ impl TransactionVariant {
 
         Some(hash)
     }
+
+    /// Compute contract address for deploy and deploy account transactions. Do
+    /// nothing in case of other transactions.
+    ///
+    /// ### Important
+    ///
+    /// This function should not be called in async context.
+    pub fn calculate_contract_address(&mut self) {
+        match self {
+            TransactionVariant::DeployV0(DeployTransactionV0 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+            })
+            | TransactionVariant::DeployV1(DeployTransactionV1 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+            }) => {
+                *contract_address = ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().map(|d| CallParam(d.0)),
+                    contract_address_salt,
+                    class_hash,
+                );
+            }
+            TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+                ..
+            })
+            | TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+                ..
+            }) => {
+                *contract_address = ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().copied(),
+                    contract_address_salt,
+                    class_hash,
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 impl From<DeclareTransactionV2> for TransactionVariant {

@@ -443,6 +443,8 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
 }
 
 impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
+    /// Caller must take care to compute the contract address for deploy and
+    /// deploy account transactions separately is a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -535,11 +537,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV0(DeployTransactionV0 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
@@ -552,11 +551,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV1(DeployTransactionV1 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
@@ -570,11 +566,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV1(DeployAccountTransactionV1 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     max_fee: Fee(x.max_fee),
                     signature: x
                         .signature
@@ -595,11 +588,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV3(DeployAccountTransactionV3 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     signature: x
                         .signature
                         .parts
@@ -690,6 +680,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
 }
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
+    /// Caller must take care to compute the contract address for deploy and
+    /// deploy account transactions separately is a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
