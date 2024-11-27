@@ -14,7 +14,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
-aggregate_bloom = []
+aggregate_bloom = ["pathfinder-storage/aggregate_bloom", "pathfinder-rpc/aggregate_bloom"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -44,9 +44,9 @@ pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-retry = { path = "../retry" }
-pathfinder-rpc = { path = "../rpc", features = ["aggregate_bloom"] }
+pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
-pathfinder-storage = { path = "../storage", features = ["aggregate_bloom"] }
+pathfinder-storage = { path = "../storage" }
 primitive-types = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
