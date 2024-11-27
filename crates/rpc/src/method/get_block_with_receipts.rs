@@ -19,8 +19,6 @@ pub enum Output {
     Pending(Arc<PendingBlock>),
 }
 
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Input {
     pub block_id: BlockId,
 }
