@@ -840,12 +840,16 @@ impl V3Hasher<'_> {
     }
 
     fn hash_fee_fields(&self) -> Felt {
-        PoseidonHasher::default()
+        let mut hasher = PoseidonHasher::default()
             .chain(self.tip.0.into())
             .chain(Self::pack_gas_bound(b"L1_GAS", &self.resource_bounds.l1_gas).into())
-            .chain(Self::pack_gas_bound(b"L2_GAS", &self.resource_bounds.l2_gas).into())
-            .finish()
-            .into()
+            .chain(Self::pack_gas_bound(b"L2_GAS", &self.resource_bounds.l2_gas).into());
+
+        if let Some(l1_data_gas) = self.resource_bounds.l1_data_gas {
+            hasher = hasher.chain(Self::pack_gas_bound(b"L1_DATA", &l1_data_gas).into());
+        }
+
+        hasher.finish().into()
     }
 
     fn pack_gas_bound(name: &[u8], bound: &ResourceBound) -> Felt {
