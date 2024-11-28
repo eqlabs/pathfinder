@@ -37,6 +37,8 @@ pub struct ExecutionResources {
     pub total_l1_gas: Option<Felt>,
     #[optional]
     pub total_l1_data_gas: Option<Felt>,
+    #[optional]
+    pub l2_gas: Option<Felt>,
 }
 
 pub mod execution_resources {

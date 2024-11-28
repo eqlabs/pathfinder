@@ -41,6 +41,7 @@ message Receipt {
     starknet.common.Felt252 l1_data_gas = 5;
     starknet.common.Felt252 total_l1_gas = 6;
     starknet.common.Felt252 total_l1_data_gas = 7;
+    starknet.common.Felt252 l2_gas = 8;
   }
 
   message Common {
