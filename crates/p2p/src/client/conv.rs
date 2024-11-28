@@ -32,6 +32,7 @@ use pathfinder_common::receipt::{
     ExecutionResources,
     ExecutionStatus,
     L1Gas,
+    L2Gas,
     L2ToL1Message,
     Receipt,
 };
@@ -340,6 +341,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
                     l1_data_gas: Some(da.l1_data_gas.into()),
                     total_l1_gas: Some(total.l1_gas.into()),
                     total_l1_data_gas: Some(total.l1_data_gas.into()),
+                    l2_gas: Some(e.l2_gas.0.into()),
                 }
             },
             revert_reason,
@@ -760,8 +762,10 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                         )?
                         .0,
                     },
-                    // TODO: Fix this when we have a way to get L2 gas from the gateway
-                    l2_gas: Default::default(),
+                    l2_gas: L2Gas(
+                        GasPrice::try_from(common.execution_resources.l2_gas.unwrap_or_default())?
+                            .0,
+                    ),
                 },
                 l2_to_l1_messages: common
                     .messages_sent
