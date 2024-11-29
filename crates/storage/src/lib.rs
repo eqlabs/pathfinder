@@ -258,6 +258,22 @@ impl StorageBuilder {
             .create_pool(NonZeroU32::new(32).unwrap())
     }
 
+    /// Convenience function for tests to create an in-tempdir database with a
+    /// specific trie prune mode.
+    pub fn in_tempdir_with_trie_pruning_and_pool_size(
+        trie_prune_mode: TriePruneMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
+        let db_dir = tempfile::TempDir::new()?;
+        let mut db_path = PathBuf::from(db_dir.path());
+        db_path.push("db.sqlite");
+        crate::StorageBuilder::file(db_path)
+            .trie_prune_mode(Some(trie_prune_mode))
+            .migrate()
+            .unwrap()
+            .create_pool(pool_size)
+    }
+
     /// Performs the database schema migration and returns a [storage
     /// manager](StorageManager).
     ///

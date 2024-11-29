@@ -369,6 +369,7 @@ mod tests {
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
                 update_tries: Box::new(update_starknet_state),
+                ..Default::default()
             },
         );
         (public_key, blocks)

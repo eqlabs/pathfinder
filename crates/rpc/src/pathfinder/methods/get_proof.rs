@@ -101,7 +101,7 @@ struct PathWrapper {
 
 /// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
 /// crate.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ProofNodes(Vec<TrieNode>);
 
 impl Serialize for ProofNodes {
@@ -198,7 +198,7 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
 #[skip_serializing_none]
 pub struct GetClassProofOutput {
     /// Required to verify that the hash of the class commitment and the root of
@@ -263,8 +263,24 @@ pub async fn get_proof(
 
         let storage_root_idx = tx
             .storage_root_index(header.number)
-            .context("Querying storage root index")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .context("Querying storage root index")?;
+
+        let Some(storage_root_idx) = storage_root_idx else {
+            if tx.trie_pruning_enabled() {
+                return Err(GetProofError::ProofMissing);
+            } else {
+                // Either:
+                // - the chain is empty (no contract updates) up to and including this block
+                // - or all leaves were removed resulting in an empty trie
+                // An empty proof is then a proof of non-membership in an empty block.
+                return Ok(GetProofOutput {
+                    state_commitment,
+                    class_commitment,
+                    contract_proof: ProofNodes(vec![]),
+                    contract_data: None,
+                });
+            }
+        };
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
@@ -354,7 +370,7 @@ pub async fn get_proof(
 
 /// Returns all the necessary data to trustlessly verify class changes for a
 /// particular contract.
-pub async fn get_proof_class(
+pub async fn get_class_proof(
     context: RpcContext,
     input: GetClassProofInput,
 ) -> Result<GetClassProofOutput, GetProofError> {
@@ -393,8 +409,22 @@ pub async fn get_proof_class(
 
         let class_root_idx = tx
             .class_root_index(header.number)
-            .context("Querying class root index")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .context("Querying class root index")?;
+
+        let Some(class_root_idx) = class_root_idx else {
+            if tx.trie_pruning_enabled() {
+                return Err(GetProofError::ProofMissing);
+            } else {
+                // Either:
+                // - the chain is empty (no declared classes) up to and including this block
+                // - or all leaves were removed resulting in an empty trie
+                // An empty proof is then a proof of non-membership in an empty block.
+                return Ok(GetClassProofOutput {
+                    class_commitment,
+                    class_proof: ProofNodes(vec![]),
+                });
+            }
+        };
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
@@ -417,65 +447,223 @@ pub async fn get_proof_class(
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
     use super::*;
 
-    #[tokio::test]
-    async fn limit_exceeded() {
-        let context = RpcContext::for_tests();
-        let input = GetProofInput {
-            block_id: BlockId::Latest,
-            contract_address: contract_address!("0xdeadbeef"),
-            keys: (0..10_000)
-                .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
-                .collect(),
-        };
+    mod get_proof {
+        use super::*;
 
-        let err = get_proof(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+        #[tokio::test]
+        async fn success() {
+            let context = RpcContext::for_tests();
+
+            let input = GetProofInput {
+                block_id: BlockId::Number(pathfinder_common::BlockNumber::GENESIS + 2),
+                contract_address: contract_address_bytes!(b"contract 2 (sierra)"),
+                keys: vec![storage_address_bytes!(b"storage addr 0")],
+            };
+
+            get_proof(context, input).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn limit_exceeded() {
+            let context = RpcContext::for_tests();
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address!("0xdeadbeef"),
+                keys: (0..10_000)
+                    .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
+                    .collect(),
+            };
+
+            let err = get_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+        }
+
+        #[tokio::test]
+        async fn proof_pruned() {
+            let context =
+                RpcContext::for_tests_with_trie_pruning(pathfinder_storage::TriePruneMode::Prune {
+                    num_blocks_kept: 0,
+                });
+            let mut conn = context.storage.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+
+            // Ensure that all storage tries are pruned, hence the node does not store
+            // historic proofs.
+            tx.insert_storage_trie(
+                &pathfinder_storage::TrieUpdate {
+                    nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
+                    nodes_removed: (0..100).collect(),
+                    root_commitment: Felt::ZERO,
+                },
+                BlockNumber::GENESIS + 3,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            let tx = conn.transaction().unwrap();
+            tx.insert_storage_trie(
+                &pathfinder_storage::TrieUpdate {
+                    nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
+                    nodes_removed: vec![],
+                    root_commitment: Felt::ZERO,
+                },
+                BlockNumber::GENESIS + 4,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            drop(conn);
+
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address_bytes!(b"contract 1"),
+                keys: vec![storage_address_bytes!(b"storage addr 0")],
+            };
+            let err = get_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+        }
+
+        #[tokio::test]
+        async fn chain_without_contract_updates() {
+            let storage =
+                pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                pathfinder_storage::fake::Config {
+                    occurrence: pathfinder_storage::fake::OccurrencePerBlock {
+                        nonce: 0..=0,
+                        storage: 0..=0,
+                        system_storage: 0..=0,
+                        ..Default::default()
+                    },
+                    update_tries: Box::new(update_starknet_state),
+                    ..Default::default()
+                },
+            );
+
+            pathfinder_storage::fake::fill(
+                &storage,
+                &blocks,
+                Some(Box::new(update_starknet_state)),
+            );
+
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address!("0xabcd"),
+                keys: vec![storage_address!("0x1234")],
+            };
+
+            let output = get_proof(context, input).await.unwrap();
+            assert!(output.contract_proof.0.is_empty());
+            assert!(output.contract_data.is_none());
+        }
     }
 
-    #[tokio::test]
-    async fn proof_pruned() {
-        let context =
-            RpcContext::for_tests_with_trie_pruning(pathfinder_storage::TriePruneMode::Prune {
+    mod get_class_proof {
+        use pathfinder_storage::fake::{Config, OccurrencePerBlock};
+        use pathfinder_storage::{StorageBuilder, TriePruneMode};
+
+        use super::*;
+
+        #[tokio::test]
+        async fn success() {
+            let context = RpcContext::for_tests();
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Number(pathfinder_common::BlockNumber::GENESIS + 2),
+                class_hash: class_hash_bytes!(b"class 2 hash (sierra)"),
+            };
+
+            get_class_proof(context, input).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn proof_pruned() {
+            let storage = StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
                 num_blocks_kept: 0,
-            });
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
+            })
+            .unwrap();
 
-        // Ensure that all storage tries are pruned, hence the node does not store
-        // historic proofs.
-        tx.insert_storage_trie(
-            &pathfinder_storage::TrieUpdate {
-                nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
-                nodes_removed: (0..100).collect(),
-                root_commitment: Felt::ZERO,
-            },
-            BlockNumber::GENESIS + 3,
-        )
-        .unwrap();
-        tx.commit().unwrap();
-        let tx = conn.transaction().unwrap();
-        tx.insert_storage_trie(
-            &pathfinder_storage::TrieUpdate {
-                nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
-                nodes_removed: vec![],
-                root_commitment: Felt::ZERO,
-            },
-            BlockNumber::GENESIS + 4,
-        )
-        .unwrap();
-        tx.commit().unwrap();
-        drop(conn);
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                Config {
+                    occurrence: OccurrencePerBlock {
+                        sierra: 1..=10,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            );
+            pathfinder_storage::fake::fill(
+                &storage, &blocks, /* Simulates pruned tries */ None,
+            );
 
-        let input = GetProofInput {
-            block_id: BlockId::Latest,
-            contract_address: contract_address!("0xdeadbeef"),
-            keys: vec![storage_address_bytes!(b"storage addr 0")],
-        };
-        let err = get_proof(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+            let context = RpcContext::for_tests().with_storage(storage);
+            let class_hash = ClassHash(blocks.first().unwrap().sierra_defs.first().unwrap().0 .0);
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Latest,
+                // Declared in the block but the tries are missing
+                class_hash,
+            };
+
+            let err = get_class_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+        }
+
+        #[tokio::test]
+        async fn chain_without_class_declarations() {
+            let storage =
+                pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                pathfinder_storage::fake::Config {
+                    occurrence: pathfinder_storage::fake::OccurrencePerBlock {
+                        cairo: 0..=0,
+                        sierra: 0..=0,
+                        ..Default::default()
+                    },
+                    update_tries: Box::new(update_starknet_state),
+                    ..Default::default()
+                },
+            );
+
+            pathfinder_storage::fake::fill(
+                &storage,
+                &blocks,
+                Some(Box::new(update_starknet_state)),
+            );
+
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Latest,
+                class_hash: class_hash!("0xabcd"),
+            };
+
+            let output = get_class_proof(context, input).await.unwrap();
+            assert_eq!(
+                output,
+                GetClassProofOutput {
+                    class_commitment: None,
+                    class_proof: ProofNodes(vec![])
+                }
+            );
+        }
     }
 }

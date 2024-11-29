@@ -118,4 +118,8 @@ impl Transaction<'_> {
     pub fn commit(self) -> anyhow::Result<()> {
         Ok(self.transaction.commit()?)
     }
+
+    pub fn trie_pruning_enabled(&self) -> bool {
+        matches!(self.trie_prune_mode, TriePruneMode::Prune { .. })
+    }
 }
