@@ -158,7 +158,18 @@ impl crate::dto::serialize::SerializeForVersion for TransactionWithReceipt<'_> {
         serializer: crate::dto::serialize::Serializer,
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("transaction", &crate::dto::Transaction(self.transaction))?;
+        match serializer.version {
+            crate::RpcVersion::V07 => {
+                serializer.serialize_field(
+                    "transaction",
+                    &crate::dto::TransactionWithHash(self.transaction),
+                )?;
+            }
+            _ => {
+                serializer
+                    .serialize_field("transaction", &crate::dto::Transaction(self.transaction))?;
+            }
+        }
         serializer.serialize_field(
             "receipt",
             &crate::dto::TxnReceipt {

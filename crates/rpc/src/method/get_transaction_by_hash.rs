@@ -72,7 +72,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::serialize::Serializer,
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize(&crate::dto::Transaction(&self.0))
+        serializer.serialize(&crate::dto::TransactionWithHash(&self.0))
     }
 }
 

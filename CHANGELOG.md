@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- `starknet_getBlockWithReceipts` returns `transaction_hash` within the `transaction` object making the response not strictly spec compliant. Fixed on the JSON-RPC 0.8 interface.
+
 ## [0.15.0] - 2024-11-21
 
 ### Added

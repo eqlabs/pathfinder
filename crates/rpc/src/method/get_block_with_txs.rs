@@ -115,7 +115,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::Transaction),
+                    &mut transactions.iter().map(crate::dto::TransactionWithHash),
                 )?;
                 serializer.end()
             }
@@ -129,7 +129,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::Transaction),
+                    &mut transactions.iter().map(crate::dto::TransactionWithHash),
                 )?;
                 serializer.serialize_field(
                     "status",

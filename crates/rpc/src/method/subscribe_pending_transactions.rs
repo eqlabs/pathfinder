@@ -47,7 +47,7 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         match self {
             Notification::Transaction(transaction) => {
-                crate::dto::Transaction(transaction).serialize(serializer)
+                crate::dto::TransactionWithHash(transaction).serialize(serializer)
             }
             Notification::TransactionHash(transaction_hash) => {
                 transaction_hash.0.serialize(serializer)
