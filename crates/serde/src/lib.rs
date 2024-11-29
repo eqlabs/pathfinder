@@ -79,7 +79,7 @@ impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
     {
         struct EthereumAddressVisitor;
 
-        impl<'de> Visitor<'de> for EthereumAddressVisitor {
+        impl Visitor<'_> for EthereumAddressVisitor {
             type Value = EthereumAddress;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -121,7 +121,7 @@ impl<'de> DeserializeAs<'de, H256> for H256AsNoLeadingZerosHexStr {
     {
         struct H256Visitor;
 
-        impl<'de> Visitor<'de> for H256Visitor {
+        impl Visitor<'_> for H256Visitor {
             type Value = H256;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -164,7 +164,7 @@ impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
     {
         struct GasPriceVisitor;
 
-        impl<'de> Visitor<'de> for GasPriceVisitor {
+        impl Visitor<'_> for GasPriceVisitor {
             type Value = GasPrice;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -207,7 +207,7 @@ impl<'de> DeserializeAs<'de, BlockNumber> for StarknetBlockNumberAsHexStr {
     {
         struct StarknetBlockNumberVisitor;
 
-        impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
+        impl Visitor<'_> for StarknetBlockNumberVisitor {
             type Value = BlockNumber;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -275,7 +275,7 @@ impl<'de> serde::Deserialize<'de> for U64AsHexStr {
     {
         struct Visitor;
 
-        impl<'de> serde::de::Visitor<'de> for Visitor {
+        impl serde::de::Visitor<'_> for Visitor {
             type Value = U64AsHexStr;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

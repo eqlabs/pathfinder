@@ -372,7 +372,7 @@ pub trait RowExt {
     row_felt_wrapper!(get_receipt_commitment, ReceiptCommitment);
 }
 
-impl<'a> RowExt for &rusqlite::Row<'a> {
+impl RowExt for &rusqlite::Row<'_> {
     fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]> {
         self.get_ref(index)?.as_blob().map_err(|e| e.into())
     }

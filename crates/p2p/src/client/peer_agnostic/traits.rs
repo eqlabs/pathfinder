@@ -98,6 +98,7 @@ pub trait BlockClient {
         declared_classes_count: u64,
     ) -> impl Future<Output = Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError>> + Send;
 
+    #[allow(clippy::type_complexity)]
     fn events_for_block(
         self,
         block: BlockNumber,

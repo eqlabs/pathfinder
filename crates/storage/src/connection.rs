@@ -106,7 +106,7 @@ type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 
 type EventsForBlock = (TransactionHash, Vec<Event>);
 
-impl<'inner> Transaction<'inner> {
+impl Transaction<'_> {
     // The implementations here are intentionally kept as simple wrappers. This lets
     // the real implementations be kept in separate files with more reasonable
     // LOC counts and easier test oversight.

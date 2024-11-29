@@ -38,7 +38,6 @@ pub struct DeclareV0 {
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::transaction::transaction::DeclareV1")]
-
 pub struct DeclareV1 {
     pub sender: Address,
     pub max_fee: Felt,
