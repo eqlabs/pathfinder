@@ -6,11 +6,20 @@ use p2p::client::types::TransactionData;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransactionV0,
+    DeployTransactionV1,
+    Transaction,
+    TransactionVariant,
+};
 use pathfinder_common::{
     BlockHeader,
     BlockNumber,
+    CallParam,
     ChainId,
+    ContractAddress,
     StarknetVersion,
     TransactionCommitment,
     TransactionHash,
@@ -92,7 +101,10 @@ impl ProcessStage for CalculateHashes {
 
         let transactions = transactions
             .into_par_iter()
-            .map(|(tx, r)| {
+            .map(|(mut tx, r)| {
+                // Contract address for deploy and deploy account transactions is not propagated via p2p
+                tx.variant.calculate_contract_address();
+
                 let computed_hash = tx.variant.calculate_hash(self.0, false);
                 if tx.hash != computed_hash {
                     tracing::debug!(%peer, %block_number, expected_hash=%tx.hash, %computed_hash, "Transaction hash mismatch");
@@ -110,6 +122,7 @@ impl ProcessStage for CalculateHashes {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
