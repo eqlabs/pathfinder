@@ -444,7 +444,7 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
 
 impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
     /// Caller must take care to compute the contract address for deploy and
-    /// deploy account transactions separately is a non-async context.
+    /// deploy account transactions separately in a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -681,7 +681,7 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
     /// Caller must take care to compute the contract address for deploy and
-    /// deploy account transactions separately is a non-async context.
+    /// deploy account transactions separately in a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
