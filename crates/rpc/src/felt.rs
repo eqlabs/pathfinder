@@ -246,7 +246,7 @@ mod deserialization {
         {
             struct FeltVisitor;
 
-            impl<'de> serde::de::Visitor<'de> for FeltVisitor {
+            impl serde::de::Visitor<'_> for FeltVisitor {
                 type Value = RpcFelt;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

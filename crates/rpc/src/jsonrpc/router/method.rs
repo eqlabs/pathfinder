@@ -100,7 +100,7 @@ pub async fn handle_json_rpc_body(
 /// ```
 /// async fn example(RpcContext, impl DeserializeForVersion, RpcVersion) -> Result<Output, Into<RpcError>>
 /// ```
-impl<'a, F, Input, Output, Error, Fut>
+impl<F, Input, Output, Error, Fut>
     IntoRpcEndpoint<((), (), Input), ((), (), Output), ((), (), RpcContext)> for F
 where
     F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send + 'static,
@@ -149,7 +149,7 @@ where
 /// ```
 /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
 /// ```
-impl<'a, F, Input, Output, Error, Fut> IntoRpcEndpoint<((), Input), ((), Output), ((), RpcContext)>
+impl<F, Input, Output, Error, Fut> IntoRpcEndpoint<((), Input), ((), Output), ((), RpcContext)>
     for F
 where
     F: Fn(RpcContext, Input) -> Fut + Sync + Send + 'static,
@@ -199,7 +199,7 @@ where
 /// async fn example(impl Deserialize) -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
-impl<'a, F, Input, Output, Error, Fut> IntoRpcEndpoint<((), Input), ((), Output), ()> for F
+impl<F, Input, Output, Error, Fut> IntoRpcEndpoint<((), Input), ((), Output), ()> for F
 where
     F: Fn(Input) -> Fut + Sync + Send + 'static,
     Input: DeserializeForVersion + Sync + Send + 'static,
@@ -248,7 +248,7 @@ where
 /// async fn example(RpcContext) -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
-impl<'a, F, Output, Error, Fut> IntoRpcEndpoint<(), ((), Output), ((), RpcContext)> for F
+impl<F, Output, Error, Fut> IntoRpcEndpoint<(), ((), Output), ((), RpcContext)> for F
 where
     F: Fn(RpcContext) -> Fut + Sync + Send + 'static,
     Output: SerializeForVersion + Sync + Send + 'static,
@@ -299,7 +299,7 @@ where
 /// async fn example() -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
-impl<'a, F, Output, Error, Fut> IntoRpcEndpoint<(), (), ((), Output)> for F
+impl<F, Output, Error, Fut> IntoRpcEndpoint<(), (), ((), Output)> for F
 where
     F: Fn() -> Fut + Sync + Send + 'static,
     Output: SerializeForVersion + Sync + Send + 'static,
@@ -350,7 +350,7 @@ where
 /// fn example() -> &'static str
 /// ```
 #[async_trait]
-impl<'a, F> IntoRpcEndpoint<(), (), ((), (), &'static str)> for F
+impl<F> IntoRpcEndpoint<(), (), ((), (), &'static str)> for F
 where
     F: Fn() -> &'static str + Sync + Send + 'static,
 {
