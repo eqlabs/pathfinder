@@ -2,7 +2,7 @@ use pathfinder_common::{GasPrice, L1DataAvailabilityMode};
 use serde::de::Error;
 
 use super::serialize::SerializeStruct;
-use crate::Reorg;
+use crate::{Reorg, RpcVersion};
 
 #[derive(Debug)]
 pub struct BlockHeader<'a>(pub &'a pathfinder_common::BlockHeader);
@@ -70,13 +70,15 @@ impl crate::dto::serialize::SerializeForVersion for BlockHeader<'_> {
                 price_in_fri: self.0.strk_l1_data_gas_price,
             },
         )?;
-        serializer.serialize_field(
-            "l2_gas_price",
-            &ResourcePrice {
-                price_in_wei: self.0.eth_l2_gas_price,
-                price_in_fri: self.0.strk_l2_gas_price,
-            },
-        )?;
+        if serializer.version == RpcVersion::V08 {
+            serializer.serialize_field(
+                "l2_gas_price",
+                &ResourcePrice {
+                    price_in_wei: self.0.eth_l2_gas_price,
+                    price_in_fri: self.0.strk_l2_gas_price,
+                },
+            )?;
+        }
         serializer.serialize_field(
             "l1_da_mode",
             &match self.0.l1_da_mode {
@@ -115,13 +117,15 @@ impl crate::dto::serialize::SerializeForVersion for PendingBlockHeader<'_> {
                 price_in_fri: self.0.l1_data_gas_price.price_in_fri,
             },
         )?;
-        serializer.serialize_field(
-            "l2_gas_price",
-            &ResourcePrice {
-                price_in_wei: self.0.l2_gas_price.price_in_wei,
-                price_in_fri: self.0.l2_gas_price.price_in_fri,
-            },
-        )?;
+        if serializer.version == RpcVersion::V08 {
+            serializer.serialize_field(
+                "l2_gas_price",
+                &ResourcePrice {
+                    price_in_wei: self.0.l2_gas_price.price_in_wei,
+                    price_in_fri: self.0.l2_gas_price.price_in_fri,
+                },
+            )?;
+        }
         serializer.serialize_field(
             "l1_da_mode",
             &match self.0.l1_da_mode {
