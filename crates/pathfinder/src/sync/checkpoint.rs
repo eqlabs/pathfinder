@@ -1236,12 +1236,12 @@ mod tests {
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
+        use pathfinder_merkle_tree::starknet_state::update_starknet_state;
         use pathfinder_storage::fake::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_state_diff_stream;
         use super::*;
-        use crate::state::update_starknet_state;
 
         struct Setup {
             pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,

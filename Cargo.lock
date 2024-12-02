@@ -7527,6 +7527,7 @@ dependencies = [
  "pathfinder-storage",
  "pretty_assertions_sorted",
  "rand",
+ "rayon",
  "starknet-gateway-types",
  "thiserror",
  "tracing",

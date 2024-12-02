@@ -29,6 +29,7 @@ use pathfinder_common::{
     StorageCommitment,
 };
 use pathfinder_merkle_tree::contract_state::ContractStateUpdateResult;
+use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::sync::mpsc;
@@ -36,7 +37,6 @@ use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
-use crate::state::update_starknet_state;
 use crate::sync::error::SyncError;
 use crate::sync::stream::ProcessStage;
 
