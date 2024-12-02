@@ -29,6 +29,9 @@ exclude = [
 ]
 resolver = "2"
 
+[profile.release]
+overflow-checks = true
+
 [profile.release-lto]
 inherits = "release"
 codegen-units = 1
