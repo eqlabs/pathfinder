@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_getBlockWithTxs` works with empty blocks`
 
+## [0.14.5] - 2024-12-02
+
+### Fixed
+
+- Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
+
 ## [0.14.4] - 2024-10-03
 
 ### Fixed
