@@ -1583,11 +1583,7 @@ mod tests {
 
     mod real_world {
         use pathfinder_common::{
-            class_commitment,
-            class_commitment_leaf_hash,
-            felt,
-            sierra_hash,
-            BlockNumber,
+            class_commitment, class_commitment_leaf_hash, felt, sierra_hash, BlockNumber,
             ClassCommitmentLeafHash,
         };
         use pathfinder_storage::RootIndexUpdate;
