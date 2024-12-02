@@ -12,6 +12,7 @@ use bitvec::prelude::BitVec;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::FeltHash;
 use pathfinder_crypto::Felt;
+use pathfinder_storage::Storage;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]
@@ -28,11 +29,27 @@ pub enum InternalNode {
     Leaf,
 }
 
+/// A newtype for the storage index of a trie node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StorageIndex(u64);
+
+impl StorageIndex {
+    /// Create a new StorageIndex.
+    pub fn new(index: u64) -> Self {
+        Self(index)
+    }
+
+    /// Get the inner u64 value.
+    pub fn value(&self) -> u64 {
+        self.0
+    }
+}
+
 /// Describes the [InternalNode::Binary] variant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     /// The storage index of this node (if it was loaded from storage).
-    pub storage_index: Option<u64>,
+    pub storage_index: Option<StorageIndex>,
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
@@ -44,7 +61,7 @@ pub struct BinaryNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgeNode {
     /// The storage index of this node (if it was loaded from storage).
-    pub storage_index: Option<u64>,
+    pub storage_index: Option<StorageIndex>,
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
@@ -144,9 +161,9 @@ impl InternalNode {
         matches!(self, InternalNode::Leaf)
     }
 
-    pub fn storage_index(&self) -> Option<u64> {
+    pub fn storage_index(&self) -> Option<StorageIndex> {
         match self {
-            InternalNode::Unresolved(storage_index) => Some(*storage_index),
+            InternalNode::Unresolved(storage_index) => Some(StorageIndex::new(*storage_index)),
             InternalNode::Binary(binary) => binary.storage_index,
             InternalNode::Edge(edge) => edge.storage_index,
             InternalNode::Leaf => None,

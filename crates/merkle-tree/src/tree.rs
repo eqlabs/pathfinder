@@ -63,7 +63,7 @@ use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 
-use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
+use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode, StorageIndex};
 use crate::storage::Storage;
 
 /// A Starknet binary Merkle-Patricia tree.
@@ -214,7 +214,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 };
 
                 if let Some(storage_index) = binary.storage_index {
-                    removed.push(storage_index);
+                    removed.push(storage_index.value());
                 };
 
                 let node_index = added.len();
@@ -247,7 +247,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 let node_index = added.len();
                 added.push((hash, persisted_node));
                 if let Some(storage_index) = edge.storage_index {
-                    removed.push(storage_index);
+                    removed.push(storage_index.value());
                 };
 
                 (hash, Some(NodeRef::Index(node_index)))
@@ -371,7 +371,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
                 let old_node = node.replace(updated);
                 if let Some(index) = old_node.storage_index() {
-                    self.nodes_removed.push(index);
+                    self.nodes_removed.push(index.value());
                 };
             }
             None => {
@@ -438,7 +438,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 InternalNode::Binary(_) => false,
                 _ => {
                     if let Some(index) = node.storage_index() {
-                        indexes_removed.push(index);
+                        indexes_removed.push(index.value());
                     };
                     true
                 }
@@ -471,7 +471,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // Replace the old binary node with the new edge node.
                 let old_node = node.replace(InternalNode::Edge(new_edge));
                 if let Some(index) = old_node.storage_index() {
-                    self.nodes_removed.push(index);
+                    self.nodes_removed.push(index.value());
                 };
             }
             None => {
@@ -747,25 +747,25 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let node = match node {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
-                storage_index: Some(index),
+                storage_index: Some(StorageIndex::new(index)),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
-                storage_index: Some(index),
+                storage_index: Some(StorageIndex::new(index)),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
-                storage_index: Some(index),
+                storage_index: Some(StorageIndex::new(index)),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Leaf)),
                 right: Rc::new(RefCell::new(InternalNode::Leaf)),
             }),
             StoredNode::LeafEdge { path } => InternalNode::Edge(EdgeNode {
-                storage_index: Some(index),
+                storage_index: Some(StorageIndex::new(index)),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -794,7 +794,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         if let Some(child_edge) = resolved_child.as_edge().cloned() {
             parent.path.extend_from_bitslice(&child_edge.path);
             if let Some(storage_index) = child_edge.storage_index {
-                self.nodes_removed.push(storage_index);
+                self.nodes_removed.push(storage_index.value());
             }
             parent.child = child_edge.child;
         }
