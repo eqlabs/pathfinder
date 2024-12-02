@@ -116,15 +116,18 @@ impl Transaction<'_> {
     ///
     /// This includes block header, block body and state update information.
     pub fn purge_block(&self, block: BlockNumber) -> anyhow::Result<()> {
-        self.inner()
-            .execute(
-                r"
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            self.inner()
+                .execute(
+                    r"
                 DELETE FROM starknet_events_filters_aggregate 
                 WHERE from_block <= :block AND to_block >= :block
                 ",
-                named_params![":block": &block],
-            )
-            .context("Deleting aggregate bloom filter")?;
+                    named_params![":block": &block],
+                )
+                .context("Deleting aggregate bloom filter")?;
+        }
         self.inner()
             .execute(
                 "DELETE FROM starknet_events_filters WHERE block_number = ?",
