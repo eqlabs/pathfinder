@@ -348,6 +348,12 @@ impl Transaction<'_> {
                 break ScanResult::Done;
             }
 
+            // Check if we've reached our Bloom filter load limit
+            if bloom_filters_loaded >= max_uncached_bloom_filters_to_load.get() {
+                tracing::trace!("Bloom filter limit reached");
+                break ScanResult::ContinueFrom(block_number);
+            }
+
             // Check bloom filter
             if !key_filter_is_empty || filter.contract_address.is_some() {
                 let bloom = self.load_bloom(reorg_counter, block_number)?;
@@ -398,12 +404,6 @@ impl Transaction<'_> {
             }
 
             block_number += 1;
-
-            // Check if we've reached our Bloom filter load limit
-            if bloom_filters_loaded >= max_uncached_bloom_filters_to_load.get() {
-                tracing::trace!("Bloom filter limit reached");
-                break ScanResult::ContinueFrom(block_number);
-            }
         };
 
         match result {
