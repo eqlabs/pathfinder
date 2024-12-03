@@ -50,7 +50,9 @@ pub fn init() {
     });
 }
 
+#[cfg(debug_assertions)]
 fn lut() -> Option<LutGuard> {
+    #[allow(static_mut_refs)]
     unsafe { LUTS.as_ref() }.map(|luts| luts.lock().unwrap())
 }
 
