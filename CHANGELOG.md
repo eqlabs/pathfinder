@@ -7,11 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.15.2] - 2024-12-04
 
 ### Fixed
 
 - Pathfinder fails to properly do a reorg due to a SQL statement referring a table that does not exist.
+- `--rpc.get-events-max-uncached-bloom-filters-to-load` setting is ineffective.
 
 ## [0.15.1] - 2024-12-02
 
