@@ -1,11 +1,6 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
 use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    CallParam,
-    ContractAddress,
-    Fee,
-    TransactionSignatureElem,
+    BlockHash, BlockNumber, CallParam, ContractAddress, Fee, TransactionSignatureElem,
 };
 use serde::{Deserialize, Serialize};
 
@@ -123,20 +118,11 @@ pub mod add_transaction {
     use std::collections::HashMap;
 
     use pathfinder_common::class_definition::{
-        EntryPointType,
-        SelectorAndFunctionIndex,
-        SelectorAndOffset,
+        EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset,
     };
     use pathfinder_common::{
-        AccountDeploymentDataElem,
-        CasmHash,
-        ClassHash,
-        ContractAddressSalt,
-        EntryPoint,
-        PaymasterDataElem,
-        Tip,
-        TransactionNonce,
-        TransactionVersion,
+        AccountDeploymentDataElem, CasmHash, ClassHash, ContractAddressSalt, EntryPoint,
+        PaymasterDataElem, Tip, TransactionNonce, TransactionVersion,
     };
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;

@@ -11,11 +11,5 @@ pub mod hash;
 pub mod signature;
 
 pub use algebra::{
-    AffinePoint,
-    CurveOrderMontFelt,
-    Felt,
-    HexParseError,
-    MontFelt,
-    OverflowError,
-    ProjectivePoint,
+    AffinePoint, CurveOrderMontFelt, Felt, HexParseError, MontFelt, OverflowError, ProjectivePoint,
 };

@@ -60,9 +60,7 @@ pub mod from_parts {
 
     use anyhow::Result;
     use pathfinder_common::class_definition::{
-        EntryPointType,
-        SelectorAndOffset,
-        SierraEntryPoints,
+        EntryPointType, SelectorAndOffset, SierraEntryPoints,
     };
     use pathfinder_common::ClassHash;
     use pathfinder_crypto::Felt;
@@ -501,9 +499,7 @@ mod json {
     use std::collections::{BTreeMap, HashMap};
 
     use pathfinder_common::class_definition::{
-        EntryPointType,
-        SelectorAndFunctionIndex,
-        SelectorAndOffset,
+        EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset,
     };
 
     pub enum ContractDefinition<'a> {

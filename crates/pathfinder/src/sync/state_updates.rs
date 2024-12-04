@@ -6,26 +6,12 @@ use anyhow::Context;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::state_update::{
-    self,
-    ContractClassUpdate,
-    ContractUpdate,
-    StateUpdateData,
-    StateUpdateRef,
+    self, ContractClassUpdate, ContractUpdate, StateUpdateData, StateUpdateRef,
     SystemContractUpdate,
 };
 use pathfinder_common::{
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    CasmHash,
-    ClassCommitment,
-    ClassHash,
-    ContractAddress,
-    SierraHash,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    StateUpdate,
+    BlockHash, BlockHeader, BlockNumber, CasmHash, ClassCommitment, ClassHash, ContractAddress,
+    SierraHash, StarknetVersion, StateCommitment, StateDiffCommitment, StateUpdate,
     StorageCommitment,
 };
 use pathfinder_merkle_tree::contract_state::ContractStateUpdateResult;
@@ -147,19 +133,10 @@ mod multi_block {
     use std::collections::{HashMap, HashSet};
 
     use pathfinder_common::state_update::{
-        ContractClassUpdate,
-        ContractUpdateRef,
-        StateUpdateRef,
-        StorageRef,
-        SystemContractUpdateRef,
+        ContractClassUpdate, ContractUpdateRef, StateUpdateRef, StorageRef, SystemContractUpdateRef,
     };
     use pathfinder_common::{
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        StorageAddress,
+        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
     };
 

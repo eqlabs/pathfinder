@@ -24,16 +24,7 @@ pub mod metrics {
     use std::sync::{Arc, RwLock};
 
     use metrics::{
-        Counter,
-        CounterFn,
-        Gauge,
-        Histogram,
-        Key,
-        KeyName,
-        Label,
-        Recorder,
-        SharedString,
-        Unit,
+        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Label, Recorder, SharedString, Unit,
     };
 
     /// # Purpose

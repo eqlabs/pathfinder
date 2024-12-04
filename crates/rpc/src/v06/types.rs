@@ -1,14 +1,8 @@
 mod transaction;
 
 use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    BlockTimestamp,
-    GasPrice,
-    SequencerAddress,
-    StarknetVersion,
-    StateCommitment,
-    TransactionVersion,
+    BlockHash, BlockNumber, BlockTimestamp, GasPrice, SequencerAddress, StarknetVersion,
+    StateCommitment, TransactionVersion,
 };
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};

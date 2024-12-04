@@ -224,21 +224,11 @@ mod tests {
     mod in_memory {
 
         use pathfinder_common::{
-            felt,
-            BlockHash,
-            BlockHeader,
-            BlockNumber,
-            BlockTimestamp,
-            ClassHash,
-            ContractAddress,
-            GasPrice,
-            StateUpdate,
-            StorageAddress,
-            StorageValue,
+            felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ClassHash, ContractAddress,
+            GasPrice, StateUpdate, StorageAddress, StorageValue,
         };
         use starknet_gateway_test_fixtures::class_definitions::{
-            CONTRACT_DEFINITION,
-            CONTRACT_DEFINITION_CLASS_HASH,
+            CONTRACT_DEFINITION, CONTRACT_DEFINITION_CLASS_HASH,
         };
         use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
 

@@ -6,12 +6,7 @@ use anyhow::Context;
 use futures::{Stream, StreamExt, TryStreamExt};
 use p2p::client::conv::TryFromDto;
 use p2p::client::peer_agnostic::traits::{
-    BlockClient,
-    ClassStream,
-    EventStream,
-    HeaderStream,
-    StateDiffStream,
-    StreamItem,
+    BlockClient, ClassStream, EventStream, HeaderStream, StateDiffStream, StreamItem,
     TransactionStream,
 };
 use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
@@ -23,13 +18,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    Chain,
-    ChainId,
-    ClassHash,
-    PublicKey,
-    SignedBlockHeader,
+    BlockHash, BlockNumber, Chain, ChainId, ClassHash, PublicKey, SignedBlockHeader,
     TransactionIndex,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
@@ -723,23 +712,10 @@ mod tests {
         use assert_matches::assert_matches;
         use futures::stream;
         use pathfinder_common::{
-            public_key,
-            BlockCommitmentSignature,
-            BlockCommitmentSignatureElem,
-            BlockHash,
-            BlockHeader,
-            BlockTimestamp,
-            ClassCommitment,
-            EventCommitment,
-            GasPrice,
-            L1DataAvailabilityMode,
-            ReceiptCommitment,
-            SequencerAddress,
-            StarknetVersion,
-            StateCommitment,
-            StateDiffCommitment,
-            StorageCommitment,
-            TransactionCommitment,
+            public_key, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash,
+            BlockHeader, BlockTimestamp, ClassCommitment, EventCommitment, GasPrice,
+            L1DataAvailabilityMode, ReceiptCommitment, SequencerAddress, StarknetVersion,
+            StateCommitment, StateDiffCommitment, StorageCommitment, TransactionCommitment,
         };
         use pathfinder_storage::StorageBuilder;
         use rstest::rstest;
@@ -1403,22 +1379,14 @@ mod tests {
         use pathfinder_common::event::Event;
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{
-            class_hash,
-            felt,
-            sierra_hash,
-            BlockHeader,
-            CasmHash,
-            ClassHash,
-            SierraHash,
-            SignedBlockHeader,
-            TransactionHash,
+            class_hash, felt, sierra_hash, BlockHeader, CasmHash, ClassHash, SierraHash,
+            SignedBlockHeader, TransactionHash,
         };
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_0_10_TUPLES_INTEGRATION as CAIRO,
-            CAIRO_0_11_SIERRA as SIERRA0,
+            CAIRO_0_10_TUPLES_INTEGRATION as CAIRO, CAIRO_0_11_SIERRA as SIERRA0,
             CAIRO_2_0_0_STACK_OVERFLOW as SIERRA2,
         };
         use starknet_gateway_types::error::SequencerError;

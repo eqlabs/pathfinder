@@ -206,17 +206,8 @@ pub enum TransactionsResponse {
 impl ToProtobuf<proto::transaction::transaction::Txn> for TransactionVariant {
     fn to_protobuf(self) -> proto::transaction::transaction::Txn {
         use proto::transaction::transaction::Txn::{
-            DeclareV0,
-            DeclareV1,
-            DeclareV2,
-            DeclareV3,
-            Deploy,
-            DeployAccountV1,
-            DeployAccountV3,
-            InvokeV0,
-            InvokeV1,
-            InvokeV3,
-            L1Handler,
+            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
+            InvokeV0, InvokeV1, InvokeV3, L1Handler,
         };
         match self {
             Self::DeclareV0(txn) => DeclareV0(txn.to_protobuf()),
@@ -240,17 +231,8 @@ impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVarian
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::transaction::transaction::Txn::{
-            DeclareV0,
-            DeclareV1,
-            DeclareV2,
-            DeclareV3,
-            Deploy,
-            DeployAccountV1,
-            DeployAccountV3,
-            InvokeV0,
-            InvokeV1,
-            InvokeV3,
-            L1Handler,
+            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
+            InvokeV0, InvokeV1, InvokeV3, L1Handler,
         };
         match input {
             DeclareV0(t) => TryFromProtobuf::try_from_protobuf(t, field_name).map(Self::DeclareV0),
@@ -277,8 +259,7 @@ impl TryFromProtobuf<proto::transaction::transaction::Txn> for TransactionVarian
 impl ToProtobuf<proto::transaction::TransactionsResponse> for TransactionsResponse {
     fn to_protobuf(self) -> proto::transaction::TransactionsResponse {
         use proto::transaction::transactions_response::TransactionMessage::{
-            Fin,
-            TransactionWithReceipt,
+            Fin, TransactionWithReceipt,
         };
         proto::transaction::TransactionsResponse {
             transaction_message: Some(match self {
@@ -295,8 +276,7 @@ impl TryFromProtobuf<proto::transaction::TransactionsResponse> for TransactionsR
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::transaction::transactions_response::TransactionMessage::{
-            Fin,
-            TransactionWithReceipt,
+            Fin, TransactionWithReceipt,
         };
         Ok(match proto_field(input.transaction_message, field_name)? {
             TransactionWithReceipt(t) => {

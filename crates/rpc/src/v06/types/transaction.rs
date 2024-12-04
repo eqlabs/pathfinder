@@ -1,25 +1,11 @@
 use pathfinder_common::transaction::{
-    DataAvailabilityMode,
-    DeclareTransactionV0V1,
-    DeclareTransactionV2,
-    DeclareTransactionV3,
-    DeployAccountTransactionV1,
-    DeployAccountTransactionV3,
-    DeployTransactionV0,
-    DeployTransactionV1,
-    InvokeTransactionV0,
-    InvokeTransactionV1,
-    InvokeTransactionV3,
-    L1HandlerTransaction,
-    ResourceBound,
-    ResourceBounds,
+    DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransactionV0,
+    DeployTransactionV1, InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3,
+    L1HandlerTransaction, ResourceBound, ResourceBounds,
 };
 use pathfinder_common::{
-    ResourceAmount,
-    ResourcePricePerUnit,
-    Tip,
-    TransactionHash,
-    TransactionVersion,
+    ResourceAmount, ResourcePricePerUnit, Tip, TransactionHash, TransactionVersion,
 };
 use serde::ser::SerializeStruct;
 use serde::Serialize;

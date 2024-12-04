@@ -8,15 +8,9 @@ use p2p_stream::{InboundFailure, OutboundFailure};
 pub mod utils;
 
 use utils::{
-    new_swarm,
-    new_swarm_with_timeout,
-    wait_inbound_failure,
-    wait_inbound_request,
-    wait_inbound_response_stream_closed,
-    wait_no_events,
-    wait_outbound_failure,
-    wait_outbound_request_sent_awaiting_responses,
-    Action,
+    new_swarm, new_swarm_with_timeout, wait_inbound_failure, wait_inbound_request,
+    wait_inbound_response_stream_closed, wait_no_events, wait_outbound_failure,
+    wait_outbound_request_sent_awaiting_responses, Action,
 };
 
 #[test_log::test(tokio::test)]

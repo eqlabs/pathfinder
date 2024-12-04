@@ -2,11 +2,7 @@ use pathfinder_common::event::Event;
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::receipt::{ExecutionResources, L1Gas, Receipt};
 use pathfinder_common::transaction::{
-    DeclareTransactionV0V1,
-    DeployTransactionV0,
-    EntryPointType,
-    InvokeTransactionV0,
-    Transaction,
+    DeclareTransactionV0V1, DeployTransactionV0, EntryPointType, InvokeTransactionV0, Transaction,
     TransactionVariant,
 };
 use pathfinder_common::*;

@@ -7,8 +7,7 @@ use starknet_gateway_client::GatewayApi;
 use crate::compose_executor_transaction;
 use crate::context::RpcContext;
 use crate::executor::{
-    ExecutionStateError,
-    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+    ExecutionStateError, VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::v06::method::trace_block_transactions as v06;
 
@@ -613,15 +612,8 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
 pub(crate) mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{
-        block_hash,
-        transaction_hash,
-        BlockHeader,
-        BlockId,
-        GasPrice,
-        L1DataAvailabilityMode,
-        SierraHash,
-        StarknetVersion,
-        TransactionIndex,
+        block_hash, transaction_hash, BlockHeader, BlockId, GasPrice, L1DataAvailabilityMode,
+        SierraHash, StarknetVersion, TransactionIndex,
     };
     use starknet_gateway_types::reply::GasPrices;
     use tokio::task::JoinSet;

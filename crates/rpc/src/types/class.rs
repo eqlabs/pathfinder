@@ -532,8 +532,7 @@ mod tests {
 
     mod declare_class_hash {
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_0_11_SIERRA,
-            CONTRACT_DEFINITION,
+            CAIRO_0_11_SIERRA, CONTRACT_DEFINITION,
         };
         use starknet_gateway_types::class_hash::compute_class_hash;
 

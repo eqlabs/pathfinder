@@ -2,13 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockId,
-    CallParam,
-    ChainId,
-    ContractAddress,
-    EntryPoint,
-    EthereumAddress,
-    TransactionNonce,
+    BlockId, CallParam, ChainId, ContractAddress, EntryPoint, EthereumAddress, TransactionNonce,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
@@ -240,19 +234,12 @@ fn create_executor_transaction(
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt,
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        BlockTimestamp,
-        GasPrice,
-        StateUpdate,
+        felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, GasPrice, StateUpdate,
     };
     use primitive_types::H160;
     use serde::Deserialize;
     use starknet_gateway_test_fixtures::class_definitions::{
-        CAIRO_1_1_0_BALANCE_CASM_JSON,
-        CAIRO_1_1_0_BALANCE_SIERRA_JSON,
+        CAIRO_1_1_0_BALANCE_CASM_JSON, CAIRO_1_1_0_BALANCE_SIERRA_JSON,
     };
     use tempfile::tempdir;
 

@@ -4,13 +4,7 @@ use std::result::Result;
 use std::time::Duration;
 
 use pathfinder_common::{
-    BlockHash,
-    BlockId,
-    BlockNumber,
-    ClassHash,
-    PublicKey,
-    StateUpdate,
-    TransactionHash,
+    BlockHash, BlockId, BlockNumber, ClassHash, PublicKey, StateUpdate, TransactionHash,
 };
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;

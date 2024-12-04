@@ -140,8 +140,7 @@ pub async fn get_transaction_status(
         .map_err(GetTransactionStatusError::Internal)
         .and_then(|tx| {
             use starknet_gateway_types::reply::transaction_status::{
-                ExecutionStatus as GatewayExecutionStatus,
-                FinalityStatus as GatewayFinalityStatus,
+                ExecutionStatus as GatewayExecutionStatus, FinalityStatus as GatewayFinalityStatus,
             };
 
             let execution_status = tx.execution_status.unwrap_or_default();

@@ -47,11 +47,7 @@ mod boundary_conditions {
 
     use super::I64_MAX;
     use crate::p2p_network::sync_handlers::{
-        get_classes,
-        get_events,
-        get_headers,
-        get_state_diffs,
-        get_transactions,
+        get_classes, get_events, get_headers, get_state_diffs, get_transactions,
     };
 
     mod zero_limit_yields_fin_invalid_start_yields_fin {
@@ -110,32 +106,17 @@ mod prop {
     use p2p_proto::event::{EventsRequest, EventsResponse};
     use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
     use p2p_proto::state::{
-        ContractDiff,
-        ContractStoredValue,
-        DeclaredClass,
-        StateDiffsRequest,
-        StateDiffsResponse,
+        ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsRequest, StateDiffsResponse,
     };
     use p2p_proto::transaction::{
-        TransactionWithReceipt,
-        TransactionsRequest,
-        TransactionsResponse,
+        TransactionWithReceipt, TransactionsRequest, TransactionsResponse,
     };
     use pathfinder_common::event::Event;
     use pathfinder_common::state_update::SystemContractUpdate;
     use pathfinder_common::transaction::TransactionVariant;
     use pathfinder_common::{
-        BlockNumber,
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        SignedBlockHeader,
-        StorageAddress,
-        StorageValue,
-        TransactionHash,
-        TransactionIndex,
+        BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
+        SignedBlockHeader, StorageAddress, StorageValue, TransactionHash, TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
@@ -389,10 +370,7 @@ mod prop {
 
     mod workaround {
         use pathfinder_common::transaction::{
-            EntryPointType,
-            InvokeTransactionV0,
-            L1HandlerTransaction,
-            TransactionVariant,
+            EntryPointType, InvokeTransactionV0, L1HandlerTransaction, TransactionVariant,
         };
         use pathfinder_common::TransactionNonce;
 

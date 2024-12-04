@@ -9,12 +9,8 @@ use rstest::rstest;
 pub mod utils;
 
 use utils::{
-    new_swarm_with_timeout,
-    wait_inbound_request,
-    wait_inbound_response_stream_closed,
-    wait_outbound_request_sent_awaiting_responses,
-    wait_outbound_response_stream_closed,
-    Action,
+    new_swarm_with_timeout, wait_inbound_request, wait_inbound_response_stream_closed,
+    wait_outbound_request_sent_awaiting_responses, wait_outbound_response_stream_closed, Action,
     TestSwarm,
 };
 

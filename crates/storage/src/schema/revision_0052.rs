@@ -1681,14 +1681,9 @@ pub(crate) mod old_dto {
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
-        CallParamAsDecimalStr,
-        ConstructorParamAsDecimalStr,
-        EthereumAddressAsHexStr,
-        L2ToL1MessagePayloadElemAsDecimalStr,
-        ResourceAmountAsHexStr,
-        ResourcePricePerUnitAsHexStr,
-        TipAsHexStr,
-        TransactionSignatureElemAsDecimalStr,
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        L2ToL1MessagePayloadElemAsDecimalStr, ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr,
+        TipAsHexStr, TransactionSignatureElemAsDecimalStr,
     };
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;

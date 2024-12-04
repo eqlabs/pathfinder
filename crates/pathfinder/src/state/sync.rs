@@ -12,11 +12,7 @@ use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::{
-    BlockCommitmentSignature,
-    Chain,
-    PublicKey,
-    ReceiptCommitment,
-    StateDiffCommitment,
+    BlockCommitmentSignature, Chain, PublicKey, ReceiptCommitment, StateDiffCommitment,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
@@ -1268,20 +1264,9 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt_bytes,
-        BlockCommitmentSignature,
-        BlockCommitmentSignatureElem,
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        ClassHash,
-        EventCommitment,
-        ReceiptCommitment,
-        SierraHash,
-        StateCommitment,
-        StateDiffCommitment,
-        StateUpdate,
-        TransactionCommitment,
+        felt_bytes, BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockHeader,
+        BlockNumber, ClassHash, EventCommitment, ReceiptCommitment, SierraHash, StateCommitment,
+        StateDiffCommitment, StateUpdate, TransactionCommitment,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;

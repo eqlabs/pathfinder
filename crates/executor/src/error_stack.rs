@@ -1,6 +1,5 @@
 use blockifier::execution::stack_trace::{
-    gen_transaction_execution_error_trace,
-    ErrorStack as BlockifierErrorStack,
+    gen_transaction_execution_error_trace, ErrorStack as BlockifierErrorStack,
 };
 use blockifier::transaction::errors::TransactionExecutionError;
 use pathfinder_common::{ClassHash, ContractAddress, EntryPoint};

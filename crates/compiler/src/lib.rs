@@ -78,8 +78,7 @@ pub fn casm_class_hash(casm_definition: &[u8]) -> anyhow::Result<CasmHash> {
 mod v1_0_0_alpha6 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_alpha6::allowed_libfuncs::{
-        validate_compatible_sierra_version,
-        ListSelector,
+        validate_compatible_sierra_version, ListSelector,
     };
     use casm_compiler_v1_0_0_alpha6::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_alpha6::contract_class::ContractClass;
@@ -125,8 +124,7 @@ mod v1_0_0_alpha6 {
 mod v1_0_0_rc0 {
     use anyhow::Context;
     use casm_compiler_v1_0_0_rc0::allowed_libfuncs::{
-        validate_compatible_sierra_version,
-        ListSelector,
+        validate_compatible_sierra_version, ListSelector,
     };
     use casm_compiler_v1_0_0_rc0::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_0_0_rc0::contract_class::ContractClass;
@@ -172,8 +170,7 @@ mod v1_0_0_rc0 {
 mod v1_1_1 {
     use anyhow::Context;
     use casm_compiler_v1_1_1::allowed_libfuncs::{
-        validate_compatible_sierra_version,
-        ListSelector,
+        validate_compatible_sierra_version, ListSelector,
     };
     use casm_compiler_v1_1_1::casm_contract_class::CasmContractClass;
     use casm_compiler_v1_1_1::contract_class::ContractClass;
@@ -296,9 +293,7 @@ mod tests {
     mod parse_version {
         use rstest::rstest;
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_1_0_0_ALPHA5_SIERRA,
-            CAIRO_1_0_0_RC0_SIERRA,
-            CAIRO_1_1_0_RC0_SIERRA,
+            CAIRO_1_0_0_ALPHA5_SIERRA, CAIRO_1_0_0_RC0_SIERRA, CAIRO_1_1_0_RC0_SIERRA,
             CAIRO_2_0_0_STACK_OVERFLOW,
         };
 
@@ -361,8 +356,7 @@ mod tests {
 
     mod starknet_v0_11_2_onwards {
         use starknet_gateway_test_fixtures::class_definitions::{
-            CAIRO_1_1_0_RC0_SIERRA,
-            CAIRO_2_0_0_STACK_OVERFLOW,
+            CAIRO_1_1_0_RC0_SIERRA, CAIRO_2_0_0_STACK_OVERFLOW,
         };
 
         use super::*;

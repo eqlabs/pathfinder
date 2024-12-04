@@ -13,12 +13,7 @@ pub use response::RpcResponse;
 #[cfg(test)]
 pub use router::{handle_json_rpc_socket, CATCH_UP_BATCH_SIZE};
 pub use router::{
-    rpc_handler,
-    CatchUp,
-    RpcRouter,
-    RpcRouterBuilder,
-    RpcSubscriptionFlow,
-    SubscriptionMessage,
+    rpc_handler, CatchUp, RpcRouter, RpcRouterBuilder, RpcSubscriptionFlow, SubscriptionMessage,
 };
 use starknet_gateway_types::reply::Block;
 use tokio::sync::broadcast;

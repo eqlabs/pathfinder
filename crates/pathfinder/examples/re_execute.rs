@@ -97,9 +97,7 @@ fn main() -> anyhow::Result<()> {
 
 fn get_chain_id(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<ChainId> {
     use pathfinder_common::consts::{
-        MAINNET_GENESIS_HASH,
-        SEPOLIA_INTEGRATION_GENESIS_HASH,
-        SEPOLIA_TESTNET_GENESIS_HASH,
+        MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let (_, genesis_hash) = tx

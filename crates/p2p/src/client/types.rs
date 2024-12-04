@@ -5,27 +5,10 @@ use pathfinder_common::event::Event;
 use pathfinder_common::receipt::{ExecutionResources, ExecutionStatus, L2ToL1Message};
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
-    BlockCommitmentSignature,
-    BlockCommitmentSignatureElem,
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    BlockTimestamp,
-    ClassCommitment,
-    ClassHash,
-    EventCommitment,
-    Fee,
-    GasPrice,
-    ReceiptCommitment,
-    SequencerAddress,
-    SierraHash,
-    SignedBlockHeader,
-    StateCommitment,
-    StateDiffCommitment,
-    StorageCommitment,
-    TransactionCommitment,
-    TransactionHash,
-    TransactionIndex,
+    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockHeader, BlockNumber,
+    BlockTimestamp, ClassCommitment, ClassHash, EventCommitment, Fee, GasPrice, ReceiptCommitment,
+    SequencerAddress, SierraHash, SignedBlockHeader, StateCommitment, StateDiffCommitment,
+    StorageCommitment, TransactionCommitment, TransactionHash, TransactionIndex,
 };
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;

@@ -69,15 +69,8 @@ use libp2p::identity::PeerId;
 use libp2p::swarm::behaviour::{AddressChange, ConnectionClosed, DialFailure, FromSwarm};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{
-    ConnectionDenied,
-    ConnectionHandler,
-    ConnectionId,
-    NetworkBehaviour,
-    NotifyHandler,
-    THandler,
-    THandlerInEvent,
-    THandlerOutEvent,
-    ToSwarm,
+    ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, NotifyHandler, THandler,
+    THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 
 use crate::handler::OutboundMessage;

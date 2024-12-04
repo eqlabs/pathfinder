@@ -27,6 +27,7 @@ pub mod prelude;
 pub mod receipt;
 pub mod signature;
 pub mod state_update;
+pub mod storage_index;
 pub mod test_utils;
 pub mod transaction;
 pub mod trie;

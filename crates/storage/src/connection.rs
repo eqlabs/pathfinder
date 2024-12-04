@@ -16,10 +16,7 @@ mod trie;
 #[cfg(feature = "aggregate_bloom")]
 use event::RunningEventFilter;
 pub use event::{
-    EmittedEvent,
-    EventFilter,
-    EventFilterError,
-    PageOfEvents,
+    EmittedEvent, EventFilter, EventFilterError, PageOfEvents,
     PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT,
 };
 use pathfinder_common::event::Event;

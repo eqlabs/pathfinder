@@ -105,12 +105,7 @@ impl<S: StateReader> StateReader for PendingStateReader<S> {
 mod tests {
     use blockifier::state::state_api::StateReader;
     use pathfinder_common::{
-        class_hash,
-        contract_address,
-        contract_nonce,
-        storage_address,
-        storage_value,
-        StateUpdate,
+        class_hash, contract_address, contract_nonce, storage_address, storage_value, StateUpdate,
     };
     use starknet_types_core::felt::Felt as CoreFelt;
 

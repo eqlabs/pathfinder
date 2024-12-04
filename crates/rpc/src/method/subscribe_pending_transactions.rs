@@ -141,12 +141,7 @@ mod tests {
     use axum::extract::ws::Message;
     use pathfinder_common::transaction::{DeclareTransactionV0V1, Transaction, TransactionVariant};
     use pathfinder_common::{
-        contract_address,
-        transaction_hash,
-        BlockNumber,
-        ChainId,
-        ContractAddress,
-        TransactionHash,
+        contract_address, transaction_hash, BlockNumber, ChainId, ContractAddress, TransactionHash,
     };
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;

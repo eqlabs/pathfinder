@@ -3,12 +3,7 @@
 use std::sync::Arc;
 
 use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    ContractAddress,
-    EventData,
-    EventKey,
-    TransactionHash,
+    BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
 };
 use serde::ser::Error;
 use serde::Deserialize;

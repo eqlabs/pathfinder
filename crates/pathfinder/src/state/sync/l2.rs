@@ -5,22 +5,9 @@ use anyhow::{anyhow, Context};
 use futures::{StreamExt, TryStreamExt};
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::{
-    BlockCommitmentSignature,
-    BlockHash,
-    BlockNumber,
-    CasmHash,
-    Chain,
-    ChainId,
-    ClassHash,
-    EventCommitment,
-    PublicKey,
-    ReceiptCommitment,
-    SierraHash,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    StateUpdate,
-    TransactionCommitment,
+    BlockCommitmentSignature, BlockHash, BlockNumber, CasmHash, Chain, ChainId, ClassHash,
+    EventCommitment, PublicKey, ReceiptCommitment, SierraHash, StarknetVersion, StateCommitment,
+    StateDiffCommitment, StateUpdate, TransactionCommitment,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
@@ -30,11 +17,8 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 
 use crate::state::block_hash::{
-    calculate_event_commitment,
-    calculate_receipt_commitment,
-    calculate_transaction_commitment,
-    verify_block_hash,
-    BlockHeaderData,
+    calculate_event_commitment, calculate_receipt_commitment, calculate_transaction_commitment,
+    verify_block_hash, BlockHeaderData,
 };
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
@@ -1177,30 +1161,15 @@ mod tests {
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::{
-            BlockHash,
-            BlockId,
-            BlockNumber,
-            BlockTimestamp,
-            Chain,
-            ChainId,
-            ClassHash,
-            ContractAddress,
-            GasPrice,
-            PublicKey,
-            SequencerAddress,
-            StarknetVersion,
-            StateCommitment,
-            StateUpdate,
-            StorageAddress,
-            StorageValue,
+            BlockHash, BlockId, BlockNumber, BlockTimestamp, Chain, ChainId, ClassHash,
+            ContractAddress, GasPrice, PublicKey, SequencerAddress, StarknetVersion,
+            StateCommitment, StateUpdate, StorageAddress, StorageValue,
         };
         use pathfinder_crypto::Felt;
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_client::MockGatewayApi;
         use starknet_gateway_types::error::{
-            KnownStarknetErrorCode,
-            SequencerError,
-            StarknetError,
+            KnownStarknetErrorCode, SequencerError, StarknetError,
         };
         use starknet_gateway_types::reply;
         use starknet_gateway_types::reply::GasPrices;

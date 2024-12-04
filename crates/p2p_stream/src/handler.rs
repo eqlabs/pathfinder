@@ -34,14 +34,8 @@ use std::{fmt, io};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::swarm::handler::{
-    ConnectionEvent,
-    ConnectionHandler,
-    ConnectionHandlerEvent,
-    DialUpgradeError,
-    FullyNegotiatedInbound,
-    FullyNegotiatedOutbound,
-    ListenUpgradeError,
-    StreamUpgradeError,
+    ConnectionEvent, ConnectionHandler, ConnectionHandlerEvent, DialUpgradeError,
+    FullyNegotiatedInbound, FullyNegotiatedOutbound, ListenUpgradeError, StreamUpgradeError,
 };
 use libp2p::swarm::SubstreamProtocol;
 

@@ -811,11 +811,7 @@ mod tests {
     use crate::context::{RpcConfig, RpcContext};
     use crate::dto::DeserializeForVersion;
     use crate::jsonrpc::{
-        handle_json_rpc_socket,
-        CatchUp,
-        RpcRouter,
-        RpcSubscriptionFlow,
-        SubscriptionMessage,
+        handle_json_rpc_socket, CatchUp, RpcRouter, RpcSubscriptionFlow, SubscriptionMessage,
     };
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;

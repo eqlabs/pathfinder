@@ -95,15 +95,8 @@ pub async fn get_transaction_receipt_impl(
 
 pub mod types {
     use pathfinder_common::{
-        BlockHash,
-        BlockNumber,
-        ContractAddress,
-        EventData,
-        EventKey,
-        Fee,
-        L2ToL1MessagePayloadElem,
-        TransactionHash,
-        TransactionVersion,
+        BlockHash, BlockNumber, ContractAddress, EventData, EventKey, Fee,
+        L2ToL1MessagePayloadElem, TransactionHash, TransactionVersion,
     };
     use pathfinder_serde::H256AsNoLeadingZerosHexStr;
     use primitive_types::H256;

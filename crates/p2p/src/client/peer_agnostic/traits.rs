@@ -6,13 +6,8 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockNumber, SignedBlockHeader, TransactionHash};
 
 use crate::client::types::{
-    ClassDefinition,
-    ClassDefinitionsError,
-    EventsForBlockByTransaction,
-    EventsResponseStreamFailure,
-    Receipt,
-    StateDiffsError,
-    TransactionData,
+    ClassDefinition, ClassDefinitionsError, EventsForBlockByTransaction,
+    EventsResponseStreamFailure, Receipt, StateDiffsError, TransactionData,
 };
 use crate::PeerData;
 

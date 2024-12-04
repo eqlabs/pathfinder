@@ -81,15 +81,8 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
 pub(crate) mod types {
     use pathfinder_common::state_update::ContractClassUpdate;
     use pathfinder_common::{
-        BlockHash,
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        StateCommitment,
-        StorageAddress,
-        StorageValue,
+        BlockHash, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
+        StateCommitment, StorageAddress, StorageValue,
     };
     use serde::Serialize;
     use serde_with::skip_serializing_none;

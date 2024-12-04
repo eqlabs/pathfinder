@@ -10,17 +10,11 @@ use super::simulate_transactions::dto::TransactionTrace;
 use crate::compose_executor_transaction;
 use crate::context::RpcContext;
 use crate::executor::{
-    ExecutionStateError,
-    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+    ExecutionStateError, VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::v06::method::simulate_transactions::dto::{
-    DeclareTxnTrace,
-    DeployAccountTxnTrace,
-    ExecuteInvocation,
-    ExecutionResources,
-    FunctionInvocation,
-    InvokeTxnTrace,
-    L1HandlerTxnTrace,
+    DeclareTxnTrace, DeployAccountTxnTrace, ExecuteInvocation, ExecutionResources,
+    FunctionInvocation, InvokeTxnTrace, L1HandlerTxnTrace,
 };
 
 #[derive(Deserialize, Debug, Clone)]
@@ -333,16 +327,8 @@ pub async fn trace_block_transactions_impl(
 pub(crate) mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{
-        block_hash,
-        felt,
-        BlockHeader,
-        BlockNumber,
-        Chain,
-        GasPrice,
-        SequencerAddress,
-        SierraHash,
-        StarknetVersion,
-        TransactionIndex,
+        block_hash, felt, BlockHeader, BlockNumber, Chain, GasPrice, SequencerAddress, SierraHash,
+        StarknetVersion, TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
@@ -353,8 +339,7 @@ pub(crate) mod tests {
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::{
-            fixtures,
-            setup_storage_with_starknet_version,
+            fixtures, setup_storage_with_starknet_version,
         };
 
         let (
@@ -500,8 +485,7 @@ pub(crate) mod tests {
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::{
-            fixtures,
-            setup_storage_with_starknet_version,
+            fixtures, setup_storage_with_starknet_version,
         };
 
         let (

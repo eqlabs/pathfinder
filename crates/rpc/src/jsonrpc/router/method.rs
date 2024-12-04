@@ -8,12 +8,7 @@ use serde_json::value::RawValue;
 use tracing::Instrument;
 
 use super::{
-    run_concurrently,
-    IntoRpcEndpoint,
-    RpcEndpoint,
-    RpcRequestError,
-    RpcResponses,
-    RpcRouter,
+    run_concurrently, IntoRpcEndpoint, RpcEndpoint, RpcRequestError, RpcResponses, RpcRouter,
 };
 use crate::context::RpcContext;
 use crate::dto::serialize::{SerializeForVersion, Serializer};

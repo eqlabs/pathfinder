@@ -1,20 +1,9 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST
 //! API.
 use pathfinder_common::{
-    BlockCommitmentSignatureElem,
-    BlockHash,
-    BlockNumber,
-    BlockTimestamp,
-    ContractAddress,
-    EthereumAddress,
-    EventCommitment,
-    GasPrice,
-    ReceiptCommitment,
-    SequencerAddress,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    TransactionCommitment,
+    BlockCommitmentSignatureElem, BlockHash, BlockNumber, BlockTimestamp, ContractAddress,
+    EthereumAddress, EventCommitment, GasPrice, ReceiptCommitment, SequencerAddress,
+    StarknetVersion, StateCommitment, StateDiffCommitment, TransactionCommitment,
 };
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
@@ -239,39 +228,17 @@ pub mod transaction_status {
 pub mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
-        AccountDeploymentDataElem,
-        CallParam,
-        CasmHash,
-        ClassHash,
-        ConstructorParam,
-        ContractAddress,
-        ContractAddressSalt,
-        EntryPoint,
-        EthereumAddress,
-        Fee,
-        L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem,
-        PaymasterDataElem,
-        ResourceAmount,
-        ResourcePricePerUnit,
-        Tip,
-        TransactionHash,
-        TransactionIndex,
-        TransactionNonce,
-        TransactionSignatureElem,
-        TransactionVersion,
+        AccountDeploymentDataElem, CallParam, CasmHash, ClassHash, ConstructorParam,
+        ContractAddress, ContractAddressSalt, EntryPoint, EthereumAddress, Fee, L1ToL2MessageNonce,
+        L1ToL2MessagePayloadElem, L2ToL1MessagePayloadElem, PaymasterDataElem, ResourceAmount,
+        ResourcePricePerUnit, Tip, TransactionHash, TransactionIndex, TransactionNonce,
+        TransactionSignatureElem, TransactionVersion,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
-        CallParamAsDecimalStr,
-        ConstructorParamAsDecimalStr,
-        EthereumAddressAsHexStr,
-        L1ToL2MessagePayloadElemAsDecimalStr,
-        L2ToL1MessagePayloadElemAsDecimalStr,
-        ResourceAmountAsHexStr,
-        ResourcePricePerUnitAsHexStr,
-        TipAsHexStr,
+        CallParamAsDecimalStr, ConstructorParamAsDecimalStr, EthereumAddressAsHexStr,
+        L1ToL2MessagePayloadElemAsDecimalStr, L2ToL1MessagePayloadElemAsDecimalStr,
+        ResourceAmountAsHexStr, ResourcePricePerUnitAsHexStr, TipAsHexStr,
         TransactionSignatureElemAsDecimalStr,
     };
     use primitive_types::H256;
@@ -2087,12 +2054,7 @@ pub mod state_update {
     use std::collections::{HashMap, HashSet};
 
     use pathfinder_common::{
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        StorageAddress,
+        CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress,
         StorageValue,
     };
     use serde::{Deserialize, Serialize};
@@ -2248,10 +2210,7 @@ mod tests {
     use primitive_types::H256;
 
     use crate::reply::state_update::{
-        DeclaredSierraClass,
-        DeployedContract,
-        ReplacedClass,
-        StorageDiff,
+        DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
     };
     use crate::reply::transaction::L1HandlerTransaction;
 

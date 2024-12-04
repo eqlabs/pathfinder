@@ -3,12 +3,7 @@ use std::collections::HashSet;
 use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockHash,
-    BlockId,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    StorageAddress,
+    BlockHash, BlockId, ClassHash, ContractAddress, ContractNonce, StorageAddress,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;
@@ -315,7 +310,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             .ok_or(Error::StorageProofNotSupported)?;
 
         let class_root_hash = match tx
-            .class_trie_node_hash(class_root_idx)
+            .class_trie_node_hash(class_root_idx.get())
             .context("Querying class root hash")?
         {
             None if input.class_hashes.is_some() => return Err(Error::StorageProofNotSupported),
@@ -324,17 +319,21 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
         };
 
         let classes_proof = if let Some(class_hashes) = input.class_hashes {
-            let nodes: Vec<NodeHashToNodeMapping> =
-                ClassCommitmentTree::get_proofs(&tx, header.number, &class_hashes, class_root_idx)?
-                    .into_iter()
-                    .flatten()
-                    .map(|(node, node_hash)| NodeHashToNodeMapping {
-                        node_hash,
-                        node: ProofNode(node),
-                    })
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect();
+            let nodes: Vec<NodeHashToNodeMapping> = ClassCommitmentTree::get_proofs(
+                &tx,
+                header.number,
+                &class_hashes,
+                class_root_idx.get(),
+            )?
+            .into_iter()
+            .flatten()
+            .map(|(node, node_hash)| NodeHashToNodeMapping {
+                node_hash,
+                node: ProofNode(node),
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
 
             NodeHashToNodeMappings(nodes)
         } else {
@@ -347,7 +346,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             .ok_or(Error::StorageProofNotSupported)?;
 
         let storage_root_hash = match tx
-            .storage_trie_node_hash(storage_root_idx)
+            .storage_trie_node_hash(storage_root_idx.get())
             .context("Querying class root hash")?
         {
             None if input.contract_addresses.is_some() => {
@@ -363,7 +362,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
                     &tx,
                     header.number,
                     &contract_addresses,
-                    storage_root_idx,
+                    storage_root_idx.get(),
                 )?
                 .into_iter()
                 .flatten()

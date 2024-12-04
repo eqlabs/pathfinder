@@ -257,11 +257,7 @@ pub mod test_utils {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::{
-        BuiltinCounters,
-        ExecutionResources,
-        ExecutionStatus,
-        L2ToL1Message,
-        Receipt,
+        BuiltinCounters, ExecutionResources, ExecutionStatus, L2ToL1Message, Receipt,
     };
     use pathfinder_common::transaction::*;
     use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};

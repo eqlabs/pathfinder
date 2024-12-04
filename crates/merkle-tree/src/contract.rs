@@ -10,14 +10,10 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
+use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_common::{
-    BlockNumber,
-    ContractAddress,
-    ContractRoot,
-    ContractStateHash,
-    StorageAddress,
-    StorageCommitment,
-    StorageValue,
+    BlockNumber, ContractAddress, ContractRoot, ContractStateHash, StorageAddress,
+    StorageCommitment, StorageValue,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
@@ -66,7 +62,7 @@ impl<'tx> ContractsStorageTree<'tx> {
             block: Some(block),
             contract,
         };
-        let tree = MerkleTree::new(root);
+        let tree = MerkleTree::new(StorageIndex::new(root));
 
         Ok(Self { tree, storage })
     }
@@ -173,7 +169,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
             block: Some(block),
         };
 
-        let tree = MerkleTree::new(root);
+        let tree = MerkleTree::new(StorageIndex::new(root.get()));
 
         Ok(Self { tree, storage })
     }

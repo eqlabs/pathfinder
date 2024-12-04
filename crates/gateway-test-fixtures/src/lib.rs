@@ -168,12 +168,7 @@ pub mod class_definitions {
 pub mod testnet {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        CallParam,
-        ClassHash,
-        ContractAddress,
-        EntryPoint,
-        StorageAddress,
-        TransactionHash,
+        CallParam, ClassHash, ContractAddress, EntryPoint, StorageAddress, TransactionHash,
     };
     use pathfinder_crypto::Felt;
 

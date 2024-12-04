@@ -99,15 +99,12 @@ pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Outp
 mod tests {
 
     use pathfinder_common::casm_class::{
-        BigUintAsHex,
-        CasmContractEntryPoint,
-        CasmContractEntryPoints,
+        BigUintAsHex, CasmContractEntryPoint, CasmContractEntryPoints,
     };
     use pathfinder_common::{casm_hash, class_hash, felt, sierra_hash, EntryPoint};
     use serde_json::json;
     use starknet_gateway_test_fixtures::class_definitions::{
-        CAIRO_1_1_0_BALANCE_CASM_JSON,
-        CAIRO_1_1_0_BALANCE_SIERRA_JSON,
+        CAIRO_1_1_0_BALANCE_CASM_JSON, CAIRO_1_1_0_BALANCE_SIERRA_JSON,
     };
     use tempfile::tempdir;
 

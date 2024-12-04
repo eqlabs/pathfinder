@@ -10,16 +10,8 @@ use anyhow::Context;
 use futures::StreamExt;
 use pathfinder_common::transaction::L1HandlerTransaction;
 use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    CallParam,
-    ContractAddress,
-    EntryPoint,
-    EthereumChain,
-    L1BlockNumber,
-    L1TransactionHash,
-    StateCommitment,
-    TransactionNonce,
+    BlockHash, BlockNumber, CallParam, ContractAddress, EntryPoint, EthereumChain, L1BlockNumber,
+    L1TransactionHash, StateCommitment, TransactionNonce,
 };
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, U256};

@@ -53,9 +53,7 @@ pub enum StateDiffsResponse {
 impl ToProtobuf<proto::state::StateDiffsResponse> for StateDiffsResponse {
     fn to_protobuf(self) -> proto::state::StateDiffsResponse {
         use proto::state::state_diffs_response::StateDiffMessage::{
-            ContractDiff,
-            DeclaredClass,
-            Fin,
+            ContractDiff, DeclaredClass, Fin,
         };
         proto::state::StateDiffsResponse {
             state_diff_message: Some(match self {
@@ -73,9 +71,7 @@ impl TryFromProtobuf<proto::state::StateDiffsResponse> for StateDiffsResponse {
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
         use proto::state::state_diffs_response::StateDiffMessage::{
-            ContractDiff,
-            DeclaredClass,
-            Fin,
+            ContractDiff, DeclaredClass, Fin,
         };
         match proto_field(input.state_diff_message, field_name)? {
             ContractDiff(x) => {

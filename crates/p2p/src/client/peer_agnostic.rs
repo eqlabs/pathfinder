@@ -13,28 +13,15 @@ use p2p_proto::common::{Direction, Iteration};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{
-    ContractDiff,
-    ContractStoredValue,
-    DeclaredClass,
-    StateDiffsRequest,
-    StateDiffsResponse,
+    ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsRequest, StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
-    BlockNumber,
-    CasmHash,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    SierraHash,
-    SignedBlockHeader,
-    StorageAddress,
-    StorageValue,
-    TransactionHash,
-    TransactionIndex,
+    BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
+    SignedBlockHeader, StorageAddress, StorageValue, TransactionHash, TransactionIndex,
 };
 use tokio::sync::{mpsc, RwLock};
 
@@ -45,25 +32,15 @@ mod tests;
 pub mod traits;
 
 use traits::{
-    BlockClient,
-    ClassStream,
-    EventStream,
-    HeaderStream,
-    StateDiffStream,
-    StreamItem,
+    BlockClient, ClassStream, EventStream, HeaderStream, StateDiffStream, StreamItem,
     TransactionStream,
 };
 
 use crate::client::conv::{CairoDefinition, FromDto, SierraDefinition, TryFromDto};
 use crate::client::peer_aware;
 use crate::client::types::{
-    ClassDefinition,
-    ClassDefinitionsError,
-    EventsForBlockByTransaction,
-    EventsResponseStreamFailure,
-    Receipt,
-    StateDiffsError,
-    TransactionData,
+    ClassDefinition, ClassDefinitionsError, EventsForBlockByTransaction,
+    EventsResponseStreamFailure, Receipt, StateDiffsError, TransactionData,
 };
 use crate::peer_data::PeerData;
 

@@ -1,13 +1,7 @@
 use std::collections::HashMap;
 
 use pathfinder_common::{
-    CasmHash,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    SierraHash,
-    StorageAddress,
-    StorageValue,
+    CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash, StorageAddress, StorageValue,
 };
 
 use crate::dto;
