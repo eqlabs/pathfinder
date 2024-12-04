@@ -200,9 +200,13 @@ mod tests {
 
     use super::*;
     use crate::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV2,
-        BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV0,
-        BroadcastedInvokeTransactionV1, BroadcastedInvokeTransactionV3, BroadcastedTransaction,
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV2,
+        BroadcastedInvokeTransaction,
+        BroadcastedInvokeTransactionV0,
+        BroadcastedInvokeTransactionV1,
+        BroadcastedInvokeTransactionV3,
+        BroadcastedTransaction,
     };
     use crate::types::{ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass};
 
