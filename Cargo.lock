@@ -1549,7 +1549,7 @@ dependencies = [
 [[package]]
 name = "blockifier"
 version = "0.8.0-rc.3"
-source = "git+https://github.com/cartridge-gg/sequencer?branch=pathfinder-patch#f323bcc34e3d381515f0f59c632112f6d3050d6e"
+source = "git+https://github.com/cartridge-gg/sequencer?branch=cartridge/pathfinder-patch-fork#8dd82dc4eaf1a6a7faefd818dcc6d026d5453fd0"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -9430,7 +9430,7 @@ dependencies = [
 [[package]]
 name = "starknet_api"
 version = "0.13.0-rc.1"
-source = "git+https://github.com/cartridge-gg/sequencer?branch=pathfinder-patch#f323bcc34e3d381515f0f59c632112f6d3050d6e"
+source = "git+https://github.com/cartridge-gg/sequencer?branch=cartridge/pathfinder-patch-fork#8dd82dc4eaf1a6a7faefd818dcc6d026d5453fd0"
 dependencies = [
  "bitvec",
  "cairo-lang-starknet-classes",

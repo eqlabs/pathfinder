@@ -55,7 +55,7 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch" }
+blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "cartridge/pathfinder-patch-fork" }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
@@ -120,7 +120,7 @@ sha2 = "0.10.7"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
 # starknet_api = "=0.13.0-rc.1"
-starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch" }
+starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "cartridge/pathfinder-patch-fork" }
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.1.5"
 syn = "1.0"
