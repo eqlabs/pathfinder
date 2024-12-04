@@ -11,6 +11,7 @@ use bitvec::order::Msb0;
 use bitvec::prelude::BitVec;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::FeltHash;
+use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_crypto::Felt;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
@@ -19,7 +20,7 @@ pub enum InternalNode {
     /// A node that has not been fetched from storage yet.
     ///
     /// As such, all we know is its index.
-    Unresolved(u64),
+    Unresolved(StorageIndex),
     /// A branch node with exactly two children.
     Binary(BinaryNode),
     /// Describes a path connecting two other nodes.
@@ -32,7 +33,7 @@ pub enum InternalNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BinaryNode {
     /// The storage index of this node (if it was loaded from storage).
-    pub storage_index: Option<u64>,
+    pub storage_index: Option<StorageIndex>,
     /// The height of this node in the tree.
     pub height: usize,
     /// [Left](Direction::Left) child.
@@ -44,7 +45,7 @@ pub struct BinaryNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EdgeNode {
     /// The storage index of this node (if it was loaded from storage).
-    pub storage_index: Option<u64>,
+    pub storage_index: Option<StorageIndex>,
     /// The starting height of this node in the tree.
     pub height: usize,
     /// The path this edge takes.
@@ -144,9 +145,9 @@ impl InternalNode {
         matches!(self, InternalNode::Leaf)
     }
 
-    pub fn storage_index(&self) -> Option<u64> {
+    pub fn storage_index(&self) -> Option<StorageIndex> {
         match self {
-            InternalNode::Unresolved(storage_index) => Some(*storage_index),
+            InternalNode::Unresolved(storage_index) => Some(StorageIndex::new(storage_index.get())),
             InternalNode::Binary(binary) => binary.storage_index,
             InternalNode::Edge(edge) => edge.storage_index,
             InternalNode::Leaf => None,
@@ -231,8 +232,8 @@ mod tests {
             let uut = BinaryNode {
                 storage_index: None,
                 height: 1,
-                left: Rc::new(RefCell::new(InternalNode::Unresolved(1))),
-                right: Rc::new(RefCell::new(InternalNode::Unresolved(2))),
+                left: Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1)))),
+                right: Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(2)))),
             };
 
             let mut zero_key = bitvec![u8, Msb0; 1; 251];
@@ -250,8 +251,8 @@ mod tests {
 
         #[test]
         fn get_child() {
-            let left = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
-            let right = Rc::new(RefCell::new(InternalNode::Unresolved(2)));
+            let left = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1))));
+            let right = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(2))));
 
             let uut = BinaryNode {
                 storage_index: None,
@@ -319,7 +320,7 @@ mod tests {
             #[test]
             fn full() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1))));
 
                 let uut = EdgeNode {
                     storage_index: None,
@@ -334,7 +335,7 @@ mod tests {
             #[test]
             fn prefix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1))));
 
                 let path = key.view_bits()[..45].to_bitvec();
 
@@ -351,7 +352,7 @@ mod tests {
             #[test]
             fn suffix() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1))));
 
                 let path = key.view_bits()[50..].to_bitvec();
 
@@ -368,7 +369,7 @@ mod tests {
             #[test]
             fn middle_slice() {
                 let key = felt!("0x123456789abcdef");
-                let child = Rc::new(RefCell::new(InternalNode::Unresolved(1)));
+                let child = Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(1))));
 
                 let path = key.view_bits()[230..235].to_bitvec();
 

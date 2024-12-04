@@ -272,7 +272,7 @@ pub async fn get_proof(
             &tx,
             header.number,
             &input.contract_address,
-            storage_root_idx,
+            storage_root_idx.get(),
         )?
         .into_iter()
         .map(|(node, _)| node)
@@ -398,11 +398,15 @@ pub async fn get_proof_class(
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
-        let class_proof =
-            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)?
-                .into_iter()
-                .map(|(node, _)| node)
-                .collect();
+        let class_proof = ClassCommitmentTree::get_proof(
+            &tx,
+            header.number,
+            input.class_hash,
+            class_root_idx.get(),
+        )?
+        .into_iter()
+        .map(|(node, _)| node)
+        .collect();
 
         let class_proof = ProofNodes(class_proof);
 
