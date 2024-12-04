@@ -17,7 +17,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::class_hash::from_parts::{
-    compute_cairo_class_hash, compute_sierra_class_hash,
+    compute_cairo_class_hash,
+    compute_sierra_class_hash,
 };
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;

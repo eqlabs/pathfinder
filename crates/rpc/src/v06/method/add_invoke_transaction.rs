@@ -68,8 +68,12 @@ impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
 impl From<SequencerError> for AddInvokeTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            DuplicatedTransaction, EntryPointNotFound, InsufficientAccountBalance,
-            InsufficientMaxFee, InvalidTransactionNonce, InvalidTransactionVersion,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
             ValidateFailure,
         };
         match e {
@@ -296,7 +300,9 @@ mod tests {
         #[test]
         fn unexpected_error_message() {
             use starknet_gateway_types::error::{
-                KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+                KnownStarknetErrorCode,
+                StarknetError,
+                StarknetErrorCode,
             };
             let starknet_error = SequencerError::StarknetError(StarknetError {
                 code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),

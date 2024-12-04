@@ -14,12 +14,23 @@ use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::transaction::{
-    DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransactionV0,
-    DeployTransactionV1, TransactionVariant,
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransactionV0,
+    DeployTransactionV1,
+    TransactionVariant,
 };
 use pathfinder_common::{
-    BlockHeader, BlockNumber, CasmHash, ChainId, ClassHash, ContractAddress, SierraHash,
-    SignedBlockHeader, TransactionHash, TransactionIndex,
+    BlockHeader,
+    BlockNumber,
+    CasmHash,
+    ChainId,
+    ClassHash,
+    ContractAddress,
+    SierraHash,
+    SignedBlockHeader,
+    TransactionHash,
+    TransactionIndex,
 };
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;

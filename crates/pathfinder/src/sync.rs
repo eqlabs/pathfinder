@@ -6,14 +6,25 @@ use anyhow::Context;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::traits::{
-    BlockClient, ClassStream, EventStream, HeaderStream, StateDiffStream, StreamItem,
+    BlockClient,
+    ClassStream,
+    EventStream,
+    HeaderStream,
+    StateDiffStream,
+    StreamItem,
     TransactionStream,
 };
 use p2p::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::error::AnyhowExt;
 use pathfinder_common::{
-    block_hash, BlockHash, BlockNumber, Chain, ChainId, PublicKey, StarknetVersion,
+    block_hash,
+    BlockHash,
+    BlockNumber,
+    Chain,
+    ChainId,
+    PublicKey,
+    StarknetVersion,
 };
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Transaction;
@@ -295,8 +306,12 @@ mod tests {
     use futures::stream;
     use http::header;
     use p2p::client::types::{
-        ClassDefinition, ClassDefinitionsError, EventsForBlockByTransaction,
-        EventsResponseStreamFailure, Receipt as P2PReceipt, StateDiffsError,
+        ClassDefinition,
+        ClassDefinitionsError,
+        EventsForBlockByTransaction,
+        EventsResponseStreamFailure,
+        Receipt as P2PReceipt,
+        StateDiffsError,
     };
     use p2p::libp2p::PeerId;
     use pathfinder_common::event::Event;
@@ -304,7 +319,12 @@ mod tests {
     use pathfinder_common::state_update::StateUpdateData;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        BlockHeader, BlockId, ClassHash, SierraHash, SignedBlockHeader, TransactionHash,
+        BlockHeader,
+        BlockId,
+        ClassHash,
+        SierraHash,
+        SignedBlockHeader,
+        TransactionHash,
     };
     use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
@@ -319,8 +339,11 @@ mod tests {
 
     use super::*;
     use crate::state::block_hash::{
-        calculate_event_commitment, calculate_receipt_commitment, calculate_transaction_commitment,
-        compute_final_hash, BlockHeaderData,
+        calculate_event_commitment,
+        calculate_receipt_commitment,
+        calculate_transaction_commitment,
+        compute_final_hash,
+        BlockHeaderData,
     };
     use crate::state::update_starknet_state;
 

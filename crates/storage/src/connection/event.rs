@@ -5,7 +5,12 @@ use anyhow::Context;
 use anyhow::Result;
 use pathfinder_common::event::Event;
 use pathfinder_common::{
-    BlockHash, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
+    BlockHash,
+    BlockNumber,
+    ContractAddress,
+    EventData,
+    EventKey,
+    TransactionHash,
 };
 
 #[cfg(feature = "aggregate_bloom")]

@@ -891,7 +891,9 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+            MAINNET_GENESIS_HASH,
+            SEPOLIA_INTEGRATION_GENESIS_HASH,
+            SEPOLIA_TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {

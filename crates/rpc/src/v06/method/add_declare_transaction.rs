@@ -2,7 +2,9 @@ use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::request::add_transaction::{
-    CairoContractDefinition, ContractDefinition, SierraContractDefinition,
+    CairoContractDefinition,
+    ContractDefinition,
+    SierraContractDefinition,
 };
 
 use crate::context::RpcContext;
@@ -67,10 +69,18 @@ impl From<anyhow::Error> for AddDeclareTransactionError {
 impl From<SequencerError> for AddDeclareTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            ClassAlreadyDeclared, CompilationFailed, ContractBytecodeSizeTooLarge,
-            ContractClassObjectSizeTooLarge, DuplicatedTransaction, EntryPointNotFound,
-            InsufficientAccountBalance, InsufficientMaxFee, InvalidCompiledClassHash,
-            InvalidContractClassVersion, InvalidTransactionNonce, InvalidTransactionVersion,
+            ClassAlreadyDeclared,
+            CompilationFailed,
+            ContractBytecodeSizeTooLarge,
+            ContractClassObjectSizeTooLarge,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidCompiledClassHash,
+            InvalidContractClassVersion,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
             ValidateFailure,
         };
         match e {
@@ -265,21 +275,34 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        CasmHash, ContractAddress, Fee, ResourceAmount, ResourcePricePerUnit, Tip,
-        TransactionNonce, TransactionVersion,
+        CasmHash,
+        ContractAddress,
+        Fee,
+        ResourceAmount,
+        ResourcePricePerUnit,
+        Tip,
+        TransactionNonce,
+        TransactionVersion,
     };
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
-        CAIRO_2_0_0_STACK_OVERFLOW, CONTRACT_DEFINITION,
+        CAIRO_2_0_0_STACK_OVERFLOW,
+        CONTRACT_DEFINITION,
     };
 
     use super::*;
     use crate::types::request::{
-        BroadcastedDeclareTransaction, BroadcastedDeclareTransactionV1,
-        BroadcastedDeclareTransactionV2, BroadcastedDeclareTransactionV3,
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV1,
+        BroadcastedDeclareTransactionV2,
+        BroadcastedDeclareTransactionV3,
     };
     use crate::types::{
-        CairoContractClass, ContractClass, DataAvailabilityMode, ResourceBound, ResourceBounds,
+        CairoContractClass,
+        ContractClass,
+        DataAvailabilityMode,
+        ResourceBound,
+        ResourceBounds,
         SierraContractClass,
     };
 
@@ -391,7 +414,9 @@ mod tests {
             #[test]
             fn unexpected_error_message() {
                 use starknet_gateway_types::error::{
-                    KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+                    KnownStarknetErrorCode,
+                    StarknetError,
+                    StarknetErrorCode,
                 };
                 let starknet_error = SequencerError::StarknetError(StarknetError {
                     code: StarknetErrorCode::Known(

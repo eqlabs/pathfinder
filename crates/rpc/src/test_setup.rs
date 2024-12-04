@@ -1,7 +1,15 @@
 use pathfinder_common::macro_prelude::*;
 use pathfinder_common::{
-    felt, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, ContractAddress, GasPrice,
-    StarknetVersion, StateUpdate, StorageAddress,
+    felt,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    BlockTimestamp,
+    ContractAddress,
+    GasPrice,
+    StarknetVersion,
+    StateUpdate,
+    StorageAddress,
 };
 use pathfinder_storage::Storage;
 use starknet_gateway_test_fixtures::class_definitions::{DUMMY_ACCOUNT, DUMMY_ACCOUNT_CLASS_HASH};

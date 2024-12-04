@@ -1,7 +1,11 @@
 use anyhow::Context;
 use pathfinder_common::hash::PoseidonHash;
 use pathfinder_common::{
-    BlockNumber, ClassCommitment, ClassCommitmentLeafHash, ClassHash, SierraHash,
+    BlockNumber,
+    ClassCommitment,
+    ClassCommitmentLeafHash,
+    ClassHash,
+    SierraHash,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};

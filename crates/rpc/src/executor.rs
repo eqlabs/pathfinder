@@ -5,7 +5,9 @@ use pathfinder_executor::{ClassInfo, IntoStarkFelt};
 use starknet_api::core::PatriciaKey;
 
 use crate::types::request::{
-    BroadcastedDeployAccountTransaction, BroadcastedInvokeTransaction, BroadcastedTransaction,
+    BroadcastedDeployAccountTransaction,
+    BroadcastedInvokeTransaction,
+    BroadcastedTransaction,
 };
 use crate::types::SierraContractClass;
 

@@ -787,12 +787,19 @@ pub mod dto {
 pub(crate) mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        felt, BlockHeader, ClassHash, ContractAddress, StarknetVersion, StorageAddress,
-        StorageValue, TransactionVersion,
+        felt,
+        BlockHeader,
+        ClassHash,
+        ContractAddress,
+        StarknetVersion,
+        StorageAddress,
+        StorageValue,
+        TransactionVersion,
     };
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT_CLASS_HASH, ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+        DUMMY_ACCOUNT_CLASS_HASH,
+        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
     };
 
     use super::*;
@@ -1109,13 +1116,19 @@ pub(crate) mod tests {
         // The input transactions are the same as in v04.
         pub mod input {
             use pathfinder_common::{
-                CallParam, EntryPoint, ResourceAmount, ResourcePricePerUnit, Tip,
+                CallParam,
+                EntryPoint,
+                ResourceAmount,
+                ResourcePricePerUnit,
+                Tip,
             };
 
             use super::*;
             use crate::types::request::{
-                BroadcastedDeclareTransactionV2, BroadcastedInvokeTransaction,
-                BroadcastedInvokeTransactionV1, BroadcastedInvokeTransactionV3,
+                BroadcastedDeclareTransactionV2,
+                BroadcastedInvokeTransaction,
+                BroadcastedInvokeTransactionV1,
+                BroadcastedInvokeTransactionV3,
                 BroadcastedTransaction,
             };
             use crate::types::{ResourceBound, ResourceBounds};
@@ -1237,7 +1250,9 @@ pub(crate) mod tests {
             use super::dto::*;
             use super::*;
             use crate::method::get_state_update::types::{
-                DeclaredSierraClass, StorageDiff, StorageEntry,
+                DeclaredSierraClass,
+                StorageDiff,
+                StorageEntry,
             };
 
             const DECLARE_GAS_CONSUMED: u64 = 3632;

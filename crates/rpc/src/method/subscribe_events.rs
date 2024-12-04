@@ -259,8 +259,16 @@ mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
     use pathfinder_common::{
-        felt, BlockHash, BlockHeader, BlockNumber, ChainId, ContractAddress, EventData, EventKey,
-        TransactionHash, TransactionIndex,
+        felt,
+        BlockHash,
+        BlockHeader,
+        BlockNumber,
+        ChainId,
+        ContractAddress,
+        EventData,
+        EventKey,
+        TransactionHash,
+        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;

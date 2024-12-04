@@ -23,7 +23,10 @@ pub use error::{CallError, TransactionExecutionError};
 pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;
 pub use execution_state::{
-    ExecutionState, L1BlobDataAvailability, ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS,
+    ExecutionState,
+    L1BlobDataAvailability,
+    ETH_FEE_TOKEN_ADDRESS,
+    STRK_FEE_TOKEN_ADDRESS,
 };
 pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, TraceCache};

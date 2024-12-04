@@ -7,8 +7,11 @@ use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
 use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{
-    ClassDefinition as P2PClassDefinition, ClassDefinitionsError, EventsResponseStreamFailure,
-    StateDiffsError, TransactionData,
+    ClassDefinition as P2PClassDefinition,
+    ClassDefinitionsError,
+    EventsResponseStreamFailure,
+    StateDiffsError,
+    TransactionData,
 };
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
@@ -17,9 +20,24 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, Chain, ChainId, ClassCommitment, ClassHash,
-    EventCommitment, PublicKey, ReceiptCommitment, SierraHash, SignedBlockHeader, StarknetVersion,
-    StateCommitment, StateDiffCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    Chain,
+    ChainId,
+    ClassCommitment,
+    ClassHash,
+    EventCommitment,
+    PublicKey,
+    ReceiptCommitment,
+    SierraHash,
+    SignedBlockHeader,
+    StarknetVersion,
+    StateCommitment,
+    StateDiffCommitment,
+    StateUpdate,
+    StorageCommitment,
+    TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_storage::Storage;

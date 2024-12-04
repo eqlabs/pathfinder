@@ -29,7 +29,10 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
 use crate::jsonrpc::websocket::data::{
-    EventFilterParams, ResponseEvent, SubscriptionId, SubscriptionItem,
+    EventFilterParams,
+    ResponseEvent,
+    SubscriptionId,
+    SubscriptionItem,
 };
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
 use crate::{BlockHeader, PendingData, RpcVersion};
@@ -663,9 +666,21 @@ mod tests {
     use pathfinder_common::event::Event;
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        block_hash, event_commitment, event_key, receipt_commitment, state_commitment,
-        state_diff_commitment, transaction_commitment, transaction_hash, BlockNumber,
-        BlockTimestamp, ContractAddress, EventData, EventKey, GasPrice, SequencerAddress,
+        block_hash,
+        event_commitment,
+        event_key,
+        receipt_commitment,
+        state_commitment,
+        state_diff_commitment,
+        transaction_commitment,
+        transaction_hash,
+        BlockNumber,
+        BlockTimestamp,
+        ContractAddress,
+        EventData,
+        EventKey,
+        GasPrice,
+        SequencerAddress,
         StarknetVersion,
     };
     use pathfinder_crypto::Felt;

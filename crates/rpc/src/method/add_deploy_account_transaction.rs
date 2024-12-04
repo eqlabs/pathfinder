@@ -5,7 +5,8 @@ use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
 use crate::context::RpcContext;
 use crate::types::request::{
-    BroadcastedDeployAccountTransaction, BroadcastedDeployAccountTransactionV1,
+    BroadcastedDeployAccountTransaction,
+    BroadcastedDeployAccountTransactionV1,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,9 +80,14 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
 impl From<SequencerError> for AddDeployAccountTransactionError {
     fn from(e: SequencerError) -> Self {
         use starknet_gateway_types::error::KnownStarknetErrorCode::{
-            DuplicatedTransaction, EntryPointNotFound, InsufficientAccountBalance,
-            InsufficientMaxFee, InvalidTransactionNonce, InvalidTransactionVersion,
-            UndeclaredClass, ValidateFailure,
+            DuplicatedTransaction,
+            EntryPointNotFound,
+            InsufficientAccountBalance,
+            InsufficientMaxFee,
+            InvalidTransactionNonce,
+            InvalidTransactionVersion,
+            UndeclaredClass,
+            ValidateFailure,
         };
         match e {
             SequencerError::StarknetError(e) if e.code == UndeclaredClass.into() => {
@@ -231,7 +237,11 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
-        ResourceAmount, ResourcePricePerUnit, Tip, TransactionNonce, TransactionVersion,
+        ResourceAmount,
+        ResourcePricePerUnit,
+        Tip,
+        TransactionNonce,
+        TransactionVersion,
     };
 
     use super::*;
@@ -280,7 +290,9 @@ mod tests {
     #[test]
     fn unexpected_error_message() {
         use starknet_gateway_types::error::{
-            KnownStarknetErrorCode, StarknetError, StarknetErrorCode,
+            KnownStarknetErrorCode,
+            StarknetError,
+            StarknetErrorCode,
         };
         let starknet_error = SequencerError::StarknetError(StarknetError {
             code: StarknetErrorCode::Known(KnownStarknetErrorCode::TransactionLimitExceeded),

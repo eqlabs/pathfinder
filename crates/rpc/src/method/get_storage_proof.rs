@@ -3,7 +3,12 @@ use std::collections::HashSet;
 use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
-    BlockHash, BlockId, ClassHash, ContractAddress, ContractNonce, StorageAddress,
+    BlockHash,
+    BlockId,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    StorageAddress,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;

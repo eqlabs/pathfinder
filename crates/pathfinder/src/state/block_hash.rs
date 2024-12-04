@@ -7,9 +7,23 @@ use pathfinder_common::hash::{FeltHash, PedersenHash, PoseidonHash};
 use pathfinder_common::receipt::{ExecutionStatus, Receipt};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
-    felt_bytes, BlockHash, BlockHeader, BlockNumber, BlockTimestamp, Chain, ChainId,
-    EventCommitment, GasPrice, L1DataAvailabilityMode, ReceiptCommitment, SequencerAddress,
-    StarknetVersion, StateCommitment, StateDiffCommitment, TransactionCommitment, TransactionHash,
+    felt_bytes,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    BlockTimestamp,
+    Chain,
+    ChainId,
+    EventCommitment,
+    GasPrice,
+    L1DataAvailabilityMode,
+    ReceiptCommitment,
+    SequencerAddress,
+    StarknetVersion,
+    StateCommitment,
+    StateDiffCommitment,
+    TransactionCommitment,
+    TransactionHash,
     TransactionSignatureElem,
 };
 use pathfinder_crypto::hash::{pedersen_hash, poseidon_hash_many, HashChain, PoseidonHasher};
@@ -793,10 +807,18 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::receipt::{ExecutionResources, L1Gas, L2ToL1Message};
     use pathfinder_common::transaction::{
-        EntryPointType, InvokeTransactionV0, InvokeTransactionV3,
+        EntryPointType,
+        InvokeTransactionV0,
+        InvokeTransactionV3,
     };
     use pathfinder_common::{
-        felt, ContractAddress, EventData, EventKey, Fee, L2ToL1MessagePayloadElem, TransactionHash,
+        felt,
+        ContractAddress,
+        EventData,
+        EventKey,
+        Fee,
+        L2ToL1MessagePayloadElem,
+        TransactionHash,
     };
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::v0_13_2;

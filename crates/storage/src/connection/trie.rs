@@ -16,14 +16,15 @@ impl Transaction<'_> {
         block_number: BlockNumber,
     ) -> anyhow::Result<Option<StorageIndex>> {
         self.inner()
-        .query_row(
-            "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1",
-            params![&block_number],
-            |row| row.get::<_, Option<u64>>(0),
-        )
-        .optional()
-        .map(|option_u64| option_u64.flatten().map(StorageIndex::new)) 
-        .map_err(Into::into)
+            .query_row(
+                "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number \
+                 DESC LIMIT 1",
+                params![&block_number],
+                |row| row.get::<_, Option<u64>>(0),
+            )
+            .optional()
+            .map(|option_u64| option_u64.flatten().map(StorageIndex::new))
+            .map_err(Into::into)
     }
 
     pub fn class_root_exists(&self, block_number: BlockNumber) -> anyhow::Result<bool> {
@@ -43,7 +44,7 @@ impl Transaction<'_> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY \
-             block_number DESC LIMIT 1",
+                 block_number DESC LIMIT 1",
                 params![&block_number],
                 |row| row.get::<_, Option<u64>>(0),
             )

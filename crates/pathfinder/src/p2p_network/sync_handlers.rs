@@ -3,12 +3,22 @@ use futures::SinkExt;
 use p2p::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
-    Address, BlockNumberOrHash, Direction, Hash, Iteration, Step, VolitionDomain,
+    Address,
+    BlockNumberOrHash,
+    Direction,
+    Hash,
+    Iteration,
+    Step,
+    VolitionDomain,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{
-    ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsRequest, StateDiffsResponse,
+    ContractDiff,
+    ContractStoredValue,
+    DeclaredClass,
+    StateDiffsRequest,
+    StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};

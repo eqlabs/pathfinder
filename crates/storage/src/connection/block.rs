@@ -3,8 +3,16 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, ClassCommitment, GasPrice, StarknetVersion,
-    StateCommitment, StateDiffCommitment, StorageCommitment, TransactionCommitment,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    ClassCommitment,
+    GasPrice,
+    StarknetVersion,
+    StateCommitment,
+    StateDiffCommitment,
+    StorageCommitment,
+    TransactionCommitment,
 };
 
 use crate::prelude::*;

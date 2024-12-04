@@ -12,8 +12,13 @@ use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
 use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_common::{
-    BlockNumber, ContractAddress, ContractRoot, ContractStateHash, StorageAddress,
-    StorageCommitment, StorageValue,
+    BlockNumber,
+    ContractAddress,
+    ContractRoot,
+    ContractStateHash,
+    StorageAddress,
+    StorageCommitment,
+    StorageValue,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};

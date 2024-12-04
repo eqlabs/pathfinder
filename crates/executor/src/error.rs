@@ -1,6 +1,7 @@
 use blockifier::execution::errors::{
     ConstructorEntryPointExecutionError,
-    EntryPointExecutionError as BlockifierEntryPointExecutionError, PreExecutionError,
+    EntryPointExecutionError as BlockifierEntryPointExecutionError,
+    PreExecutionError,
 };
 use blockifier::execution::stack_trace::gen_transaction_execution_error_trace;
 use blockifier::state::errors::StateError;

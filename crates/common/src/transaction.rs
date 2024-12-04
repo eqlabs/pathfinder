@@ -5,7 +5,11 @@ use primitive_types::H256;
 
 use crate::prelude::*;
 use crate::{
-    felt_bytes, AccountDeploymentDataElem, PaymasterDataElem, ResourceAmount, ResourcePricePerUnit,
+    felt_bytes,
+    AccountDeploymentDataElem,
+    PaymasterDataElem,
+    ResourceAmount,
+    ResourcePricePerUnit,
     Tip,
 };
 

@@ -5,8 +5,16 @@ use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::header;
 use pathfinder_common::{
-    BlockHash, BlockHeader, BlockNumber, Chain, ChainId, ClassCommitment, PublicKey,
-    SignedBlockHeader, StarknetVersion, StorageCommitment,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    Chain,
+    ChainId,
+    ClassCommitment,
+    PublicKey,
+    SignedBlockHeader,
+    StarknetVersion,
+    StorageCommitment,
 };
 use pathfinder_storage::Storage;
 use tokio::task::spawn_blocking;

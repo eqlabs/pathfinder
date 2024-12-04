@@ -31,7 +31,11 @@ use anyhow::Context;
 use clap::{Args, Parser};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    BlockCommitmentSignature, BlockCommitmentSignatureElem, BlockHash, BlockNumber, Chain,
+    BlockCommitmentSignature,
+    BlockCommitmentSignatureElem,
+    BlockHash,
+    BlockNumber,
+    Chain,
     ClassHash,
 };
 use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
@@ -39,7 +43,10 @@ use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
-    DeclaredSierraClass, DeployedContract, ReplacedClass, StorageDiff,
+    DeclaredSierraClass,
+    DeployedContract,
+    ReplacedClass,
+    StorageDiff,
 };
 use starknet_gateway_types::reply::{GasPrices, Status};
 use tracing_subscriber::prelude::*;
@@ -347,7 +354,9 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
 fn get_chain(tx: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<Chain> {
     use pathfinder_common::consts::{
-        MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
+        MAINNET_GENESIS_HASH,
+        SEPOLIA_INTEGRATION_GENESIS_HASH,
+        SEPOLIA_TESTNET_GENESIS_HASH,
     };
 
     let genesis_hash = tx

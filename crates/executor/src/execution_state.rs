@@ -7,7 +7,12 @@ use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{
-    contract_address, BlockHeader, ChainId, ContractAddress, L1DataAvailabilityMode, StateUpdate,
+    contract_address,
+    BlockHeader,
+    ChainId,
+    ContractAddress,
+    L1DataAvailabilityMode,
+    StateUpdate,
 };
 use starknet_api::core::PatriciaKey;
 

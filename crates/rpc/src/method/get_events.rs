@@ -2,7 +2,13 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHash, BlockId, BlockNumber, ContractAddress, EventData, EventKey, TransactionHash,
+    BlockHash,
+    BlockId,
+    BlockNumber,
+    ContractAddress,
+    EventData,
+    EventKey,
+    TransactionHash,
 };
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use starknet_gateway_types::reply::PendingBlock;

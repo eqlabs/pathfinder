@@ -1,7 +1,8 @@
 use crate::context::RpcContext;
 use crate::method::get_transaction_by_block_id_and_index::{
     get_transaction_by_block_id_and_index as get_transaction_by_block_id_and_index_impl,
-    GetTransactionByBlockIdAndIndexError, Input,
+    GetTransactionByBlockIdAndIndexError,
+    Input,
 };
 use crate::v06::types::TransactionWithHash;
 

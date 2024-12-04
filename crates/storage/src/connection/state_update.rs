@@ -3,12 +3,25 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::state_update::{
-    ContractClassUpdate, ContractUpdate, ReverseContractUpdate, StateUpdateData,
+    ContractClassUpdate,
+    ContractUpdate,
+    ReverseContractUpdate,
+    StateUpdateData,
     SystemContractUpdate,
 };
 use pathfinder_common::{
-    BlockHash, BlockNumber, CasmHash, ClassHash, ContractAddress, ContractNonce, SierraHash,
-    StateCommitment, StateUpdate, StorageAddress, StorageCommitment, StorageValue,
+    BlockHash,
+    BlockNumber,
+    CasmHash,
+    ClassHash,
+    ContractAddress,
+    ContractNonce,
+    SierraHash,
+    StateCommitment,
+    StateUpdate,
+    StorageAddress,
+    StorageCommitment,
+    StorageValue,
 };
 
 use crate::prelude::*;

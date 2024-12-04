@@ -10,7 +10,8 @@ use crate::compose_executor_transaction;
 use crate::context::RpcContext;
 use crate::error::{ApplicationError, TraceError};
 use crate::executor::{
-    ExecutionStateError, VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
+    ExecutionStateError,
+    VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::v06::method::trace_block_transactions::map_gateway_trace;
 
@@ -257,12 +258,18 @@ pub async fn trace_transaction_impl(
 #[cfg(test)]
 pub mod tests {
     use pathfinder_common::{
-        block_hash, transaction_hash, BlockHeader, BlockNumber, Chain, SequencerAddress,
+        block_hash,
+        transaction_hash,
+        BlockHeader,
+        BlockNumber,
+        Chain,
+        SequencerAddress,
     };
     use pathfinder_crypto::Felt;
 
     use super::super::trace_block_transactions::tests::{
-        setup_multi_tx_trace_pending_test, setup_multi_tx_trace_test,
+        setup_multi_tx_trace_pending_test,
+        setup_multi_tx_trace_test,
     };
     use super::*;
 

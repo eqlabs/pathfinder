@@ -5,7 +5,13 @@ use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 
 use crate::common::{
-    Address, BlockId, ConsensusSignature, Hash, Iteration, L1DataAvailabilityMode, Patricia,
+    Address,
+    BlockId,
+    ConsensusSignature,
+    Hash,
+    Iteration,
+    L1DataAvailabilityMode,
+    Patricia,
     StateDiffCommitment,
 };
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};

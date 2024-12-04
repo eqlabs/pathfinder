@@ -4,7 +4,10 @@ use pathfinder_common::trie::TrieNode;
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::{
-    tree, ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree,
+    tree,
+    ClassCommitmentTree,
+    ContractsStorageTree,
+    StorageCommitmentTree,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;

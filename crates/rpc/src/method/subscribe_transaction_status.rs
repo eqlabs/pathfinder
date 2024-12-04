@@ -438,7 +438,12 @@ mod tests {
     use pathfinder_common::receipt::{ExecutionStatus, Receipt};
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
-        BlockHash, BlockHeader, BlockNumber, ChainId, TransactionHash, TransactionIndex,
+        BlockHash,
+        BlockHeader,
+        BlockNumber,
+        ChainId,
+        TransactionHash,
+        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::{EthereumClient, EthereumStateUpdate};

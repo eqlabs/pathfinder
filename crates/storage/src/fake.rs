@@ -5,15 +5,33 @@ use fake::{Fake, Faker};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
-    ContractClassUpdate, ContractUpdate, StateUpdateRef, SystemContractUpdate,
+    ContractClassUpdate,
+    ContractUpdate,
+    StateUpdateRef,
+    SystemContractUpdate,
 };
 use pathfinder_common::test_utils::fake_non_empty_with_rng;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{
-    class_definition, BlockHash, BlockHeader, BlockNumber, ChainId, ClassCommitment, ClassHash,
-    ContractAddress, EventCommitment, ReceiptCommitment, SierraHash, SignedBlockHeader,
-    StarknetVersion, StateCommitment, StateUpdate, StorageCommitment, TransactionCommitment,
-    TransactionHash, TransactionIndex,
+    class_definition,
+    BlockHash,
+    BlockHeader,
+    BlockNumber,
+    ChainId,
+    ClassCommitment,
+    ClassHash,
+    ContractAddress,
+    EventCommitment,
+    ReceiptCommitment,
+    SierraHash,
+    SignedBlockHeader,
+    StarknetVersion,
+    StateCommitment,
+    StateUpdate,
+    StorageCommitment,
+    TransactionCommitment,
+    TransactionHash,
+    TransactionIndex,
 };
 use pathfinder_crypto::signature::SignatureError;
 use pathfinder_crypto::Felt;

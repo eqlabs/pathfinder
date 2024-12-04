@@ -3,12 +3,19 @@ use std::num::NonZeroU32;
 
 use anyhow::{ensure, Context};
 use pathfinder_common::{
-    BlockHeader, BlockNumber, ReceiptCommitment, StarknetVersion, StateCommitment,
+    BlockHeader,
+    BlockNumber,
+    ReceiptCommitment,
+    StarknetVersion,
+    StateCommitment,
     StorageCommitment,
 };
 use pathfinder_lib::state::block_hash::{
-    calculate_event_commitment, calculate_receipt_commitment, calculate_transaction_commitment,
-    compute_final_hash, BlockHeaderData,
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+    compute_final_hash,
+    BlockHeaderData,
 };
 
 const VERSION_CUTOFF: StarknetVersion = StarknetVersion::V_0_13_2;
