@@ -98,7 +98,6 @@ async fn client_to_server() -> (TestPeer, TestPeer) {
 
 #[test_log::test(tokio::test)]
 async fn dial() {
-    let _ = env_logger::builder().is_test(true).try_init();
     // tokio::time::pause() does not make a difference
     let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
@@ -119,8 +118,6 @@ async fn dial() {
 
 #[test_log::test(tokio::test)]
 async fn disconnect() {
-    let _ = env_logger::builder().is_test(true).try_init();
-
     let mut peer1 = TestPeer::default();
     let mut peer2 = TestPeer::default();
 
@@ -157,8 +154,6 @@ async fn disconnect() {
 
 #[test_log::test(tokio::test)]
 async fn periodic_bootstrap() {
-    let _ = env_logger::builder().is_test(true).try_init();
-
     const BOOTSTRAP_PERIOD: Duration = Duration::from_millis(500);
     let cfg = Config {
         bootstrap_period: Some(BOOTSTRAP_PERIOD),
@@ -785,7 +780,6 @@ async fn rate_limit() {
 #[case::client_to_server(client_to_server().await)]
 #[test_log::test(tokio::test)]
 async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peer1, peer2) = peers;
 
     let mut peer1_started_providing = filter_events(peer1.event_receiver, |event| match event {
@@ -811,7 +805,6 @@ async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
 #[case::client_to_server(client_to_server().await)]
 #[test_log::test(tokio::test)]
 async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peer1, peer2) = peers;
 
     let mut peer2_subscribed_to_peer1 = filter_events(peer1.event_receiver, |event| match event {
@@ -855,7 +848,6 @@ mod successful_sync {
             #[case::client_to_server(client_to_server().await)]
             #[test_log::test(tokio::test)]
             async fn $test_name(#[case] peers: (TestPeer, TestPeer)) {
-                let _ = env_logger::builder().is_test(true).try_init();
                 let (peer1, peer2) = peers;
                 // Fake some request for peer2 to send to peer1
                 let expected_request = Faker.fake::<$req_type>();
