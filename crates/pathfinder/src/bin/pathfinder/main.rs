@@ -627,6 +627,7 @@ fn start_feeder_gateway_sync(
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
+    // TODO tracking and cancellation
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
 }
 
@@ -654,6 +655,7 @@ fn start_p2p_sync(
         verify_tree_hashes,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
+    // TODO tracking and cancellation
     tokio::spawn(sync.run())
 }
 

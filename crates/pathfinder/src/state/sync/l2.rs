@@ -152,6 +152,7 @@ where
         };
 
         // We start downloading the signature for the block
+        // TODO tracking and cancellation
         let signature_handle = tokio::spawn({
             let sequencer = sequencer.clone();
             async move {
