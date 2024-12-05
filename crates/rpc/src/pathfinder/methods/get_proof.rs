@@ -263,20 +263,17 @@ pub async fn get_proof(
 
         let storage_root_idx = tx
             .storage_root_index(header.number)
-            .context("Querying storage root index")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .context("Querying storage root index")?;
 
-        // Generate a proof for this contract. If the contract does not exist, this will
-        // be a "non membership" proof.
-        let contract_proof = StorageCommitmentTree::get_proof(
-            &tx,
-            header.number,
-            &input.contract_address,
-            storage_root_idx,
-        )?
-        .into_iter()
-        .map(|(node, _)| node)
-        .collect();
+        let contract_proof = storage_root_idx
+            .map(|idx| {
+                // Generate a proof for this contract, creating a "non-membership" proof if the
+                // contract does not exist.
+                StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address, idx)
+                    .map(|proof| proof.into_iter().map(|(node, _)| node).collect())
+            })
+            .transpose()?
+            .unwrap_or_default();
 
         let contract_proof = ProofNodes(contract_proof);
 
