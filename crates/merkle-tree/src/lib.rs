@@ -1,5 +1,6 @@
 pub mod contract_state;
 pub mod merkle_node;
+pub mod starknet_state;
 pub mod storage;
 pub mod tree;
 

@@ -61,11 +61,13 @@ zstd = { workspace = true }
 assert_matches = { workspace = true }
 bitvec = { workspace = true }
 bytes = { workspace = true }
+fake = { workspace = true }
 flate2 = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }
 hex = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 pretty_assertions_sorted = { workspace = true }
+rayon = { workspace = true }
 rstest = { workspace = true }
 tempfile = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }

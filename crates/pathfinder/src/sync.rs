@@ -329,6 +329,7 @@ mod tests {
     use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
+    use pathfinder_merkle_tree::starknet_state::update_starknet_state;
     use pathfinder_storage::fake::{generate, Block, Config};
     use pathfinder_storage::{Storage, StorageBuilder};
     use rand::Rng;
@@ -345,7 +346,6 @@ mod tests {
         compute_final_hash,
         BlockHeaderData,
     };
-    use crate::state::update_starknet_state;
 
     /// Generate a fake chain of blocks as in
     /// [`pathfinder_storage::fake::generate`] but with additional
@@ -369,6 +369,7 @@ mod tests {
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
                 calculate_event_commitment: Box::new(calculate_event_commitment),
                 update_tries: Box::new(update_starknet_state),
+                ..Default::default()
             },
         );
         (public_key, blocks)

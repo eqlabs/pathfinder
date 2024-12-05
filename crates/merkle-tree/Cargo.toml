@@ -14,6 +14,7 @@ pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
 rand = { workspace = true }
+rayon = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }
 thiserror = { workspace = true }
 tracing = { workspace = true }
