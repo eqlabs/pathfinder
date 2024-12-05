@@ -43,7 +43,7 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-version = "0.15.1"
+version = "0.15.2"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.80"
@@ -75,7 +75,6 @@ const-decoder = "0.3.0"
 const_format = "0.2.31"
 criterion = "0.5.1"
 dashmap = "6.1"
-env_logger = "0.10.0"
 fake = "2.8.0"
 ff = "0.13"
 flate2 = "1.0.27"
@@ -128,7 +127,7 @@ starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "ca
 starknet-types-core = "=0.1.5"
 syn = "1.0"
 tempfile = "3.8"
-test-log = { version = "0.2.12", default-features = false }
+test-log = { version = "0.2.12", features = ["trace"] }
 thiserror = "1.0.48"
 time = "0.3.36"
 tokio = "1.37.0"
