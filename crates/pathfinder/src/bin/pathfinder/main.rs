@@ -296,6 +296,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     if !config.disable_version_update_check {
+        // TODO tracking and cancellation
         tokio::spawn(update::poll_github_for_releases());
     }
 
@@ -624,6 +625,7 @@ fn start_feeder_gateway_sync(
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
+    // TODO tracking and cancellation
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
 }
 
@@ -651,6 +653,7 @@ fn start_p2p_sync(
         verify_tree_hashes,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
+    // TODO tracking and cancellation
     tokio::spawn(sync.run())
 }
 
@@ -885,6 +888,7 @@ async fn verify_database(
     gateway_client: &starknet_gateway_client::Client,
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
+    // TODO tracking and cancellation
     let db_genesis = tokio::task::spawn_blocking(move || {
         let mut conn = storage.connection().context("Create database connection")?;
         let tx = conn.transaction().context("Create database transaction")?;

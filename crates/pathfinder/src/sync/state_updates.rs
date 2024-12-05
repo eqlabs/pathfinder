@@ -46,6 +46,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
+    // TODO tracking and cancellation
     spawn_blocking(move || {
         let mut db = storage
             .connection()
@@ -260,6 +261,7 @@ pub async fn batch_update_starknet_state(
     verify_tree_hashes: bool,
     state_updates: Vec<PeerData<(StateUpdateData, BlockNumber)>>,
 ) -> Result<PeerData<BlockNumber>, SyncError> {
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let mut db = storage
             .connection()

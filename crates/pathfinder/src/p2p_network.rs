@@ -46,6 +46,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");
+        // TODO tracking and cancellation
         tokio::task::spawn(p2p_main_loop.run().instrument(span))
     };
 
@@ -95,6 +96,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let (mut tx, rx) = tokio::sync::watch::channel(None);
 
+    // TODO tracking and cancellation
     let join_handle = {
         tokio::task::spawn(
             async move {

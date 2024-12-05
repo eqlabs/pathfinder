@@ -254,6 +254,7 @@ impl LatestStream {
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(head_poll_interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);

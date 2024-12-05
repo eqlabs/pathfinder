@@ -18,6 +18,7 @@ where
     V: Future<Output = ()> + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
+    // TODO tracking and cancellation, audit call instances of `from_future`
     tokio::spawn(src(tx));
 
     ReceiverStream::new(rx)
@@ -37,6 +38,7 @@ where
     U: FnOnce(Sender<T>) + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
+    // TODO tracking and cancellation, audit call instances of `from_blocking`
     std::thread::spawn(move || src(tx));
 
     ReceiverStream::new(rx)

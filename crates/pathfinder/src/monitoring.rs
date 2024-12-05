@@ -32,6 +32,7 @@ pub async fn spawn_server(
         });
     let listener = tokio::net::TcpListener::bind(addr.into()).await?;
     let addr = listener.local_addr()?;
+    // TODO tracking and cancellation
     let spawn = tokio::spawn(async move {
         axum::serve(listener, app.into_make_service())
             .await

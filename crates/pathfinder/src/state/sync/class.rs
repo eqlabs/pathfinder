@@ -27,6 +27,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
         .with_context(|| format!("Downloading class {}", class_hash.0))?
         .to_vec();
 
+    // TODO tracking and cancellation, rayon
     let (hash, definition) = tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
         (
             compute_class_hash(&definition).context("Computing class hash"),

@@ -206,6 +206,7 @@ impl<L, P> HeaderSource<L, P> {
             mut start,
         } = self;
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
@@ -241,6 +242,7 @@ impl StateDiffFanout {
         let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
         let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             while let Some(state_update) = source.recv().await {
                 let is_err = state_update.is_err();
@@ -288,6 +290,7 @@ impl TransactionsFanout {
         let (t_tx, t_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             while let Some(transactions) = source.recv().await {
                 let is_err = transactions.is_err();
@@ -329,6 +332,7 @@ impl HeaderFanout {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (t_tx, t_rx) = tokio::sync::mpsc::channel(buffer);
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             while let Some(signed_header) = source.recv().await {
                 let is_err = signed_header.is_err();
@@ -381,6 +385,7 @@ impl<P> TransactionSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
 
@@ -456,6 +461,7 @@ impl<P> EventSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let Self {
                 p2p,
@@ -539,6 +545,7 @@ impl<P> StateDiffSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let Self { p2p, mut headers } = self;
 
@@ -595,6 +602,7 @@ impl<P> ClassSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let Self {
                 p2p,
@@ -662,7 +670,7 @@ struct BlockStream {
 impl BlockStream {
     fn spawn(mut self) -> SyncReceiver<BlockData> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             loop {
                 let Some(result) = self.next().await else {

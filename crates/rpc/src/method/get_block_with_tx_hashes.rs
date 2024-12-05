@@ -39,7 +39,7 @@ pub enum Output {
 /// Get block information with transaction hashes given the block id
 pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut connection = context

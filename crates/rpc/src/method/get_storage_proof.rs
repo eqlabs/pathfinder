@@ -292,7 +292,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
     };
 
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 

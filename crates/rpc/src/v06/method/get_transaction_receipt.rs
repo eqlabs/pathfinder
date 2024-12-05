@@ -32,7 +32,7 @@ pub async fn get_transaction_receipt_impl(
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = storage

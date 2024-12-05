@@ -79,6 +79,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         to: BlockNumber,
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let storage = state.storage.clone();
+        // TODO tracking and cancellation
         let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
@@ -290,6 +291,7 @@ mod tests {
         // Insert more blocks before the active updates kick in. This simulates a
         // real-world race condition.
         let storage = router.context.storage.clone();
+        // TODO tracking and cancellation
         tokio::task::spawn_blocking(move || {
             for i in 0..num_blocks {
                 let mut conn = storage.connection().unwrap();
@@ -513,6 +515,7 @@ mod tests {
 
     async fn setup(num_blocks: u64) -> RpcRouter {
         let storage = StorageBuilder::in_memory().unwrap();
+        // TODO tracking and cancellation
         tokio::task::spawn_blocking({
             let storage = storage.clone();
             move || {

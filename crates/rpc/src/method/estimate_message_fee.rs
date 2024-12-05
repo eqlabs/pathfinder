@@ -57,7 +57,7 @@ pub async fn estimate_message_fee(
     input: EstimateMessageFeeInput,
 ) -> Result<Output, EstimateMessageFeeError> {
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     let mut result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = context
