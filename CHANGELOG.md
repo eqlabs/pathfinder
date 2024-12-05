@@ -7,6 +7,13 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.
+- `starknet_getStorageProof` returns `StorageProofNotSupported` (42) when Pathfinder is in `archive` mode and queried block's tries are empty.
+
 ## [0.15.2] - 2024-12-04
 
 ### Fixed
