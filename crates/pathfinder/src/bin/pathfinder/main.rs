@@ -309,22 +309,32 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     tokio::select! {
         result = sync_handle => {
             match result {
-                Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
-                Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
+                Ok(task_result) => tracing::error!(?task_result, "Sync task ended unexpectedly"),
+                Err(error) if error.is_cancelled() => tracing::debug!("Sync task cancelled successfully"),
+                Err(error) => {
+                    // `JoinError` is either a cancellation or a panic.
+                    tracing::error!(%error, "Sync task panicked");
+                },
             }
             anyhow::bail!("Unexpected shutdown");
         }
         result = rpc_handle => {
             match result {
-                Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
-                Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
+                Ok(task_result) => tracing::error!(?task_result, "RPC task ended unexpectedly"),
+                Err(error) if error.is_cancelled() => tracing::debug!("RPC task cancelled successfully"),
+                Err(error) => {
+                    tracing::error!(%error, "RPC task panicked");
+                },
             }
             anyhow::bail!("Unexpected shutdown");
         }
         result = p2p_handle => {
             match result {
-                Ok(_) => tracing::error!("P2P process ended unexpectedly"),
-                Err(err) => tracing::error!(error=%err, "P2P process ended unexpectedly"),
+                Ok(task_result) => tracing::error!(?task_result, "P2P task ended unexpectedly"),
+                Err(error) if error.is_cancelled() => tracing::debug!("P2P task cancelled successfully"),
+                Err(error) => {
+                    tracing::error!(%error, "P2P task panicked");
+                },
             }
             anyhow::bail!("Unexpected shutdown");
         }
