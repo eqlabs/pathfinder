@@ -283,6 +283,17 @@ This should only be enabled for debugging purposes as it adds substantial proces
     )]
     get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
 
+    #[cfg(feature = "aggregate_bloom")]
+    #[arg(
+        long = "rpc.get-events-max-bloom-filters-to-load",
+        long_help = format!("The number of Bloom filters to load for events when querying for events. \
+                    Each filter covers a {} block range. \
+                    This limit is used to prevent queries from taking too long.", pathfinder_storage::BLOCK_RANGE_LEN),
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOOM_FILTERS_TO_LOAD",
+        default_value = "3"
+    )]
+    get_events_max_bloom_filters_to_load: std::num::NonZeroUsize,
+
     #[arg(
         long = "storage.state-tries",
         long_help = "When set to `archive` all historical Merkle trie state is preserved. When set to an integer N, only the last N+1 states of the Merkle tries are kept in the database. \
@@ -714,6 +725,8 @@ pub struct Config {
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    #[cfg(feature = "aggregate_bloom")]
+    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
@@ -1005,6 +1018,8 @@ impl Config {
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
             get_events_max_uncached_bloom_filters_to_load: cli
                 .get_events_max_uncached_bloom_filters_to_load,
+            #[cfg(feature = "aggregate_bloom")]
+            get_events_max_bloom_filters_to_load: cli.get_events_max_bloom_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,

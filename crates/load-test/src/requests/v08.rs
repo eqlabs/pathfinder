@@ -257,7 +257,7 @@ pub async fn estimate_fee_for_invoke(
         json!({
             "request": [{
                 "type": "INVOKE",
-                "version": "0x0",
+                "version": "0x1",
                 "max_fee": max_fee,
                 "signature": [],
                 "contract_address": contract_address,
@@ -289,7 +289,7 @@ async fn post_jsonrpc_request<T: DeserializeOwned>(
 ) -> MethodResult<T> {
     let request = jsonrpc_request(method, params);
     let response = user
-        .post_json("/rpc/v0.5", &request)
+        .post_json("/rpc/v0_8", &request)
         .await?
         .response
         .map_err(|e| Box::new(e.into()))?;

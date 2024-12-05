@@ -82,6 +82,8 @@ pub const BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
 /// Before being added to `AggregateBloom`, each [`BloomFilter`] is
 /// rotated by 90 degrees (transposed).
 #[derive(Debug, Clone)]
+// TODO:
+#[allow(dead_code)]
 pub struct AggregateBloom {
     /// A [Self::BLOCK_RANGE_LEN] by [BloomFilter::BITVEC_LEN] matrix stored in
     /// a single array.
@@ -95,7 +97,6 @@ pub struct AggregateBloom {
 }
 
 // TODO:
-// Delete after cfg flag is removed
 #[allow(dead_code)]
 impl AggregateBloom {
     /// Maximum number of blocks to aggregate in a single `AggregateBloom`.
@@ -364,9 +365,6 @@ impl BloomFilter {
     // Workaround to get the indices of the keys in the filter.
     // Needed because the `bloomfilter` crate doesn't provide a
     // way to get this information.
-    // TODO:
-    // Delete after cfg flag is removed
-    #[allow(dead_code)]
     fn indices_for_key(key: &Felt) -> Vec<usize> {
         // Use key on an empty Bloom filter
         let mut bloom = Self::new();

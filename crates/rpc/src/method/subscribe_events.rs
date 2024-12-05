@@ -103,13 +103,39 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         let (events, last_block) = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
-            db.events_in_range(
-                from,
-                to,
-                params.from_address,
-                params.keys.unwrap_or_default(),
-            )
-            .map_err(RpcError::InternalError)
+            let events = db
+                .events_in_range(
+                    from,
+                    to,
+                    params.from_address,
+                    #[cfg(feature = "aggregate_bloom")]
+                    params.keys.clone().unwrap_or_default(),
+                    #[cfg(not(feature = "aggregate_bloom"))]
+                    params.keys.unwrap_or_default(),
+                )
+                .map_err(RpcError::InternalError)?;
+
+            #[cfg(feature = "aggregate_bloom")]
+            {
+                let events_from_aggregate = db
+                    .events_in_range_aggregate(
+                        from,
+                        to,
+                        params.from_address,
+                        params.keys.unwrap_or_default(),
+                    )
+                    .unwrap();
+
+                assert_eq!(events.0.len(), events_from_aggregate.0.len());
+                for (event, event_from_aggregate) in
+                    events.0.iter().zip(events_from_aggregate.0.iter())
+                {
+                    assert_eq!(event, event_from_aggregate);
+                }
+                assert_eq!(events.1, events_from_aggregate.1);
+            }
+
+            Ok(events)
         })
         .await
         .map_err(|e| RpcError::InternalError(e.into()))??;
@@ -736,6 +762,8 @@ mod tests {
                 batch_concurrency_limit: 64.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1024.try_into().unwrap(),
                 get_events_max_uncached_bloom_filters_to_load: 1024.try_into().unwrap(),
+                #[cfg(feature = "aggregate_bloom")]
+                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

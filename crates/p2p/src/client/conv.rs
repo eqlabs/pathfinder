@@ -32,6 +32,7 @@ use pathfinder_common::receipt::{
     ExecutionResources,
     ExecutionStatus,
     L1Gas,
+    L2Gas,
     L2ToL1Message,
     Receipt,
 };
@@ -188,6 +189,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                 resource_bounds: p2p_proto::transaction::ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                    l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                 },
                 tip: x.tip.0,
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -235,6 +237,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                     resource_bounds: p2p_proto::transaction::ResourceBounds {
                         l1_gas: x.resource_bounds.l1_gas.to_dto(),
                         l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                        l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                     },
                     tip: x.tip.0,
                     paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -269,6 +272,7 @@ impl ToDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
                 resource_bounds: p2p_proto::transaction::ResourceBounds {
                     l1_gas: x.resource_bounds.l1_gas.to_dto(),
                     l2_gas: x.resource_bounds.l2_gas.to_dto(),
+                    l1_data_gas: x.resource_bounds.l1_data_gas.map(|g| g.to_dto()),
                 },
                 tip: x.tip.0,
                 paymaster_data: x.paymaster_data.into_iter().map(|p| p.0).collect(),
@@ -337,6 +341,7 @@ impl ToDto<p2p_proto::receipt::Receipt> for (&TransactionVariant, Receipt) {
                     l1_data_gas: Some(da.l1_data_gas.into()),
                     total_l1_gas: Some(total.l1_gas.into()),
                     total_l1_data_gas: Some(total.l1_data_gas.into()),
+                    l2_gas: Some(e.l2_gas.0.into()),
                 }
             },
             revert_reason,
@@ -438,6 +443,8 @@ impl ToDto<p2p_proto::common::L1DataAvailabilityMode> for L1DataAvailabilityMode
 }
 
 impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVariant {
+    /// Caller must take care to compute the contract address for deploy and
+    /// deploy account transactions separately in a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::TransactionVariant) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -530,11 +537,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV0(DeployTransactionV0 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
@@ -547,11 +551,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployV1(DeployTransactionV1 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     contract_address_salt,
                     class_hash,
                     constructor_calldata,
@@ -565,11 +566,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV1(DeployAccountTransactionV1 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     max_fee: Fee(x.max_fee),
                     signature: x
                         .signature
@@ -590,11 +588,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
                 let class_hash = ClassHash(x.class_hash.0);
 
                 Self::DeployAccountV3(DeployAccountTransactionV3 {
-                    contract_address: ContractAddress::deployed_contract_address(
-                        constructor_calldata.iter().map(|d| CallParam(d.0)),
-                        &contract_address_salt,
-                        &class_hash,
-                    ),
+                    // Computing the address is CPU intensive, so we do it later on.
+                    contract_address: ContractAddress::ZERO,
                     signature: x
                         .signature
                         .parts
@@ -685,6 +680,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
 }
 
 impl TryFromDto<p2p_proto::transaction::Transaction> for Transaction {
+    /// Caller must take care to compute the contract address for deploy and
+    /// deploy account transactions separately in a non-async context.
     fn try_from_dto(dto: p2p_proto::transaction::Transaction) -> anyhow::Result<Self>
     where
         Self: Sized,
@@ -757,8 +754,10 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)> for crate::client:
                         )?
                         .0,
                     },
-                    // TODO: Fix this when we have a way to get L2 gas from the gateway
-                    l2_gas: Default::default(),
+                    l2_gas: L2Gas(
+                        GasPrice::try_from(common.execution_resources.l2_gas.unwrap_or_default())?
+                            .0,
+                    ),
                 },
                 l2_to_l1_messages: common
                     .messages_sent
@@ -803,6 +802,16 @@ impl TryFromDto<p2p_proto::transaction::ResourceBounds> for ResourceBounds {
                 max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
                     dto.l2_gas.max_price_per_unit.try_into()?,
                 ),
+            },
+            l1_data_gas: if let Some(g) = dto.l1_data_gas {
+                Some(ResourceBound {
+                    max_amount: pathfinder_common::ResourceAmount(g.max_amount.try_into()?),
+                    max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                        g.max_price_per_unit.try_into()?,
+                    ),
+                })
+            } else {
+                None
             },
         })
     }

@@ -50,6 +50,19 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
+#[cfg(feature = "aggregate_bloom")]
+pub(super) fn next_missing_aggregate(
+    storage: Storage,
+    head: BlockNumber,
+) -> anyhow::Result<Option<BlockNumber>> {
+    let next = storage
+        .connection()?
+        .transaction()?
+        .next_block_without_events();
+
+    Ok((next < head).then_some(next))
+}
+
 pub(super) fn get_counts(
     db: pathfinder_storage::Transaction<'_>,
     start: BlockNumber,

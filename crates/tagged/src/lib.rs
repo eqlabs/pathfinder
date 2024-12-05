@@ -51,7 +51,11 @@ pub fn init() {
 }
 
 fn lut() -> Option<LutGuard> {
-    unsafe { LUTS.as_ref() }.map(|luts| luts.lock().unwrap())
+    unsafe {
+        #[allow(static_mut_refs)]
+        LUTS.as_ref()
+    }
+    .map(|luts| luts.lock().unwrap())
 }
 
 impl<T: Clone + 'static> Tagged<T> {

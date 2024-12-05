@@ -10,6 +10,7 @@ use crate::dto::serialize::{SerializeForVersion, Serializer};
 pub struct TxnHash<'a>(pub &'a TransactionHash);
 
 pub struct Transaction<'a>(pub &'a pathfinder_common::transaction::Transaction);
+pub struct TransactionWithHash<'a>(pub &'a pathfinder_common::transaction::Transaction);
 
 struct ResourceBounds<'a>(&'a pathfinder_common::transaction::ResourceBounds);
 
@@ -26,7 +27,6 @@ impl SerializeForVersion for TxnHash<'_> {
 impl SerializeForVersion for Transaction<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut s = serializer.serialize_struct()?;
-        s.serialize_field("transaction_hash", &TxnHash(&self.0.hash))?;
         match &self.0.variant {
             TransactionVariant::DeclareV0(tx) => {
                 s.serialize_field("type", &"DECLARE")?;
@@ -273,6 +273,15 @@ impl SerializeForVersion for Transaction<'_> {
                 )?;
             }
         }
+        s.end()
+    }
+}
+
+impl SerializeForVersion for TransactionWithHash<'_> {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("transaction_hash", &TxnHash(&self.0.hash))?;
+        s.flatten(&Transaction(self.0))?;
         s.end()
     }
 }

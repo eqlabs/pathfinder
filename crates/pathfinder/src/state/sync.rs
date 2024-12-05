@@ -1084,7 +1084,7 @@ async fn l2_reorg(
 
         #[cfg(feature = "aggregate_bloom")]
         transaction
-            .reconstruct_running_aggregate()
+            .reconstruct_running_event_filter()
             .context("Reconstructing running aggregate bloom")?;
 
         // Track combined L1 and L2 state.

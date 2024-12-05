@@ -145,6 +145,56 @@ impl TransactionVariant {
 
         Some(hash)
     }
+
+    /// Compute contract address for deploy and deploy account transactions. Do
+    /// nothing in case of other transactions.
+    ///
+    /// ### Important
+    ///
+    /// This function should not be called in async context.
+    pub fn calculate_contract_address(&mut self) {
+        match self {
+            TransactionVariant::DeployV0(DeployTransactionV0 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+            })
+            | TransactionVariant::DeployV1(DeployTransactionV1 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+            }) => {
+                *contract_address = ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().map(|d| CallParam(d.0)),
+                    contract_address_salt,
+                    class_hash,
+                );
+            }
+            TransactionVariant::DeployAccountV1(DeployAccountTransactionV1 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+                ..
+            })
+            | TransactionVariant::DeployAccountV3(DeployAccountTransactionV3 {
+                class_hash,
+                constructor_calldata,
+                contract_address,
+                contract_address_salt,
+                ..
+            }) => {
+                *contract_address = ContractAddress::deployed_contract_address(
+                    constructor_calldata.iter().copied(),
+                    contract_address_salt,
+                    class_hash,
+                );
+            }
+            _ => {}
+        }
+    }
 }
 
 impl From<DeclareTransactionV2> for TransactionVariant {
@@ -325,6 +375,7 @@ pub enum EntryPointType {
 pub struct ResourceBounds {
     pub l1_gas: ResourceBound,
     pub l2_gas: ResourceBound,
+    pub l1_data_gas: Option<ResourceBound>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Dummy)]
@@ -839,12 +890,16 @@ impl V3Hasher<'_> {
     }
 
     fn hash_fee_fields(&self) -> Felt {
-        PoseidonHasher::default()
+        let mut hasher = PoseidonHasher::default()
             .chain(self.tip.0.into())
             .chain(Self::pack_gas_bound(b"L1_GAS", &self.resource_bounds.l1_gas).into())
-            .chain(Self::pack_gas_bound(b"L2_GAS", &self.resource_bounds.l2_gas).into())
-            .finish()
-            .into()
+            .chain(Self::pack_gas_bound(b"L2_GAS", &self.resource_bounds.l2_gas).into());
+
+        if let Some(l1_data_gas) = self.resource_bounds.l1_data_gas {
+            hasher = hasher.chain(Self::pack_gas_bound(b"L1_DATA", &l1_data_gas).into());
+        }
+
+        hasher.finish().into()
     }
 
     fn pack_gas_bound(name: &[u8], bound: &ResourceBound) -> Felt {
@@ -1103,6 +1158,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x2540be400),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 sender_address: contract_address!(
                     "0x2fab82e4aef1d8664874e1f194951856d48463c3e6bf9a8c68e234a629a6f50"
@@ -1222,6 +1278,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 constructor_calldata: vec![call_param!(
                     "0x5cd65f3d7daea6c63939d659b8473ea0c5cd81576035a4d34e52fb06840196c"
@@ -1411,6 +1468,7 @@ mod tests {
                         max_price_per_unit: ResourcePricePerUnit(0x5af3107a4000),
                     },
                     l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
                 },
                 sender_address: contract_address!(
                     "0x35acd6dd6c5045d18ca6d0192af46b335a5402c02d41f46e4e77ea2c951d9a3"

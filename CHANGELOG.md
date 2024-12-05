@@ -7,6 +7,18 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2024-12-02
+
+### Fixed
+
+- `starknet_getBlockWithReceipts` returns `transaction_hash` within the `transaction` object making the response not strictly spec compliant. Fixed on the JSON-RPC 0.8 interface.
+- JSON-RPC 0.7 methods returning block headers are including the `l2_gas` property.
+
+### Changed
+
+- Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
+
+
 ## [0.15.0] - 2024-11-21
 
 ### Added
@@ -21,11 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Ethereum RPC API now requires Websocket endpoints (prev. HTTP). If an HTTP url is provided instead, Pathfinder will attempt to connect vía Websocket protocol at that same url.
+- JSON-RPC 0.4.0 and 0.5.0 API support has been removed.
 - JSON-RPC API version 0.7 is now served by default on the `/` path.
 
 ### Fixed
 
 - `starknet_getBlockWithTxs` works with empty blocks`
+
+## [0.14.5] - 2024-12-02
+
+### Fixed
+
+- Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
 
 ## [0.14.4] - 2024-10-03
 

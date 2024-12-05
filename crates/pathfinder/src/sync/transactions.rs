@@ -6,11 +6,20 @@ use p2p::client::types::TransactionData;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransactionV0,
+    DeployTransactionV1,
+    Transaction,
+    TransactionVariant,
+};
 use pathfinder_common::{
     BlockHeader,
     BlockNumber,
+    CallParam,
     ChainId,
+    ContractAddress,
     StarknetVersion,
     TransactionCommitment,
     TransactionHash,
@@ -85,14 +94,17 @@ impl ProcessStage for CalculateHashes {
     );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
-        // TODO remove the placeholder
-        let peer = &PeerId::random();
+
         let (transactions, block_number, version, expected_commitment) = input;
+
         let transactions = transactions
             .into_par_iter()
-            .map(|(tx, r)| {
+            .map(|(mut tx, r)| {
+                // Contract address for deploy and deploy account transactions is not propagated via p2p
+                tx.variant.calculate_contract_address();
+
                 let computed_hash = tx.variant.calculate_hash(self.0, false);
                 if tx.hash != computed_hash {
                     tracing::debug!(%peer, %block_number, expected_hash=%tx.hash, %computed_hash, "Transaction hash mismatch");
@@ -110,6 +122,7 @@ impl ProcessStage for CalculateHashes {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
@@ -175,6 +188,7 @@ impl ProcessStage for VerifyCommitment {
             version,
             block_number,
         } = transactions;
+
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
         // This computation can only fail in case of internal trie error which is always
         // a fatal error

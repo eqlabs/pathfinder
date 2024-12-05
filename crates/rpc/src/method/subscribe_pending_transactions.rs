@@ -47,7 +47,7 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         match self {
             Notification::Transaction(transaction) => {
-                crate::dto::Transaction(transaction).serialize(serializer)
+                crate::dto::TransactionWithHash(transaction).serialize(serializer)
             }
             Notification::TransactionHash(transaction_hash) => {
                 transaction_hash.0.serialize(serializer)
@@ -493,6 +493,8 @@ mod tests {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
                 get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
+                #[cfg(feature = "aggregate_bloom")]
+                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };
