@@ -55,7 +55,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            PATHFINDER_FORCE_VERSION=v0.14.1-cartridge
+            PATHFINDER_FORCE_VERSION=v0.15.2-cartridge
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
