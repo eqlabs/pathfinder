@@ -153,6 +153,7 @@ impl EthereumApi for EthereumClient {
         let provider_clone = provider.clone();
         let (finalized_block_tx, mut finalized_block_rx) =
             tokio::sync::mpsc::channel::<L1BlockNumber>(1);
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
