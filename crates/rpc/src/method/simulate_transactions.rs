@@ -34,6 +34,7 @@ pub async fn simulate_transactions(
     input: SimulateTransactionInput,
 ) -> Result<Output, SimulateTransactionError> {
     let span = tracing::Span::current();
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 

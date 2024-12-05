@@ -55,6 +55,7 @@ pub(super) async fn next_gap(
     head: BlockNumber,
     head_hash: BlockHash,
 ) -> anyhow::Result<Option<HeaderGap>> {
+    // TODO tracking and cancellation
     spawn_blocking(move || {
         let mut db = storage
             .connection()
@@ -120,10 +121,12 @@ pub(super) async fn next_gap(
     .context("Joining blocking task")?
 }
 
+// TODO unused code, remove
 pub(super) async fn query(
     storage: Storage,
     block_number: BlockNumber,
 ) -> anyhow::Result<Option<BlockHeader>> {
+    // TODO tracking and cancellation
     spawn_blocking({
         move || {
             let mut db = storage

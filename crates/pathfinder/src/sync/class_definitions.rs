@@ -75,6 +75,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
+    // TODO tracking and cancellation
     spawn_blocking(move || {
         let mut db = storage
             .connection()
@@ -541,6 +542,7 @@ pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let mut db = storage
             .connection()

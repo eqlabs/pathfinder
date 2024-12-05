@@ -29,7 +29,7 @@ pub async fn get_block_transaction_count(
     input: Input,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = context

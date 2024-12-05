@@ -248,7 +248,7 @@ pub async fn get_proof(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = storage
@@ -391,7 +391,7 @@ pub async fn get_class_proof(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
+    // TODO tracking and cancellation
     let jh = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
         let mut db = storage

@@ -82,6 +82,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
+        // TODO tracking and cancellation
         std::thread::spawn(move || {
             let queue_capacity = self.inner.max_capacity();
 
@@ -131,6 +132,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
+        // TODO tracking and cancellation
         std::thread::spawn(move || {
             let mut chunk = Vec::with_capacity(capacity);
             let mut peer = None;
@@ -231,6 +233,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
@@ -264,6 +267,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
+        // TODO tracking and cancellation
         tokio::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 

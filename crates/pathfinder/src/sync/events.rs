@@ -65,6 +65,7 @@ pub(super) async fn verify_commitment(
         peer,
         data: (block_number, events),
     } = events;
+    // TODO tracking and cancellation
     let events = tokio::task::spawn_blocking(move || {
         let mut connection = storage
             .connection()
@@ -100,6 +101,7 @@ pub(super) async fn persist(
     storage: Storage,
     events: Vec<PeerData<EventsForBlockByTransaction>>,
 ) -> Result<BlockNumber, SyncError> {
+    // TODO tracking and cancellation
     tokio::task::spawn_blocking(move || {
         let mut connection = storage
             .connection()

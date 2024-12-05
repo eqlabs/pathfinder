@@ -152,6 +152,7 @@ where
         };
 
         // We start downloading the signature for the block
+        // TODO tracking and cancellation
         let signature_handle = tokio::spawn({
             let sequencer = sequencer.clone();
             async move {
@@ -299,6 +300,7 @@ where
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
+                // TODO tracking and cancellation, rayon
                 let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
                     let verify_result = signature
                         .verify(
@@ -413,6 +415,7 @@ pub async fn download_new_classes(
         return Ok(vec![]);
     }
 
+    // TODO tracking and cancellation
     let require_downloading = tokio::task::spawn_blocking(move || {
         let mut db_conn = storage
             .connection()
@@ -510,6 +513,7 @@ async fn download_block(
             let block = recv.await.expect("Panic on rayon thread")?;
 
             // Check if commitments and block hash are correct
+            // TODO tracking and cancellation, rayon
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
                 let state_diff_commitment =
                     StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();

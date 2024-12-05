@@ -95,6 +95,7 @@ pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<CallResultValue>)
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
     let span = tracing::Span::current();
+    // TODO tracking and cancellation
     let result = tokio::task::spawn_blocking(move || {
         let _g = span.enter();
 

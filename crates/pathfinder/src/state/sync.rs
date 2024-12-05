@@ -232,6 +232,7 @@ where
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
+    // TODO tracking and cancellation
     let mut latest_handle = tokio::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
@@ -245,6 +246,7 @@ where
         BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));
+    // TODO tracking and cancellation
     let _status_sync = tokio::spawn(update_sync_status_latest(
         Arc::clone(&state),
         starting_block_hash,
@@ -255,6 +257,7 @@ where
 
     // Start L1 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
+    // TODO tracking and cancellation
     let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
     // Fetch latest blocks from storage
@@ -265,6 +268,7 @@ where
 
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
+    // TODO tracking and cancellation
     let mut l2_handle = tokio::spawn(l2_sync(
         event_sender.clone(),
         l2_context.clone(),
@@ -283,8 +287,10 @@ where
         websocket_txs,
         notifications,
     };
+    // TODO tracking and cancellation
     let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
 
+    // TODO tracking and cancellation
     let mut pending_handle = tokio::spawn(pending::poll_pending(
         event_sender.clone(),
         sequencer.clone(),
@@ -300,6 +306,7 @@ where
             _ = &mut pending_handle => {
                 tracing::error!("Pending tracking task ended unexpectedly");
 
+                // TODO tracking and cancellation
                 pending_handle = tokio::spawn(pending::poll_pending(
                     event_sender.clone(),
                     sequencer.clone(),
@@ -337,6 +344,7 @@ where
                 }
 
                 let fut = l1_sync(event_sender.clone(), l1_context.clone());
+                // TODO tracking and cancellation
                 l1_handle = tokio::spawn(async move {
                     tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
                     fut.await
@@ -364,6 +372,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain, rx_latest.clone());
 
+                // TODO tracking and cancellation
                 l2_handle = tokio::spawn(async move {
                     tokio::time::sleep(restart_delay).await;
                     fut.await

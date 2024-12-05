@@ -201,7 +201,9 @@ impl RpcServer {
 
         let router = router.layer(middleware);
 
+        // TODO tracking and cancellation
         let server_handle = tokio::spawn(async move {
+            // TODO tracking and cancellation, check axum graceful shutdown methods (?)
             axum::serve(listener, router.into_make_service())
                 .await
                 .map_err(Into::into)

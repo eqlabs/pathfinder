@@ -51,6 +51,7 @@ pub async fn trace_transaction<'a>(
     }
 
     let span = tracing::Span::current();
+    // TODO tracking and cancellation
     let local =
         tokio::task::spawn_blocking(move || -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
