@@ -6,6 +6,7 @@
 mod prelude;
 
 mod bloom;
+pub use bloom::BLOCK_RANGE_LEN;
 mod connection;
 pub mod fake;
 mod params;
@@ -15,8 +16,13 @@ pub mod test_utils;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(feature = "aggregate_bloom")]
+use std::sync::Mutex;
 
 use anyhow::Context;
+#[cfg(feature = "aggregate_bloom")]
+use bloom::AggregateBloom;
+pub use bloom::EVENT_KEY_FILTER_LIMIT;
 pub use connection::*;
 use pathfinder_common::{BlockHash, BlockNumber};
 use r2d2::Pool;
@@ -89,6 +95,8 @@ struct Inner {
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
     bloom_filter_cache: Arc<bloom::Cache>,
+    #[cfg(feature = "aggregate_bloom")]
+    running_aggregate: Arc<Mutex<AggregateBloom>>,
     trie_prune_mode: TriePruneMode,
 }
 
@@ -96,6 +104,8 @@ pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
     bloom_filter_cache: Arc<bloom::Cache>,
+    #[cfg(feature = "aggregate_bloom")]
+    running_aggregate: Arc<Mutex<AggregateBloom>>,
     trie_prune_mode: TriePruneMode,
 }
 
@@ -127,6 +137,8 @@ impl StorageManager {
             database_path: Arc::new(self.database_path.clone()),
             pool,
             bloom_filter_cache: self.bloom_filter_cache.clone(),
+            #[cfg(feature = "aggregate_bloom")]
+            running_aggregate: self.running_aggregate.clone(),
             trie_prune_mode: self.trie_prune_mode,
         }))
     }
@@ -182,7 +194,25 @@ impl StorageBuilder {
 
     /// Convenience function for tests to create an in-memory database with a
     /// specific trie prune mode.
+    ///
+    /// Note that most of the time we _do_ want to use a pool size of 1. We're
+    /// using shared cache mode with our in-memory DB to allow multiple
+    /// connections from within the same process. This means that in
+    /// contrast to a file-based DB we immediately get locking errors in
+    /// case of concurrent writes -- a pool size of one avoids this.
     pub fn in_memory_with_trie_pruning(trie_prune_mode: TriePruneMode) -> anyhow::Result<Storage> {
+        Self::in_memory_with_trie_pruning_and_pool_size(
+            trie_prune_mode,
+            NonZeroU32::new(1).unwrap(),
+        )
+    }
+
+    /// Convenience function for tests to create an in-memory database with a
+    /// specific trie prune mode.
+    pub fn in_memory_with_trie_pruning_and_pool_size(
+        trie_prune_mode: TriePruneMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
         // Create a unique database name so that they are not shared between
         // concurrent tests. i.e. Make every in-mem Storage unique.
         static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
@@ -212,7 +242,7 @@ impl StorageBuilder {
         }
 
         storage.trie_prune_mode = trie_prune_mode;
-        storage.create_pool(NonZeroU32::new(5).unwrap())
+        storage.create_pool(pool_size)
     }
 
     /// Performs the database schema migration and returns a [storage
@@ -259,6 +289,10 @@ impl StorageBuilder {
             tracing::info!("Merkle trie pruning disabled");
         }
 
+        #[cfg(feature = "aggregate_bloom")]
+        let running_aggregate = event::reconstruct_running_aggregate(&connection.transaction()?)
+            .context("Reconstructing running aggregate bloom filter")?;
+
         connection
             .close()
             .map_err(|(_connection, error)| error)
@@ -268,6 +302,8 @@ impl StorageBuilder {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
             bloom_filter_cache: Arc::new(bloom::Cache::with_size(self.bloom_filter_cache_size)),
+            #[cfg(feature = "aggregate_bloom")]
+            running_aggregate: Arc::new(Mutex::new(running_aggregate)),
             trie_prune_mode,
         })
     }
@@ -339,6 +375,8 @@ impl Storage {
         Ok(Connection::new(
             conn,
             self.0.bloom_filter_cache.clone(),
+            #[cfg(feature = "aggregate_bloom")]
+            self.0.running_aggregate.clone(),
             self.0.trie_prune_mode,
         ))
     }
@@ -609,5 +647,133 @@ mod tests {
                 .to_string(),
             "Cannot enable Merkle trie pruning on a database that was not created with it enabled."
         );
+    }
+
+    #[test]
+    #[cfg(feature = "aggregate_bloom")]
+    fn running_aggregate_reconstructed_after_shutdown() {
+        use std::num::NonZeroUsize;
+        use std::sync::LazyLock;
+
+        use test_utils::*;
+
+        static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
+            LazyLock::new(|| NonZeroUsize::new(10).unwrap());
+        static MAX_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
+            LazyLock::new(|| NonZeroUsize::new(1000).unwrap());
+
+        let blocks = [0, 1, 2, 3, 4, 5];
+        let transactions_per_block = 2;
+        let headers = create_blocks(&blocks);
+        let transactions_and_receipts =
+            create_transactions_and_receipts(blocks.len() * transactions_per_block);
+        let emitted_events = extract_events(&headers, &transactions_and_receipts);
+        let insert_block_data = |tx: &Transaction<'_>, idx: usize| {
+            let header = &headers[idx];
+
+            tx.insert_block_header(header).unwrap();
+            tx.insert_transaction_data(
+                header.number,
+                &transactions_and_receipts
+                    [idx * transactions_per_block..(idx + 1) * transactions_per_block]
+                    .iter()
+                    .cloned()
+                    .map(|(tx, receipt, ..)| (tx, receipt))
+                    .collect::<Vec<_>>(),
+                Some(
+                    &transactions_and_receipts
+                        [idx * transactions_per_block..(idx + 1) * transactions_per_block]
+                        .iter()
+                        .cloned()
+                        .map(|(_, _, events)| events)
+                        .collect::<Vec<_>>(),
+                ),
+            )
+            .unwrap();
+        };
+
+        // First run starts here...
+        let db = crate::StorageBuilder::in_memory().unwrap();
+        let db_path = Arc::clone(&db.0.database_path).to_path_buf();
+
+        // Keep this around so that the in-memory database doesn't get dropped.
+        let mut rsqlite_conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        let mut conn = db.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        // ...we add two blocks.
+        for i in 0..2 {
+            insert_block_data(&tx, i);
+        }
+
+        let filter = EventFilter {
+            keys: vec![
+                vec![],
+                // Key present in all events as the 2nd key.
+                vec![pathfinder_common::macro_prelude::event_key!("0xdeadbeef")],
+            ],
+            page_size: emitted_events.len(),
+            ..Default::default()
+        };
+
+        let events_from_aggregate_before = tx
+            .events_from_aggregate(&filter, *MAX_BLOCKS_TO_SCAN)
+            .unwrap()
+            .events;
+        let events_before = tx
+            .events(&filter, *MAX_BLOCKS_TO_SCAN, *MAX_BLOOM_FILTERS_TO_LOAD)
+            .unwrap()
+            .events;
+
+        assert_eq!(events_before, events_from_aggregate_before);
+
+        // Pretend like we shut down by dropping these.
+        tx.commit().unwrap();
+        drop(conn);
+        drop(db);
+
+        // Second run starts here (same database)...
+        let db = crate::StorageBuilder::file(db_path)
+            .journal_mode(JournalMode::Rollback)
+            .migrate()
+            .unwrap()
+            .create_pool(NonZeroU32::new(5).unwrap())
+            .unwrap();
+
+        let mut conn = db.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        // ...we add the rest of the blocks.
+        for i in 2..headers.len() {
+            insert_block_data(&tx, i);
+        }
+
+        let events_from_aggregate_after = tx
+            .events_from_aggregate(&filter, *MAX_BLOCKS_TO_SCAN)
+            .unwrap()
+            .events;
+        let events_after = tx
+            .events(&filter, *MAX_BLOCKS_TO_SCAN, *MAX_BLOOM_FILTERS_TO_LOAD)
+            .unwrap()
+            .events;
+
+        assert_eq!(events_after, events_from_aggregate_after);
+
+        let inserted_aggregate_filter_count = rsqlite_conn
+            .transaction()
+            .unwrap()
+            .prepare("SELECT COUNT(*) FROM starknet_events_filters_aggregate")
+            .unwrap()
+            .query_row([], |row| row.get::<_, u64>(0))
+            .unwrap();
+
+        // We are using only the running aggregate.
+        assert!(inserted_aggregate_filter_count == 0);
+        assert!(events_from_aggregate_after.len() > events_from_aggregate_before.len());
+        // Events added in the first run are present in the running aggregate.
+        for e in events_from_aggregate_before {
+            assert!(events_from_aggregate_after.contains(&e));
+        }
     }
 }

@@ -189,7 +189,6 @@ pub enum TraceTransactionError {
     Custom(anyhow::Error),
     TxnHashNotFound,
     NoTraceAvailable(TraceError),
-    ContractError { revert_error: String },
 }
 
 impl From<ExecutionStateError> for TraceTransactionError {
@@ -208,6 +207,7 @@ impl From<TransactionExecutionError> for TraceTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
                 "Transaction execution failed at index {}: {}",
                 transaction_index,
@@ -242,11 +242,6 @@ impl From<TraceTransactionError> for ApplicationError {
             TraceTransactionError::TxnHashNotFound => ApplicationError::TxnHashNotFound,
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
-            }
-            TraceTransactionError::ContractError { revert_error } => {
-                ApplicationError::ContractError {
-                    revert_error: Some(revert_error),
-                }
             }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
             TraceTransactionError::Custom(e) => ApplicationError::Custom(e),

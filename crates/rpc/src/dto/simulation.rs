@@ -3,6 +3,7 @@ use pathfinder_common::{ContractAddress, ContractNonce};
 use serde::ser::Error;
 
 use super::serialize::SerializeStruct;
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub struct TransactionTrace<'a> {
@@ -176,10 +177,16 @@ impl crate::dto::serialize::SerializeForVersion for FunctionInvocation<'_> {
             self.0.result.len(),
             &mut self.0.result.iter().map(crate::dto::Felt),
         )?;
-        serializer.serialize_field(
-            "execution_resources",
-            &ComputationResources(&self.0.computation_resources),
-        )?;
+        match serializer.version {
+            RpcVersion::V08 => serializer.serialize_field(
+                "execution_resources",
+                &InnerCallExecutionResources(&self.0.execution_resources),
+            )?,
+            _ => serializer.serialize_field(
+                "execution_resources",
+                &ComputationResources(&self.0.computation_resources),
+            )?,
+        }
         serializer.end()
     }
 }
@@ -284,6 +291,20 @@ impl crate::dto::serialize::SerializeForVersion for ComputationResources<'_> {
         if self.0.segment_arena_builtin != 0 {
             serializer.serialize_field("segment_arena_builtin", &self.0.segment_arena_builtin)?;
         }
+        serializer.end()
+    }
+}
+
+struct InnerCallExecutionResources<'a>(&'a pathfinder_executor::types::InnerCallExecutionResources);
+
+impl crate::dto::serialize::SerializeForVersion for InnerCallExecutionResources<'_> {
+    fn serialize(
+        &self,
+        serializer: super::serialize::Serializer,
+    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
+        serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
         serializer.end()
     }
 }
@@ -440,13 +461,24 @@ impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
         &self,
         serializer: super::serialize::Serializer,
     ) -> Result<super::serialize::Ok, super::serialize::Error> {
-        let mut serializer = serializer.serialize_struct()?;
-        serializer.flatten(&ComputationResources(&self.0.computation_resources))?;
-        serializer.serialize_field(
-            "data_availability",
-            &DataAvailabilityResources(&self.0.data_availability),
-        )?;
-        serializer.end()
+        match serializer.version {
+            RpcVersion::V08 => {
+                let mut serializer = serializer.serialize_struct()?;
+                serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
+                serializer.serialize_field("l1_data_gas", &self.0.l1_data_gas)?;
+                serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
+                serializer.end()
+            }
+            _ => {
+                let mut serializer = serializer.serialize_struct()?;
+                serializer.flatten(&ComputationResources(&self.0.computation_resources))?;
+                serializer.serialize_field(
+                    "data_availability",
+                    &DataAvailabilityResources(&self.0.data_availability),
+                )?;
+                serializer.end()
+            }
+        }
     }
 }
 

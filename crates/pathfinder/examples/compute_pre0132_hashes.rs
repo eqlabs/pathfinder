@@ -8,17 +8,17 @@ use pathfinder_common::{
     ReceiptCommitment,
     StarknetVersion,
     StateCommitment,
-    StateDiffCommitment,
     StorageCommitment,
-    TransactionCommitment,
 };
 use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment,
     calculate_receipt_commitment,
+    calculate_transaction_commitment,
     compute_final_hash,
     BlockHeaderData,
 };
 
-const VERSION_CUTOFF: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
+const VERSION_CUTOFF: StarknetVersion = StarknetVersion::V_0_13_2;
 
 /// Computes block hashes for all blocks under the 0.13.2 cutoff in 0.13.2 style
 /// and stores them in a CSV file "block_hashes.csv" with the format:
@@ -48,7 +48,8 @@ fn main() -> anyhow::Result<()> {
     };
 
     // Open a file where we'll save the computed hashes
-    let mut file = std::fs::File::create("block_hashes.csv")?;
+    let mut csv_file = std::fs::File::create("block_hashes.csv")?;
+    let mut binary_file = std::fs::File::create("block_hashes.bin")?;
 
     // Iterate through all pre-0.13.2 blocks
     for block_number in 0..latest_block_number.get() {
@@ -64,16 +65,22 @@ fn main() -> anyhow::Result<()> {
             .context("Fetching block header")?
             .context("Block header missing")?;
 
+        // As soon as we reach blocks in 0.13.2 we're done
+        if header.starknet_version == VERSION_CUTOFF {
+            println!("\rBlock {}. Done!", block_number);
+            break;
+        }
+
         // Load block tx's (to compute receipt commitment)
         let txn_data_for_block = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
-        drop(tx);
 
         // Compute receipt commitment if it's not there
         if header.receipt_commitment == ReceiptCommitment::ZERO {
             header.receipt_commitment = calculate_receipt_commitment(
                 txn_data_for_block
+                    .clone()
                     .into_iter()
                     .flat_map(|(_, r, _)| Some(r))
                     .collect::<Vec<_>>()
@@ -81,11 +88,33 @@ fn main() -> anyhow::Result<()> {
             )?;
         }
 
-        // Ensure for non-zero values for all other commitments
-        // Note: Zero values are allowed for:
-        // - `class_commitment` - Will be zero until the first Sierra class has been
-        //   declared on chain
-        // - `event_commitment` - Will be zero when no events are sent in the block
+        // Recalculate transaction commitment
+        header.transaction_commitment = calculate_transaction_commitment(
+            &txn_data_for_block
+                .iter()
+                .map(|(tx, _, _)| tx.clone())
+                .collect::<Vec<_>>(),
+            VERSION_CUTOFF,
+        )?;
+
+        // Recalculate event commitment
+        header.event_commitment = calculate_event_commitment(
+            &txn_data_for_block
+                .iter()
+                .map(|(tx, _, events)| (tx.hash, events.as_slice()))
+                .collect::<Vec<_>>(),
+            VERSION_CUTOFF,
+        )?;
+
+        // Recalculate state diff commitment
+        let state_update = tx
+            .state_update(block_id)?
+            .context("Fetching state update")?;
+        header.state_diff_commitment = state_update.compute_state_diff_commitment();
+
+        drop(tx);
+
+        // Ensure non-zero values for other commitments
         ensure!(
             header.state_commitment != StateCommitment::ZERO,
             "state_commitment missing"
@@ -94,32 +123,21 @@ fn main() -> anyhow::Result<()> {
             header.storage_commitment != StorageCommitment::ZERO,
             "storage_commitment missing"
         );
-        ensure!(
-            header.transaction_commitment != TransactionCommitment::ZERO,
-            "transaction_commitment missing"
-        );
-        ensure!(
-            header.receipt_commitment != ReceiptCommitment::ZERO,
-            "receipt_commitment missing"
-        );
-        ensure!(
-            header.state_diff_commitment != StateDiffCommitment::ZERO,
-            "state_diff_commitment missing"
-        );
 
         // Compute the block hash in the 0.13.2 style
         let header_data = get_header_data(&header);
-        let new_block_hash = compute_final_hash(&header_data).context("Computing block hash")?;
+        let new_block_hash = compute_final_hash(&header_data);
 
         // Write to the CSV file
-        writeln!(file, "{},{}", block_number, new_block_hash)?;
+        writeln!(csv_file, "{},{}", block_number, new_block_hash)?;
 
-        // As soon as we reach blocks in 0.13.2 we're done
-        if header.starknet_version == VERSION_CUTOFF {
-            println!("\rBlock {}. Done!", block_number);
-            break;
-        }
+        // Write to the binary file
+        binary_file
+            .write_all(new_block_hash.0.as_be_bytes())
+            .context("Writing block hash to binary file")?;
     }
+
+    println!("\nResults are in `block_hashes.csv` and `block_hashes.bin`");
 
     Ok(())
 }
@@ -145,6 +163,8 @@ fn get_header_data(header: &BlockHeader) -> BlockHeaderData {
         strk_l1_gas_price: header.strk_l1_gas_price,
         eth_l1_data_gas_price: header.eth_l1_data_gas_price,
         strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+        eth_l2_gas_price: header.eth_l2_gas_price,
+        strk_l2_gas_price: header.strk_l2_gas_price,
         receipt_commitment: header.receipt_commitment,
         l1_da_mode: header.l1_da_mode,
     }

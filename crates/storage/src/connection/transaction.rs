@@ -83,7 +83,7 @@ pub(crate) mod compression {
     }
 }
 
-type TransactionsAndEventsByBlock = (Vec<(StarknetTransaction, Receipt)>, Option<Vec<Vec<Event>>>);
+type TransactionsAndEventsByBlock = (Vec<(StarknetTransaction, Receipt)>, Vec<Vec<Event>>);
 type TransactionAndEventsByHash = (
     BlockNumber,
     StarknetTransaction,
@@ -100,6 +100,10 @@ impl Transaction<'_> {
         events: Option<&[Vec<Event>]>,
     ) -> anyhow::Result<()> {
         if transactions.is_empty() && events.map_or(true, |x| x.is_empty()) {
+            // Advance the running event bloom filter even if there's nothing to add since
+            // it requires that no blocks are skipped.
+            #[cfg(feature = "aggregate_bloom")]
+            self.upsert_block_events_aggregate(block_number, std::iter::empty())?;
             return Ok(());
         }
 
@@ -126,7 +130,6 @@ impl Transaction<'_> {
                 ":idx": &idx,
             ])?;
         }
-
         let transactions_with_receipts: Vec<_> = transactions
             .iter()
             .map(|(transaction, receipt)| dto::TransactionWithReceiptV2 {
@@ -166,6 +169,13 @@ impl Transaction<'_> {
                 ":events": &encoded_events,
             ])
             .context("Inserting transaction data")?;
+
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            let events = events.unwrap_or_default().iter().flatten();
+            self.upsert_block_events_aggregate(block_number, events)
+                .context("Inserting events into Bloom filter aggregate")?;
+        }
 
         if let Some(events) = events {
             let events = events.iter().flatten();
@@ -211,6 +221,12 @@ impl Transaction<'_> {
         ])
         .context("Updating events")?;
 
+        #[cfg(feature = "aggregate_bloom")]
+        {
+            let events = events.iter().flatten();
+            self.upsert_block_events_aggregate(block_number, events)
+                .context("Inserting events into Bloom filter aggregate")?;
+        }
         self.upsert_block_events(block_number, events.iter().flatten())
             .context("Inserting events into Bloom filter")?;
 
@@ -248,10 +264,8 @@ impl Transaction<'_> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
         };
-        let Some(transactions) = self.query_transactions_by_block(block_number)? else {
-            return Ok(None);
-        };
-        Ok(transactions
+        Ok(self
+            .query_transactions_by_block(block_number)?
             .get(index)
             .map(|(transaction, ..)| transaction.clone()))
     }
@@ -260,10 +274,7 @@ impl Transaction<'_> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(0);
         };
-        let Some(transactions) = self.query_transactions_by_block(block_number)? else {
-            return Ok(0);
-        };
-        Ok(transactions.len())
+        Ok(self.query_transactions_by_block(block_number)?.len())
     }
 
     pub fn transaction_data_for_block(
@@ -274,12 +285,7 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let Some((transactions, events)) =
-            self.query_transactions_and_events_by_block(block_number)?
-        else {
-            return Ok(None);
-        };
-        let events = events.context("Events missing")?;
+        let (transactions, events) = self.query_transactions_and_events_by_block(block_number)?;
 
         Ok(Some(
             transactions
@@ -298,14 +304,12 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        Ok(self
-            .query_transactions_by_block(block_number)?
-            .map(|transactions| {
-                transactions
-                    .into_iter()
-                    .map(|(transaction, ..)| transaction)
-                    .collect()
-            }))
+        Ok(Some(
+            self.query_transactions_by_block(block_number)?
+                .into_iter()
+                .map(|(transaction, ..)| transaction)
+                .collect(),
+        ))
     }
 
     pub fn transactions_with_receipts_for_block(
@@ -316,9 +320,12 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        Ok(self
-            .query_transactions_by_block(block_number)?
-            .map(|transactions| transactions.into_iter().map(|(t, r, ..)| (t, r)).collect()))
+        Ok(Some(
+            self.query_transactions_by_block(block_number)?
+                .into_iter()
+                .map(|(t, r, ..)| (t, r))
+                .collect(),
+        ))
     }
 
     pub fn events_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
@@ -381,7 +388,7 @@ impl Transaction<'_> {
     fn query_transactions_by_block(
         &self,
         block_number: BlockNumber,
-    ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
+    ) -> anyhow::Result<Vec<(StarknetTransaction, Receipt)>> {
         let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions
@@ -391,7 +398,7 @@ impl Transaction<'_> {
         )?;
         let mut rows = stmt.query(params![&block_number])?;
         let Some(row) = rows.next()? else {
-            return Ok(None);
+            return Ok(vec![]);
         };
         let transactions = row.get_blob(0)?;
         let transactions = compression::decompress_transactions(transactions)
@@ -402,17 +409,15 @@ impl Transaction<'_> {
                 .0;
         let transactions = transactions.transactions_with_receipts();
 
-        Ok(Some(
-            transactions
-                .into_iter()
-                .map(
-                    |dto::TransactionWithReceiptV2 {
-                         transaction,
-                         receipt,
-                     }| { (transaction.into(), receipt.into()) },
-                )
-                .collect(),
-        ))
+        Ok(transactions
+            .into_iter()
+            .map(
+                |dto::TransactionWithReceiptV2 {
+                     transaction,
+                     receipt,
+                 }| { (transaction.into(), receipt.into()) },
+            )
+            .collect())
     }
 
     fn query_transaction_hashes_by_block(
@@ -438,7 +443,7 @@ impl Transaction<'_> {
     fn query_transactions_and_events_by_block(
         &self,
         block_number: BlockNumber,
-    ) -> anyhow::Result<Option<TransactionsAndEventsByBlock>> {
+    ) -> anyhow::Result<TransactionsAndEventsByBlock> {
         let mut stmt = self.inner().prepare_cached(
             r"
             SELECT transactions, events
@@ -448,7 +453,7 @@ impl Transaction<'_> {
         )?;
         let mut rows = stmt.query(params![&block_number])?;
         let Some(row) = rows.next()? else {
-            return Ok(None);
+            return Ok((vec![], vec![]));
         };
         let transactions = row.get_blob(0)?;
         let transactions = compression::decompress_transactions(transactions)
@@ -473,7 +478,7 @@ impl Transaction<'_> {
         let events = events.map(|events| match events {
             dto::EventsForBlock::V0 { events } => events,
         });
-        Ok(Some((
+        Ok((
             transactions
                 .into_iter()
                 .map(
@@ -483,13 +488,15 @@ impl Transaction<'_> {
                      }| { (transaction.into(), receipt.into()) },
                 )
                 .collect(),
-            events.map(|events| {
-                events
-                    .into_iter()
-                    .map(|e| e.into_iter().map(Into::into).collect())
-                    .collect()
-            }),
-        )))
+            events
+                .map(|events| {
+                    events
+                        .into_iter()
+                        .map(|e| e.into_iter().map(Into::into).collect())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        ))
     }
 
     fn query_events_by_block(
@@ -856,6 +863,7 @@ pub(crate) mod dto {
                     },
                     _ => Default::default(),
                 },
+                l2_gas: Default::default(),
             }
         }
     }

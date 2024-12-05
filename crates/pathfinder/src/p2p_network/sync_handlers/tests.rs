@@ -361,10 +361,10 @@ mod prop {
             let mut actual_sierra = Vec::new();
 
             responses.into_iter().for_each(|response| match response {
-                ClassesResponse::Class(Class::Cairo0 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash: _ }) => {
                     actual_cairo.push(CairoDefinition::try_from_dto(class).unwrap().0);
                 },
-                ClassesResponse::Class(Class::Cairo1 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash: _ }) => {
                     let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
                     actual_sierra.push(sierra);
                 },
@@ -449,7 +449,7 @@ mod prop {
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
                 TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
-                    (TransactionVariant::try_from_dto(transaction).unwrap(), Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                    (TransactionVariant::try_from_dto(transaction.txn).unwrap(), Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
                 }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();

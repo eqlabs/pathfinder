@@ -183,6 +183,10 @@
         ],
         "nonce": "0x8",
         "resource_bounds": {
+            "l1_data_gas": {
+                "max_amount": "0x3333",
+                "max_price_per_unit": "0x4444"
+            },
             "l1_gas": {
                 "max_amount": "0x1111",
                 "max_price_per_unit": "0x2222"

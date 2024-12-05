@@ -23,7 +23,7 @@ pub use transaction::DataAvailabilityMode;
 
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: BlockHash,
@@ -73,6 +73,8 @@ pub struct Block {
 pub struct PendingBlock {
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    #[serde(default)] // TODO: Needed until the gateway provides the l2 gas price
+    pub l2_gas_price: GasPrices,
 
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
@@ -185,19 +187,20 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to Starknet transaction requests.
+/// Used to deserialize replies to Starknet transaction status requests.
 ///
-/// We only care about the statuses so we ignore other fields.
 /// Please note that this does not have to be backwards compatible:
 /// since we only ever use it to deserialize replies from the Starknet
 /// feeder gateway.
-#[serde_as]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct TransactionStatus {
-    pub status: Status,
+    pub tx_status: Status,
     pub finality_status: transaction_status::FinalityStatus,
-    #[serde(default)]
-    pub execution_status: transaction_status::ExecutionStatus,
+    // For transactions that were not received, `"execution_status": null`
+    // in the gateway response.
+    pub execution_status: Option<transaction_status::ExecutionStatus>,
+    pub tx_failure_reason: Option<transaction_status::TxFailureReason>,
+    pub tx_revert_reason: Option<String>,
 }
 
 /// Types used when deserializing get_transaction replies.
@@ -223,6 +226,12 @@ pub mod transaction_status {
         Succeeded,
         Reverted,
         Rejected,
+    }
+
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    pub struct TxFailureReason {
+        pub code: String,
+        pub error_message: String,
     }
 }
 
@@ -318,6 +327,8 @@ pub mod transaction {
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability.unwrap_or_default().into(),
                 total_gas_consumed: value.total_gas_consumed.unwrap_or_default().into(),
+                // TODO: Fix this when we have a way to get L2 gas from the gateway
+                l2_gas: Default::default(),
             }
         }
     }
@@ -789,6 +800,14 @@ pub mod transaction {
         pub l1_gas: ResourceBound,
         #[serde(rename = "L2_GAS")]
         pub l2_gas: ResourceBound,
+        // Introduced in Starknet v0.13.4. This has to be optional because not sending it to the
+        // gateway is not equivalent to sending an explicit zero bound.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "L1_DATA_GAS"
+        )]
+        pub l1_data_gas: Option<ResourceBound>,
     }
 
     impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
@@ -805,6 +824,8 @@ pub mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                // TODO: add this when adding support for Starknet 0.13.4
+                l1_data_gas: None,
             }
         }
     }
@@ -2204,55 +2225,16 @@ pub mod add_transaction {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-#[serde(untagged)]
-pub enum BlockSignature {
-    /// Starknet <=0.13.1.1
-    // TODO V0 does not say much, is V_0_13_1_1 a better name?
-    V0(BlockSignatureV0),
-    /// Starknet >= 0.13.2
-    // TODO V1 does not say much, is V_0_13_2 a better name?
-    V1(BlockSignatureV1),
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignatureV1 {
+pub struct BlockSignature {
     pub block_hash: BlockHash,
     pub signature: [BlockCommitmentSignatureElem; 2],
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignatureV0 {
-    pub block_number: BlockNumber,
-    pub signature: [BlockCommitmentSignatureElem; 2],
-    pub signature_input: BlockSignatureInput,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignatureInput {
-    pub block_hash: BlockHash,
-    pub state_diff_commitment: StateDiffCommitment,
 }
 
 impl BlockSignature {
-    pub fn block_hash(&self) -> BlockHash {
-        match self {
-            BlockSignature::V0(v0) => v0.signature_input.block_hash,
-            BlockSignature::V1(v1) => v1.block_hash,
-        }
-    }
-
     pub fn signature(&self) -> pathfinder_common::BlockCommitmentSignature {
-        let s = match self {
-            BlockSignature::V0(v0) => v0.signature,
-            BlockSignature::V1(v1) => v1.signature,
-        };
-        pathfinder_common::BlockCommitmentSignature { r: s[0], s: s[1] }
-    }
-
-    pub fn state_diff_commitment(&self) -> Option<StateDiffCommitment> {
-        match self {
-            BlockSignature::V0(v0) => Some(v0.signature_input.state_diff_commitment),
-            BlockSignature::V1(_) => None,
+        pathfinder_common::BlockCommitmentSignature {
+            r: self.signature[0],
+            s: self.signature[1],
         }
     }
 }
@@ -2427,57 +2409,16 @@ mod tests {
     }
 
     mod block_signature {
-        use pathfinder_common::{
-            block_commitment_signature_elem,
-            block_hash,
-            state_diff_commitment,
-            BlockNumber,
-            StarknetVersion,
-        };
+        use pathfinder_common::{block_commitment_signature_elem, block_hash};
 
-        use super::super::{
-            BlockSignature,
-            BlockSignatureInput,
-            BlockSignatureV0,
-            BlockSignatureV1,
-            StateUpdate,
-        };
-
-        #[test]
-        fn parse_pre_starknet_0_13_2() {
-            let json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
-
-            let expected = BlockSignature::V0(BlockSignatureV0 {
-                block_number: BlockNumber::new_or_panic(350000),
-                signature: [
-                    block_commitment_signature_elem!(
-                        "0x95e98f5b91d39ae2b1bf77447a4fc01725352ae8b0b2c0a3fe09d43d1d9e57"
-                    ),
-                    block_commitment_signature_elem!(
-                        "0x541b2db8dae6d5ae24b34e427d251edc2e94dcffddd85f207e1b51f2f4bb1ef"
-                    ),
-                ],
-                signature_input: BlockSignatureInput {
-                    block_hash: block_hash!(
-                        "0x6f7342a680d7f99bdfdd859f587c75299e7ffabe62c071ded3a6d8a34cb132c"
-                    ),
-                    state_diff_commitment: state_diff_commitment!(
-                        "0x432e8e2ad833548e1c1077fc298991b055ba1e6f7a17dd332db98f4f428c56c"
-                    ),
-                },
-            });
-
-            let signature: BlockSignature = serde_json::from_str(json).unwrap();
-
-            assert_eq!(signature, expected);
-        }
+        use super::super::BlockSignature;
 
         #[test]
         fn parse_starknet_0_13_2() {
             let json =
                 starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748;
 
-            let expected = BlockSignature::V1(BlockSignatureV1 {
+            let expected = BlockSignature {
                 block_hash: block_hash!(
                     "0x1ea2a9cfa3df5297d58c0a04d09d276bc68d40fe64701305bbe2ed8f417e869"
                 ),
@@ -2489,28 +2430,11 @@ mod tests {
                         "0x3e67cfbc5b179ba55a3b687228d8fe40626233f6691b4aabe308fcd6d71dcdb"
                     ),
                 ],
-            });
+            };
 
             let signature: BlockSignature = serde_json::from_str(json).unwrap();
 
             assert_eq!(signature, expected);
-        }
-
-        #[test]
-        fn state_diff_commitment() {
-            let signature_json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
-            let signature: BlockSignature = serde_json::from_str(signature_json).unwrap();
-
-            let state_update_json =
-                starknet_gateway_test_fixtures::v0_12_2::state_update::BLOCK_350000;
-            let state_update: StateUpdate = serde_json::from_str(state_update_json).unwrap();
-
-            let state_update = pathfinder_common::StateUpdate::from(state_update);
-
-            assert_eq!(
-                state_update.compute_state_diff_commitment(StarknetVersion::new(0, 12, 2, 0)),
-                signature.state_diff_commitment().unwrap()
-            )
         }
     }
 }

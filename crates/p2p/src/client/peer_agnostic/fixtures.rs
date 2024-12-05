@@ -18,6 +18,7 @@ use pathfinder_common::{
     BlockHeader,
     BlockNumber,
     CasmHash,
+    ChainId,
     ClassHash,
     ContractAddress,
     SierraHash,
@@ -84,13 +85,13 @@ pub fn unzip_fixtures<T>(
 #[allow(clippy::type_complexity)]
 pub async fn send_request<T>(
     responses: Arc<Mutex<VecDeque<Result<Vec<T>, TestPeer>>>>,
-) -> anyhow::Result<mpsc::Receiver<T>> {
+) -> anyhow::Result<mpsc::Receiver<std::io::Result<T>>> {
     let mut guard = responses.lock().await;
     match guard.pop_front() {
         Some(Ok(responses)) => {
             let (mut tx, rx) = mpsc::channel(responses.len() + 1);
             for r in responses {
-                tx.send(r).await.unwrap();
+                tx.send(Ok(r)).await.unwrap();
             }
             Ok(rx)
         }
@@ -123,9 +124,15 @@ pub fn hdr(tag: i32) -> SignedBlockHeader {
 
 pub fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {
     let TestTxn { t, r } = txn(tag, transaction_index);
+    let receipt = (&t, r).to_dto();
+    let h = t.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
+    let transaction = p2p_proto::transaction::Transaction {
+        txn: t.to_dto(),
+        transaction_hash: Hash(h.0),
+    };
     let resp = TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt {
-        receipt: (&t, r).to_dto(),
-        transaction: t.to_dto(),
+        receipt,
+        transaction,
     });
     Tagged::get(format!("txn resp {tag}"), || resp)
         .unwrap()
@@ -275,10 +282,12 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
             ClassDefinition::Sierra(s) => Class::Cairo1 {
                 class: s.to_dto(),
                 domain: 0,
+                class_hash: Faker.fake(),
             },
             ClassDefinition::Cairo(c) => Class::Cairo0 {
                 class: c.to_dto(),
                 domain: 0,
+                class_hash: Faker.fake(),
             },
         }
     })
@@ -290,18 +299,28 @@ pub fn class_resp(tag: i32) -> ClassesResponse {
 pub fn class(tag: i32, block_number: u64) -> ClassDefinition {
     let block_number = BlockNumber::new_or_panic(block_number);
     match class_resp(tag) {
-        ClassesResponse::Class(Class::Cairo0 { class, .. }) => {
+        ClassesResponse::Class(Class::Cairo0 {
+            class,
+            domain: _,
+            class_hash,
+        }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Cairo {
                 block_number,
                 definition: CairoDefinition::try_from_dto(class).unwrap().0,
+                hash: ClassHash(class_hash.0),
             })
             .unwrap()
             .data
         }
-        ClassesResponse::Class(Class::Cairo1 { class, .. }) => {
+        ClassesResponse::Class(Class::Cairo1 {
+            class,
+            domain: _,
+            class_hash,
+        }) => {
             Tagged::get(format!("class {tag}"), || ClassDefinition::Sierra {
                 block_number,
                 sierra_definition: SierraDefinition::try_from_dto(class).unwrap().0,
+                hash: SierraHash(class_hash.0),
             })
             .unwrap()
             .data

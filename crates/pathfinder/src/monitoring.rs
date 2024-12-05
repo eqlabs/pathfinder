@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use metrics_exporter_prometheus::PrometheusHandle;
-use pathfinder_rpc::v02::types::syncing::Syncing;
+use pathfinder_rpc::types::syncing::Syncing;
 use pathfinder_rpc::SyncState;
 
 #[derive(Clone)]
@@ -86,7 +86,7 @@ mod tests {
 
     use metrics_exporter_prometheus::PrometheusBuilder;
     use pathfinder_common::BlockNumber;
-    use pathfinder_rpc::v02::types::syncing::{NumberedBlock, Status, Syncing};
+    use pathfinder_rpc::types::syncing::{NumberedBlock, Status, Syncing};
     use pathfinder_rpc::SyncState;
     use tokio::sync::RwLock;
 

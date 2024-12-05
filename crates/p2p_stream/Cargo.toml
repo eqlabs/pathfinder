@@ -25,5 +25,6 @@ libp2p = { workspace = true, features = ["identify", "noise", "tcp", "tokio", "y
 libp2p-plaintext = { workspace = true }
 libp2p-swarm-test = { workspace = true }
 rstest = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["macros", "time"] }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

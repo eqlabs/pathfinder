@@ -7,6 +7,26 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2024-11-21
+
+### Added
+
+- Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
+- `--disable-version-update-check` CLI option has been added to disable the periodic checking for a new version.
+- Add `pathfinder_getClassProof` endpoint to retrieve the Merkle proof of any class hash in the class trie.
+- add `process_start_time_seconds` metric showing the unix timestamp when the process started.
+- `--log-output-json` CLI option has been added to output the Pathfinder log in line-delimited JSON.
+- Preliminary support has been added for the new JSON-RPC 0.8.0-rc1 specification.
+
+### Changed
+
+- Ethereum RPC API now requires Websocket endpoints (prev. HTTP). If an HTTP url is provided instead, Pathfinder will attempt to connect vía Websocket protocol at that same url.
+- JSON-RPC API version 0.7 is now served by default on the `/` path.
+
+### Fixed
+
+- `starknet_getBlockWithTxs` works with empty blocks`
+
 ## [0.14.4] - 2024-10-03
 
 ### Fixed

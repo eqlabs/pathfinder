@@ -194,6 +194,7 @@ fn get_classes_for_block(
                 Class::Cairo0 {
                     class: cairo_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
             ClassDefinition::Sierra {
@@ -205,6 +206,7 @@ fn get_classes_for_block(
                 Class::Cairo1 {
                     class: sierra_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
         };
@@ -293,9 +295,13 @@ fn get_transactions_for_block(
         tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
 
         let receipt = (&txn.variant, receipt).to_dto();
+        let transaction = p2p_proto::transaction::Transaction {
+            txn: txn.variant.to_dto(),
+            transaction_hash: Hash(txn.hash.0),
+        };
         tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
             TransactionWithReceipt {
-                transaction: txn.variant.to_dto(),
+                transaction,
                 receipt,
             },
         ))

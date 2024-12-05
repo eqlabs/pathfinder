@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fs::File;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -44,11 +44,11 @@ struct Cli {
 
     #[arg(
         long = "ethereum.url",
-        long_help = r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
+        long_help = r"This should point to the WS RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura, Alchemy or Cloudflare.
 
 Examples:
-    infura: https://mainnet.infura.io/v3/<PROJECT_ID>
-    geth:   https://localhost:8545",
+    alchemy: wss://eth-mainnet.g.alchemy.com/v2/<PROJECT_ID>
+    geth:    wss://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
         env = "PATHFINDER_ETHEREUM_API_URL", 
@@ -83,7 +83,7 @@ Examples:
     #[arg(
         long = "rpc.root-version",
         long_help = "Version of the JSON-RPC API to serve on the / (root) path",
-        default_value = "v06",
+        default_value = "v07",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
     rpc_root_version: RpcVersion,
@@ -94,7 +94,7 @@ Examples:
                      number of CPU cores available.",
         env = "PATHFINDER_RPC_EXECUTION_CONCURRENCY"
     )]
-    execution_concurrency: Option<std::num::NonZeroU32>,
+    execution_concurrency: Option<NonZeroU32>,
 
     #[arg(
         long = "monitor-address",
@@ -135,7 +135,7 @@ Examples:
     #[arg(
         long = "sync.l1-poll-interval",
         long_help = "L1 state poll interval in seconds",
-        default_value = "30",
+        default_value = "120",
         env = "PATHFINDER_L1_POLL_INTERVAL_SECONDS"
     )]
     l1_poll_interval: std::num::NonZeroU64,
@@ -148,6 +148,24 @@ Examples:
         value_name = "WHEN"
     )]
     color: Color,
+
+    #[arg(
+        long = "log-output-json",
+        long_help = "This flag controls when to use colors in the output logs.",
+        default_value = "false",
+        env = "PATHFINDER_LOG_OUTPUT_JSON",
+        value_name = "BOOL"
+    )]
+    log_output_json: bool,
+
+    #[arg(
+        long = "disable-version-update-check",
+        long_help = "Disable the periodic version update check.",
+        default_value = "false",
+        env = "PATHFINDER_DISABLE_VERSION_UPDATE_CHECK",
+        value_name = "BOOL"
+    )]
+    disable_version_update_check: bool,
 
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
@@ -282,6 +300,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
         env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
     )]
     custom_versioned_constants_path: Option<PathBuf>,
+
+    #[arg(
+        long = "sync.fetch-casm-from-fgw",
+        long_help = "Do not compile classes locally, instead fetch them from the feeder gateway",
+        env = "PATHFINDER_SYNC_FETCH_CASM_FROM_FGW",
+        default_value = "false",
+        action=ArgAction::Set
+    )]
+    fetch_casm_from_fgw: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -391,13 +418,14 @@ struct P2PCli {
     identity_config_file: Option<std::path::PathBuf>,
     #[arg(
         long = "p2p.listen-on",
-        long_help = "The multiaddress on which to listen for incoming p2p connections. If not \
-                     provided, default route on randomly assigned port will be used.",
-        value_name = "MULTIADDRESS",
+        long_help = "The list of multiaddresses on which to listen for incoming p2p connections. \
+                     If not provided, default route on randomly assigned port will be used.",
+        value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         default_value = "/ip4/0.0.0.0/tcp/0",
         env = "PATHFINDER_P2P_LISTEN_ON"
     )]
-    listen_on: Multiaddr,
+    listen_on: Vec<String>,
     #[arg(
         long = "p2p.bootstrap-addresses",
         long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID.
@@ -450,17 +478,6 @@ Example:
     max_outbound_connections: u32,
 
     #[arg(
-        long = "p2p.low-watermark",
-        long_help = "The minimum number of outbound peers to maintain. If the number of outbound \
-                     peers drops below this number, the node will attempt to connect to more \
-                     peers.",
-        value_name = "LOW_WATERMARK",
-        env = "PATHFINDER_LOW_WATERMARK",
-        default_value = "20"
-    )]
-    low_watermark: u32,
-
-    #[arg(
         long = "p2p.ip-whitelist",
         long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to \
                      whitelist for incoming connections. If not provided, all incoming \
@@ -473,13 +490,12 @@ Example:
     ip_whitelist: Vec<IpNet>,
 
     #[arg(
-        long = "p2p.experimental.kad-names",
-        long_help = "Comma separated list of custom Kademlia protocol names.",
-        value_name = "LIST",
-        value_delimiter = ',',
-        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAMES"
+        long = "p2p.experimental.kad-name",
+        long_help = "Custom Kademlia protocol name.",
+        value_name = "PROTOCOL_NAME",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAME"
     )]
-    kad_names: Vec<String>,
+    kad_name: Option<String>,
 
     #[arg(
         long = "p2p.experimental.l1-checkpoint-override-json-path",
@@ -505,9 +521,9 @@ Example:
     #[arg(
         long = "p2p.experimental.max-concurrent-streams",
         long_help = "Maximum allowed number of concurrent streams per each \
-                     request/response-stream protocol.",
+                     request/response-stream protocol per connection.",
         value_name = "LIMIT",
-        default_value = "100",
+        default_value = "1",
         env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
     )]
     max_concurrent_streams: usize,
@@ -685,6 +701,8 @@ pub struct Config {
     pub poll_interval: std::time::Duration,
     pub l1_poll_interval: std::time::Duration,
     pub color: Color,
+    pub log_output_json: bool,
+    pub disable_version_update_check: bool,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
@@ -699,6 +717,7 @@ pub struct Config {
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 pub struct Ethereum {
@@ -723,15 +742,14 @@ pub enum NetworkConfig {
 pub struct P2PConfig {
     pub proxy: bool,
     pub identity_config_file: Option<std::path::PathBuf>,
-    pub listen_on: Multiaddr,
+    pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
     pub max_inbound_direct_connections: usize,
     pub max_inbound_relayed_connections: usize,
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
-    pub low_watermark: usize,
-    pub kad_names: Vec<String>,
+    pub kad_name: Option<String>,
     pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
     pub max_concurrent_streams: usize,
@@ -841,16 +859,20 @@ impl P2PConfig {
                 .exit()
         }
 
-        if args.low_watermark > args.max_outbound_connections {
+        // The low watermark is defined in `bootstrap_on_low_peers`
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+        // as the K value of 20
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/lib.rs#L93
+        if args.max_outbound_connections <= 20 {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
-                    "p2p.low-watermark must be less than or equal to p2p.max_outbound_connections",
+                    "p2p.max-outbound-connections must be at least 21",
                 )
                 .exit()
         }
 
-        if args.kad_names.iter().any(|x| !x.starts_with('/')) {
+        if args.kad_name.iter().any(|x| !x.starts_with('/')) {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
@@ -870,15 +892,14 @@ impl P2PConfig {
             max_outbound_connections: args.max_outbound_connections.try_into().unwrap(),
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
-            listen_on: args.listen_on,
+            listen_on: parse_multiaddr_vec("p2p.listen-on", args.listen_on),
             bootstrap_addresses: parse_multiaddr_vec(
                 "p2p.bootstrap-addresses",
                 args.bootstrap_addresses,
             ),
             predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
-            low_watermark: 0,
-            kad_names: args.kad_names,
+            kad_name: args.kad_name,
             l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),
             max_concurrent_streams: args.max_concurrent_streams,
@@ -971,6 +992,8 @@ impl Config {
             poll_interval: Duration::from_secs(cli.poll_interval.get()),
             l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
+            log_output_json: cli.log_output_json,
+            disable_version_update_check: cli.disable_version_update_check,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
@@ -988,6 +1011,7 @@ impl Config {
             custom_versioned_constants: cli
                 .custom_versioned_constants_path
                 .map(parse_versioned_constants_or_exit),
+            fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
         }
     }
 }

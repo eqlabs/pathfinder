@@ -16,6 +16,7 @@ use pathfinder_common::{
     PublicKey,
     ReceiptCommitment,
     SierraHash,
+    StarknetVersion,
     StateCommitment,
     StateDiffCommitment,
     StateUpdate,
@@ -28,7 +29,13 @@ use starknet_gateway_types::reply::{Block, BlockSignature, Status};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use crate::state::block_hash::{verify_gateway_block_commitments_and_hash, VerifyResult};
+use crate::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+    verify_block_hash,
+    BlockHeaderData,
+};
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
 
@@ -101,6 +108,7 @@ pub struct L2SyncContext<GatewayClient> {
     pub storage: Storage,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
 }
 
 pub async fn sync<GatewayClient>(
@@ -132,6 +140,7 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency: _,
+        fetch_casm_from_fgw,
     } = context;
 
     // Start polling head of chain
@@ -156,7 +165,7 @@ where
 
         let t_block = std::time::Instant::now();
 
-        let (block, commitments, state_update) = loop {
+        let (block, commitments, state_update, state_diff_commitment) = loop {
             match download_block(
                 next,
                 chain,
@@ -167,8 +176,8 @@ where
             )
             .await?
             {
-                DownloadBlock::Block(block, commitments, state_update) => {
-                    break (block, commitments, state_update)
+                DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
+                    break (block, commitments, state_update, state_diff_commitment)
                 }
                 DownloadBlock::AtHead => {
                     // Wait for the latest block to change.
@@ -235,9 +244,14 @@ where
 
         // Download and emit newly declared classes.
         let t_declare = std::time::Instant::now();
-        let downloaded_classes = download_new_classes(&state_update, &sequencer, storage.clone())
-            .await
-            .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
+        let downloaded_classes = download_new_classes(
+            &state_update,
+            &sequencer,
+            storage.clone(),
+            fetch_casm_from_fgw,
+        )
+        .await
+        .with_context(|| format!("Handling newly declared classes for block {next:?}"))?;
         emit_events_for_downloaded_classes(
             &tx_event,
             downloaded_classes,
@@ -274,56 +288,14 @@ where
 
         // An extra sanity check for the signature API.
         anyhow::ensure!(
-            block.block_hash == signature.block_hash(),
+            block.block_hash == signature.block_hash,
             "Signature block hash mismatch, actual {:x}, expected {:x}",
-            signature.block_hash().0,
+            signature.block_hash.0,
             block.block_hash.0,
         );
 
-        // Always compute the state diff commitment from the state update.
-        // If any of the feeder gateway replies (block or signature) contain a state
-        // diff commitment, check if the value matches. If it doesn't, just log the
-        // fact.
-        let version = block.starknet_version;
-        let (computed_state_diff_commitment, state_update) =
-            tokio::task::spawn_blocking(move || {
-                let commitment = state_update.compute_state_diff_commitment(version);
-                (commitment, state_update)
-            })
-            .await?;
-
-        let fgw_state_diff_commitment = match (
-            block.state_diff_commitment,
-            signature.state_diff_commitment(),
-        ) {
-            (Some(x), None) | (None, Some(x)) => Some(x),
-            // This should never happen, but if it does, we treat it as a sanity check for the API.
-            (Some(x), Some(y)) => {
-                anyhow::ensure!(
-                    x == y,
-                    "Conflicting feeder gateway responses: state diff commitment in block {:x} vs \
-                     in signature {:x}",
-                    y.0,
-                    x.0,
-                );
-                Some(x)
-            }
-            _ => None,
-        };
-
-        if let Some(x) = fgw_state_diff_commitment {
-            if x != computed_state_diff_commitment {
-                tracing::warn!(
-                    "State diff commitment mismatch: computed {:x}, feeder gateway {:x}",
-                    computed_state_diff_commitment.0,
-                    x.0
-                );
-            }
-        }
-
-        let signature = signature.signature();
-
         // Check block commitment signature
+        let signature: BlockCommitmentSignature = signature.signature();
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
@@ -332,7 +304,6 @@ where
                         .verify(
                             sequencer_public_key,
                             block_hash,
-                            computed_state_diff_commitment,
                         );
                     (verify_result, signature, state_update)
                 }).await?;
@@ -358,7 +329,7 @@ where
                 (block, commitments),
                 state_update,
                 Box::new(signature),
-                Box::new(computed_state_diff_commitment),
+                Box::new(state_diff_commitment),
                 timings,
             ))
             .await
@@ -414,6 +385,7 @@ pub async fn download_new_classes(
     state_update: &StateUpdate,
     sequencer: &impl GatewayApi,
     storage: Storage,
+    fetch_casm_from_fgw: bool,
 ) -> Result<Vec<DownloadedClass>, anyhow::Error> {
     let deployed_classes = state_update
         .contract_updates
@@ -467,7 +439,7 @@ pub async fn download_new_classes(
 
     let futures = require_downloading.into_iter().map(|class_hash| {
         async move {
-            download_class(sequencer, class_hash)
+            download_class(sequencer, class_hash, fetch_casm_from_fgw)
                 .await
                 .with_context(|| format!("Downloading class {}", class_hash.0))
         }
@@ -486,6 +458,7 @@ enum DownloadBlock {
         Box<Block>,
         (TransactionCommitment, EventCommitment, ReceiptCommitment),
         Box<StateUpdate>,
+        StateDiffCommitment,
     ),
     AtHead,
     Reorg,
@@ -508,18 +481,38 @@ async fn download_block(
     sequencer: &impl GatewayApi,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
+    use rayon::prelude::*;
     use starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound;
 
-    let result = sequencer.state_update_with_block(block_number).await;
-
-    let result = match result {
+    match sequencer.state_update_with_block(block_number).await {
         Ok((block, state_update)) => {
             let block = Box::new(block);
 
+            // Verify that transaction hashes match transaction contents.
+            // Block hash is verified using these transaction hashes so we have to make
+            // sure these are correct first.
+            let (send, recv) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
+                let result = block
+                    .transactions
+                    .par_iter()
+                    .enumerate()
+                    .try_for_each(|(i, txn)| {
+                        if !txn.verify_hash(chain_id) {
+                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
+                        };
+                        Ok(())
+                    })
+                    .map(|_| block);
+
+                let _ = send.send(result);
+            });
+            let block = recv.await.expect("Panic on rayon thread")?;
+
             // Check if commitments and block hash are correct
             let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-                let state_diff_commitment = StateUpdateData::from(state_update.clone())
-                    .compute_state_diff_commitment(block.starknet_version);
+                let state_diff_commitment =
+                    StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
                 let state_update = Box::new(state_update);
                 let state_diff_length = state_update.state_diff_length();
 
@@ -532,16 +525,22 @@ async fn download_block(
                     chain_id,
                 )
                 .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, state_update, verify_result))
+                Ok((block, state_update, state_diff_commitment, verify_result))
             });
-            let (block, state_update, verify_result) =
+            let (block, state_update, state_diff_commitment, verify_result) =
                 verify_hash.await.context("Verify block hash")??;
+
             match (block.status, verify_result, mode) {
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Match(commitments),
                     _,
-                ) => Ok(DownloadBlock::Block(block, commitments, state_update)),
+                ) => Ok(DownloadBlock::Block(
+                    block,
+                    commitments,
+                    state_update,
+                    state_diff_commitment,
+                )),
                 (
                     Status::AcceptedOnL1 | Status::AcceptedOnL2,
                     VerifyResult::Mismatch,
@@ -550,6 +549,7 @@ async fn download_block(
                     block,
                     Default::default(),
                     state_update,
+                    state_diff_commitment,
                 )),
                 (_, VerifyResult::Mismatch, BlockValidationMode::Strict) => {
                     Err(anyhow!("Block hash mismatch"))
@@ -591,35 +591,6 @@ async fn download_block(
             }
         }
         Err(other) => Err(other).context("Download block from sequencer"),
-    };
-
-    match result {
-        Ok(DownloadBlock::Block(block, commitments, state_update)) => {
-            use rayon::prelude::*;
-
-            let (send, recv) = tokio::sync::oneshot::channel();
-
-            rayon::spawn(move || {
-                let result = block
-                    .transactions
-                    .par_iter()
-                    .enumerate()
-                    .try_for_each(|(i, txn)| {
-                        if !txn.verify_hash(chain_id) {
-                            anyhow::bail!("Transaction hash mismatch: block {block_number} idx {i}")
-                        };
-                        Ok(())
-                    })
-                    .map(|_| block);
-
-                let _ = send.send(result);
-            });
-
-            let block = recv.await.expect("Panic on rayon thread")?;
-
-            Ok(DownloadBlock::Block(block, commitments, state_update))
-        }
-        Ok(DownloadBlock::AtHead | DownloadBlock::Reorg) | Err(_) => result,
     }
 }
 
@@ -641,6 +612,7 @@ where
         storage,
         sequencer_public_key,
         fetch_concurrency,
+        fetch_casm_from_fgw,
     } = context;
 
     let mut start = match head {
@@ -667,17 +639,11 @@ where
 
             async move {
                 let t_block = std::time::Instant::now();
-                let (block, state_update) = sequencer
-                    .state_update_with_block(block_number)
-                    .await
-                    .map_err(|e| (block_number, e.into()))?;
+                let (block, state_update) = sequencer.state_update_with_block(block_number).await?;
                 let t_block = t_block.elapsed();
 
                 let t_signature = std::time::Instant::now();
-                let signature = sequencer
-                    .signature(block_number.into())
-                    .await
-                    .map_err(|e| (block_number, e.into()))?;
+                let signature = sequencer.signature(block_number.into()).await?;
                 let t_signature = t_signature.elapsed();
 
                 let span = tracing::Span::current();
@@ -705,7 +671,6 @@ where
                         )| {
                             verify_signature(
                                 block.block_hash,
-                                state_diff_commitment,
                                 &signature,
                                 sequencer_public_key,
                                 BlockValidationMode::AllowMismatch,
@@ -742,16 +707,15 @@ where
                 ) = rx
                     .await
                     .expect("Panic on rayon thread while verifying block")
-                    .context("Verifying block contents")
-                    .map_err(|e| (block_number, e))?;
+                    .context("Verifying block contents")?;
 
                 let t_declare = std::time::Instant::now();
-                let downloaded_classes = download_new_classes(&state_update, &sequencer, storage)
-                    .await
-                    .with_context(|| {
-                        format!("Handling newly declared classes for block {block_number:?}")
-                    })
-                    .map_err(|e| (block_number, e))?;
+                let downloaded_classes =
+                    download_new_classes(&state_update, &sequencer, storage, fetch_casm_from_fgw)
+                        .await
+                        .with_context(|| {
+                            format!("Handling newly declared classes for block {block_number:?}")
+                        })?;
                 let t_declare = t_declare.elapsed();
 
                 let timings = Timings {
@@ -760,7 +724,7 @@ where
                     signature_download: t_signature,
                 };
 
-                Ok::<_, (BlockNumber, anyhow::Error)>((
+                Ok::<_, anyhow::Error>((
                     block,
                     state_update,
                     signature,
@@ -795,28 +759,17 @@ where
             futures::stream::iter(futures_chunk).buffer_unordered(fetch_concurrency.get());
 
         let mut ordered_blocks = BTreeMap::new();
-        let mut failed_block = None;
 
         while let Some(result) = stream.next().await {
-            let ok = match result {
-                Ok(x) => x,
-                Err((block, error)) => {
-                    // We've hit an error, so we stop the loop and return. `head` has been updated
-                    // to the last synced block so our "tracking" sync will just
-                    // continue from there.
-                    tracing::info!(
-                        %block, %error,
-                        "Error during bulk syncing blocks, falling back to normal sync",
-                    );
-
-                    if block == start {
-                        return Ok(());
-                    } else {
-                        // We can still emit up to the failed block
-                        failed_block = Some(block);
-                        continue;
-                    }
-                }
+            let Ok(ok) = result else {
+                // We've hit an error, so we stop the loop and return. `head` has been updated
+                // to the last synced block so our "tracking" sync will just
+                // continue from there.
+                tracing::info!(
+                    "Error during bulk syncing blocks, falling back to normal sync: {}",
+                    result.err().unwrap()
+                );
+                return Ok(());
             };
 
             ordered_blocks.insert(ok.0.block_number.get(), ok);
@@ -885,11 +838,6 @@ where
                     ))
                     .await
                     .context("Event channel closed")?;
-            }
-
-            match failed_block {
-                Some(x) if start == x.get() => return Ok(()),
-                _ => {}
             }
         }
     }
@@ -968,8 +916,8 @@ fn verify_block_and_state_update(
     StateDiffCommitment,
 )> {
     // Check if commitments and block hash are correct
-    let state_diff_commitment = StateUpdateData::from(state_update.clone())
-        .compute_state_diff_commitment(block.starknet_version);
+    let state_diff_commitment =
+        StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
     let state_diff_length = state_update.state_diff_length();
 
     let verify_result = verify_gateway_block_commitments_and_hash(
@@ -1008,8 +956,7 @@ fn verify_block_and_state_update(
     // If any of the feeder gateway replies (block or signature) contain a state
     // diff commitment, check if the value matches. If it doesn't, just log the
     // fact.
-    let version = block.starknet_version;
-    let computed_state_diff_commitment = state_update.compute_state_diff_commitment(version);
+    let computed_state_diff_commitment = state_update.compute_state_diff_commitment();
 
     if let Some(x) = block.state_diff_commitment {
         if x != computed_state_diff_commitment {
@@ -1051,18 +998,118 @@ fn verify_transaction_hashes(
 /// Check block commitment signature.
 fn verify_signature(
     block_hash: BlockHash,
-    state_diff_commitment: StateDiffCommitment,
     signature: &BlockSignature,
     sequencer_public_key: PublicKey,
     mode: BlockValidationMode,
 ) -> Result<(), pathfinder_crypto::signature::SignatureError> {
     let signature = signature.signature();
     match mode {
-        BlockValidationMode::Strict => {
-            signature.verify(sequencer_public_key, block_hash, state_diff_commitment)
-        }
+        BlockValidationMode::Strict => signature.verify(sequencer_public_key, block_hash),
         BlockValidationMode::AllowMismatch => Ok(()),
     }
+}
+
+enum VerifyResult {
+    Match((TransactionCommitment, EventCommitment, ReceiptCommitment)),
+    Mismatch,
+}
+
+/// Verify that the block hash matches the actual contents.
+fn verify_gateway_block_commitments_and_hash(
+    block: &Block,
+    state_diff_commitment: StateDiffCommitment,
+    state_diff_length: u64,
+    chain: Chain,
+    chain_id: ChainId,
+) -> anyhow::Result<VerifyResult> {
+    let mut bhd =
+        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+
+    let computed_transaction_commitment =
+        calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
+
+    // Older blocks on mainnet don't carry a precalculated transaction commitment.
+    if block.transaction_commitment == TransactionCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != bhd.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    let receipts = block
+        .transaction_receipts
+        .iter()
+        .map(|(r, _)| r.clone())
+        .collect::<Vec<_>>();
+    let computed_receipt_commitment = calculate_receipt_commitment(receipts.as_slice())?;
+
+    // Older blocks on mainnet don't carry a precalculated receipt commitment.
+    if let Some(receipt_commitment) = block.receipt_commitment {
+        if computed_receipt_commitment != receipt_commitment {
+            tracing::debug!(%computed_receipt_commitment, actual_receipt_commitment=%receipt_commitment, "Receipt commitment mismatch");
+            return Ok(VerifyResult::Mismatch);
+        }
+    } else {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.receipt_commitment = computed_receipt_commitment;
+    }
+
+    let events_with_tx_hashes = block
+        .transaction_receipts
+        .iter()
+        .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
+        .collect::<Vec<_>>();
+    let event_commitment =
+        calculate_event_commitment(&events_with_tx_hashes, block.starknet_version)?;
+
+    // Older blocks on mainnet don't carry a precalculated event
+    // commitment.
+    if block.event_commitment == EventCommitment::ZERO {
+        // Update with the computed transaction commitment, verification is not
+        // possible.
+        bhd.event_commitment = event_commitment;
+    } else if event_commitment != block.event_commitment {
+        tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
+        return Ok(VerifyResult::Mismatch);
+    }
+
+    Ok(match verify_block_hash(bhd, chain, chain_id)? {
+        crate::state::block_hash::VerifyResult::Match => {
+            // For pre-0.13.2 blocks we actually have to re-compute some commitments: after
+            // we've verified that the block hash is correct we no longer need
+            // the legacy commitments. The P2P protocol requires that all
+            // commitments in block headers are the 0.13.2 variants for legacy
+            // blocks.
+            let (transaction_commitment, event_commitment, receipt_commitment) = if block
+                .starknet_version
+                < StarknetVersion::V_0_13_2
+            {
+                let transaction_commitment = calculate_transaction_commitment(
+                    &block.transactions,
+                    StarknetVersion::V_0_13_2,
+                )?;
+                let event_commitment =
+                    calculate_event_commitment(&events_with_tx_hashes, StarknetVersion::V_0_13_2)?;
+                (
+                    transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            } else {
+                (
+                    computed_transaction_commitment,
+                    event_commitment,
+                    computed_receipt_commitment,
+                )
+            };
+
+            VerifyResult::Match((transaction_commitment, event_commitment, receipt_commitment))
+        }
+        crate::state::block_hash::VerifyResult::Mismatch => VerifyResult::Mismatch,
+    })
 }
 
 async fn reorg(
@@ -1099,7 +1146,7 @@ async fn reorg(
         .await
         .with_context(|| format!("Download block {previous_block_number} from sequencer"))?
         {
-            DownloadBlock::Block(block, _, _) if block.block_hash == previous.0 => {
+            DownloadBlock::Block(block, _, _, _) if block.block_hash == previous.0 => {
                 break Some((previous_block_number, previous.0, previous.1));
             }
             _ => {}
@@ -1123,8 +1170,8 @@ async fn reorg(
 
 #[cfg(test)]
 mod tests {
-
     mod sync {
+        use std::num::NonZeroU32;
         use std::sync::LazyLock;
 
         use assert_matches::assert_matches;
@@ -1221,119 +1268,74 @@ mod tests {
         const STORAGE_VAL0_V2: StorageValue = storage_value_bytes!(b"contract 0 storage val 0 v2");
         const STORAGE_VAL1: StorageValue = storage_value_bytes!(b"contract 1 storage val 0");
 
-        const BLOCK0_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK0_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 0 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 0 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK0_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 0 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK0_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK0_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s"),
+            ],
+        };
         // const BLOCK0_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
         // BlockCommitmentSignature {     r: BLOCK0_SIGNATURE.signature[0],
         //     s: BLOCK0_SIGNATURE.signature[1],
         // };
-        const BLOCK0_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK0_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK0_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 0 state diff commitment 2"
-                    ),
-                },
-            });
+        const BLOCK0_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK0_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 0 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 0 signature s 2"),
+            ],
+        };
 
-        const BLOCK1_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK1_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 1 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 1 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK1_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 1 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK1_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK1_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s"),
+            ],
+        };
         // const BLOCK1_COMMITMENT_SIGNATURE: BlockCommitmentSignature =
         // BlockCommitmentSignature {     r: BLOCK1_SIGNATURE.signature[0],
         //     s: BLOCK1_SIGNATURE.signature[1],
         // };
-        const BLOCK1_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK1_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK1_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 1 state diff commitment 2"
-                    ),
-                },
-            });
-        const BLOCK2_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK2_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 2 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 2 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK2_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 2 state diff commitment"
-                    ),
-                },
-            });
-        const BLOCK2_SIGNATURE_V2: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK2_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
-                    block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK2_HASH_V2,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 2 state diff commitment 2"
-                    ),
-                },
-            });
-        const BLOCK3_SIGNATURE: reply::BlockSignature =
-            reply::BlockSignature::V0(reply::BlockSignatureV0 {
-                block_number: BLOCK3_NUMBER,
-                signature: [
-                    block_commitment_signature_elem_bytes!(b"block 3 signature r"),
-                    block_commitment_signature_elem_bytes!(b"block 3 signature s"),
-                ],
-                signature_input: reply::BlockSignatureInput {
-                    block_hash: BLOCK3_HASH,
-                    state_diff_commitment: state_diff_commitment_bytes!(
-                        b"block 3 state diff commitment"
-                    ),
-                },
-            });
+        const BLOCK1_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK1_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 1 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 1 signature s 2"),
+            ],
+        };
+        const BLOCK2_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK2_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s"),
+            ],
+        };
+        const BLOCK2_SIGNATURE_V2: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK2_HASH_V2,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 2 signature r 2"),
+                block_commitment_signature_elem_bytes!(b"block 2 signature s 2"),
+            ],
+        };
+        const BLOCK3_SIGNATURE: reply::BlockSignature = reply::BlockSignature {
+            block_hash: BLOCK3_HASH,
+            signature: [
+                block_commitment_signature_elem_bytes!(b"block 3 signature r"),
+                block_commitment_signature_elem_bytes!(b"block 3 signature s"),
+            ],
+        };
 
         fn spawn_sync_default(
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<()>> {
-            let storage = StorageBuilder::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                pathfinder_storage::TriePruneMode::Archive,
+                NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
@@ -1343,6 +1345,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                fetch_casm_from_fgw: false,
             };
 
             let latest = tokio::sync::watch::channel(Default::default());
@@ -1360,7 +1363,11 @@ mod tests {
             tx_event: mpsc::Sender<SyncEvent>,
             sequencer: MockGatewayApi,
         ) -> JoinHandle<anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>>> {
-            let storage = StorageBuilder::in_memory().unwrap();
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                pathfinder_storage::TriePruneMode::Archive,
+                NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
             let sequencer = std::sync::Arc::new(sequencer);
             let context = L2SyncContext {
                 sequencer,
@@ -1370,6 +1377,7 @@ mod tests {
                 storage,
                 sequencer_public_key: PublicKey::ZERO,
                 fetch_concurrency: std::num::NonZeroUsize::new(2).unwrap(),
+                fetch_casm_from_fgw: false,
             };
 
             tokio::spawn(async move {
@@ -1579,6 +1587,19 @@ mod tests {
                 .return_once(move |_| returned_result);
         }
 
+        fn expect_state_update_with_block_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockNumber,
+            returned_result: Result<(reply::Block, StateUpdate), SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_state_update_with_block()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(move |_| returned_result);
+        }
+
         /// Convenience wrapper
         fn expect_block_header(
             mock: &mut MockGatewayApi,
@@ -1625,6 +1646,19 @@ mod tests {
                 .return_once(|_| returned_result);
         }
 
+        fn expect_signature_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            block: BlockId,
+            returned_result: Result<reply::BlockSignature, SequencerError>,
+        ) {
+            use mockall::predicate::eq;
+
+            mock.expect_signature()
+                .with(eq(block))
+                .times(..=1)
+                .return_once(|_| returned_result);
+        }
+
         /// Convenience wrapper
         fn expect_class_by_hash(
             mock: &mut MockGatewayApi,
@@ -1648,6 +1682,17 @@ mod tests {
             mock.expect_pending_class_by_hash()
                 .withf(move |x| x == &class_hash)
                 .times(1)
+                .return_once(|_| returned_result);
+        }
+
+        fn expect_class_by_hash_no_sequence_at_most_once(
+            mock: &mut MockGatewayApi,
+            class_hash: ClassHash,
+            returned_result: Result<bytes::Bytes, SequencerError>,
+        ) {
+            mock.expect_pending_class_by_hash()
+                .withf(move |x| x == &class_hash)
+                .times(..=1)
                 .return_once(|_| returned_result);
         }
 
@@ -1808,9 +1853,14 @@ mod tests {
                     chain: Chain::SepoliaTestnet,
                     chain_id: ChainId::SEPOLIA_TESTNET,
                     block_validation_mode: MODE,
-                    storage: StorageBuilder::in_memory().unwrap(),
+                    storage: StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                        pathfinder_storage::TriePruneMode::Archive,
+                        NonZeroU32::new(5).unwrap(),
+                    )
+                    .unwrap(),
                     sequencer_public_key: PublicKey::ZERO,
                     fetch_concurrency: std::num::NonZeroUsize::new(1).unwrap(),
+                    fetch_casm_from_fgw: false,
                 };
                 let latest_track = tokio::sync::watch::channel(Default::default());
 
@@ -3066,77 +3116,44 @@ mod tests {
                 assert_matches!(result, Ok(Some((BLOCK1_NUMBER, BLOCK1_HASH, _))));
             }
 
-            mod no_such_block {
-                use pretty_assertions_sorted::{assert_eq, assert_eq_sorted};
+            #[tokio::test]
+            async fn no_such_block() {
+                let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
+                let mut mock = MockGatewayApi::new();
 
-                use super::*;
+                // Downloading the genesis block data is racing against the failure of block 1,
+                // hence "at most once"
+                expect_state_update_with_block_no_sequence_at_most_once(
+                    &mut mock,
+                    BLOCK0_NUMBER,
+                    Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
+                );
+                expect_class_by_hash_no_sequence_at_most_once(
+                    &mut mock,
+                    CONTRACT0_HASH,
+                    Ok(CONTRACT0_DEF.clone()),
+                );
+                expect_signature_no_sequence_at_most_once(
+                    &mut mock,
+                    BLOCK0_NUMBER.into(),
+                    Ok(BLOCK0_SIGNATURE.clone()),
+                );
+                // Downloading block 1 fails with block not found
+                expect_state_update_with_block_no_sequence(
+                    &mut mock,
+                    BLOCK1_NUMBER,
+                    Err(block_not_found()),
+                );
 
-                #[tokio::test]
-                async fn first_in_batch() {
-                    let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                    let mut mock = MockGatewayApi::new();
+                // Let's run the UUT
+                let jh = spawn_bulk_sync(tx_event, mock);
 
-                    // Downloading the genesis block fails with block not found
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER,
-                        Err(block_not_found()),
-                    );
+                // The entire unemitted, yet cached batch is rejected
+                assert!(rx_event.recv().await.is_none());
 
-                    // Let's run the UUT
-                    let jh = spawn_bulk_sync(tx_event, mock);
-
-                    assert!(rx_event.recv().await.is_none());
-
-                    let result = jh.await.unwrap();
-                    assert_matches!(result, Ok(None));
-                }
-
-                #[tokio::test]
-                async fn further_in_batch() {
-                    let (tx_event, mut rx_event) = tokio::sync::mpsc::channel(1);
-                    let mut mock = MockGatewayApi::new();
-
-                    // Download the genesis block with respective state update and contracts
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER,
-                        Ok((BLOCK0.clone(), STATE_UPDATE0.clone())),
-                    );
-                    expect_class_by_hash_no_sequence(
-                        &mut mock,
-                        CONTRACT0_HASH,
-                        Ok(CONTRACT0_DEF.clone()),
-                    );
-                    expect_signature_no_sequence(
-                        &mut mock,
-                        BLOCK0_NUMBER.into(),
-                        Ok(BLOCK0_SIGNATURE.clone()),
-                    );
-                    // Downloading block 1 fails with block not found
-                    expect_state_update_with_block_no_sequence(
-                        &mut mock,
-                        BLOCK1_NUMBER,
-                        Err(block_not_found()),
-                    );
-
-                    // Let's run the UUT
-                    let jh = spawn_bulk_sync(tx_event, mock);
-
-                    assert_matches!(rx_event.recv().await.unwrap(),
-                        SyncEvent::CairoClass { hash, .. } => {
-                            assert_eq!(hash, CONTRACT0_HASH);
-                    });
-                    assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, signature, _, _) => {
-                        assert_eq!(*block, *BLOCK0);
-                        assert_eq_sorted!(*state_update, *STATE_UPDATE0);
-                        assert_eq!(*signature, BLOCK0_SIGNATURE.signature());
-                    });
-
-                    // Bulk sync should _not_ fail if the block is not found
-                    let result = jh.await.unwrap();
-                    assert_matches!(result, Ok(Some((BLOCK0_NUMBER, BLOCK0_HASH, _))));
-                }
+                // Bulk sync should _not_ fail if the block is not found
+                let result = jh.await.unwrap();
+                assert_matches!(result, Ok(None));
             }
         }
     }

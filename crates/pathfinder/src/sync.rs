@@ -1,12 +1,15 @@
 #![allow(dead_code, unused)]
 
 use core::panic;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use error::SyncError2;
+use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
 use p2p::client::peer_agnostic::Client as P2PClient;
+use p2p::PeerData;
+use pathfinder_common::error::AnyhowExt;
 use pathfinder_common::{
     block_hash,
     BlockHash,
@@ -23,6 +26,8 @@ use starknet_gateway_client::{Client as GatewayClient, GatewayApi};
 use stream::ProcessStage;
 use tokio::sync::watch::{self, Receiver};
 use tokio_stream::wrappers::WatchStream;
+
+use crate::state::RESET_DELAY_ON_FAILURE;
 
 mod checkpoint;
 mod class_definitions;
@@ -58,28 +63,49 @@ impl Sync {
         self.track_sync(next, parent_hash).await
     }
 
-    async fn handle_error(&self, err: error::SyncError) {
+    async fn handle_recoverable_error(&self, err: &error::SyncError) {
         // TODO
-        tracing::debug!(?err, "Log and punish as appropriate");
+        tracing::debug!(%err, "Log and punish as appropriate");
     }
 
-    async fn get_checkpoint(&self) -> anyhow::Result<pathfinder_ethereum::EthereumStateUpdate> {
+    /// Retry forever until a valid L1 checkpoint is retrieved
+    ///
+    /// ### Important
+    ///
+    /// We assume that the L1 endpoint is configured correctly and any L1 API
+    /// errors are transient. We cannot proceed without a checkpoint, so we
+    /// retry until we get one.
+    async fn get_checkpoint(&self) -> pathfinder_ethereum::EthereumStateUpdate {
         use pathfinder_ethereum::EthereumApi;
-        match &self.l1_checkpoint_override {
-            Some(checkpoint) => Ok(*checkpoint),
-            None => self
-                .eth_client
-                .get_starknet_state(&self.eth_address)
-                .await
-                .context("Fetching latest L1 checkpoint"),
+        if let Some(forced) = &self.l1_checkpoint_override {
+            return *forced;
+        }
+
+        loop {
+            match self.eth_client.get_starknet_state(&self.eth_address).await {
+                Ok(latest) => return latest,
+                Err(error) => {
+                    tracing::warn!(%error, "Failed to get L1 checkpoint, retrying");
+                    tokio::time::sleep(RESET_DELAY_ON_FAILURE);
+                }
+            }
         }
     }
 
     /// Run checkpoint sync until it completes successfully, and we are within
     /// some margin of the latest L1 block. Returns the next block number to
     /// sync and its parent hash.
+    ///
+    /// ### Important
+    ///
+    /// Sync is restarted on recoverable errors and only fatal errors (e.g.:
+    /// database failure, runtime failure, etc.) cause this function to exit
+    /// with an error.
     async fn checkpoint_sync(&self) -> anyhow::Result<(BlockNumber, BlockHash)> {
-        let mut checkpoint = self.get_checkpoint().await?;
+        let mut checkpoint = self.get_checkpoint().await;
+        let from = (checkpoint.block_number, checkpoint.block_hash);
+
+        tracing::info!(?from, "Checkpoint sync started");
 
         loop {
             let result = checkpoint::Sync {
@@ -92,47 +118,86 @@ impl Sync {
                 chain_id: self.chain_id,
                 public_key: self.public_key,
                 verify_tree_hashes: self.verify_tree_hashes,
+                block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
             }
             .run(checkpoint)
             .await;
 
             // Handle the error
-            if let Err(err) = result {
-                self.handle_error(err).await;
-                continue;
-            }
+            let continue_from = match result {
+                Ok(continue_from) => {
+                    tracing::debug!(?continue_from, "Checkpoint sync complete");
+                    continue_from
+                }
+                Err(SyncError::Fatal(mut error)) => {
+                    tracing::error!(%error, "Stopping checkpoint sync");
+                    return Err(error.take_or_deep_clone());
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "Restarting checkpoint sync");
+                    self.handle_recoverable_error(&error).await;
+                    continue;
+                }
+            };
 
-            // Initial sync might take so long, that the latest checkpoint is actually far
+            // Initial sync might take so long that the latest checkpoint is actually far
             // ahead again. Repeat until we are within some margin of L1.
-            let latest_checkpoint = self.get_checkpoint().await?;
+            let latest_checkpoint = self.get_checkpoint().await;
             if checkpoint.block_number + CHECKPOINT_MARGIN < latest_checkpoint.block_number {
                 checkpoint = latest_checkpoint;
+                tracing::debug!(
+                    local_checkpoint=%checkpoint.block_number, latest_checkpoint=%latest_checkpoint.block_number,
+                    "Restarting checkpoint sync: L1 checkpoint has advanced"
+                );
                 continue;
             }
 
-            break;
+            break Ok(continue_from);
         }
-
-        Ok((checkpoint.block_number + 1, checkpoint.block_hash))
     }
 
-    /// Run the track sync until it completes successfully, requires the
-    /// number and parent hash of the first block to sync
-    async fn track_sync(&self, next: BlockNumber, parent_hash: BlockHash) -> anyhow::Result<()> {
-        let result = track::Sync {
-            latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
-            p2p: self.p2p.clone(),
-            storage: self.storage.clone(),
-            chain: self.chain,
-            chain_id: self.chain_id,
-            public_key: self.public_key,
+    /// Run the track sync forever, requires the number and parent hash of the
+    /// first block to sync.
+    ///
+    /// ### Important
+    ///
+    /// Sync is restarted on recoverable errors and only fatal errors (e.g.:
+    /// database failure, runtime failure, etc.) cause this function to exit
+    /// with an error.
+    async fn track_sync(
+        &self,
+        mut next: BlockNumber,
+        mut parent_hash: BlockHash,
+    ) -> anyhow::Result<()> {
+        tracing::info!(next_block=%next, "Track sync started");
+
+        loop {
+            let mut result = track::Sync {
+                latest: LatestStream::spawn(self.fgw_client.clone(), Duration::from_secs(2)),
+                p2p: self.p2p.clone(),
+                storage: self.storage.clone(),
+                chain: self.chain,
+                chain_id: self.chain_id,
+                public_key: self.public_key,
+                block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(self.chain)),
+                verify_tree_hashes: self.verify_tree_hashes,
+            }
+            .run(next, parent_hash, self.fgw_client.clone())
+            .await;
+
+            match result {
+                Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
+                Err(SyncError::Fatal(mut error)) => {
+                    tracing::error!(%error, "Stopping track sync");
+                    use pathfinder_common::error::AnyhowExt;
+                    return Err(error.take_or_deep_clone());
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "Restarting track sync");
+                    self.handle_recoverable_error(&error).await;
+                }
+            }
         }
-        .run(next, parent_hash, self.fgw_client.clone())
-        .await;
-
-        tracing::info!("Track sync completed: {result:#?}");
-
-        Ok(())
     }
 }
 
@@ -143,8 +208,6 @@ struct LatestStream {
 
 impl Clone for LatestStream {
     fn clone(&self) -> Self {
-        tracing::info!("LatestStream: clone()");
-
         Self {
             // Keep the rx for the next clone
             rx: self.rx.clone(),
@@ -169,7 +232,6 @@ impl Stream for LatestStream {
 
 impl LatestStream {
     fn spawn(fgw: GatewayClient, head_poll_interval: Duration) -> Self {
-        tracing::info!("LatestStream: spawn()");
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
@@ -188,12 +250,23 @@ impl LatestStream {
                     continue;
                 };
 
-                tracing::info!(?latest, "LatestStream: block_header()");
+                tracing::trace!(?latest, "LatestStream");
 
-                if tx.send(latest).is_err() {
+                if tx.is_closed() {
                     tracing::debug!("Channel closed, exiting");
                     break;
                 }
+
+                tx.send_if_modified(|current| {
+                    // TODO: handle reorgs correctly
+                    if *current != latest {
+                        tracing::info!(?latest, "LatestStream");
+                        *current = latest;
+                        true
+                    } else {
+                        false
+                    }
+                });
             }
         });
 

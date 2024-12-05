@@ -19,6 +19,7 @@ use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, Transacti
 use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -41,7 +42,6 @@ use tokio::sync::Mutex;
 use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
-use super::error::SyncError2;
 use crate::state::block_hash::calculate_transaction_commitment;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{InfallibleSource, Source, SyncReceiver, SyncResult};
@@ -63,6 +63,7 @@ pub struct Sync {
     pub chain_id: ChainId,
     pub public_key: PublicKey,
     pub verify_tree_hashes: bool,
+    pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
 impl Sync {
@@ -88,11 +89,18 @@ impl Sync {
             chain_id,
             public_key,
             verify_tree_hashes,
+            block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(chain)),
         }
     }
 
     /// Syncs using p2p until the given Ethereum checkpoint.
-    pub async fn run(&self, checkpoint: EthereumStateUpdate) -> Result<(), SyncError> {
+    ///
+    /// Returns the block number and its parent hash where tracking sync is
+    /// expected to continue.
+    pub async fn run(
+        &self,
+        checkpoint: EthereumStateUpdate,
+    ) -> Result<(BlockNumber, BlockHash), SyncError> {
         use pathfinder_ethereum::EthereumApi;
 
         let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
@@ -129,7 +137,15 @@ impl Sync {
         self.sync_class_definitions(head).await?;
         self.sync_events(head).await?;
 
-        Ok(())
+        let local_state = LocalState::from_db(self.storage.clone(), checkpoint)
+            .await
+            .context("Querying local state after checkpoint sync")?;
+        let (next_block_number, last_block_hash) = local_state
+            .latest_header
+            .map(|(number, hash)| (number + 1, hash))
+            .unwrap_or((BlockNumber::GENESIS, BlockHash::ZERO));
+
+        Ok((next_block_number, last_block_hash))
     }
 
     /// Syncs all headers in reverse chronological order, from the anchor point
@@ -141,8 +157,6 @@ impl Sync {
     /// No guarantees are made about any headers newer than the anchor.
     #[tracing::instrument(level = "debug", skip(self, anchor))]
     async fn sync_headers(&self, anchor: EthereumStateUpdate) -> Result<(), SyncError> {
-        tracing::info!(?anchor);
-
         while let Some(gap) =
             headers::next_gap(self.storage.clone(), anchor.block_number, anchor.block_hash)
                 .await
@@ -156,6 +170,7 @@ impl Sync {
                 self.chain,
                 self.chain_id,
                 self.public_key,
+                self.block_hash_db.clone(),
                 self.storage.clone(),
             )
             .await?;
@@ -243,12 +258,14 @@ impl Sync {
             ),
         );
 
+        let expected_declarations =
+            class_definitions::expected_declarations_stream(self.storage.clone(), start, stop);
+
         handle_class_stream(
             class_stream,
             self.storage.clone(),
             self.fgw_client.clone(),
-            start,
-            stop,
+            expected_declarations,
         )
         .await?;
 
@@ -287,28 +304,27 @@ async fn handle_header_stream(
     chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
+    block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
     storage: Storage,
 ) -> Result<(), SyncError> {
-    tracing::info!("Syncing headers");
     InfallibleSource::from_stream(stream)
         .spawn()
         .pipe(headers::BackwardContinuity::new(head.0, head.1), 10)
         .pipe(
-            headers::VerifyHashAndSignature::new(chain, chain_id, public_key),
+            headers::VerifyHashAndSignature::new(chain, chain_id, public_key, block_hash_db),
             10,
         )
-        .try_chunks(1024, 10)
+        .try_chunks(1000, 10)
         .pipe(
             headers::Persist {
-                connection: storage.connection()?,
+                connection: storage.connection().context("Creating db connection")?,
             },
             10,
         )
         .into_stream()
-        .try_fold((), |_state, _x| std::future::ready(Ok(())))
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "Headers chunk synced"))
+        .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-    Ok(())
 }
 
 async fn handle_transaction_stream(
@@ -317,7 +333,7 @@ async fn handle_transaction_stream(
     chain_id: ChainId,
     start: BlockNumber,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    Source::from_stream(stream.map_err(Into::into))
         .spawn()
         .pipe(
             transactions::FetchCommitmentFromDb::new(storage.connection()?),
@@ -327,14 +343,9 @@ async fn handle_transaction_stream(
         .pipe(transactions::VerifyCommitment, 10)
         .pipe(transactions::Store::new(storage.connection()?, start), 10)
         .into_stream()
-        .inspect_ok(|x| {
-            tracing::info!(tail=%x.data, "Transactions chunk
-    synced")
-        })
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "Transactions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-    Ok(())
 }
 
 async fn handle_state_diff_stream(
@@ -343,61 +354,60 @@ async fn handle_state_diff_stream(
     start: BlockNumber,
     verify_tree_hashes: bool,
 ) -> Result<(), SyncError> {
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
+    Source::from_stream(stream.map_err(Into::into))
         .spawn()
         .pipe(
             state_updates::FetchCommitmentFromDb::new(storage.connection()?),
             10,
         )
         .pipe(state_updates::VerifyCommitment, 10)
-        .pipe(
-            state_updates::UpdateStarknetState {
-                storage: storage.clone(),
-                connection: storage.connection()?,
-                current_block: start,
-                verify_tree_hashes,
-            },
-            10,
-        )
         .into_stream()
-        .inspect_ok(|x| tracing::info!(tail=%x.data, "State diff synced"))
+        .try_chunks(1000)
+        .map_err(|e| e.1)
+        .and_then(|x| {
+            state_updates::batch_update_starknet_state(storage.clone(), verify_tree_hashes, x)
+        })
+        .inspect_ok(|x| tracing::debug!(tail=%x.data, "State diffs chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-    Ok(())
 }
 
 async fn handle_class_stream<SequencerClient: GatewayApi + Clone + Send + 'static>(
-    stream: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
+    class_definitions: impl Stream<Item = StreamItem<ClassDefinition>> + Send + 'static,
     storage: Storage,
     fgw: SequencerClient,
-    start: BlockNumber,
-    stop: BlockNumber,
+    expected_declarations: impl Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
+        + Send
+        + 'static,
 ) -> Result<(), SyncError> {
-    let expectation_source =
-        class_definitions::ExpectedDeclarationsSource::new(storage.connection()?, start, stop)
-            .spawn()?;
+    // Increasing the chunk size above num cpus improves performance even more.
+    let chunk_size = std::thread::available_parallelism()
+        .context("Getting available parallelism")?
+        .get()
+        * 8;
 
-    Source::from_stream(stream.map_err(|e| e.map(Into::into)))
-        .spawn()
-        .pipe(class_definitions::VerifyLayout, 10)
-        .pipe(class_definitions::ComputeHash, 10)
-        .pipe(
-            class_definitions::VerifyDeclaredAt::new(expectation_source),
-            10,
-        )
-        .pipe(
-            class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
-            10,
-        )
-        .pipe(class_definitions::Store(storage.connection()?), 10)
-        .into_stream()
-        // Drive stream to completion.
+    let classes_with_hashes = class_definitions
+        .map_err(Into::into)
+        .and_then(class_definitions::verify_layout)
+        .try_chunks(chunk_size)
+        .map_err(|e| e.1)
+        .and_then(class_definitions::verify_hash)
+        .boxed();
+
+    class_definitions::verify_declared_at(expected_declarations.boxed(), classes_with_hashes)
+        .try_chunks(chunk_size)
+        .map_err(|e| e.1)
+        .and_then(|x| {
+            class_definitions::compile_sierra_to_casm_or_fetch(
+                x,
+                fgw.clone(),
+                tokio::runtime::Handle::current(),
+            )
+        })
+        .and_then(|x| class_definitions::persist(storage.clone(), x))
+        .inspect_ok(|x| tracing::info!(tail=%x, "Class definitions chunk synced"))
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
-        .map_err(SyncError::from_v2)?;
-
-    Ok(())
 }
 
 async fn handle_event_stream(
@@ -405,16 +415,15 @@ async fn handle_event_stream(
     storage: Storage,
 ) -> Result<(), SyncError> {
     stream
-        .map_err(|e| e.data.into())
+        .map_err(Into::into)
         .and_then(|x| events::verify_commitment(x, storage.clone()))
         .try_chunks(100)
         .map_err(|e| e.1)
         .and_then(|x| events::persist(storage.clone(), x))
-        .inspect_ok(|x| tracing::info!(tail=%x, "Events chunk synced"))
+        .inspect_ok(|x| tracing::debug!(tail=%x, "Events chunk synced"))
         // Drive stream to completion.
         .try_fold((), |_, _| std::future::ready(Ok(())))
-        .await?;
-    Ok(())
+        .await
 }
 
 /// Performs [analysis](Self::analyse) of the [LocalState] by comparing it with
@@ -541,7 +550,7 @@ impl CheckpointAnalysis {
                     %checkpoint, %anchor,
                     "Ethereum checkpoint is older than the local anchor. This indicates a serious inconsistency in the Ethereum source used by this sync and the previous sync."
                 );
-                anyhow::bail!("Ethereum checkpoint hash did not match local anchor.");
+                anyhow::bail!("Ethereum checkpoint is older than the local anchor.");
             }
             CheckpointAnalysis::ExceedsLocalChain {
                 local,
@@ -582,8 +591,14 @@ impl CheckpointAnalysis {
 }
 
 struct LocalState {
+    /// The highest header in our local storage.
     latest_header: Option<(BlockNumber, BlockHash)>,
+    /// The highest L1 state update __in our local storage__.
+    ///
+    /// An L1 state update is Starknet's block number, hash and state root as
+    /// recorded on Ethereum.
     anchor: Option<EthereumStateUpdate>,
+    /// The highest L1 state update __fetched from Ethereum at the moment__.
     checkpoint: Option<(BlockNumber, BlockHash)>,
 }
 
@@ -650,6 +665,11 @@ async fn rollback_to_anchor(
             head -= 1;
         }
 
+        #[cfg(feature = "aggregate_bloom")]
+        transaction
+            .reconstruct_running_aggregate()
+            .context("Reconstructing running aggregate bloom")?;
+
         Ok(())
     })
     .await
@@ -691,12 +711,16 @@ mod tests {
             BlockHash,
             BlockHeader,
             BlockTimestamp,
+            ClassCommitment,
             EventCommitment,
+            GasPrice,
+            L1DataAvailabilityMode,
             ReceiptCommitment,
             SequencerAddress,
             StarknetVersion,
             StateCommitment,
             StateDiffCommitment,
+            StorageCommitment,
             TransactionCommitment,
         };
         use pathfinder_storage::fake::{self as fake_storage, Block};
@@ -716,7 +740,7 @@ mod tests {
         }
 
         #[serde_as]
-        #[derive(Clone, Copy, Debug, Deserialize)]
+        #[derive(Clone, Debug, Deserialize)]
         pub struct Fixture {
             pub block_hash: BlockHash,
             pub block_number: BlockNumber,
@@ -730,10 +754,15 @@ mod tests {
             pub event_count: usize,
             pub signature: [BlockCommitmentSignatureElem; 2],
             pub state_diff_commitment: StateDiffCommitment,
+            pub state_diff_length: u64,
+            pub receipt_commitment: ReceiptCommitment,
+            pub starknet_version: String,
+            pub eth_l1_gas_price: GasPrice,
         }
 
         impl From<Fixture> for SignedBlockHeader {
             fn from(dto: Fixture) -> Self {
+                let starknet_version: StarknetVersion = dto.starknet_version.parse().unwrap();
                 Self {
                     header: BlockHeader {
                         hash: dto.block_hash,
@@ -747,7 +776,18 @@ mod tests {
                         event_commitment: dto.event_commitment,
                         event_count: dto.event_count,
                         state_diff_commitment: dto.state_diff_commitment,
-                        ..Default::default()
+                        state_diff_length: dto.state_diff_length,
+                        receipt_commitment: dto.receipt_commitment,
+                        starknet_version,
+                        eth_l1_gas_price: dto.eth_l1_gas_price,
+                        eth_l1_data_gas_price: GasPrice(1),
+                        strk_l1_gas_price: GasPrice(0),
+                        strk_l1_data_gas_price: GasPrice(1),
+                        eth_l2_gas_price: GasPrice(0),
+                        strk_l2_gas_price: GasPrice(0),
+                        l1_da_mode: L1DataAvailabilityMode::Calldata,
+                        class_commitment: ClassCommitment::ZERO,
+                        storage_commitment: StorageCommitment::ZERO,
                     },
                     signature: BlockCommitmentSignature {
                         r: dto.signature[0],
@@ -775,7 +815,11 @@ mod tests {
                     .map(PeerData::for_tests)
                     .collect::<Vec<_>>(),
                 expected_headers,
-                storage: StorageBuilder::in_memory().unwrap(),
+                storage: StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap(),
                 // https://alpha-sepolia.starknet.io/feeder_gateway/get_public_key
                 public_key: public_key!(
                     "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
@@ -799,6 +843,9 @@ mod tests {
                 Chain::SepoliaTestnet,
                 ChainId::SEPOLIA_TESTNET,
                 public_key,
+                Some(pathfinder_block_hashes::BlockHashDb::new(
+                    Chain::SepoliaTestnet,
+                )),
                 storage.clone(),
             )
             .await
@@ -823,7 +870,6 @@ mod tests {
 
             pretty_assertions_sorted::assert_eq!(expected_headers, actual_headers);
         }
-
         #[tokio::test]
         async fn discontinuity() {
             let Setup {
@@ -843,6 +889,9 @@ mod tests {
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
+                    Some(pathfinder_block_hashes::BlockHashDb::new(
+                        Chain::SepoliaTestnet
+                    )),
                     storage.clone(),
                 )
                 .await,
@@ -868,6 +917,7 @@ mod tests {
                     Chain::Mainnet,
                     ChainId::MAINNET,
                     public_key,
+                    None,
                     storage.clone(),
                 )
                 .await,
@@ -925,10 +975,13 @@ mod tests {
                     Chain::SepoliaTestnet,
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
+                    Some(pathfinder_block_hashes::BlockHashDb::new(
+                        Chain::SepoliaTestnet
+                    )),
                     storage.clone(),
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -968,7 +1021,11 @@ mod tests {
                                 .map(|(t, _, _)| t.clone())
                                 .collect::<Vec<_>>()
                                 .as_slice(),
-                            block.header.header.starknet_version,
+                            block
+                                .header
+                                .header
+                                .starknet_version
+                                .max(StarknetVersion::V_0_13_2),
                         )
                         .unwrap();
                         block.header.header.transaction_commitment = transaction_commitment;
@@ -977,7 +1034,7 @@ mod tests {
                             block
                                 .transaction_data
                                 .iter()
-                                .map(|x| (x.0.variant.clone(), x.1.clone().into()))
+                                .map(|x| (x.0.clone(), x.1.clone().into()))
                                 .collect::<Vec<_>>(),
                             block.header.header.number,
                         )))
@@ -998,11 +1055,55 @@ mod tests {
                     b.transaction_data = Default::default();
                 });
 
-                let storage = StorageBuilder::in_memory().unwrap();
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_transactions,
                     expected_transactions,
+                    storage,
+                }
+            })
+            .await
+            .unwrap()
+        }
+
+        async fn setup_commitment_mismatch(num_blocks: usize) -> Setup {
+            use fake::{Fake, Faker};
+            tokio::task::spawn_blocking(move || {
+                let mut blocks = fake_storage::init::with_n_blocks(num_blocks);
+                let streamed_transactions = blocks
+                    .iter_mut()
+                    .map(|block| {
+                        block.header.header.transaction_commitment = Faker.fake();
+
+                        anyhow::Result::Ok(PeerData::for_tests((
+                            block
+                                .transaction_data
+                                .iter()
+                                .map(|x| (x.0.clone(), x.1.clone().into()))
+                                .collect::<Vec<_>>(),
+                            block.header.header.number,
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                blocks.iter_mut().for_each(|b| {
+                    // Purge transaction data.
+                    b.transaction_data = Default::default();
+                });
+
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
+                fake_storage::fill(&storage, &blocks);
+                Setup {
+                    streamed_transactions,
+                    expected_transactions: Vec::default(),
                     storage,
                 }
             })
@@ -1053,7 +1154,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn commitment_mismatch() {
+        async fn transaction_mismatch() {
             let Setup {
                 streamed_transactions,
                 storage,
@@ -1069,6 +1170,25 @@ mod tests {
                     BlockNumber::GENESIS,
                 )
                 .await,
+                Err(SyncError::BadTransactionHash(_))
+            );
+        }
+
+        #[tokio::test]
+        async fn commitment_mismatch() {
+            let Setup {
+                streamed_transactions,
+                storage,
+                ..
+            } = setup_commitment_mismatch(1).await;
+            assert_matches!(
+                handle_transaction_stream(
+                    stream::iter(streamed_transactions),
+                    storage.clone(),
+                    ChainId::SEPOLIA_TESTNET,
+                    BlockNumber::GENESIS,
+                )
+                .await,
                 Err(SyncError::TransactionCommitmentMismatch(_))
             );
         }
@@ -1077,15 +1197,13 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_transaction_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     ChainId::SEPOLIA_TESTNET,
                     BlockNumber::GENESIS,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
 
@@ -1103,7 +1221,7 @@ mod tests {
                     BlockNumber::GENESIS,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1135,7 +1253,7 @@ mod tests {
                 let streamed_state_diffs = blocks
                     .iter()
                     .map(|block| {
-                        Result::<PeerData<_>, PeerData<_>>::Ok(PeerData::for_tests((
+                        Result::<PeerData<_>, _>::Ok(PeerData::for_tests((
                             block.state_update.clone().into(),
                             block.header.header.number,
                         )))
@@ -1166,7 +1284,11 @@ mod tests {
                     })
                     .collect::<Vec<_>>();
 
-                let storage = StorageBuilder::in_memory().unwrap();
+                let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    std::num::NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_state_diffs,
@@ -1246,15 +1368,13 @@ mod tests {
         async fn stream_failure() {
             assert_matches!(
                 handle_state_diff_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     BlockNumber::GENESIS,
                     false,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
 
@@ -1272,7 +1392,7 @@ mod tests {
                     false,
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1310,7 +1430,6 @@ mod tests {
 
         use super::super::handle_class_stream;
         use super::*;
-        use crate::state::block_hash::calculate_event_commitment;
 
         const SIERRA0_HASH: SierraHash =
             sierra_hash!("0x04e70b19333ae94bd958625f7b61ce9eec631653597e68645e13780061b2136c");
@@ -1330,8 +1449,40 @@ mod tests {
             }
         }
 
+        #[derive(Clone, Copy, Debug, Dummy)]
+        struct DeclaredClass {
+            pub block: BlockNumber,
+            pub class: ClassHash,
+        }
+
+        #[derive(Clone, Debug)]
+        struct DeclaredClasses(Vec<DeclaredClass>);
+
+        impl DeclaredClasses {
+            pub fn to_stream(
+                &self,
+            ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>>
+            {
+                let mut all = HashMap::<_, HashSet<ClassHash>>::new();
+                self.0
+                    .iter()
+                    .copied()
+                    .for_each(|DeclaredClass { block, class }| {
+                        all.entry(block).or_default().insert(class);
+                    });
+                stream::iter(all.into_iter().map(Ok))
+            }
+        }
+
+        impl<T> Dummy<T> for DeclaredClasses {
+            fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
+                DeclaredClasses(fake::vec![DeclaredClass; 1..10])
+            }
+        }
+
         struct Setup {
-            pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, PeerData<anyhow::Error>>>,
+            pub streamed_classes: Vec<Result<PeerData<ClassDefinition>, anyhow::Error>>,
+            pub declared_classes: DeclaredClasses,
             pub expected_defs: HashMap<ClassHash, Vec<u8>>,
             pub storage: Storage,
         }
@@ -1377,16 +1528,34 @@ mod tests {
                     Ok(PeerData::for_tests(ClassDefinition::Cairo {
                         block_number: BlockNumber::GENESIS + 1,
                         definition: CAIRO.to_vec(),
+                        hash: cairo_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA0.to_vec(),
+                        hash: sierra0_hash,
                     })),
                     Ok(PeerData::for_tests(ClassDefinition::Sierra {
                         block_number: BlockNumber::GENESIS + 1,
                         sierra_definition: SIERRA2.to_vec(),
+                        hash: sierra2_hash,
                     })),
                 ];
+
+                let declared_classes = DeclaredClasses(vec![
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: cairo_hash,
+                    },
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: ClassHash(sierra0_hash.0),
+                    },
+                    DeclaredClass {
+                        block: BlockNumber::GENESIS + 1,
+                        class: ClassHash(sierra2_hash.0),
+                    },
+                ]);
 
                 let expected_defs = [
                     (cairo_hash, CAIRO.to_vec()),
@@ -1399,6 +1568,7 @@ mod tests {
                 fake_storage::fill(&storage, &blocks);
                 Setup {
                     streamed_classes,
+                    declared_classes,
                     expected_defs,
                     storage,
                 }
@@ -1411,6 +1581,7 @@ mod tests {
         async fn happy_path() {
             let Setup {
                 streamed_classes,
+                declared_classes,
                 expected_defs,
                 storage,
             } = setup(true).await;
@@ -1419,8 +1590,7 @@ mod tests {
                 stream::iter(streamed_classes),
                 storage.clone(),
                 FakeFgw,
-                BlockNumber::GENESIS,
-                BlockNumber::GENESIS + 1,
+                declared_classes.to_stream(),
             )
             .await
             .unwrap();
@@ -1459,11 +1629,13 @@ mod tests {
         #[rstest::rstest]
         #[case::cairo(ClassDefinition::Cairo {
             block_number: BlockNumber::GENESIS + 1,
-            definition: Default::default()
+            definition: Default::default(),
+            hash: Default::default(),
         })]
         #[case::sierra(ClassDefinition::Sierra {
             block_number: BlockNumber::GENESIS + 1,
             sierra_definition: Default::default(),
+            hash: Default::default(),
         })]
         #[tokio::test]
         async fn bad_layout(#[case] class: ClassDefinition) {
@@ -1472,21 +1644,21 @@ mod tests {
             let expected_peer_id = data.peer;
 
             assert_matches!(
-                handle_class_stream(
-                    stream::once(std::future::ready(Ok(data))),
-                    storage,
-                    FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS,
-                )
-                .await,
-                Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
+                    handle_class_stream(
+                        stream::once(std::future::ready(Ok(data))),
+                        storage,
+                        FakeFgw,
+                        Faker.fake::<DeclaredClasses>().to_stream(),
+                    )
+                    .await,
+                    Err(SyncError::BadClassLayout(x)) => assert_eq!(x, expected_peer_id));
         }
 
         #[tokio::test]
         async fn unexpected_class() {
             let Setup {
                 mut streamed_classes,
+                declared_classes,
                 storage,
                 ..
             } = setup(true).await;
@@ -1503,31 +1675,27 @@ mod tests {
             let expected_peer_id = streamed_classes.last().unwrap().as_ref().unwrap().peer;
 
             assert_matches!(
-                handle_class_stream(
-                    stream::iter(streamed_classes),
-                    storage,
-                    FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS + 1,
-                )
-                .await,
-                Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
+                    handle_class_stream(
+                        stream::iter(streamed_classes),
+                        storage,
+                        FakeFgw,
+                        declared_classes.to_stream(),
+                    )
+                    .await,
+                    Err(SyncError::UnexpectedClass(x)) => assert_eq!(x, expected_peer_id));
         }
 
         #[tokio::test]
         async fn stream_failure() {
             assert_matches!(
                 handle_class_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap(),
                     FakeFgw,
-                    BlockNumber::GENESIS,
-                    BlockNumber::GENESIS
+                    Faker.fake::<DeclaredClasses>().to_stream(),
                 )
                 .await,
-                Err(SyncError::Other(_))
+                Err(SyncError::Fatal(_))
             );
         }
     }
@@ -1539,7 +1707,7 @@ mod tests {
         use p2p::libp2p::PeerId;
         use pathfinder_common::event::Event;
         use pathfinder_common::transaction::TransactionVariant;
-        use pathfinder_common::TransactionHash;
+        use pathfinder_common::{StarknetVersion, TransactionHash};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::{fake as fake_storage, StorageBuilder};
 
@@ -1548,8 +1716,7 @@ mod tests {
         use crate::state::block_hash::calculate_event_commitment;
 
         struct Setup {
-            pub streamed_events:
-                Vec<Result<PeerData<EventsForBlockByTransaction>, PeerData<anyhow::Error>>>,
+            pub streamed_events: Vec<Result<PeerData<EventsForBlockByTransaction>, anyhow::Error>>,
             pub expected_events: Vec<Vec<(TransactionHash, Vec<Event>)>>,
             pub storage: Storage,
         }
@@ -1590,7 +1757,11 @@ mod tests {
                                 .iter()
                                 .map(|(tx, _, events)| (tx.hash, events.as_slice()))
                                 .collect::<Vec<_>>(),
-                            block.header.header.starknet_version,
+                            block
+                                .header
+                                .header
+                                .starknet_version
+                                .max(StarknetVersion::V_0_13_2),
                         )
                         .unwrap();
                     }
@@ -1665,14 +1836,12 @@ mod tests {
         async fn stream_failure() {
             assert_matches::assert_matches!(
                 handle_event_stream(
-                    stream::once(std::future::ready(Err(PeerData::for_tests(
-                        anyhow::anyhow!("")
-                    )))),
+                    stream::once(std::future::ready(Err(anyhow::anyhow!("")))),
                     StorageBuilder::in_memory().unwrap()
                 )
                 .await
                 .unwrap_err(),
-                SyncError::Other(_)
+                SyncError::Fatal(_)
             );
         }
 
@@ -1685,7 +1854,7 @@ mod tests {
                 )
                 .await
                 .unwrap_err(),
-                SyncError::Other(_)
+                SyncError::Fatal(_)
             );
         }
     }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::pin;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::stream::BoxStream;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
 use p2p::client::peer_agnostic::traits::{BlockClient, HeaderStream};
@@ -9,11 +9,12 @@ use p2p::client::peer_agnostic::Client as P2PClient;
 use p2p::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
-    IncorrectStateDiffCount,
+    EventsResponseStreamFailure,
+    StateDiffsError,
     TransactionData,
 };
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
-use pathfinder_common::class_definition::ClassDefinition;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
@@ -32,6 +33,7 @@ use pathfinder_common::{
     SierraHash,
     SignedBlockHeader,
     StarknetVersion,
+    StateCommitment,
     StateDiffCommitment,
     StateUpdate,
     StorageCommitment,
@@ -44,8 +46,9 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
+use crate::state::update_starknet_state;
 use crate::sync::class_definitions::{self, ClassWithLayout};
-use crate::sync::error::SyncError2;
+use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
 use crate::sync::{events, headers};
 
@@ -56,6 +59,8 @@ pub struct Sync<L, P> {
     pub chain: Chain,
     pub chain_id: ChainId,
     pub public_key: PublicKey,
+    pub block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
+    pub verify_tree_hashes: bool,
 }
 
 impl<L, P> Sync<L, P> {
@@ -64,7 +69,7 @@ impl<L, P> Sync<L, P> {
         next: BlockNumber,
         parent_hash: BlockHash,
         fgw: SequencerClient,
-    ) -> Result<(), PeerData<SyncError2>>
+    ) -> Result<(), SyncError>
     where
         L: Stream<Item = (BlockNumber, BlockHash)> + Clone + Send + 'static,
         P: BlockClient + Clone + HeaderStream + Send + 'static,
@@ -72,12 +77,7 @@ impl<L, P> Sync<L, P> {
         let storage_connection = self
             .storage
             .connection()
-            .context("Creating database connection")
-            // FIXME: PeerData should allow for None peers.
-            .map_err(|e| PeerData {
-                peer: p2p::libp2p::PeerId::random(),
-                data: SyncError2::from(e),
-            })?;
+            .context("Creating database connection")?;
 
         let mut headers = HeaderSource {
             p2p: self.p2p.clone(),
@@ -87,7 +87,12 @@ impl<L, P> Sync<L, P> {
         .spawn()
         .pipe(headers::ForwardContinuity::new(next, parent_hash), 100)
         .pipe(
-            headers::VerifyHashAndSignature::new(self.chain, self.chain_id, self.public_key),
+            headers::VerifyHashAndSignature::new(
+                self.chain,
+                self.chain_id,
+                self.public_key,
+                self.block_hash_db,
+            ),
             100,
         );
 
@@ -138,9 +143,9 @@ impl<L, P> Sync<L, P> {
             start: next,
         }
         .spawn()
-        .pipe_each(class_definitions::VerifyLayout, 10)
-        .pipe_each(class_definitions::ComputeHash, 10)
-        .pipe_each(
+        .pipe(class_definitions::VerifyLayout, 10)
+        .pipe(class_definitions::VerifyHash, 10)
+        .pipe(
             class_definitions::CompileSierraToCasm::new(fgw, tokio::runtime::Handle::current()),
             10,
         )
@@ -160,7 +165,14 @@ impl<L, P> Sync<L, P> {
             classes,
         }
         .spawn()
-        .pipe(StoreBlock::new(storage_connection), 10)
+        .pipe(
+            StoreBlock::new(
+                storage_connection,
+                self.storage.clone(),
+                self.verify_tree_hashes,
+            ),
+            10,
+        )
         .into_stream()
         .try_fold((), |_, _| std::future::ready(Ok(())))
         .await
@@ -189,9 +201,7 @@ impl<L, P> HeaderSource<L, P> {
         tokio::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
-                // Ignore reorgs for now. Unsure how to handle this properly.
-
-                // TODO: Probably need a loop here if we don't get enough headers?
+                // TODO: handle reorgs correctly
                 let mut headers =
                     Box::pin(p2p.clone().header_stream(start, latest_onchain.0, false));
 
@@ -216,7 +226,10 @@ struct StateDiffFanout {
 }
 
 impl StateDiffFanout {
-    fn from_source(mut source: SyncReceiver<StateUpdateData>, buffer: usize) -> Self {
+    fn from_source(
+        mut source: SyncReceiver<(StateUpdateData, BlockNumber)>,
+        buffer: usize,
+    ) -> Self {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
         let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
@@ -225,13 +238,19 @@ impl StateDiffFanout {
             while let Some(state_update) = source.recv().await {
                 let is_err = state_update.is_err();
 
-                if s_tx.send(state_update.clone()).await.is_err() || is_err {
+                if s_tx
+                    .send(state_update.clone().map(|x| x.map(|(sud, _)| sud)))
+                    .await
+                    .is_err()
+                    || is_err
+                {
                     return;
                 }
 
                 let class_declarations = state_update
                     .expect("Error case already handled")
                     .data
+                    .0
                     .declared_classes();
 
                 if d1_tx.send(class_declarations.clone()).await.is_err() {
@@ -343,7 +362,14 @@ struct TransactionSource<P> {
 }
 
 impl<P> TransactionSource<P> {
-    fn spawn(self) -> SyncReceiver<(TransactionData, StarknetVersion, TransactionCommitment)>
+    fn spawn(
+        self,
+    ) -> SyncReceiver<(
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    )>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -368,13 +394,11 @@ impl<P> TransactionSource<P> {
                     let (transaction, receipt) = match transactions.next().await {
                         Some(Ok((transaction, receipt))) => (transaction, receipt),
                         Some(Err(_)) => {
-                            let err = PeerData::new(peer, SyncError2::InvalidDto);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
                         None => {
-                            let err = PeerData::new(peer, SyncError2::TooFewTransactions);
-                            let _ = tx.send(Err(err)).await;
+                            let _ = tx.send(Err(SyncError::TooFewTransactions(peer))).await;
                             return;
                         }
                     };
@@ -384,8 +408,7 @@ impl<P> TransactionSource<P> {
 
                 // Ensure that the stream is exhausted.
                 if transactions.next().await.is_some() {
-                    let err = PeerData::new(peer, SyncError2::TooManyTransactions);
-                    let _ = tx.send(Err(err)).await;
+                    let _ = tx.send(Err(SyncError::TooManyTransactions(peer))).await;
                     return;
                 }
 
@@ -394,6 +417,7 @@ impl<P> TransactionSource<P> {
                         peer,
                         (
                             transactions_vec,
+                            header.number,
                             header.starknet_version,
                             header.transaction_commitment,
                         ),
@@ -433,17 +457,18 @@ impl<P> EventSource<P> {
             } = self;
 
             while let Some(header) = headers.next().await {
+                let Some(block_transactions) = transactions.next().await else {
+                    // Expected transactions stream ended prematurely which means there was an error
+                    // at the source and track sync should be restarted. We should not signal an
+                    // error here as the error has already been indicated at the
+                    // transactions source.
+                    return;
+                };
+
                 let (peer, mut events) = loop {
                     if let Some(stream) = p2p.clone().events_for_block(header.number).await {
                         break stream;
                     }
-                };
-
-                let Some(block_transactions) = transactions.next().await else {
-                    let err =
-                        PeerData::new(peer, SyncError2::Other(anyhow!("No transactions").into()));
-                    let _ = tx.send(Err(err)).await;
-                    return;
                 };
 
                 let mut block_events: HashMap<_, Vec<Event>> = HashMap::new();
@@ -453,19 +478,24 @@ impl<P> EventSource<P> {
 
                 // Receive the exact amount of expected events for this block.
                 for _ in 0..event_count {
-                    let Some((tx_hash, event)) = events.next().await else {
-                        let err = PeerData::new(peer, SyncError2::TooFewEvents);
-                        let _ = tx.send(Err(err)).await;
-                        return;
-                    };
-
-                    block_events.entry(tx_hash).or_default().push(event);
+                    match events.next().await {
+                        Some(Ok((tx_hash, event))) => {
+                            block_events.entry(tx_hash).or_default().push(event);
+                        }
+                        Some(Err(_)) => {
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
+                            return;
+                        }
+                        None => {
+                            let _ = tx.send(Err(SyncError::TooFewEvents(peer))).await;
+                            return;
+                        }
+                    }
                 }
 
                 // Ensure that the stream is exhausted.
                 if events.next().await.is_some() {
-                    let err = PeerData::new(peer, SyncError2::TooManyEvents);
-                    let _ = tx.send(Err(err)).await;
+                    let _ = tx.send(Err(SyncError::TooManyEvents(peer))).await;
                     return;
                 }
 
@@ -497,7 +527,7 @@ struct StateDiffSource<P> {
 }
 
 impl<P> StateDiffSource<P> {
-    fn spawn(self) -> SyncReceiver<(StateUpdateData, StarknetVersion, StateDiffCommitment)>
+    fn spawn(self) -> SyncReceiver<(StateUpdateData, BlockNumber, StateDiffCommitment)>
     where
         P: Clone + BlockClient + Send + 'static,
     {
@@ -514,9 +544,12 @@ impl<P> StateDiffSource<P> {
                     match state_diff {
                         Ok(Some(state_diff)) => break state_diff,
                         Ok(None) => {}
-                        Err(IncorrectStateDiffCount(peer)) => {
-                            let err = PeerData::new(peer, SyncError2::IncorrectStateDiffCount);
-                            let _ = tx.send(Err(err)).await;
+                        Err(StateDiffsError::IncorrectStateDiffCount(peer)) => {
+                            let _ = tx.send(Err(SyncError::IncorrectStateDiffCount(peer))).await;
+                            return;
+                        }
+                        Err(StateDiffsError::ResponseStreamFailure(peer, _)) => {
+                            let _ = tx.send(Err(SyncError::InvalidDto(peer))).await;
                             return;
                         }
                     }
@@ -527,7 +560,7 @@ impl<P> StateDiffSource<P> {
                         peer,
                         (
                             state_diff,
-                            header.header.starknet_version,
+                            header.header.number,
                             header.header.state_diff_commitment,
                         ),
                     )))
@@ -577,13 +610,16 @@ impl<P> ClassSource<P> {
                         Err(err) => {
                             let err = match err {
                                 ClassDefinitionsError::IncorrectClassDefinitionCount(peer) => {
-                                    PeerData::new(peer, SyncError2::IncorrectClassDefinitionCount)
+                                    SyncError::IncorrectClassDefinitionCount(peer)
                                 }
                                 ClassDefinitionsError::CairoDefinitionError(peer) => {
-                                    PeerData::new(peer, SyncError2::CairoDefinitionError)
+                                    SyncError::CairoDefinitionError(peer)
                                 }
                                 ClassDefinitionsError::SierraDefinitionError(peer) => {
-                                    PeerData::new(peer, SyncError2::SierraDefinitionError)
+                                    SyncError::SierraDefinitionError(peer)
+                                }
+                                ClassDefinitionsError::ResponseStreamFailure(peer, _) => {
+                                    SyncError::InvalidDto(peer)
                                 }
                             };
                             let _ = tx.send(Err(err)).await;
@@ -690,11 +726,24 @@ struct BlockData {
 
 struct StoreBlock {
     connection: pathfinder_storage::Connection,
+    // We need this so that we can create extra read-only transactions for parallel contract state
+    // updates
+    storage: Storage,
+    // Verify trie node hashes when loading tries from DB.
+    verify_tree_hashes: bool,
 }
 
 impl StoreBlock {
-    pub fn new(connection: pathfinder_storage::Connection) -> Self {
-        Self { connection }
+    pub fn new(
+        connection: pathfinder_storage::Connection,
+        storage: pathfinder_storage::Storage,
+        verify_tree_hashes: bool,
+    ) -> Self {
+        Self {
+            connection,
+            storage,
+            verify_tree_hashes,
+        }
     }
 }
 
@@ -703,7 +752,7 @@ impl ProcessStage for StoreBlock {
     type Input = BlockData;
     type Output = ();
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let BlockData {
             header: SignedBlockHeader { header, signature },
             mut events,
@@ -727,12 +776,16 @@ impl ProcessStage for StoreBlock {
             strk_l1_gas_price: header.strk_l1_gas_price,
             eth_l1_data_gas_price: header.eth_l1_data_gas_price,
             strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            eth_l2_gas_price: header.eth_l2_gas_price,
+            strk_l2_gas_price: header.strk_l2_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
-            class_commitment: ClassCommitment::ZERO, // TODO update class tries
+            // Class commitment is updated after the class tries are updated.
+            class_commitment: ClassCommitment::ZERO,
             event_commitment: header.event_commitment,
             state_commitment: header.state_commitment,
-            storage_commitment: StorageCommitment::ZERO, // TODO update storage tries
+            // Storage commitment is updated after the storage tries are updated.
+            storage_commitment: StorageCommitment::ZERO,
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
@@ -757,6 +810,29 @@ impl ProcessStage for StoreBlock {
         db.insert_transaction_data(block_number, &transactions, Some(&ordered_events))
             .context("Inserting transaction data")?;
 
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db,
+            (&state_diff).into(),
+            self.verify_tree_hashes,
+            block_number,
+            self.storage.clone(),
+        )
+        .context("Updating Starknet state")?;
+
+        // Ensure that roots match.
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        let expected_state_commitment = header.state_commitment;
+        if state_commitment != expected_state_commitment {
+            tracing::debug!(
+                    actual_storage_commitment=%storage_commitment,
+                    actual_class_commitment=%class_commitment,
+                    actual_state_commitment=%state_commitment,
+                    "State root mismatch");
+            return Err(SyncError::StateRootMismatch(*peer));
+        }
+
+        db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
+            .context("Updating storage and class commitments")?;
         db.insert_state_update_data(block_number, &state_diff)
             .context("Inserting state update data")?;
 
@@ -796,7 +872,7 @@ impl ProcessStage for StoreBlock {
             .context("Committing transaction")
             .map_err(Into::into);
 
-        tracing::info!(number=%block_number, "Block stored");
+        tracing::debug!(number=%block_number, "Block stored");
 
         result
     }
@@ -808,8 +884,9 @@ mod tests {
     use p2p::client::types::{
         ClassDefinition,
         ClassDefinitionsError,
-        IncorrectStateDiffCount,
+        EventsResponseStreamFailure,
         Receipt as P2PReceipt,
+        StateDiffsError,
     };
     use p2p::libp2p::PeerId;
     use p2p::PeerData;
@@ -851,7 +928,11 @@ mod tests {
             blocks: blocks.clone(),
         };
 
-        let storage = StorageBuilder::in_memory().unwrap();
+        let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+            pathfinder_storage::TriePruneMode::Archive,
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
 
         let sync = Sync {
             latest: futures::stream::iter(vec![latest]),
@@ -860,6 +941,8 @@ mod tests {
             chain: Chain::SepoliaTestnet,
             chain_id: ChainId::SEPOLIA_TESTNET,
             public_key: PublicKey::default(),
+            block_hash_db: None,
+            verify_tree_hashes: false,
         };
 
         sync.run(BlockNumber::GENESIS, BlockHash::default(), FakeFgw)
@@ -956,7 +1039,7 @@ mod tests {
             block: BlockNumber,
         ) -> Option<(
             PeerId,
-            impl Stream<Item = anyhow::Result<(TransactionVariant, P2PReceipt)>> + Send,
+            impl Stream<Item = anyhow::Result<(Transaction, P2PReceipt)>> + Send,
         )> {
             let tr = self
                 .blocks
@@ -965,8 +1048,8 @@ mod tests {
                 .unwrap()
                 .transaction_data
                 .iter()
-                .map(|(t, r, e)| Ok((t.variant.clone(), P2PReceipt::from(r.clone()))))
-                .collect::<Vec<anyhow::Result<(TransactionVariant, P2PReceipt)>>>();
+                .map(|(t, r, e)| Ok((t.clone(), P2PReceipt::from(r.clone()))))
+                .collect::<Vec<anyhow::Result<(Transaction, P2PReceipt)>>>();
 
             Some((PeerId::random(), stream::iter(tr)))
         }
@@ -975,7 +1058,7 @@ mod tests {
             self,
             block: BlockNumber,
             state_diff_length: u64,
-        ) -> Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount> {
+        ) -> Result<Option<(PeerId, StateUpdateData)>, StateDiffsError> {
             let sd: StateUpdateData = self
                 .blocks
                 .iter()
@@ -1003,16 +1086,18 @@ mod tests {
             let defs = b
                 .cairo_defs
                 .iter()
-                .map(|(_, x)| ClassDefinition::Cairo {
+                .map(|(h, x)| ClassDefinition::Cairo {
                     block_number: block,
                     definition: x.clone(),
+                    hash: *h,
                 })
                 .chain(
                     b.sierra_defs
                         .iter()
-                        .map(|(_, x, _)| ClassDefinition::Sierra {
+                        .map(|(h, x, _)| ClassDefinition::Sierra {
                             block_number: block,
                             sierra_definition: x.clone(),
+                            hash: *h,
                         }),
                 )
                 .collect::<Vec<ClassDefinition>>();
@@ -1023,7 +1108,10 @@ mod tests {
         async fn events_for_block(
             self,
             block: BlockNumber,
-        ) -> Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)> {
+        ) -> Option<(
+            PeerId,
+            impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>> + Send,
+        )> {
             let e = self
                 .blocks
                 .iter()
@@ -1032,6 +1120,7 @@ mod tests {
                 .transaction_data
                 .iter()
                 .flat_map(|(t, _, e)| e.iter().map(move |e| (t.hash, e.clone())))
+                .map(Ok)
                 .collect::<Vec<_>>();
 
             Some((PeerId::random(), stream::iter(e)))

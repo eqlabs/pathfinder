@@ -18,10 +18,12 @@ use super::felt::IntoFelt;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct FeeEstimate {
-    pub gas_consumed: primitive_types::U256,
-    pub gas_price: primitive_types::U256,
-    pub data_gas_consumed: primitive_types::U256,
-    pub data_gas_price: primitive_types::U256,
+    pub l1_gas_consumed: primitive_types::U256,
+    pub l1_gas_price: primitive_types::U256,
+    pub l1_data_gas_consumed: primitive_types::U256,
+    pub l1_data_gas_price: primitive_types::U256,
+    pub l2_gas_consumed: primitive_types::U256,
+    pub l2_gas_price: primitive_types::U256,
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
 }
@@ -35,23 +37,23 @@ impl FeeEstimate {
         minimal_l1_gas_amount_vector: &Option<GasVector>,
     ) -> FeeEstimate {
         tracing::trace!(resources=?tx_info.transaction_receipt.resources, "Transaction resources");
-        let gas_price = block_info
+        let l1_gas_price = block_info
             .gas_prices
             .get_gas_price_by_fee_type(&fee_type)
             .get();
-        let data_gas_price = block_info
+        let l1_data_gas_price = block_info
             .gas_prices
             .get_data_gas_price_by_fee_type(&fee_type)
             .get();
 
         let minimal_l1_gas_amount_vector = minimal_l1_gas_amount_vector.unwrap_or_default();
 
-        let gas_consumed = tx_info
+        let l1_gas_consumed = tx_info
             .transaction_receipt
             .gas
             .l1_gas
             .max(minimal_l1_gas_amount_vector.l1_gas);
-        let data_gas_consumed = tx_info
+        let l1_data_gas_consumed = tx_info
             .transaction_receipt
             .gas
             .l1_data_gas
@@ -63,18 +65,20 @@ impl FeeEstimate {
         let overall_fee = blockifier::fee::fee_utils::get_fee_by_gas_vector(
             block_info,
             GasVector {
-                l1_gas: gas_consumed,
-                l1_data_gas: data_gas_consumed,
+                l1_gas: l1_gas_consumed,
+                l1_data_gas: l1_data_gas_consumed,
             },
             &fee_type,
         )
         .0;
 
         FeeEstimate {
-            gas_consumed: gas_consumed.into(),
-            gas_price: gas_price.into(),
-            data_gas_consumed: data_gas_consumed.into(),
-            data_gas_price: data_gas_price.into(),
+            l1_gas_consumed: l1_gas_consumed.into(),
+            l1_gas_price: l1_gas_price.into(),
+            l1_data_gas_consumed: l1_data_gas_consumed.into(),
+            l1_data_gas_price: l1_data_gas_price.into(),
+            l2_gas_consumed: 0.into(), // TODO: Fix when we have l2 gas price
+            l2_gas_price: 0.into(),    // TODO: Fix when we have l2 gas price
             overall_fee: overall_fee.into(),
             unit: fee_type.into(),
         }
@@ -153,6 +157,7 @@ pub struct DeployAccountTransactionTrace {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExecuteInvocation {
     FunctionInvocation(Option<FunctionInvocation>),
     RevertedReason(String),
@@ -201,6 +206,7 @@ pub struct FunctionInvocation {
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
     pub computation_resources: ComputationResources,
+    pub execution_resources: InnerCallExecutionResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -209,6 +215,12 @@ pub struct MsgToL1 {
     pub payload: Vec<Felt>,
     pub to_address: Felt,
     pub from_address: Felt,
+}
+
+#[derive(Debug, Clone)]
+pub struct InnerCallExecutionResources {
+    pub l1_gas: u128,
+    pub l2_gas: u128,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -249,6 +261,9 @@ pub struct ReplacedClass {
 pub struct ExecutionResources {
     pub computation_resources: ComputationResources,
     pub data_availability: DataAvailabilityResources,
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
+    pub l2_gas: u128,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -342,6 +357,11 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             messages,
             result,
             computation_resources: call_info.resources.into(),
+            execution_resources: InnerCallExecutionResources {
+                l1_gas: call_info.execution.gas_consumed.into(),
+                // TODO: Use proper l2_gas value for Starknet 0.13.3
+                l2_gas: 0,
+            },
         }
     }
 }

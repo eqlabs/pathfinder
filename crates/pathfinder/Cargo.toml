@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
+aggregate_bloom = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -26,14 +27,16 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
-futures = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }
+make-stream = { path = "../make-stream" }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
+pathfinder-block-hashes = { path = "../block-hashes" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }

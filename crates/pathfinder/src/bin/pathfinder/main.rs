@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -15,12 +16,12 @@ use pathfinder_lib::monitoring::{self};
 use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
 use pathfinder_rpc::context::WebsocketContext;
-use pathfinder_rpc::SyncState;
+use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::{NetworkConfig, StateTries};
 
@@ -50,7 +51,11 @@ async fn async_main() -> anyhow::Result<()> {
 
     let mut config = config::Config::parse();
 
-    setup_tracing(config.color, config.debug.pretty_log);
+    setup_tracing(
+        config.color,
+        config.debug.pretty_log,
+        config.log_output_json,
+    );
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
@@ -217,13 +222,18 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         custom_versioned_constants: config.custom_versioned_constants.take(),
     };
 
+    let notifications = Notifications::default();
+
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
+        pathfinder_context.l1_core_address,
         pathfinder_context.gateway.clone(),
         rx_pending.clone(),
+        notifications.clone(),
+        ethereum.client.clone(),
         rpc_config,
     );
 
@@ -264,6 +274,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             &config,
             tx_pending,
             rpc_server.get_topic_broadcasters().cloned(),
+            notifications,
             gossiper,
             gateway_public_key,
             p2p_client,
@@ -285,7 +296,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
-    tokio::spawn(update::poll_github_for_releases());
+    if !config.disable_version_update_check {
+        tokio::spawn(update::poll_github_for_releases());
+    }
 
     let mut term_signal = signal(SignalKind::terminate())?;
     let mut int_signal = signal(SignalKind::interrupt())?;
@@ -328,7 +341,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 }
 
 #[cfg(feature = "tokio-console")]
-fn setup_tracing(color: config::Color, pretty_log: bool) {
+fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
     use tracing_subscriber::prelude::*;
 
     // EnvFilter isn't really a Filter, so this we need this ugly workaround for
@@ -340,7 +353,12 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
     let filter =
         tracing_subscriber::filter::dynamic_filter_fn(move |m, c| env_filter.enabled(m, c.clone()));
 
-    if pretty_log {
+    if json_log {
+        tracing_subscriber::registry()
+            .with(fmt_layer.json().flatten_event(true).with_filter(filter))
+            .with(console_subscriber::spawn())
+            .init();
+    } else if pretty_log {
         tracing_subscriber::registry()
             .with(fmt_layer.pretty().with_filter(filter))
             .with(console_subscriber::spawn())
@@ -354,7 +372,7 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
 }
 
 #[cfg(not(feature = "tokio-console"))]
-fn setup_tracing(color: config::Color, pretty_log: bool) {
+fn setup_tracing(color: config::Color, pretty_log: bool, json_log: bool) {
     use time::macros::format_description;
 
     let time_fmt = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
@@ -366,7 +384,9 @@ fn setup_tracing(color: config::Color, pretty_log: bool) {
         .with_timer(time_fmt)
         .with_ansi(color.is_color_enabled());
 
-    if pretty_log {
+    if json_log {
+        subscriber.json().flatten_event(true).init();
+    } else if pretty_log {
         subscriber.pretty().init();
     } else {
         subscriber.compact().init();
@@ -441,15 +461,14 @@ async fn start_p2p(
             max_inbound_direct_peers: config.max_inbound_direct_connections,
             max_inbound_relayed_peers: config.max_inbound_relayed_connections,
             max_outbound_peers: config.max_outbound_connections,
-            low_watermark: config.low_watermark,
             ip_whitelist: config.ip_whitelist,
-            bootstrap: Default::default(),
+            bootstrap_period: Some(Duration::from_secs(2 * 60)),
             eviction_timeout: config.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
-            kad_names: config.kad_names,
+            kad_name: config.kad_name,
             stream_timeout: config.stream_timeout,
             max_concurrent_streams: config.max_concurrent_streams,
         },
@@ -497,6 +516,7 @@ fn start_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<p2p::client::peer_agnostic::Client>,
@@ -511,6 +531,7 @@ fn start_sync(
             config,
             tx_pending,
             websocket_txs,
+            notifications,
             gossiper,
             gateway_public_key,
         )
@@ -538,6 +559,7 @@ fn start_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<p2p::client::peer_agnostic::Client>,
@@ -551,6 +573,7 @@ fn start_sync(
         config,
         tx_pending,
         websocket_txs,
+        notifications,
         gossiper,
         gateway_public_key,
     )
@@ -565,6 +588,7 @@ fn start_feeder_gateway_sync(
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
+    notifications: Notifications,
     gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -581,12 +605,14 @@ fn start_feeder_gateway_sync(
         pending_data: tx_pending,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         websocket_txs,
+        notifications,
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
         gossiper,
         sequencer_public_key: gateway_public_key,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
+        fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
     tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
@@ -631,6 +657,11 @@ async fn spawn_monitoring(
 
     metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
 
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => metrics::gauge!("process_start_time_seconds", duration.as_secs() as f64),
+        Err(err) => tracing::error!("Failed to read system time: {:?}", err),
+    }
+
     let (_, handle) =
         monitoring::spawn_server(address, readiness, sync_state, prometheus_handle).await?;
     Ok(handle)
@@ -645,7 +676,18 @@ struct EthereumContext {
 impl EthereumContext {
     /// Configure an [EthereumContext]'s transport and read the chain ID using
     /// it.
-    async fn setup(url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
+    async fn setup(mut url: reqwest::Url, password: &Option<String>) -> anyhow::Result<Self> {
+        // Make sure the URL is a WS URL
+        if url.scheme().eq("http") {
+            warn!("The provided Ethereum URL is using HTTP, converting to WS");
+            url.set_scheme("ws")
+                .map_err(|_| anyhow::anyhow!("Failed to set Ethereum URL scheme to ws"))?;
+        } else if url.scheme().eq("https") {
+            warn!("The provided Ethereum URL is using HTTPS, converting to WSS");
+            url.set_scheme("wss")
+                .map_err(|_| anyhow::anyhow!("Failed to set Ethereum URL scheme to wss"))?;
+        }
+
         let client = if let Some(password) = password.as_ref() {
             EthereumClient::with_password(url, password).context("Creating Ethereum client")?
         } else {

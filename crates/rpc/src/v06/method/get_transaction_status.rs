@@ -9,6 +9,12 @@ pub struct GetTransactionStatusInput {
     transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionStatusInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 #[skip_serializing_none]
 pub enum GetTransactionStatusOutput {
@@ -128,7 +134,7 @@ pub async fn get_transaction_status(
     use starknet_gateway_client::GatewayApi;
     context
         .sequencer
-        .transaction(input.transaction_hash)
+        .transaction_status(input.transaction_hash)
         .await
         .context("Fetching transaction from gateway")
         .map_err(GetTransactionStatusError::Internal)
@@ -138,7 +144,9 @@ pub async fn get_transaction_status(
                 FinalityStatus as GatewayFinalityStatus,
             };
 
-            match (tx.finality_status, tx.execution_status) {
+            let execution_status = tx.execution_status.unwrap_or_default();
+
+            match (tx.finality_status, execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => {
                     Err(GetTransactionStatusError::TxnHashNotFound)
                 }

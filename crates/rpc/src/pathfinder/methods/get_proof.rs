@@ -3,17 +3,52 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
-use pathfinder_merkle_tree::{ContractsStorageTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::{
+    tree,
+    ClassCommitmentTree,
+    ContractsStorageTree,
+    StorageCommitmentTree,
+};
 use serde::{Deserialize, Serialize};
 use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetProofInput {
     pub block_id: BlockId,
     pub contract_address: ContractAddress,
     pub keys: Vec<StorageAddress>,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Eq)]
+pub struct GetClassProofInput {
+    pub block_id: BlockId,
+    pub class_hash: ClassHash,
+}
+
+impl crate::dto::DeserializeForVersion for GetProofInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                contract_address: ContractAddress(value.deserialize("contract_address")?),
+                keys: value
+                    .deserialize_array("keys", |value| Ok(StorageAddress(value.deserialize()?)))?,
+            })
+        })
+    }
+}
+
+impl crate::dto::DeserializeForVersion for GetClassProofInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                class_hash: ClassHash(value.deserialize("class_hash")?),
+            })
+        })
+    }
 }
 
 // FIXME: allow `generate_rpc_error_subset!` to work with enum struct variants.
@@ -29,6 +64,18 @@ pub enum GetProofError {
 impl From<anyhow::Error> for GetProofError {
     fn from(e: anyhow::Error) -> Self {
         Self::Internal(e)
+    }
+}
+
+impl From<tree::GetProofError> for GetProofError {
+    fn from(e: tree::GetProofError) -> Self {
+        match e {
+            tree::GetProofError::Internal(e) => Self::Internal(e),
+            tree::GetProofError::StorageNodeMissing(index) => {
+                tracing::warn!("Storage node missing: {}", index);
+                Self::ProofMissing
+            }
+        }
     }
 }
 
@@ -151,6 +198,18 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
+#[derive(Debug, Serialize)]
+#[skip_serializing_none]
+pub struct GetClassProofOutput {
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
+    /// Membership / Non-membership proof for the queried contract classes
+    class_proof: ProofNodes,
+}
+
 /// Returns all the necessary data to trustlessly verify storage slots for a
 /// particular contract.
 pub async fn get_proof(
@@ -202,12 +261,23 @@ pub async fn get_proof(
             other => Some(other),
         };
 
+        let storage_root_idx = tx
+            .storage_root_index(header.number)
+            .context("Querying storage root index")?
+            .ok_or(GetProofError::ProofMissing)?;
+
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
-        let contract_proof =
-            StorageCommitmentTree::get_proof(&tx, header.number, &input.contract_address)
-                .context("Creating contract proof")?
-                .ok_or(GetProofError::ProofMissing)?;
+        let contract_proof = StorageCommitmentTree::get_proof(
+            &tx,
+            header.number,
+            &input.contract_address,
+            storage_root_idx,
+        )?
+        .into_iter()
+        .map(|(node, _)| node)
+        .collect();
+
         let contract_proof = ProofNodes(contract_proof);
 
         let contract_state_hash = tx
@@ -238,24 +308,28 @@ pub async fn get_proof(
             .context("Querying contract's nonce")?
             .unwrap_or_default();
 
+        let root = tx
+            .contract_root_index(header.number, input.contract_address)
+            .context("Querying contract root index")?;
+
         let mut storage_proofs = Vec::new();
         for k in &input.keys {
-            let proof = ContractsStorageTree::get_proof(
-                &tx,
-                input.contract_address,
-                header.number,
-                k.view_bits(),
-            )
-            .context("Get proof from contract state tree")?
-            .ok_or_else(|| {
-                let e = anyhow!(
-                    "Storage proof missing for key {:?}, but should be present",
-                    k
-                );
-                tracing::warn!("{e}");
-                e
-            })?;
-            storage_proofs.push(ProofNodes(proof));
+            if let Some(root) = root {
+                let proof = ContractsStorageTree::get_proof(
+                    &tx,
+                    input.contract_address,
+                    header.number,
+                    k.view_bits(),
+                    root,
+                )?
+                .into_iter()
+                .map(|(node, _)| node)
+                .collect();
+
+                storage_proofs.push(ProofNodes(proof));
+            } else {
+                storage_proofs.push(ProofNodes(vec![]));
+            }
         }
 
         let contract_data = ContractData {
@@ -272,6 +346,69 @@ pub async fn get_proof(
             class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
+        })
+    });
+
+    jh.await.context("Database read panic or shutting down")?
+}
+
+/// Returns all the necessary data to trustlessly verify class changes for a
+/// particular contract.
+pub async fn get_proof_class(
+    context: RpcContext,
+    input: GetClassProofInput,
+) -> Result<GetClassProofOutput, GetProofError> {
+    let block_id = match input.block_id {
+        BlockId::Pending => {
+            return Err(GetProofError::Internal(anyhow!(
+                "'pending' is not currently supported by this method!"
+            )))
+        }
+        other => other.try_into().expect("Only pending cast should fail"),
+    };
+
+    let storage = context.storage.clone();
+    let span = tracing::Span::current();
+
+    let jh = tokio::task::spawn_blocking(move || {
+        let _g = span.enter();
+        let mut db = storage
+            .connection()
+            .context("Opening database connection")?;
+
+        let tx = db.transaction().context("Creating database transaction")?;
+
+        // Use internal error to indicate that the process of querying for a particular
+        // block failed, which is not the same as being sure that the block is
+        // not in the db.
+        let header = tx
+            .block_header(block_id)
+            .context("Fetching block header")?
+            .ok_or(GetProofError::BlockNotFound)?;
+
+        let class_commitment = match header.class_commitment {
+            ClassCommitment::ZERO => None,
+            other => Some(other),
+        };
+
+        let class_root_idx = tx
+            .class_root_index(header.number)
+            .context("Querying class root index")?
+            .ok_or(GetProofError::ProofMissing)?;
+
+        // Generate a proof for this class. If the class does not exist, this will
+        // be a "non membership" proof.
+        let class_proof =
+            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)?
+                .into_iter()
+                .map(|(node, _)| node)
+                .collect();
+
+        let class_proof = ProofNodes(class_proof);
+
+        Ok(GetClassProofOutput {
+            class_commitment,
+            class_proof,
         })
     });
 
@@ -331,6 +468,7 @@ mod tests {
         )
         .unwrap();
         tx.commit().unwrap();
+        drop(conn);
 
         let input = GetProofInput {
             block_id: BlockId::Latest,

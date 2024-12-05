@@ -4,15 +4,25 @@ use pathfinder_common::{BlockId, ClassHash};
 use crate::context::RpcContext;
 use crate::dto;
 use crate::dto::serialize::SerializeForVersion;
-use crate::v02::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: BlockId,
-    class_hash: ClassHash,
+    block_id: pathfinder_common::BlockId,
+    class_hash: pathfinder_common::ClassHash,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+                class_hash: ClassHash(value.deserialize("class_hash")?),
+            })
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -30,6 +40,7 @@ impl From<ContractClass> for Output {
     }
 }
 
+/// Get a contract class.
 pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = tokio::task::spawn_blocking(move || -> Result<Output, Error> {
@@ -108,9 +119,11 @@ mod tests {
     use super::*;
 
     mod parsing {
+        use dto::DeserializeForVersion;
         use serde_json::json;
 
         use super::*;
+        use crate::RpcVersion;
 
         #[test]
         fn positional_args() {
@@ -119,7 +132,8 @@ mod tests {
                 "0x12345"
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let input =
+                Input::deserialize(crate::dto::Value::new(positional, RpcVersion::V07)).unwrap();
             let expected = Input {
                 block_id: block_hash!("0xabcde").into(),
                 class_hash: class_hash!("0x12345"),
@@ -134,7 +148,7 @@ mod tests {
                 "class_hash": "0x12345"
             });
 
-            let input = serde_json::from_value::<Input>(named).unwrap();
+            let input = Input::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
             let expected = Input {
                 block_id: block_hash!("0xabcde").into(),
                 class_hash: class_hash!("0x12345"),

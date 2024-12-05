@@ -58,7 +58,7 @@ message Receipt {
 
   message L1Handler {
     Common               common   = 1;
-    starknet.common.Hash msg_hash = 2;
+    starknet.common.Hash256 msg_hash = 2;
   }
 
   message Declare {

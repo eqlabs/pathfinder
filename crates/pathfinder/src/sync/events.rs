@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use p2p::client::types::EventsForBlockByTransaction;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -22,7 +23,6 @@ use tokio_stream::wrappers::ReceiverStream;
 use super::error::SyncError;
 use super::storage_adapters;
 use crate::state::block_hash::calculate_event_commitment;
-use crate::sync::error::SyncError2;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
@@ -92,10 +92,11 @@ pub(super) async fn verify_commitment(
                 .iter()
                 .map(|(tx_hash, events)| (*tx_hash, events.as_slice()))
                 .collect::<Vec<_>>(),
-            header.starknet_version,
+            header.starknet_version.max(StarknetVersion::V_0_13_2),
         )
         .context("Calculating commitment")?;
         if computed != header.event_commitment {
+            tracing::debug!(%peer, %block_number, expected_commitment=%header.event_commitment, actual_commitment=%computed, "Event commitment mismatch");
             return Err(SyncError::EventCommitmentMismatch(peer));
         }
         Ok(events)
@@ -156,8 +157,9 @@ impl ProcessStage for VerifyCommitment {
 
     fn map(
         &mut self,
+        peer: &PeerId,
         (event_commitment, transactions, mut events, version): Self::Input,
-    ) -> Result<Self::Output, super::error::SyncError2> {
+    ) -> Result<Self::Output, super::error::SyncError> {
         let mut ordered_events = Vec::new();
         for tx_hash in &transactions {
             // Some transactions may not have events
@@ -166,11 +168,14 @@ impl ProcessStage for VerifyCommitment {
             }
         }
         if ordered_events.len() != events.len() {
-            return Err(SyncError2::EventsTransactionsMismatch);
+            tracing::debug!(%peer, expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
+            return Err(SyncError::EventsTransactionsMismatch(*peer));
         }
-        let actual = calculate_event_commitment(&ordered_events, version)?;
+        let actual =
+            calculate_event_commitment(&ordered_events, version.max(StarknetVersion::V_0_13_2))?;
         if actual != event_commitment {
-            return Err(SyncError2::EventCommitmentMismatch);
+            tracing::debug!(%peer, expected=%event_commitment, actual=%actual, "Event commitment mismatch");
+            return Err(SyncError::EventCommitmentMismatch(*peer));
         }
         Ok(events)
     }

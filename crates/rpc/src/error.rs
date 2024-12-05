@@ -44,15 +44,18 @@ pub enum ApplicationError {
     #[error("Too many keys provided in a filter")]
     TooManyKeysInFilter { limit: usize, requested: usize },
     #[error("Contract error")]
-    ContractError { revert_error: Option<String> },
+    ContractError {
+        revert_error: Option<String>,
+        revert_error_stack: pathfinder_executor::ErrorStack,
+    },
     #[error("Invalid contract class")]
     InvalidContractClass,
     #[error("Class already declared")]
     ClassAlreadyDeclared,
     #[error("Invalid transaction nonce")]
     InvalidTransactionNonce,
-    #[error("Max fee is smaller than the minimal transaction cost (validation plus fee transfer)")]
-    InsufficientMaxFee,
+    #[error("The transaction's resources don't cover validation or the minimal transaction fee")]
+    InsufficientResourcesForValidate,
     #[error("Account balance is smaller than the transaction's max_fee")]
     InsufficientAccountBalance,
     #[error("Account validation failed")]
@@ -83,6 +86,7 @@ pub enum ApplicationError {
     TransactionExecutionError {
         transaction_index: usize,
         error: String,
+        error_stack: pathfinder_executor::ErrorStack,
     },
     #[error("Transaction hash not found in websocket subscription")]
     SubscriptionTransactionHashNotFound {
@@ -91,8 +95,16 @@ pub enum ApplicationError {
     },
     #[error("Gateway is down")]
     SubscriptionGatewayDown { subscription_id: u32 },
+    #[error("The node doesn't support storage proofs for blocks that are too far in the past")]
+    StorageProofNotSupported,
     #[error("Proof is missing")]
     ProofMissing,
+    #[error("Invalid subscription id")]
+    InvalidSubscriptionID,
+    #[error("Too many addresses in filter sender_address filter")]
+    TooManyAddressesInFilter,
+    #[error("This method does not support being called on the pending block")]
+    CallOnPending,
     /// Internal errors are errors whose details we don't want to show to the
     /// end user. These are logged, and a simple "internal error" message is
     /// shown to the end user.
@@ -125,10 +137,11 @@ impl ApplicationError {
             ApplicationError::TooManyKeysInFilter { .. } => 34,
             ApplicationError::ContractError { .. } => 40,
             ApplicationError::TransactionExecutionError { .. } => 41,
+            ApplicationError::StorageProofNotSupported { .. } => 42,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
             ApplicationError::InvalidTransactionNonce => 52,
-            ApplicationError::InsufficientMaxFee => 53,
+            ApplicationError::InsufficientResourcesForValidate => 53,
             ApplicationError::InsufficientAccountBalance => 54,
             ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
             ApplicationError::CompilationFailed => 56,
@@ -144,6 +157,10 @@ impl ApplicationError {
             ApplicationError::ProofMissing => 10001,
             ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
             ApplicationError::SubscriptionGatewayDown { .. } => 10030,
+            // doc/rpc/starknet_ws_api.json
+            ApplicationError::InvalidSubscriptionID => 66,
+            ApplicationError::TooManyAddressesInFilter => 67,
+            ApplicationError::CallOnPending => 69,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -151,7 +168,20 @@ impl ApplicationError {
         }
     }
 
-    pub fn data(&self) -> Option<serde_json::Value> {
+    pub fn message(&self, version: RpcVersion) -> String {
+        match self {
+            ApplicationError::InsufficientResourcesForValidate => match version {
+                RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
+                                                      transaction cost (validation plus fee \
+                                                      transfer)"
+                    .to_string(),
+                _ => self.to_string(),
+            },
+            _ => self.to_string(),
+        }
+    }
+
+    pub fn data(&self, version: RpcVersion) -> Option<serde_json::Value> {
         // We purposefully don't use a catch-all branch to force us to update
         // here whenever a new variant is added. This will prevent adding a stateful
         // error variant but forgetting to forward its data.
@@ -170,7 +200,7 @@ impl ApplicationError {
             ApplicationError::InvalidContractClass => None,
             ApplicationError::ClassAlreadyDeclared => None,
             ApplicationError::InvalidTransactionNonce => None,
-            ApplicationError::InsufficientMaxFee => None,
+            ApplicationError::InsufficientResourcesForValidate => None,
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
             ApplicationError::CompilationFailed => None,
@@ -180,16 +210,29 @@ impl ApplicationError {
             ApplicationError::CompiledClassHashMismatch => None,
             ApplicationError::UnsupportedTxVersion => None,
             ApplicationError::UnsupportedContractClassVersion => None,
+            ApplicationError::InvalidSubscriptionID => None,
+            ApplicationError::TooManyAddressesInFilter => None,
+            ApplicationError::CallOnPending => None,
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
             })),
             ApplicationError::TransactionExecutionError {
                 transaction_index,
                 error,
-            } => Some(json!({
-                "transaction_index": transaction_index,
-                "execution_error": error,
-            })),
+                error_stack,
+            } => match version {
+                RpcVersion::V08 => {
+                    let error_stack = error_stack_frames_to_json(&error_stack.0);
+                    Some(json!({
+                        "transaction_index": transaction_index,
+                        "execution_error": error_stack,
+                    }))
+                }
+                _ => Some(json!({
+                    "transaction_index": transaction_index,
+                    "execution_error": error,
+                })),
+            },
             ApplicationError::Internal(_) => None,
             ApplicationError::Custom(cause) => {
                 let cause = cause.to_string();
@@ -204,9 +247,20 @@ impl ApplicationError {
             ApplicationError::NoTraceAvailable(error) => Some(json!({
                 "error": error,
             })),
-            ApplicationError::ContractError { revert_error } => Some(json!({
-                "revert_error": revert_error
-            })),
+            ApplicationError::ContractError {
+                revert_error,
+                revert_error_stack,
+            } => match version {
+                RpcVersion::V08 => {
+                    let revert_error_stack = error_stack_frames_to_json(&revert_error_stack.0);
+                    Some(json!({
+                        "revert_error": revert_error_stack
+                    }))
+                }
+                _ => Some(json!({
+                    "revert_error": revert_error
+                })),
+            },
             ApplicationError::TooManyKeysInFilter { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
@@ -216,6 +270,7 @@ impl ApplicationError {
                 "limit": limit,
                 "requested": requested,
             })),
+            ApplicationError::StorageProofNotSupported => None,
             ApplicationError::ProofMissing => None,
             ApplicationError::SubscriptionTransactionHashNotFound {
                 subscription_id,
@@ -230,6 +285,34 @@ impl ApplicationError {
             ApplicationError::ValidationFailureV06(error) => Some(json!(error)),
         }
     }
+}
+
+fn error_stack_frames_to_json(frames: &[pathfinder_executor::Frame]) -> serde_json::Value {
+    let last_string_frame_contents = frames
+        .iter()
+        .rev()
+        .filter_map(|frame| match frame {
+            pathfinder_executor::Frame::StringFrame(string) => Some(string),
+            _ => None,
+        })
+        .next()
+        .cloned()
+        .unwrap_or_else(|| "Unknown error, no string frame available.".to_string());
+
+    let call_frames = frames.iter().filter_map(|frame| match frame {
+        pathfinder_executor::Frame::CallFrame(call_frame) => Some(call_frame),
+        _ => None,
+    });
+    call_frames
+        .rev()
+        .fold(json!(last_string_frame_contents), |child, frame| {
+            json!({
+                "contract_address": frame.storage_address,
+                "class_hash": frame.class_hash,
+                "selector": frame.selector,
+                "error": child,
+            })
+        })
 }
 
 /// Generates an enum subset of [ApplicationError] along with boilerplate for
@@ -395,6 +478,8 @@ macro_rules! generate_rpc_error_subset {
 #[allow(dead_code, unused_imports)]
 pub(super) use generate_rpc_error_subset;
 
+use crate::RpcVersion;
+
 #[cfg(test)]
 mod tests {
     mod rpc_error_subset {
@@ -426,6 +511,63 @@ mod tests {
 
             assert_matches!(contract_not_found, ApplicationError::ContractNotFound);
             assert_matches!(no_blocks, ApplicationError::NoBlocks);
+        }
+    }
+
+    mod error_stack {
+        use pathfinder_common::{class_hash, contract_address, entry_point};
+        use pathfinder_executor::{CallFrame, Frame};
+        use serde_json::json;
+
+        use super::super::error_stack_frames_to_json;
+
+        #[test]
+        fn json_representation() {
+            let frames = vec![
+                // Top-level call
+                Frame::CallFrame(CallFrame {
+                    storage_address: contract_address!("0xdeadbeef"),
+                    class_hash: class_hash!("0xcaadd"),
+                    selector: Some(entry_point!("0xeeeee")),
+                }),
+                // An interim string representation of the in-contract call trace
+                Frame::StringFrame(
+                    "Error at pc=0:4273:\nCairo traceback (most recent call last):\nUnknown \
+                     location (pc=0:67)\nUnknown location (pc=0:1997)\nUnknown location \
+                     (pc=0:2727)\nUnknown location (pc=0:3582)\n"
+                        .to_string(),
+                ),
+                // Another call
+                Frame::CallFrame(CallFrame {
+                    storage_address: contract_address!("0x2222deadbeef"),
+                    class_hash: class_hash!("0x2222caadd"),
+                    selector: Some(entry_point!("0x2222eeeee")),
+                }),
+                // An interim string representation of the in-contract call trace
+                Frame::StringFrame(
+                    "Error at pc=0:4273:\nCairo traceback (most recent call last):\nUnknown \
+                     location (pc=0:67)\nUnknown location (pc=0:1997)\nUnknown location \
+                     (pc=0:2727)\nUnknown location (pc=0:3582)\n"
+                        .to_string(),
+                ),
+                // Final error
+                Frame::StringFrame("test".to_string()),
+            ];
+
+            assert_eq!(
+                error_stack_frames_to_json(&frames),
+                json!({
+                    "contract_address": "0xdeadbeef",
+                    "class_hash": "0xcaadd",
+                    "selector": "0xeeeee",
+                    "error": json!({
+                        "contract_address": "0x2222deadbeef",
+                        "class_hash": "0x2222caadd",
+                        "selector": "0x2222eeeee",
+                        "error": "test",
+                    }),
+                })
+            );
         }
     }
 }

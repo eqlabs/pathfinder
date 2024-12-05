@@ -11,13 +11,14 @@ mod pathfinder;
 mod pending;
 #[cfg(test)]
 mod test_setup;
-pub mod v02;
-pub mod v03;
+pub mod types;
 pub mod v06;
 pub mod v07;
+pub mod v08;
 
 use std::net::SocketAddr;
 use std::result::Result;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
@@ -26,6 +27,7 @@ use axum::response::IntoResponse;
 use context::RpcContext;
 pub use executor::compose_executor_transaction;
 use http_body::Body;
+pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
 pub use pending::PendingData;
 use tokio::sync::RwLock;
@@ -36,7 +38,7 @@ use tower_http::ServiceBuilderExt;
 use crate::jsonrpc::rpc_handler;
 use crate::jsonrpc::websocket::websocket_handler;
 pub use crate::jsonrpc::websocket::{BlockHeader, TopicBroadcasters};
-use crate::v02::types::syncing::Syncing;
+use crate::types::syncing::Syncing;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
 
@@ -45,6 +47,7 @@ pub enum RpcVersion {
     V06,
     #[default]
     V07,
+    V08,
     PathfinderV01,
 }
 
@@ -53,6 +56,7 @@ impl RpcVersion {
         match self {
             RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
+            RpcVersion::V08 => "v0.8",
             RpcVersion::PathfinderV01 => "v0.1",
         }
     }
@@ -162,11 +166,13 @@ impl RpcServer {
 
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
+        let v08_routes = v08::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
+            RpcVersion::V08 => v08_routes.clone(),
             RpcVersion::PathfinderV01 => {
                 anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
             }
@@ -181,6 +187,9 @@ impl RpcServer {
             .with_state(v06_routes.clone())
             .route("/rpc/v0_7", post(rpc_handler))
             .with_state(v07_routes.clone())
+            // TODO Uncomment once RPC 0.8 is ready.
+            .route("/rpc/v0_8", post(rpc_handler).get(rpc_handler))
+            .with_state(v08_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .route("/rpc/pathfinder/v0_1", post(rpc_handler))
             .with_state(pathfinder_routes.clone());
@@ -230,6 +239,16 @@ impl Default for SyncState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub(crate) struct SubscriptionId(pub u32);
+
+impl SubscriptionId {
+    pub fn next() -> Self {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
 #[cfg(test)]
 pub mod test_utils {
     use std::collections::HashMap;
@@ -245,7 +264,7 @@ pub mod test_utils {
         Receipt,
     };
     use pathfinder_common::transaction::*;
-    use pathfinder_merkle_tree::StorageCommitmentTree;
+    use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
     use pathfinder_storage::{BlockId, Storage, StorageBuilder};
     use starknet_gateway_types::reply::GasPrices;
 
@@ -310,6 +329,9 @@ pub mod test_utils {
         let sierra_class_definition =
             starknet_gateway_test_fixtures::class_definitions::CAIRO_0_11_SIERRA.to_vec();
 
+        let sierra_class = SierraHash(class2_hash.0);
+        let sierra_casm_hash = casm_hash_bytes!(b"non-existent");
+
         db_txn
             .insert_cairo_class(class0_hash, &class0_definition)
             .unwrap();
@@ -318,9 +340,9 @@ pub mod test_utils {
             .unwrap();
         db_txn
             .insert_sierra_class(
-                &SierraHash(class2_hash.0),
+                &sierra_class,
                 &sierra_class_definition,
-                &casm_hash_bytes!(b"non-existent"),
+                &sierra_casm_hash,
                 &[],
             )
             .unwrap();
@@ -331,7 +353,7 @@ pub mod test_utils {
         // Update block 0
         let update_results = update_contract_state(
             contract0_addr,
-            &contract0_update,
+            (&contract0_update).into(),
             Some(contract_nonce!("0x1")),
             Some(class0_hash),
             &db_txn,
@@ -356,10 +378,10 @@ pub mod test_utils {
             .insert_storage_root(BlockNumber::GENESIS, storage_root_idx)
             .unwrap();
         let header0 = BlockHeader::builder()
-            .with_number(BlockNumber::GENESIS)
-            .with_storage_commitment(storage_commitment0)
-            .with_class_commitment(class_commitment0)
-            .with_calculated_state_commitment()
+            .number(BlockNumber::GENESIS)
+            .storage_commitment(storage_commitment0)
+            .class_commitment(class_commitment0)
+            .calculated_state_commitment()
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -374,7 +396,7 @@ pub mod test_utils {
             .unwrap();
         let update_results = update_contract_state(
             contract1_addr,
-            &contract1_update1,
+            (&contract1_update1).into(),
             None,
             Some(class1_hash),
             &db_txn,
@@ -398,12 +420,12 @@ pub mod test_utils {
             .unwrap();
         let header1 = header0
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(1))
-            .with_storage_commitment(storage_commitment1)
-            .with_class_commitment(class_commitment1)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(1))
-            .with_sequencer_address(sequencer_address_bytes!(&[1u8]))
+            .timestamp(BlockTimestamp::new_or_panic(1))
+            .storage_commitment(storage_commitment1)
+            .class_commitment(class_commitment1)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(1))
+            .sequencer_address(sequencer_address_bytes!(&[1u8]))
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
         db_txn.insert_block_header(&header1).unwrap();
         db_txn
@@ -415,7 +437,7 @@ pub mod test_utils {
             StorageCommitmentTree::load(&db_txn, BlockNumber::GENESIS + 1).unwrap();
         let update_results = update_contract_state(
             contract1_addr,
-            &contract1_update2,
+            (&contract1_update2).into(),
             Some(contract_nonce!("0x10")),
             None,
             &db_txn,
@@ -431,9 +453,36 @@ pub mod test_utils {
             .set(contract1_addr, contract_state_hash)
             .unwrap();
 
+        let mut class_commitment_tree =
+            ClassCommitmentTree::load(&db_txn, BlockNumber::GENESIS + 2).unwrap();
+        let sierra_leaf_hash =
+            pathfinder_common::calculate_class_commitment_leaf_hash(sierra_casm_hash);
+
+        db_txn
+            .insert_class_commitment_leaf(
+                BlockNumber::GENESIS + 2,
+                &sierra_leaf_hash,
+                &sierra_casm_hash,
+            )
+            .unwrap();
+
+        class_commitment_tree
+            .set(sierra_class, sierra_leaf_hash)
+            .unwrap();
+
+        let (_, trie_update) = class_commitment_tree.commit().unwrap();
+
+        let class_root_idx = db_txn
+            .insert_class_trie(&trie_update, BlockNumber::GENESIS + 2)
+            .unwrap();
+
+        db_txn
+            .insert_class_root(BlockNumber::GENESIS + 2, class_root_idx)
+            .unwrap();
+
         let update_results = update_contract_state(
             contract2_addr,
-            &HashMap::new(),
+            (&HashMap::new()).into(),
             Some(contract_nonce!("0xfeed")),
             Some(class2_hash),
             &db_txn,
@@ -457,12 +506,12 @@ pub mod test_utils {
             .unwrap();
         let header2 = header1
             .child_builder()
-            .with_timestamp(BlockTimestamp::new_or_panic(2))
-            .with_storage_commitment(storage_commitment2)
-            .with_class_commitment(class_commitment2)
-            .with_calculated_state_commitment()
-            .with_eth_l1_gas_price(GasPrice::from(2))
-            .with_sequencer_address(sequencer_address_bytes!(&[2u8]))
+            .timestamp(BlockTimestamp::new_or_panic(2))
+            .storage_commitment(storage_commitment2)
+            .class_commitment(class_commitment2)
+            .calculated_state_commitment()
+            .eth_l1_gas_price(GasPrice::from(2))
+            .sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
 
         db_txn.insert_block_header(&header2).unwrap();
@@ -730,6 +779,10 @@ pub mod test_utils {
                 price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
                 price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
             },
+            l2_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"l2 gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk l2gas price").unwrap(),
+            },
             parent_hash: latest.hash,
             sequencer_address: sequencer_address_bytes!(b"pending sequencer address"),
             status: starknet_gateway_types::reply::Status::Pending,
@@ -778,7 +831,7 @@ mod tests {
 
     #[test]
     fn roundtrip_syncing() {
-        use crate::v02::types::syncing::{NumberedBlock, Status, Syncing};
+        use crate::types::syncing::{NumberedBlock, Status, Syncing};
 
         let examples = [
             (line!(), "false", Syncing::False(false)),
@@ -810,7 +863,7 @@ mod tests {
         // of health check. Test that we return success for such queries.
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
             .spawn()
             .await
             .unwrap();
@@ -841,34 +894,82 @@ mod tests {
         assert!(!status.is_success());
     }
 
+    enum Api {
+        HttpOnly,
+        WebsocketOnly,
+        Both,
+    }
+
+    impl Api {
+        fn has_websocket(&self) -> bool {
+            matches!(self, Self::WebsocketOnly | Self::Both)
+        }
+
+        fn has_http(&self) -> bool {
+            matches!(self, Self::HttpOnly | Self::Both)
+        }
+    }
+
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api  ("/", "v06/starknet_api_openrpc.json",       &[])]
-    #[case::root_trace("/", "v06/starknet_trace_api_openrpc.json", &[])]
-    #[case::root_write("/", "v06/starknet_write_api.json",         &[])]
+    #[case::root_api("/", "v06/starknet_api_openrpc.json",       &[], Api::HttpOnly)]
+    #[case::root_api_websocket("/ws", "v06/starknet_api_openrpc.json",       &[], Api::WebsocketOnly)]
+    #[case::root_trace("/", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::root_trace_websocket("/ws", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::root_write("/", "v06/starknet_write_api.json",         &[], Api::HttpOnly)]
+    #[case::root_write_websocket("/ws", "v06/starknet_write_api.json",         &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
+    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
+    #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
-    #[case::v0_7_api  ("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[])]
-    #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_7_write("/rpc/v0_7", "v07/starknet_write_api.json", &[])]
+    #[case::v0_8_api("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_8_executables("/rpc/v0_8", "v08/starknet_executables.json", &[], Api::Both)]
+    #[case::v0_8_trace("/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[], Api::Both)]
+    #[case::v0_8_websocket(
+        "/rpc/v0_8",
+        "v08/starknet_ws_api.json",
+        // "starknet_subscription*" methods are in fact notifications
+        &[
+            "starknet_subscriptionNewHeads",
+            "starknet_subscriptionPendingTransactions",
+            "starknet_subscriptionTransactionStatus",
+            "starknet_subscriptionEvents",
+            "starknet_subscriptionReorg"
+        ],
+        Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
+    #[case::v0_8_pathfinder("/rpc/v0_8", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::Both)]
 
-    #[case::v0_6_api  ("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[])]
-    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[])]
-    #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[])]
+    #[case::v0_7_api("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_7_api_websocket("/ws/rpc/v0_7", "v07/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_7_trace("/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_7_trace_websocket("/ws/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_7_write("/rpc/v0_7", "v07/starknet_write_api.json", &[], Api::HttpOnly)]
+    #[case::v0_7_write_websocket("/ws/rpc/v0_7", "v07/starknet_write_api.json", &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"])]
+    #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
+    #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
-    #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[])]
-    #[case::pathfinder("/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[])]
+    #[case::v0_6_api("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::HttpOnly)]
+    #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
+    #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+
+    #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
+    #[case::pathfinder("/ws/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[], Api::WebsocketOnly)]
 
     #[tokio::test]
     async fn rpc_routing(
         #[case] route: &'static str,
         #[case] specification: std::path::PathBuf,
         #[case] exclude: &[&'static str],
+        #[case] api: Api,
     ) {
         let specification = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
@@ -896,70 +997,135 @@ mod tests {
         methods.retain(|x| !exclude.contains(x));
 
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
-        let context = RpcContext::for_tests();
-        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V06)
+        let mut context = RpcContext::for_tests();
+        if api.has_websocket() {
+            let (_, rx_pending) = tokio::sync::watch::channel(Default::default());
+
+            context = context.with_websockets(context::WebsocketContext::new(
+                std::num::NonZeroUsize::new(10).unwrap(),
+                std::num::NonZeroUsize::new(10).unwrap(),
+                rx_pending,
+            ));
+        }
+        let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
             .spawn()
             .await
             .unwrap();
 
-        let url = format!("http://{addr}{route}");
-        let client = reqwest::Client::new();
-
         let method_not_found = json!(-32601);
 
-        let mut failures = Vec::new();
-        for method in methods {
-            let request = json!({
-                "jsonrpc": "2.0",
-                "method": method,
-                "id": 0,
-            });
+        if api.has_http() {
+            let url = format!("http://{addr}{route}");
+            let client = reqwest::Client::new();
+            let mut failures: Vec<&&str> = Vec::new();
 
-            let res: serde_json::Value = client
-                .post(url.clone())
-                .json(&request)
-                .send()
-                .await
-                .unwrap()
-                .json()
-                .await
-                .unwrap();
+            for method in &methods {
+                let request = json!({
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    "id": 0,
+                });
 
-            if res["error"]["code"] == method_not_found {
-                failures.push(method);
+                let res: serde_json::Value = client
+                    .post(url.clone())
+                    .json(&request)
+                    .send()
+                    .await
+                    .unwrap()
+                    .json()
+                    .await
+                    .unwrap();
+
+                if res["error"]["code"] == method_not_found {
+                    failures.push(method);
+                }
+            }
+
+            if !failures.is_empty() {
+                panic!("{failures:#?} were not found");
+            }
+
+            // Check that excluded methods are indeed not present.
+            failures.clear();
+            for excluded in exclude {
+                let request = json!({
+                    "jsonrpc": "2.0",
+                    "method": excluded,
+                    "id": 0,
+                });
+
+                let res: serde_json::Value = client
+                    .post(url.clone())
+                    .json(&request)
+                    .send()
+                    .await
+                    .unwrap()
+                    .json()
+                    .await
+                    .unwrap();
+
+                if res["error"]["code"] != method_not_found {
+                    failures.push(excluded);
+                }
+            }
+
+            if !failures.is_empty() {
+                panic!("{failures:#?} were marked as excluded but are actually present");
             }
         }
 
-        if !failures.is_empty() {
-            panic!("{failures:#?} were not found");
-        }
+        if api.has_websocket() {
+            use tokio_tungstenite::tungstenite::Message;
+            use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+            use futures::{SinkExt, StreamExt};
 
-        // Check that excluded methods are indeed not present.
-        failures.clear();
-        for excluded in exclude {
-            let request = json!({
-                "jsonrpc": "2.0",
-                "method": excluded,
-                "id": 0,
-            });
+            let request = format!("ws://{addr}{route}").into_client_request().unwrap();
+            let (mut stream, _) = tokio_tungstenite::connect_async(request).await.unwrap();
 
-            let res: serde_json::Value = client
-                .post(url.clone())
-                .json(&request)
-                .send()
-                .await
-                .unwrap()
-                .json()
-                .await
-                .unwrap();
+            let mut failures: Vec<&&str> = Vec::new();
+            for method in &methods {
+                let request = json!({
+                    "jsonrpc": "2.0",
+                    "method": method,
+                    "id": 0,
+                });
 
-            if res["error"]["code"] != method_not_found {
-                failures.push(excluded);
+                stream.send(Message::Text(request.to_string())).await.unwrap();
+                let res = stream.next().await.unwrap().unwrap();
+                let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
+
+                if res["error"]["code"] == method_not_found {
+                    failures.push(method);
+                }
+            }
+
+            if !failures.is_empty() {
+                panic!("{failures:#?} were not found");
+            }
+
+            // Check that excluded methods are indeed not present.
+            failures.clear();
+            for excluded in exclude {
+                let request = json!({
+                    "jsonrpc": "2.0",
+                    "method": excluded,
+                    "id": 0,
+                });
+
+                stream.send(Message::Text(request.to_string())).await.unwrap();
+                let res = stream.next().await.unwrap().unwrap();
+                let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
+
+                if res["error"]["code"] != method_not_found {
+                    failures.push(excluded);
+                }
+            }
+
+            if !failures.is_empty() {
+                panic!("{failures:#?} were marked as excluded but are actually present");
             }
         }
 
-        if !failures.is_empty() {
-            panic!("{failures:#?} were marked as excluded but are actually present");
-        }
+
     }
 }

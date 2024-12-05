@@ -23,7 +23,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
-use super::{Params, TransactionStatusUpdate};
+use super::{EmittedEvent, Params, TransactionStatusUpdate};
+use crate::dto::serialize::{self, SerializeForVersion};
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -34,8 +35,7 @@ use crate::jsonrpc::websocket::data::{
     SubscriptionItem,
 };
 use crate::jsonrpc::{RequestId, RpcError, RpcRequest, RpcRouter};
-use crate::method::get_events::types::EmittedEvent;
-use crate::{BlockHeader, PendingData};
+use crate::{BlockHeader, PendingData, RpcVersion};
 
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
@@ -90,6 +90,7 @@ async fn handle_socket(socket: WebSocket, router: RpcRouter) {
         ws_sender,
         response_receiver,
         websocket_context.socket_buffer_capacity,
+        router.version,
     ));
     tokio::spawn(read(ws_receiver, response_sender, router));
 }
@@ -98,10 +99,11 @@ async fn write(
     sender: SplitSink<WebSocket, Message>,
     mut response_receiver: mpsc::Receiver<ResponseEvent>,
     buffer_capacity: NonZeroUsize,
+    version: RpcVersion,
 ) {
     let mut sender = sender.buffer(buffer_capacity.get());
     while let Some(response) = response_receiver.recv().await {
-        if let ControlFlow::Break(()) = send_response(&mut sender, &response).await {
+        if let ControlFlow::Break(()) = send_response(&mut sender, &response, version).await {
             break;
         }
     }
@@ -110,8 +112,13 @@ async fn write(
 async fn send_response(
     sender: &mut Buffer<SplitSink<WebSocket, Message>, Message>,
     response: &ResponseEvent,
+    version: RpcVersion,
 ) -> ControlFlow<()> {
-    let message = match serde_json::to_string(&response) {
+    let message = match serde_json::to_string(
+        &response
+            .serialize(serialize::Serializer::new(version))
+            .unwrap(),
+    ) {
         Ok(x) => x,
         Err(e) => {
             tracing::warn!(error=%e, kind=response.kind(), "Encoding websocket message failed");
@@ -503,10 +510,13 @@ async fn transaction_status_subscription(
     let mut poll_interval = tokio::time::interval(Duration::from_millis(500));
     let mut num_consecutive_errors = 0;
     loop {
-        match gateway.transaction(transaction_hash).await {
+        match gateway.transaction_status(transaction_hash).await {
             Ok(tx_status) => {
                 num_consecutive_errors = 0;
-                let update = match (tx_status.finality_status, tx_status.execution_status) {
+
+                let execution_status = tx_status.execution_status.unwrap_or_default();
+
+                let update = match (tx_status.finality_status, execution_status) {
                     (_, ExecutionStatus::Rejected) => Some(TransactionStatusUpdate::Rejected),
                     (FinalityStatus::NotReceived, _) => {
                         // "NOT_RECEIVED" status is never sent to the client.
@@ -556,7 +566,7 @@ async fn transaction_status_subscription(
                         break;
                     }
                 }
-                if tx_status.execution_status == ExecutionStatus::Rejected
+                if execution_status == ExecutionStatus::Rejected
                     || tx_status.finality_status == FinalityStatus::AcceptedOnL1
                     || tx_status.finality_status == FinalityStatus::AcceptedOnL2
                 {
@@ -709,6 +719,7 @@ mod tests {
                     "EOF while parsing a value at line 1 column 0".to_owned(),
                 )),
                 id: RequestId::Null,
+                version: RpcVersion::V07,
             })
             .await;
 
@@ -732,7 +743,9 @@ mod tests {
 
         let expected_subscription_id = 0;
         client
-            .expect_response(&successful_response(&expected_subscription_id, req_id).unwrap())
+            .expect_response(
+                &successful_response(&expected_subscription_id, req_id, RpcVersion::V07).unwrap(),
+            )
             .await;
 
         // Do this a bunch of times to ensure the test reception timeout is long enough.
@@ -762,7 +775,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         // Now make sure we don't receive it. This is why testing the timeout was
@@ -792,6 +805,7 @@ mod tests {
             .expect_response(&RpcResponse {
                 output: Ok(json!("0x534e5f5345504f4c4941")),
                 id: RequestId::Number(1),
+                version: RpcVersion::V07,
             })
             .await;
 
@@ -815,7 +829,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -880,7 +894,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         let req_id = RequestId::Number(38);
@@ -898,7 +912,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&1, req_id).unwrap())
+            .expect_response(&successful_response(&1, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -931,7 +945,7 @@ mod tests {
             })
             .await;
         client
-            .expect_response(&successful_response(&true, req_id).unwrap())
+            .expect_response(&successful_response(&true, req_id, RpcVersion::V07).unwrap())
             .await;
 
         let req_id = RequestId::Number(39);
@@ -947,7 +961,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&2, req_id).unwrap())
+            .expect_response(&successful_response(&2, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client.l2_blocks.send(block.clone().into()).unwrap();
@@ -974,6 +988,8 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
+                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
+                                                   * gateway */
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1025,6 +1041,8 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
+                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
+                                                   * gateway */
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1077,6 +1095,8 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
+                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
+                                                   * gateway */
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1125,6 +1145,8 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
+                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
+                                                   * gateway */
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1162,7 +1184,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         client
@@ -1187,7 +1209,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1204,29 +1226,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::AcceptedOnL1,
+                        tx_status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()
@@ -1272,7 +1304,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1289,29 +1321,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::AcceptedOnL1,
+                        tx_status: Status::AcceptedOnL1,
                         finality_status: FinalityStatus::AcceptedOnL1,
-                        execution_status: ExecutionStatus::Reverted,
+                        execution_status: Some(ExecutionStatus::Reverted),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()
@@ -1357,7 +1399,7 @@ mod tests {
 
         #[async_trait::async_trait]
         impl GatewayApi for Mock {
-            async fn transaction(
+            async fn transaction_status(
                 &self,
                 transaction_hash: TransactionHash,
             ) -> Result<TransactionStatus, SequencerError> {
@@ -1374,29 +1416,39 @@ mod tests {
             Mock(Mutex::new(
                 [
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::NotReceived,
+                        tx_status: Status::NotReceived,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Received,
+                        tx_status: Status::Received,
                         finality_status: FinalityStatus::Received,
-                        execution_status: ExecutionStatus::Succeeded,
+                        execution_status: Some(ExecutionStatus::Succeeded),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                     TransactionStatus {
-                        status: Status::Rejected,
+                        tx_status: Status::Rejected,
                         finality_status: FinalityStatus::NotReceived,
-                        execution_status: ExecutionStatus::Rejected,
+                        execution_status: Some(ExecutionStatus::Rejected),
+                        tx_failure_reason: None,
+                        tx_revert_reason: None,
                     },
                 ]
                 .into_iter()
@@ -1455,7 +1507,7 @@ mod tests {
             .await;
 
         client
-            .expect_response(&successful_response(&0, req_id).unwrap())
+            .expect_response(&successful_response(&0, req_id, RpcVersion::V07).unwrap())
             .await;
 
         tokio::time::sleep(Duration::from_secs(15)).await;
@@ -1657,7 +1709,7 @@ mod tests {
 
         async fn expect_response<R>(&mut self, response: &R)
         where
-            R: Serialize,
+            R: SerializeForVersion,
         {
             let message = timeout(Duration::from_secs(2), self.receiver.next())
                 .await
@@ -1670,7 +1722,9 @@ mod tests {
 
             // Deserialize it to a generic value to avoid field ordering issues.
             let received: Value = serde_json::from_str(&raw_text).unwrap();
-            let expected = serde_json::to_value(response).unwrap();
+            let expected = response
+                .serialize(serialize::Serializer::new(RpcVersion::V07))
+                .unwrap();
             assert_eq!(received, expected);
         }
 

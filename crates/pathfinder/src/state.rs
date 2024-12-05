@@ -8,6 +8,6 @@ pub use sync::{
     sync,
     update_starknet_state,
     Gossiper,
-    StarknetStateUpdate,
     SyncContext,
+    RESET_DELAY_ON_FAILURE,
 };

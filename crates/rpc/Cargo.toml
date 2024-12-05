@@ -7,11 +7,15 @@ license = { workspace = true }
 rust-version = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+aggregate_bloom = []
+
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws", "macros"] }
 base64 = { workspace = true }
+dashmap = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
@@ -55,6 +59,7 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
+bitvec = { workspace = true }
 bytes = { workspace = true }
 flate2 = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }

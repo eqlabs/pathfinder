@@ -1,6 +1,8 @@
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::TransactionHash;
+use serde::de::Error;
 
+use super::{DeserializeForVersion, U128Hex, U64Hex};
 use crate::dto;
 use crate::dto::serialize;
 use crate::dto::serialize::{SerializeForVersion, Serializer};
@@ -78,7 +80,7 @@ impl SerializeForVersion for Transaction<'_> {
                 s.serialize_field("nonce", &dto::Felt(&tx.nonce.0))?;
                 s.serialize_field("class_hash", &dto::Felt(&tx.class_hash.0))?;
                 s.serialize_field("resource_bounds", &ResourceBounds(&tx.resource_bounds))?;
-                s.serialize_field("tip", &dto::NumAsHex::U64(tx.tip.0))?;
+                s.serialize_field("tip", &U64Hex(tx.tip.0))?;
                 s.serialize_iter(
                     "paymaster_data",
                     tx.paymaster_data.len(),
@@ -167,7 +169,7 @@ impl SerializeForVersion for Transaction<'_> {
                 )?;
                 s.serialize_field("class_hash", &dto::Felt(&tx.class_hash.0))?;
                 s.serialize_field("resource_bounds", &ResourceBounds(&tx.resource_bounds))?;
-                s.serialize_field("tip", &dto::NumAsHex::U64(tx.tip.0))?;
+                s.serialize_field("tip", &U64Hex(tx.tip.0))?;
                 s.serialize_iter(
                     "paymaster_data",
                     tx.paymaster_data.len(),
@@ -235,7 +237,7 @@ impl SerializeForVersion for Transaction<'_> {
                 )?;
                 s.serialize_field("nonce", &dto::Felt(&tx.nonce.0))?;
                 s.serialize_field("resource_bounds", &ResourceBounds(&tx.resource_bounds))?;
-                s.serialize_field("tip", &dto::NumAsHex::U64(tx.tip.0))?;
+                s.serialize_field("tip", &U64Hex(tx.tip.0))?;
                 s.serialize_iter(
                     "paymaster_data",
                     tx.paymaster_data.len(),
@@ -287,11 +289,8 @@ impl SerializeForVersion for ResourceBounds<'_> {
 impl SerializeForVersion for ResourceBound<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         let mut s = serializer.serialize_struct()?;
-        s.serialize_field("max_amount", &dto::NumAsHex::U64(self.0.max_amount.0))?;
-        s.serialize_field(
-            "max_price_per_unit",
-            &dto::NumAsHex::U128(self.0.max_price_per_unit.0),
-        )?;
+        s.serialize_field("max_amount", &U64Hex(self.0.max_amount.0))?;
+        s.serialize_field("max_price_per_unit", &U128Hex(self.0.max_price_per_unit.0))?;
         s.end()
     }
 }
@@ -306,5 +305,12 @@ impl SerializeForVersion for DataAvailabilityMode<'_> {
                 serializer.serialize_str("L2")
             }
         }
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::TransactionIndex {
+    fn deserialize(value: dto::Value) -> Result<Self, serde_json::Error> {
+        let idx = value.deserialize_serde()?;
+        Self::new(idx).ok_or_else(|| serde_json::Error::custom("Invalid transaction index"))
     }
 }

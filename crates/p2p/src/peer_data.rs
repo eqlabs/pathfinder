@@ -13,12 +13,6 @@ impl<T> PeerData<T> {
         Self { peer, data }
     }
 
-    pub fn from_result<E>(peer: PeerId, result: Result<T, E>) -> Result<PeerData<T>, PeerData<E>> {
-        result
-            .map(|x| Self::new(peer, x))
-            .map_err(|e| PeerData::<E>::new(peer, e))
-    }
-
     pub fn for_tests(data: T) -> Self {
         Self {
             peer: PeerId::random(),

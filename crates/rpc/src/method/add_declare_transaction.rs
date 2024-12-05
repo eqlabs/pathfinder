@@ -8,13 +8,13 @@ use starknet_gateway_types::request::add_transaction::{
 };
 
 use crate::context::RpcContext;
-use crate::v02::types::request::BroadcastedDeclareTransaction;
+use crate::types::request::BroadcastedDeclareTransaction;
 
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
     ClassAlreadyDeclared,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     CompilationFailed,
@@ -32,7 +32,9 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
         match value {
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,
             AddDeclareTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            AddDeclareTransactionError::InsufficientMaxFee => Self::InsufficientMaxFee,
+            AddDeclareTransactionError::InsufficientResourcesForValidate => {
+                Self::InsufficientResourcesForValidate
+            }
             AddDeclareTransactionError::InsufficientAccountBalance => {
                 Self::InsufficientAccountBalance
             }
@@ -100,7 +102,7 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeclareTransactionError::InsufficientMaxFee
+                AddDeclareTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeclareTransactionError::InvalidTransactionNonce
@@ -125,21 +127,44 @@ impl From<SequencerError> for AddDeclareTransactionError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(tag = "type")]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Transaction {
-    #[serde(rename = "DECLARE")]
     Declare(BroadcastedDeclareTransaction),
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+impl crate::dto::DeserializeForVersion for Transaction {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let tag: String = value.deserialize_serde("type")?;
+            if tag != "DECLARE" {
+                return Err(serde::de::Error::custom("Invalid transaction type"));
+            }
+            Ok(Self::Declare(BroadcastedDeclareTransaction::deserialize(
+                value,
+            )?))
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     declare_transaction: Transaction,
     // An undocumented parameter that we forward to the sequencer API
     // A deploy token is required to deploy contracts on Starknet mainnet only.
-    #[serde(default)]
     token: Option<String>,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            let declare_transaction = value.deserialize("declare_transaction")?;
+            let token = value.deserialize_optional_serde("token")?;
+            Ok(Self {
+                declare_transaction,
+                token,
+            })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -294,13 +319,13 @@ mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::{
+    use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
     };
-    use crate::v02::types::{
+    use crate::types::{
         CairoContractClass,
         ContractClass,
         DataAvailabilityMode,
@@ -356,7 +381,10 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+            use crate::dto::serialize::SerializeForVersion;
+            use crate::dto::{serialize, DeserializeForVersion};
+            use crate::types::request::BroadcastedDeclareTransactionV1;
+            use crate::RpcVersion;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -382,7 +410,8 @@ mod tests {
                     "contract_class": CONTRACT_CLASS.clone(),
                     "sender_address": "0x1"
                 }]);
-                let input = serde_json::from_value::<Input>(positional).unwrap();
+                let input = Input::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                    .unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -404,7 +433,8 @@ mod tests {
                     },
                     "token": "token"
                 });
-                let input = serde_json::from_value::<Input>(named).unwrap();
+                let input =
+                    Input::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),
@@ -431,7 +461,9 @@ mod tests {
                 let error = AddDeclareTransactionError::from(starknet_error);
                 let error = crate::error::ApplicationError::from(error);
                 let error = crate::jsonrpc::RpcError::from(error);
-                let error = serde_json::to_value(error).unwrap();
+                let error = error
+                    .serialize(serialize::Serializer::new(RpcVersion::V07))
+                    .unwrap();
 
                 let expected = json!({
                     "code": 63,
@@ -447,7 +479,9 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV2;
+            use crate::dto::DeserializeForVersion;
+            use crate::types::request::BroadcastedDeclareTransactionV2;
+            use crate::RpcVersion;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -476,7 +510,8 @@ mod tests {
                     "compiled_class_hash": "0x1"
                 }]);
 
-                let input = serde_json::from_value::<Input>(positional).unwrap();
+                let input = Input::deserialize(crate::dto::Value::new(positional, RpcVersion::V07))
+                    .unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: None,
@@ -500,7 +535,8 @@ mod tests {
                     "token": "token"
                 });
 
-                let input = serde_json::from_value::<Input>(named).unwrap();
+                let input =
+                    Input::deserialize(crate::dto::Value::new(named, RpcVersion::V07)).unwrap();
                 let expected = Input {
                     declare_transaction: test_declare_txn(),
                     token: Some("token".to_owned()),
@@ -707,6 +743,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],

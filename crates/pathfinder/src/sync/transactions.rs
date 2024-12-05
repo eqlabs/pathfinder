@@ -3,6 +3,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
 use p2p::client::types::TransactionData;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -18,7 +19,7 @@ use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
-use super::error::{SyncError, SyncError2};
+use super::error::SyncError;
 use super::storage_adapters;
 use super::stream::ProcessStage;
 use crate::state::block_hash::calculate_transaction_commitment;
@@ -29,6 +30,7 @@ pub struct UnverifiedTransactions {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(Transaction, Receipt)>,
     pub version: StarknetVersion,
+    pub block_number: BlockNumber,
 }
 
 pub(super) async fn next_missing(
@@ -75,35 +77,44 @@ pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = (TransactionData, StarknetVersion, TransactionCommitment);
+    type Input = (
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
-        let (transactions, version, expected_commitment) = input;
+        // TODO remove the placeholder
+        let peer = &PeerId::random();
+        let (transactions, block_number, version, expected_commitment) = input;
         let transactions = transactions
             .into_par_iter()
-            .map(|(tv, r)| {
-                let transaction_hash = tv.calculate_hash(self.0, false);
-                let transaction = Transaction {
-                    hash: transaction_hash,
-                    variant: tv,
-                };
-                let receipt = Receipt {
-                    actual_fee: r.actual_fee,
-                    execution_resources: r.execution_resources,
-                    l2_to_l1_messages: r.l2_to_l1_messages,
-                    execution_status: r.execution_status,
-                    transaction_hash,
-                    transaction_index: r.transaction_index,
-                };
-                (transaction, receipt)
+            .map(|(tx, r)| {
+                let computed_hash = tx.variant.calculate_hash(self.0, false);
+                if tx.hash != computed_hash {
+                    tracing::debug!(%peer, %block_number, expected_hash=%tx.hash, %computed_hash, "Transaction hash mismatch");
+                    Err(SyncError::BadTransactionHash(*peer))
+                } else {
+                    let receipt = Receipt {
+                        actual_fee: r.actual_fee,
+                        execution_resources: r.execution_resources,
+                        l2_to_l1_messages: r.l2_to_l1_messages,
+                        execution_status: r.execution_status,
+                        transaction_hash: computed_hash,
+                        transaction_index: r.transaction_index,
+                    };
+                    Ok((tx, receipt))
+                }
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
             version,
+            block_number,
         })
     }
 }
@@ -125,9 +136,13 @@ impl<T> FetchCommitmentFromDb<T> {
 impl<T> ProcessStage for FetchCommitmentFromDb<T> {
     const NAME: &'static str = "Transactions::FetchCommitmentFromDb";
     type Input = (T, BlockNumber);
-    type Output = (T, StarknetVersion, TransactionCommitment);
+    type Output = (T, BlockNumber, StarknetVersion, TransactionCommitment);
 
-    fn map(&mut self, (data, block_number): Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(
+        &mut self,
+        _: &PeerId,
+        (data, block_number): Self::Input,
+    ) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()
@@ -135,12 +150,14 @@ impl<T> ProcessStage for FetchCommitmentFromDb<T> {
         let version = db
             .block_version(block_number)
             .context("Fetching starknet version")?
-            .ok_or(SyncError2::StarknetVersionNotFound)?;
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Starknet version not found in db")?;
         let commitment = db
             .transaction_commitment(block_number)
             .context("Fetching transaction commitment")?
-            .ok_or(SyncError2::TransactionCommitmentNotFound)?;
-        Ok((data, version, commitment))
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Transaction commitment not found in db")?;
+        Ok((data, block_number, version, commitment))
     }
 }
 
@@ -151,16 +168,21 @@ impl ProcessStage for VerifyCommitment {
     type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,
             version,
+            block_number,
         } = transactions;
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
-        let actual = calculate_transaction_commitment(&txs, version)?;
+        // This computation can only fail in case of internal trie error which is always
+        // a fatal error
+        let actual = calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))
+            .context("Computing transaction commitment")?;
         if actual != expected_commitment {
-            return Err(SyncError2::TransactionCommitmentMismatch);
+            tracing::debug!(%peer, %block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
+            return Err(SyncError::TransactionCommitmentMismatch(*peer));
         }
         Ok(transactions)
     }
@@ -185,7 +207,7 @@ impl ProcessStage for Store {
     type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, _: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()

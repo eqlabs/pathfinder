@@ -9,6 +9,12 @@ pub struct GetTransactionReceiptInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionReceiptInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
 
 pub async fn get_transaction_receipt(
@@ -105,7 +111,7 @@ pub mod types {
     use serde_with::serde_as;
 
     use crate::felt::{RpcFelt, RpcFelt251};
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
     use crate::v06::types::PriceUnit;
 
     /// L2 transaction receipt as returned by the RPC API.

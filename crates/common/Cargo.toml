@@ -16,6 +16,7 @@ bitvec = { workspace = true }
 fake = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }
 num-bigint = { workspace = true }
+num-traits = "0.2"
 paste = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }

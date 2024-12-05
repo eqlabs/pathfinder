@@ -2,20 +2,21 @@ use futures::{Future, Stream};
 use libp2p::PeerId;
 use pathfinder_common::event::Event;
 use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::transaction::TransactionVariant;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockNumber, SignedBlockHeader, TransactionHash};
 
 use crate::client::types::{
     ClassDefinition,
     ClassDefinitionsError,
     EventsForBlockByTransaction,
-    IncorrectStateDiffCount,
+    EventsResponseStreamFailure,
     Receipt,
+    StateDiffsError,
     TransactionData,
 };
 use crate::PeerData;
 
-pub type StreamItem<T> = Result<PeerData<T>, PeerData<anyhow::Error>>;
+pub type StreamItem<T> = Result<PeerData<T>, anyhow::Error>;
 
 pub trait HeaderStream {
     fn header_stream(
@@ -81,7 +82,7 @@ pub trait BlockClient {
     ) -> impl Future<
         Output = Option<(
             PeerId,
-            impl Stream<Item = anyhow::Result<(TransactionVariant, Receipt)>> + Send,
+            impl Stream<Item = anyhow::Result<(Transaction, Receipt)>> + Send,
         )>,
     > + Send;
 
@@ -89,7 +90,7 @@ pub trait BlockClient {
         self,
         block: BlockNumber,
         state_diff_length: u64,
-    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, IncorrectStateDiffCount>> + Send;
+    ) -> impl Future<Output = Result<Option<(PeerId, StateUpdateData)>, StateDiffsError>> + Send;
 
     fn class_definitions_for_block(
         self,
@@ -100,5 +101,10 @@ pub trait BlockClient {
     fn events_for_block(
         self,
         block: BlockNumber,
-    ) -> impl Future<Output = Option<(PeerId, impl Stream<Item = (TransactionHash, Event)> + Send)>> + Send;
+    ) -> impl Future<
+        Output = Option<(
+            PeerId,
+            impl Stream<Item = Result<(TransactionHash, Event), EventsResponseStreamFailure>> + Send,
+        )>,
+    > + Send;
 }

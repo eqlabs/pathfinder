@@ -1,17 +1,17 @@
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::collections::{HashMap, VecDeque};
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
+use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
-use libp2p::gossipsub::{self, IdentTopic, MessageAuthenticity, MessageId};
+use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
+    CloseConnection,
     ConnectionClosed,
     ConnectionDenied,
     ConnectionId,
@@ -31,21 +31,29 @@ use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
 
+mod builder;
+
+pub use builder::Builder;
+
 use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer, PeerSet};
 use crate::secret::Secret;
 use crate::sync::codec;
 use crate::Config;
 
-pub fn kademlia_protocol_name(chain_id: ChainId) -> String {
-    format!("/starknet/kad/{}/1.0.0", chain_id.as_str())
+/// The default kademlia protocol name for a given Starknet chain.
+pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
+    StreamProtocol::try_from_owned(format!("/starknet/kad/{}/1.0.0", chain_id.as_str()))
+        .expect("Starts with /")
 }
+
+pub type BehaviourWithRelayTransport = (Behaviour, relay::client::Transport);
 
 pub struct Behaviour {
     cfg: Config,
     peers: PeerSet,
-    swarm: crate::Client,
     secret: Secret,
     inner: Inner,
+    pending_events: VecDeque<ToSwarm<<Self as NetworkBehaviour>::ToSwarm, THandlerInEvent<Self>>>,
 }
 
 #[derive(NetworkBehaviour)]
@@ -58,11 +66,11 @@ pub struct Inner {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     gossipsub: gossipsub::Behaviour,
-    headers_sync: p2p_stream::Behaviour<codec::Headers>,
-    classes_sync: p2p_stream::Behaviour<codec::Classes>,
-    state_diffs_sync: p2p_stream::Behaviour<codec::StateDiffs>,
-    transactions_sync: p2p_stream::Behaviour<codec::Transactions>,
-    events_sync: p2p_stream::Behaviour<codec::Events>,
+    header_sync: p2p_stream::Behaviour<codec::Headers>,
+    class_sync: p2p_stream::Behaviour<codec::Classes>,
+    state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
+    transaction_sync: p2p_stream::Behaviour<codec::Transactions>,
+    event_sync: p2p_stream::Behaviour<codec::Events>,
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -117,6 +125,7 @@ impl NetworkBehaviour for Behaviour {
         peer: PeerId,
         addr: &Multiaddr,
         role_override: Endpoint,
+        port_use: PortUse,
     ) -> Result<THandler<Self>, ConnectionDenied> {
         // Disconnect peers without an IP address.
         Self::get_ip(addr)?;
@@ -124,8 +133,13 @@ impl NetworkBehaviour for Behaviour {
         self.check_duplicate_connection(peer)?;
         self.prevent_evicted_peer_reconnections(peer)?;
 
-        self.inner
-            .handle_established_outbound_connection(connection_id, peer, addr, role_override)
+        self.inner.handle_established_outbound_connection(
+            connection_id,
+            peer,
+            addr,
+            role_override,
+            port_use,
+        )
     }
 
     fn on_swarm_event(&mut self, event: FromSwarm<'_>) {
@@ -161,11 +175,9 @@ impl NetworkBehaviour for Behaviour {
                             useful: true,
                         },
                     );
-                    let swarm = self.swarm.clone();
-                    tokio::spawn(async move {
-                        if let Err(err) = swarm.disconnect(peer_id).await {
-                            tracing::debug!(%peer_id, %err, "Failed to disconnect peer");
-                        }
+                    self.pending_events.push_back(ToSwarm::CloseConnection {
+                        peer_id,
+                        connection: CloseConnection::All,
                     });
                     return;
                 };
@@ -262,7 +274,10 @@ impl NetworkBehaviour for Behaviour {
         &mut self,
         cx: &mut task::Context<'_>,
     ) -> task::Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        self.inner.poll(cx)
+        match self.pending_events.pop_front() {
+            Some(event) => task::Poll::Ready(event),
+            None => self.inner.poll(cx),
+        }
     }
 
     fn handle_pending_inbound_connection(
@@ -432,98 +447,8 @@ impl NetworkBehaviour for Behaviour {
 }
 
 impl Behaviour {
-    pub fn new(
-        identity: &identity::Keypair,
-        chain_id: ChainId,
-        swarm: crate::Client,
-        cfg: Config,
-    ) -> (Self, relay::client::Transport) {
-        const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
-
-        let mut kademlia_config = kad::Config::default();
-        kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
-        kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
-        kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        // This makes sure that the DHT we're implementing is incompatible with the
-        // "default" IPFS DHT from libp2p.
-        if cfg.kad_names.is_empty() {
-            kademlia_config.set_protocol_names(vec![StreamProtocol::try_from_owned(
-                kademlia_protocol_name(chain_id),
-            )
-            .unwrap()]);
-        } else {
-            kademlia_config.set_protocol_names(
-                cfg.kad_names
-                    .iter()
-                    .cloned()
-                    .map(StreamProtocol::try_from_owned)
-                    .collect::<Result<Vec<_>, _>>()
-                    .expect("valid protocol names"),
-            );
-        }
-
-        let peer_id = identity.public().to_peer_id();
-
-        let kademlia =
-            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
-
-        // FIXME: find out how we should derive message id
-        let message_id_fn = |message: &gossipsub::Message| {
-            let mut s = DefaultHasher::new();
-            message.data.hash(&mut s);
-            MessageId::from(s.finish().to_string())
-        };
-        let gossipsub_config = libp2p::gossipsub::ConfigBuilder::default()
-            .message_id_fn(message_id_fn)
-            .build()
-            .expect("valid gossipsub config");
-
-        let gossipsub = gossipsub::Behaviour::new(
-            MessageAuthenticity::Signed(identity.clone()),
-            gossipsub_config,
-        )
-        .expect("valid gossipsub params");
-
-        let p2p_stream_cfg = p2p_stream::Config::default()
-            .with_request_timeout(cfg.stream_timeout)
-            .with_max_concurrent_streams(cfg.max_concurrent_streams);
-        let headers_sync = request_response_behavior::<codec::Headers>(p2p_stream_cfg);
-        let classes_sync = request_response_behavior::<codec::Classes>(p2p_stream_cfg);
-        let state_diffs_sync = request_response_behavior::<codec::StateDiffs>(p2p_stream_cfg);
-        let transactions_sync = request_response_behavior::<codec::Transactions>(p2p_stream_cfg);
-        let events_sync = request_response_behavior::<codec::Events>(p2p_stream_cfg);
-
-        let (relay_transport, relay) = relay::client::new(peer_id);
-
-        (
-            Self {
-                peers: PeerSet::new(cfg.eviction_timeout),
-                cfg,
-                swarm,
-                secret: Secret::new(identity),
-                inner: Inner {
-                    relay,
-                    autonat: autonat::Behaviour::new(peer_id, Default::default()),
-                    dcutr: dcutr::Behaviour::new(peer_id),
-                    ping: ping::Behaviour::new(ping::Config::new()),
-                    identify: identify::Behaviour::new(
-                        identify::Config::new(
-                            identify::PROTOCOL_NAME.to_string(),
-                            identity.public(),
-                        )
-                        .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
-                    ),
-                    kademlia,
-                    gossipsub,
-                    headers_sync,
-                    classes_sync,
-                    state_diffs_sync,
-                    transactions_sync,
-                    events_sync,
-                },
-            },
-            relay_transport,
-        )
+    pub fn builder(identity: identity::Keypair, chain_id: ChainId, cfg: Config) -> Builder {
+        Builder::new(identity, chain_id, cfg)
     }
 
     pub fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
@@ -615,13 +540,9 @@ impl Behaviour {
             };
             peer.evicted = true;
         });
-        tokio::spawn({
-            let swarm = self.swarm.clone();
-            async move {
-                if let Err(e) = swarm.disconnect(peer_id).await {
-                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
-                }
-            }
+        self.pending_events.push_back(ToSwarm::CloseConnection {
+            peer_id,
+            connection: CloseConnection::All,
         });
 
         Ok(())
@@ -744,13 +665,9 @@ impl Behaviour {
             };
             peer.evicted = true;
         });
-        tokio::spawn({
-            let swarm = self.swarm.clone();
-            async move {
-                if let Err(e) = swarm.disconnect(peer_id).await {
-                    tracing::debug!(%peer_id, %e, "Failed to disconnect evicted peer");
-                }
-            }
+        self.pending_events.push_back(ToSwarm::CloseConnection {
+            peer_id,
+            connection: CloseConnection::All,
         });
 
         Ok(())
@@ -759,7 +676,9 @@ impl Behaviour {
     /// Prevent evicted peers from reconnecting too quickly.
     fn prevent_evicted_peer_reconnections(&self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         let timeout = if cfg!(test) {
-            Duration::from_secs(1)
+            // Needs to be large enough to mitigate the possibility of failing explicit
+            // dials in tests, due to implicit dials triggered by automatic bootstrapping.
+            Duration::from_secs(5)
         } else {
             Duration::from_secs(30)
         };
@@ -802,6 +721,10 @@ impl Behaviour {
         });
     }
 
+    pub fn kademlia(&self) -> &kad::Behaviour<MemoryStore> {
+        &self.inner.kademlia
+    }
+
     pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<MemoryStore> {
         &mut self.inner.kademlia
     }
@@ -811,23 +734,23 @@ impl Behaviour {
     }
 
     pub fn headers_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Headers> {
-        &mut self.inner.headers_sync
+        &mut self.inner.header_sync
     }
 
     pub fn classes_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Classes> {
-        &mut self.inner.classes_sync
+        &mut self.inner.class_sync
     }
 
     pub fn state_diffs_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::StateDiffs> {
-        &mut self.inner.state_diffs_sync
+        &mut self.inner.state_diff_sync
     }
 
     pub fn transactions_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Transactions> {
-        &mut self.inner.transactions_sync
+        &mut self.inner.transaction_sync
     }
 
     pub fn events_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Events> {
-        &mut self.inner.events_sync
+        &mut self.inner.event_sync
     }
 
     pub fn peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
@@ -854,14 +777,6 @@ impl Behaviour {
             .iter()
             .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && peer.is_relayed())
     }
-}
-
-fn request_response_behavior<C>(cfg: p2p_stream::Config) -> p2p_stream::Behaviour<C>
-where
-    C: Default + p2p_stream::Codec + Clone + Send,
-    C::Protocol: Default,
-{
-    p2p_stream::Behaviour::new(std::iter::once(C::Protocol::default()), cfg)
 }
 
 #[allow(dead_code)]

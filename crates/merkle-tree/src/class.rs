@@ -10,14 +10,14 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
-use crate::tree::MerkleTree;
+use crate::tree::{GetProofError, MerkleTree, TrieNodeWithHash};
 
 /// A [Patricia Merkle tree](MerkleTree) used to calculate commitments to
 /// Starknet's Sierra classes.
 ///
 /// It maps a class's [SierraHash] to its [ClassCommitmentLeafHash]
 ///
-/// Tree data is persisted by a sqlite table 'tree_class'.
+/// Tree data is persisted by a sqlite table 'trie_class'.
 pub struct ClassCommitmentTree<'tx> {
     tree: MerkleTree<PoseidonHash, 251>,
     storage: ClassStorage<'tx>,
@@ -70,6 +70,45 @@ impl<'tx> ClassCommitmentTree<'tx> {
 
         let commitment = ClassCommitment(update.root_commitment);
         Ok((commitment, update))
+    }
+
+    /// Generates a proof for a given `class_hash`.
+    /// See [`MerkleTree::get_proof`].
+    pub fn get_proof(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        class_hash: ClassHash,
+        root: u64,
+    ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        MerkleTree::<PoseidonHash, 251>::get_proof(root, &storage, class_hash.0.view_bits())
+    }
+
+    /// Generates proofs for the given list of `class_hashes`. See
+    /// [`MerkleTree::get_proofs`]. Returns  [(`TrieNode`,
+    /// `Felt`)](TrieNodeWithHash) pairs where the second element is the
+    /// node hash.
+    pub fn get_proofs(
+        tx: &'tx Transaction<'tx>,
+        block: BlockNumber,
+        class_hashes: &[ClassHash],
+        root: u64,
+    ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
+        let storage = ClassStorage {
+            tx,
+            block: Some(block),
+        };
+
+        let keys = class_hashes
+            .iter()
+            .map(|hash| hash.0.view_bits())
+            .collect::<Vec<_>>();
+
+        MerkleTree::<PoseidonHash, 251>::get_proofs(root, &storage, &keys)
     }
 }
 

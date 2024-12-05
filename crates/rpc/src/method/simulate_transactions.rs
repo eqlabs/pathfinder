@@ -118,6 +118,7 @@ pub enum SimulateTransactionError {
     TransactionExecutionError {
         transaction_index: usize,
         error: String,
+        error_stack: pathfinder_executor::ErrorStack,
     },
 }
 
@@ -136,9 +137,11 @@ impl From<SimulateTransactionError> for crate::error::ApplicationError {
             SimulateTransactionError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
         }
     }
@@ -151,9 +154,11 @@ impl From<TransactionExecutionError> for SimulateTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack,
             },
             Internal(e) => Self::Internal(e),
             Custom(e) => Self::Custom(e),
@@ -193,13 +198,13 @@ pub(crate) mod tests {
     use super::simulate_transactions;
     use crate::context::RpcContext;
     use crate::dto::serialize::{SerializeForVersion, Serializer};
-    use crate::v02::types::request::{
+    use crate::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
         BroadcastedTransaction,
     };
-    use crate::v02::types::ContractClass;
-    use crate::v03::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    use crate::types::ContractClass;
     use crate::v06::method::call::FunctionCall;
     use crate::v06::method::simulate_transactions::tests::setup_storage_with_starknet_version;
     use crate::v06::method::simulate_transactions::{dto, SimulateTransactionInput};
@@ -368,7 +373,7 @@ pub(crate) mod tests {
         const OVERALL_FEE: u64 = 15720;
         use dto::*;
 
-        use crate::v03::method::get_state_update::types::{StorageDiff, StorageEntry};
+        use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
 
         pretty_assertions_sorted::assert_eq!(
             result.serialize(Serializer {
@@ -510,7 +515,7 @@ pub(crate) mod tests {
 
             use super::dto::*;
             use super::*;
-            use crate::v03::method::get_state_update::types::{
+            use crate::method::get_state_update::types::{
                 DeclaredSierraClass,
                 StorageDiff,
                 StorageEntry,
