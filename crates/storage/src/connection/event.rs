@@ -709,7 +709,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn matching_contraints() {
+        fn matching_constraints() {
             let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
 
             let mut filter = BloomFilter::new();
