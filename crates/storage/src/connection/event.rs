@@ -532,10 +532,7 @@ impl AggregateBloom {
                 self.blocks_for_keys(&indexed_keys)
             })
             .reduce(|blocks, blocks_for_key| {
-                blocks
-                    .intersection(&blocks_for_key)
-                    .cloned()
-                    .collect()
+                blocks.intersection(&blocks_for_key).cloned().collect()
             })
             .unwrap_or_default()
     }
