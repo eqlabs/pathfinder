@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  test-all-features:
     runs-on: ubuntu-latest
     env:
       CARGO_TERM_COLOR: always
@@ -41,17 +41,54 @@ jobs:
           cargo clean
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
-      - name: Compile unit tests
+      - name: Compile unit tests with all features enabled
         run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
-      - name: Run unit tests
+      - name: Run unit tests with all features enabled
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
-      - name: Store timings
+      - name: Store timings with all features enabled
         uses: actions/upload-artifact@v4
         with:
-          name: timings
+          name: timings-all-features
           path: target/cargo-timings/
           if-no-files-found: warn
 
+  test-default-features:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: "3072"
+          temp-reserve-mb: "3072"
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rui314/setup-mold@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@nextest
+      - name: Clear cache
+        if: github.event_name =='schedule'
+        run: |
+          cargo clean
+          rm -rf ~/.cargo/registry
+          rm -rf ~/.cargo/git
+      - name: Compile unit tests with default features
+        run: cargo nextest run --all-targets --workspace --locked --no-run --timings
+      - name: Run unit tests with default features
+        run: timeout 10m cargo nextest run --no-fail-fast --all-targets --workspace --locked
+      - name: Store timings with default features
+        uses: actions/upload-artifact@v4
+        with:
+          name: timings-default-features
+          path: target/cargo-timings/
+          if-no-files-found: warn
+  
   clippy:
     runs-on: ubuntu-latest
     steps:

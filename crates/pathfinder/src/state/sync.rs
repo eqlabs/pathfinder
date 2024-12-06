@@ -1080,10 +1080,9 @@ async fn l2_reorg(
             head -= 1;
         }
 
-        #[cfg(feature = "aggregate_bloom")]
         transaction
             .reconstruct_running_event_filter()
-            .context("Reconstructing running aggregate bloom")?;
+            .context("Reconstructing running event filter after purge")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;

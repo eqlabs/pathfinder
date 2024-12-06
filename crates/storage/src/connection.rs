@@ -1,6 +1,4 @@
-use std::sync::Arc;
-#[cfg(feature = "aggregate_bloom")]
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 mod block;
 mod class;
@@ -13,11 +11,10 @@ mod state_update;
 pub(crate) mod transaction;
 mod trie;
 
-#[cfg(feature = "aggregate_bloom")]
 use event::RunningEventFilter;
 pub use event::{
     EmittedEvent,
-    EventFilter,
+    EventConstraints,
     EventFilterError,
     PageOfEvents,
     PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT,
@@ -35,8 +32,6 @@ type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionMana
 
 pub struct Connection {
     connection: PooledConnection,
-    bloom_filter_cache: Arc<crate::bloom::Cache>,
-    #[cfg(feature = "aggregate_bloom")]
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
@@ -44,14 +39,11 @@ pub struct Connection {
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
-        bloom_filter_cache: Arc<crate::bloom::Cache>,
-        #[cfg(feature = "aggregate_bloom")] running_event_filter: Arc<Mutex<RunningEventFilter>>,
+        running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
     ) -> Self {
         Self {
             connection,
-            bloom_filter_cache,
-            #[cfg(feature = "aggregate_bloom")]
             running_event_filter,
             trie_prune_mode,
         }
@@ -61,8 +53,6 @@ impl Connection {
         let tx = self.connection.transaction()?;
         Ok(Transaction {
             transaction: tx,
-            bloom_filter_cache: self.bloom_filter_cache.clone(),
-            #[cfg(feature = "aggregate_bloom")]
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
@@ -75,8 +65,6 @@ impl Connection {
         let tx = self.connection.transaction_with_behavior(behavior)?;
         Ok(Transaction {
             transaction: tx,
-            bloom_filter_cache: self.bloom_filter_cache.clone(),
-            #[cfg(feature = "aggregate_bloom")]
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
@@ -85,8 +73,6 @@ impl Connection {
 
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
-    bloom_filter_cache: Arc<crate::bloom::Cache>,
-    #[cfg(feature = "aggregate_bloom")]
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
