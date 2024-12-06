@@ -85,7 +85,7 @@ jobs:
       - name: Store timings with default features
         uses: actions/upload-artifact@v4
         with:
-          name: timings-all-features
+          name: timings-default-features
           path: target/cargo-timings/
           if-no-files-found: warn
   
