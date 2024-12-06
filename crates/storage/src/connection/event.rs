@@ -499,21 +499,28 @@ impl Transaction<'_> {
 impl AggregateBloom {
     /// Returns the block numbers that match the given constraints.
     pub fn check(&self, constraints: &EventConstraints) -> BTreeSet<BlockNumber> {
-        if constraints.contract_address.is_none()
-            && (constraints.keys.iter().flatten().count() == 0)
-        {
-            // No constraints, return filter's entire block range.
-            return (self.from_block.get()..=self.to_block.get())
-                .map(BlockNumber::new_or_panic)
-                .collect();
+        let addr_blocks = self.check_address(constraints.contract_address);
+        let keys_blocks = self.check_keys(&constraints.keys);
+
+        addr_blocks.intersection(&keys_blocks).cloned().collect()
+    }
+
+    fn check_address(&self, address: Option<ContractAddress>) -> BTreeSet<BlockNumber> {
+        match address {
+            Some(addr) => self.blocks_for_keys(&[addr.0]),
+            None => self.all_blocks(),
+        }
+    }
+
+    fn check_keys(&self, keys: &[Vec<EventKey>]) -> BTreeSet<BlockNumber> {
+        if keys.is_empty() {
+            return self.all_blocks();
         }
 
-        let mut blocks: BTreeSet<_> = constraints
-            .keys
-            .iter()
+        keys.iter()
             .enumerate()
-            .flat_map(|(idx, keys)| {
-                let keys: Vec<_> = keys
+            .map(|(idx, key_group)| {
+                let indexed_keys: Vec<_> = key_group
                     .iter()
                     .map(|key| {
                         let mut key_with_idx = key.0;
@@ -522,15 +529,15 @@ impl AggregateBloom {
                     })
                     .collect();
 
-                self.blocks_for_keys(&keys)
+                self.blocks_for_keys(&indexed_keys)
             })
-            .collect();
-
-        if let Some(contract_address) = constraints.contract_address {
-            blocks.extend(self.blocks_for_keys(&[contract_address.0]));
-        }
-
-        blocks
+            .reduce(|intersection, blocks_for_key| {
+                intersection
+                    .intersection(&blocks_for_key)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -698,6 +705,130 @@ mod tests {
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
     static MAX_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(3).unwrap());
+
+    mod event_bloom {
+        use pretty_assertions_sorted::assert_eq;
+
+        use super::*;
+
+        #[test]
+        fn matching_contraints() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+            filter.set_address(&contract_address!("0x1234"));
+
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_address: Some(contract_address!("0x1234")),
+                keys: vec![vec![event_key!("0xdeadbeef")]],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(
+                aggregate.check(&constraints),
+                BTreeSet::from_iter(vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1])
+            );
+        }
+
+        #[test]
+        fn correct_key_wrong_address() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+            filter.set_address(&contract_address!("0x1234"));
+
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_address: Some(contract_address!("0x4321")),
+                keys: vec![vec![event_key!("0xdeadbeef")]],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+        }
+
+        #[test]
+        fn correct_address_wrong_key() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+            filter.set_address(&contract_address!("0x1234"));
+
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_address: Some(contract_address!("0x1234")),
+                keys: vec![vec![event_key!("0xfeebdaed"), event_key!("0x4321")]],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+        }
+
+        #[test]
+        fn wrong_and_correct_key() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_address(&contract_address!("0x1234"));
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![
+                    // Key present in both blocks as the first key.
+                    vec![event_key!("0xdeadbeef")],
+                    // Key that does not exist in any block.
+                    vec![event_key!("0xbeefdead")],
+                ],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+        }
+
+        #[test]
+        fn no_constraints() {
+            let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
+
+            let mut filter = BloomFilter::new();
+            filter.set_keys(&[event_key!("0xdeadbeef")]);
+            filter.set_address(&contract_address!("0x1234"));
+
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
+            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            let constraints = EventConstraints {
+                from_block: None,
+                to_block: None,
+                contract_address: None,
+                keys: vec![],
+                page_size: 1024,
+                offset: 0,
+            };
+
+            assert_eq!(aggregate.check(&constraints), aggregate.all_blocks());
+        }
+    }
 
     #[test_log::test(test)]
     fn get_events_with_fully_specified_filter() {

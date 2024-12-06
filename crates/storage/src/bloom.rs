@@ -60,6 +60,8 @@
 //! specific set of keys without having to load and check each individual bloom
 //! filter.
 
+use std::collections::BTreeSet;
+
 use bloomfilter::Bloom;
 use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
@@ -165,8 +167,12 @@ impl AggregateBloom {
 
     /// Returns a set of [block numbers](BlockNumber) for which the given keys
     /// are present in the aggregate.
-    pub fn blocks_for_keys(&self, keys: &[Felt]) -> Vec<BlockNumber> {
-        let mut block_matches = vec![];
+    pub fn blocks_for_keys(&self, keys: &[Felt]) -> BTreeSet<BlockNumber> {
+        if keys.is_empty() {
+            return self.all_blocks();
+        }
+
+        let mut block_matches = BTreeSet::new();
 
         for k in keys {
             let mut row_to_check = vec![u8::MAX; Self::BLOCK_RANGE_BYTES as usize];
@@ -186,13 +192,19 @@ impl AggregateBloom {
                 for i in 0..8 {
                     if byte & (1 << i) != 0 {
                         let match_number = self.from_block + col_idx as u64 * 8 + i as u64;
-                        block_matches.push(match_number);
+                        block_matches.insert(match_number);
                     }
                 }
             }
         }
 
         block_matches
+    }
+
+    pub(super) fn all_blocks(&self) -> BTreeSet<BlockNumber> {
+        (self.from_block.get()..=self.to_block.get())
+            .map(BlockNumber::new_or_panic)
+            .collect()
     }
 
     fn bitmap_at(&self, row: usize, col: usize) -> u8 {
@@ -315,7 +327,8 @@ mod tests {
         aggregate_bloom_filter.add_bloom(&bloom, from_block);
 
         let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        assert_eq!(block_matches, vec![from_block]);
+        let expected = BTreeSet::from_iter(vec![from_block]);
+        assert_eq!(block_matches, expected);
     }
 
     #[test]
@@ -330,7 +343,8 @@ mod tests {
         aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
 
         let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        assert_eq!(block_matches, vec![from_block, from_block + 1]);
+        let expected = BTreeSet::from_iter(vec![from_block, from_block + 1]);
+        assert_eq!(block_matches, expected);
     }
 
     #[test]
@@ -346,7 +360,7 @@ mod tests {
         aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
 
         let block_matches_empty = aggregate_bloom_filter.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-        assert_eq!(block_matches_empty, Vec::<BlockNumber>::new());
+        assert_eq!(block_matches_empty, BTreeSet::new());
     }
 
     #[test]
@@ -369,12 +383,11 @@ mod tests {
         decompressed.add_bloom(&bloom, from_block + 2);
 
         let block_matches = decompressed.blocks_for_keys(&[KEY]);
+        let expected = BTreeSet::from_iter(vec![from_block, from_block + 1, from_block + 2]);
+        assert_eq!(block_matches, expected,);
+
         let block_matches_empty = decompressed.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-        assert_eq!(
-            block_matches,
-            vec![from_block, from_block + 1, from_block + 2]
-        );
-        assert_eq!(block_matches_empty, Vec::<BlockNumber>::new());
+        assert_eq!(block_matches_empty, BTreeSet::new());
     }
 
     #[test]
