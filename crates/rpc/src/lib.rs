@@ -12,7 +12,7 @@ mod pending;
 #[cfg(test)]
 mod test_setup;
 pub mod types;
-pub mod v06;
+//pub mod v06;
 pub mod v07;
 pub mod v08;
 
@@ -164,8 +164,8 @@ impl RpcServer {
             }
         }
 
-        let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
+        let v06_routes = v07_routes.clone(); // v06::register_routes().build(self.context.clone());
         let v08_routes = v08::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
