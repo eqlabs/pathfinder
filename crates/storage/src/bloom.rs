@@ -60,21 +60,9 @@
 //! specific set of keys without having to load and check each individual bloom
 //! filter.
 
-use std::collections::BTreeSet;
-use std::sync::{Mutex, MutexGuard};
-
 use bloomfilter::Bloom;
-use cached::{Cached, SizedCache};
-use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
+use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
-
-use crate::{EventFilter, ReorgCounter};
-
-// We're using the upper 4 bits of the 32 byte representation of a felt
-// to store the index of the key in the values set in the Bloom filter.
-// This allows for the maximum of 16 keys per event to be stored in the
-// filter.
-pub const EVENT_KEY_FILTER_LIMIT: usize = 16;
 
 pub const BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
 
@@ -177,40 +165,7 @@ impl AggregateBloom {
 
     /// Returns a set of [block numbers](BlockNumber) for which the given keys
     /// are present in the aggregate.
-    pub fn blocks_for_filter(&self, filter: &EventFilter) -> BTreeSet<BlockNumber> {
-        // Empty filters are considered present in all blocks.
-        if filter.contract_address.is_none() && (filter.keys.iter().flatten().count() == 0) {
-            return (self.from_block.get()..=self.to_block.get())
-                .map(BlockNumber::new_or_panic)
-                .collect();
-        }
-
-        let mut blocks: BTreeSet<_> = filter
-            .keys
-            .iter()
-            .enumerate()
-            .flat_map(|(idx, keys)| {
-                let keys: Vec<_> = keys
-                    .iter()
-                    .map(|key| {
-                        let mut key_with_idx = key.0;
-                        key_with_idx.as_mut_be_bytes()[0] |= (idx as u8) << 4;
-                        key_with_idx
-                    })
-                    .collect();
-
-                self.blocks_for_keys(&keys)
-            })
-            .collect();
-
-        if let Some(contract_address) = filter.contract_address {
-            blocks.extend(self.blocks_for_keys(&[contract_address.0]));
-        }
-
-        blocks
-    }
-
-    fn blocks_for_keys(&self, keys: &[Felt]) -> Vec<BlockNumber> {
+    pub fn blocks_for_keys(&self, keys: &[Felt]) -> Vec<BlockNumber> {
         let mut block_matches = vec![];
 
         for k in keys {
@@ -313,53 +268,8 @@ impl BloomFilter {
         self.0.bitmap()
     }
 
-    fn set(&mut self, key: &Felt) {
+    pub fn set(&mut self, key: &Felt) {
         self.0.set(key);
-    }
-
-    pub fn set_address(&mut self, address: &ContractAddress) {
-        self.set(&address.0);
-    }
-
-    pub fn set_keys(&mut self, keys: &[EventKey]) {
-        for (i, key) in keys.iter().take(EVENT_KEY_FILTER_LIMIT).enumerate() {
-            let mut key = key.0;
-            key.as_mut_be_bytes()[0] |= (i as u8) << 4;
-            self.set(&key);
-        }
-    }
-
-    fn check(&self, key: &Felt) -> bool {
-        self.0.check(key)
-    }
-
-    fn check_address(&self, address: &ContractAddress) -> bool {
-        self.check(&address.0)
-    }
-
-    fn check_keys(&self, keys: &[Vec<EventKey>]) -> bool {
-        keys.iter().enumerate().all(|(idx, keys)| {
-            if keys.is_empty() {
-                return true;
-            };
-
-            keys.iter().any(|key| {
-                let mut key = key.0;
-                key.as_mut_be_bytes()[0] |= (idx as u8) << 4;
-                tracing::trace!(%idx, %key, "Checking key in filter");
-                self.check(&key)
-            })
-        })
-    }
-
-    pub fn check_filter(&self, filter: &crate::EventFilter) -> bool {
-        if let Some(contract_address) = filter.contract_address {
-            if !self.check_address(&contract_address) {
-                return false;
-            }
-        }
-
-        self.check_keys(&filter.keys)
     }
 
     // Workaround to get the indices of the keys in the filter.
@@ -381,34 +291,6 @@ impl BloomFilter {
     }
 }
 
-type CacheKey = (crate::ReorgCounter, BlockNumber);
-pub(crate) struct Cache(Mutex<SizedCache<CacheKey, BloomFilter>>);
-
-impl Cache {
-    pub fn with_size(size: usize) -> Self {
-        Self(Mutex::new(SizedCache::with_size(size)))
-    }
-
-    fn locked_cache(&self) -> MutexGuard<'_, SizedCache<CacheKey, BloomFilter>> {
-        self.0.lock().unwrap()
-    }
-
-    pub fn get(
-        &self,
-        reorg_counter: ReorgCounter,
-        block_number: BlockNumber,
-    ) -> Option<BloomFilter> {
-        self.locked_cache()
-            .cache_get(&(reorg_counter, block_number))
-            .cloned()
-    }
-
-    pub fn set(&self, reorg_counter: ReorgCounter, block_number: BlockNumber, bloom: BloomFilter) {
-        self.locked_cache()
-            .cache_set((reorg_counter, block_number), bloom);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use pathfinder_common::felt;
@@ -422,26 +304,6 @@ mod tests {
         felt!("0x0218b538681900fad5a0b2ffe1d6781c0c3f14df5d32071ace0bdc9d46cb69ec");
 
     #[test]
-    fn set_and_check() {
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
-        assert!(bloom.check(&KEY));
-        assert!(!bloom.check(&KEY_NOT_IN_FILTER));
-    }
-
-    #[test]
-    fn serialize_roundtrip() {
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
-
-        let bytes = bloom.to_compressed_bytes();
-        let bloom = BloomFilter::from_compressed_bytes(&bytes);
-        assert!(bloom.check(&KEY));
-        assert!(!bloom.check(&KEY_NOT_IN_FILTER));
-    }
-
-    #[test]
-    #[cfg(feature = "aggregate_bloom")]
     fn add_bloom_and_check_single_block_found() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -454,21 +316,9 @@ mod tests {
 
         let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
         assert_eq!(block_matches, vec![from_block]);
-
-        let filter = EventFilter {
-            keys: vec![vec![EventKey(KEY)]],
-            contract_address: None,
-            ..Default::default()
-        };
-        let block_matches: Vec<_> = aggregate_bloom_filter
-            .blocks_for_filter(&filter)
-            .into_iter()
-            .collect();
-        assert_eq!(block_matches, vec![from_block]);
     }
 
     #[test]
-    #[cfg(feature = "aggregate_bloom")]
     fn add_blooms_and_check_multiple_blocks_found() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -481,21 +331,9 @@ mod tests {
 
         let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
         assert_eq!(block_matches, vec![from_block, from_block + 1]);
-
-        let filter = EventFilter {
-            keys: vec![vec![EventKey(KEY)]],
-            contract_address: None,
-            ..Default::default()
-        };
-        let block_matches: Vec<_> = aggregate_bloom_filter
-            .blocks_for_filter(&filter)
-            .into_iter()
-            .collect();
-        assert_eq!(block_matches, vec![from_block, from_block + 1]);
     }
 
     #[test]
-    #[cfg(feature = "aggregate_bloom")]
     fn key_not_in_filter_returns_empty_vec() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -512,7 +350,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "aggregate_bloom")]
     fn serialize_aggregate_roundtrip() {
         let from_block = BlockNumber::new_or_panic(0);
         let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
@@ -541,7 +378,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "aggregate_bloom")]
     #[should_panic]
     fn invalid_insert_pos() {
         let from_block = BlockNumber::new_or_panic(0);

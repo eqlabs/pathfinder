@@ -275,24 +275,14 @@ This should only be enabled for debugging purposes as it adds substantial proces
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-uncached-bloom-filters-to-load",
-        long_help = "The number of Bloom filters to load for events when querying for events. \
-                     This limit is used to prevent queries from taking too long.",
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
-        default_value = "100000"
-    )]
-    get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
-
-    #[cfg(feature = "aggregate_bloom")]
-    #[arg(
-        long = "rpc.get-events-max-bloom-filters-to-load",
-        long_help = format!("The number of Bloom filters to load for events when querying for events. \
+        long = "rpc.get-events-max-event-filters-to-load",
+        long_help = format!("The number of aggregate Bloom filters to load for events when querying for events. \
                     Each filter covers a {} block range. \
                     This limit is used to prevent queries from taking too long.", pathfinder_storage::BLOCK_RANGE_LEN),
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOOM_FILTERS_TO_LOAD",
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_EVENT_FILTERS_TO_LOAD",
         default_value = "3"
     )]
-    get_events_max_bloom_filters_to_load: std::num::NonZeroUsize,
+    get_events_max_event_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
         long = "storage.state-tries",
@@ -724,9 +714,7 @@ pub struct Config {
     pub gateway_timeout: Duration,
     pub event_bloom_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    #[cfg(feature = "aggregate_bloom")]
-    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_event_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
@@ -1016,10 +1004,7 @@ impl Config {
             gateway_api_key: cli.gateway_api_key,
             event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_uncached_bloom_filters_to_load: cli
-                .get_events_max_uncached_bloom_filters_to_load,
-            #[cfg(feature = "aggregate_bloom")]
-            get_events_max_bloom_filters_to_load: cli.get_events_max_bloom_filters_to_load,
+            get_events_max_event_filters_to_load: cli.get_events_max_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,

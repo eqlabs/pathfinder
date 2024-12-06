@@ -19,9 +19,7 @@ use tokio::sync::watch as tokio_watch;
 pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    #[cfg(feature = "aggregate_bloom")]
-    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_event_filters_to_load: NonZeroUsize,
     pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
@@ -122,9 +120,7 @@ impl RpcContext {
         let config = RpcConfig {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
-            get_events_max_uncached_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
-            #[cfg(feature = "aggregate_bloom")]
-            get_events_max_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            get_events_max_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
             custom_versioned_constants: None,
         };
 

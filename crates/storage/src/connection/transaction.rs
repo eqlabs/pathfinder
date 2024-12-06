@@ -99,11 +99,14 @@ impl Transaction<'_> {
         transactions: &[(StarknetTransaction, Receipt)],
         events: Option<&[Vec<Event>]>,
     ) -> anyhow::Result<()> {
-        if transactions.is_empty() && events.map_or(true, |x| x.is_empty()) {
-            // Advance the running event bloom filter even if there's nothing to add since
-            // it requires that no blocks are skipped.
-            #[cfg(feature = "aggregate_bloom")]
-            self.upsert_block_events_aggregate(block_number, std::iter::empty())?;
+        if transactions.is_empty() {
+            if let Some(events) = events {
+                // Advance the running event bloom filter even if there's nothing to add since
+                // it requires that no blocks are skipped.
+                self.upsert_block_event_filters(block_number, events.iter().flatten())
+                    .context("Inserting events into Bloom filter")?;
+            };
+
             return Ok(());
         }
 
@@ -170,16 +173,9 @@ impl Transaction<'_> {
             ])
             .context("Inserting transaction data")?;
 
-        #[cfg(feature = "aggregate_bloom")]
-        {
-            let events = events.unwrap_or_default().iter().flatten();
-            self.upsert_block_events_aggregate(block_number, events)
-                .context("Inserting events into Bloom filter aggregate")?;
-        }
-
         if let Some(events) = events {
             let events = events.iter().flatten();
-            self.upsert_block_events(block_number, events)
+            self.upsert_block_event_filters(block_number, events)
                 .context("Inserting events into Bloom filter")?;
         }
 
@@ -221,13 +217,8 @@ impl Transaction<'_> {
         ])
         .context("Updating events")?;
 
-        #[cfg(feature = "aggregate_bloom")]
-        {
-            let events = events.iter().flatten();
-            self.upsert_block_events_aggregate(block_number, events)
-                .context("Inserting events into Bloom filter aggregate")?;
-        }
-        self.upsert_block_events(block_number, events.iter().flatten())
+        let events = events.iter().flatten();
+        self.upsert_block_event_filters(block_number, events)
             .context("Inserting events into Bloom filter")?;
 
         Ok(())

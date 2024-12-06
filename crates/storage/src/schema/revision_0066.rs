@@ -6,11 +6,11 @@ use crate::params::params;
 
 #[allow(dead_code)]
 pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
-    tracing::info!("Creating starknet_events_filters_aggregate table and migrating filters");
+    tracing::info!("Creating event_filters table and migrating filters");
 
     tx.execute(
         r"
-        CREATE TABLE starknet_events_filters_aggregate (
+        CREATE TABLE event_filters (
             from_block  INTEGER NOT NULL,
             to_block    INTEGER NOT NULL,
             bitmap      BLOB NOT NULL,
@@ -19,12 +19,11 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         ",
         params![],
     )
-    .context("Creating starknet_events_filters_aggregate table")?;
+    .context("Creating event_filters table")?;
 
     migrate_individual_filters(tx)?;
 
-    // TODO:
-    // Delete old filters table
+    tx.execute("DROP TABLE starknet_events_filters", params![])?;
 
     Ok(())
 }
@@ -32,7 +31,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 /// Migrate individual bloom filters to the new aggregate table. We only need to
 /// migrate all of the [BLOCK_RANGE_LEN](AggregateBloom::BLOCK_RANGE_LEN) sized
 /// chunks. The remainder will be reconstructed by the
-/// [StorageManager](crate::StorageManager) as the running aggregate.
+/// [StorageManager](crate::StorageManager) as the
+/// [RunningEventFilter](crate::connection::event::RunningEventFilter).
 fn migrate_individual_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut select_old_bloom_stmt =
         tx.prepare("SELECT bloom FROM starknet_events_filters ORDER BY block_number")?;
@@ -51,7 +51,7 @@ fn migrate_individual_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<
 
     let mut insert_aggregate_stmt = tx.prepare(
         r"
-        INSERT INTO starknet_events_filters_aggregate
+        INSERT INTO event_filters
         (from_block, to_block, bitmap)
         VALUES (?, ?, ?)
         ",
