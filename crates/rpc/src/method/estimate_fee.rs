@@ -352,7 +352,7 @@ mod tests {
 
         // declare test class
         let declare_transaction = declare_transaction(account_contract_address);
-        // deploy with unversal deployer contract
+        // deploy with universal deployer contract
         let deploy_transaction =
             deploy_transaction(account_contract_address, universal_deployer_address);
         // invoke deployed contract
@@ -447,7 +447,7 @@ mod tests {
 
         // declare test class
         let declare_transaction = declare_transaction(account_contract_address);
-        // deploy with unversal deployer contract
+        // deploy with universal deployer contract
         let deploy_transaction =
             deploy_transaction(account_contract_address, universal_deployer_address);
         // invoke deployed contract
@@ -542,7 +542,7 @@ mod tests {
 
         // declare test class
         let declare_transaction = declare_transaction(account_contract_address);
-        // deploy with unversal deployer contract
+        // deploy with universal deployer contract
         let deploy_transaction =
             deploy_transaction(account_contract_address, universal_deployer_address);
         // invoke deployed contract
@@ -637,7 +637,7 @@ mod tests {
 
         // declare test class
         let declare_transaction = declare_transaction(account_contract_address);
-        // deploy with unversal deployer contract
+        // deploy with universal deployer contract
         let deploy_transaction =
             deploy_transaction(account_contract_address, universal_deployer_address);
         // invoke deployed contract
