@@ -149,7 +149,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// This necessitates recursively calculating the hash of, and
     /// in turn persisting, any changed child nodes. This is necessary
-    /// as the parent node's hash relies on its childrens hashes.
+    /// as the parent node's hash relies on its children hashes.
     ///
     /// In effect, the entire subtree gets persisted.
     fn commit_subtree(

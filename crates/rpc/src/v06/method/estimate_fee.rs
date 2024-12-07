@@ -368,7 +368,7 @@ pub(crate) mod tests {
                     compiled_class_hash: casm_hash,
                 }),
             );
-            // deploy with unversal deployer contract
+            // deploy with universal deployer contract
             let deploy_transaction = BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
                     nonce: transaction_nonce!("0x1"),
