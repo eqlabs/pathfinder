@@ -668,8 +668,8 @@ async fn rollback_to_anchor(
         }
 
         transaction
-            .reconstruct_running_event_filter()
-            .context("Reconstructing running event filter after purge")?;
+            .reset()
+            .context("Resetting local DB state after reorg")?;
 
         Ok(())
     })
