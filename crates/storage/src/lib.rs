@@ -6,6 +6,7 @@
 mod prelude;
 
 mod bloom;
+use bloom::AggregateBloomCache;
 pub use bloom::BLOCK_RANGE_LEN;
 mod connection;
 pub mod fake;
@@ -91,6 +92,7 @@ struct Inner {
     /// Uses [`Arc`] to allow _shallow_ [Storage] cloning
     database_path: Arc<PathBuf>,
     pool: Pool<SqliteConnectionManager>,
+    event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
@@ -98,6 +100,7 @@ struct Inner {
 pub struct StorageManager {
     database_path: PathBuf,
     journal_mode: JournalMode,
+    event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
@@ -129,6 +132,7 @@ impl StorageManager {
         Ok(Storage(Inner {
             database_path: Arc::new(self.database_path.clone()),
             pool,
+            event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         }))
@@ -149,7 +153,7 @@ impl StorageManager {
 pub struct StorageBuilder {
     database_path: PathBuf,
     journal_mode: JournalMode,
-    bloom_filter_cache_size: usize,
+    event_filter_cache_size: usize,
     trie_prune_mode: Option<TriePruneMode>,
 }
 
@@ -158,7 +162,7 @@ impl StorageBuilder {
         Self {
             database_path,
             journal_mode: JournalMode::WAL,
-            bloom_filter_cache_size: 16,
+            event_filter_cache_size: 16,
             trie_prune_mode: None,
         }
     }
@@ -168,8 +172,8 @@ impl StorageBuilder {
         self
     }
 
-    pub fn bloom_filter_cache_size(mut self, bloom_filter_cache_size: usize) -> Self {
-        self.bloom_filter_cache_size = bloom_filter_cache_size;
+    pub fn event_filter_cache_size(mut self, event_filter_cache_size: usize) -> Self {
+        self.event_filter_cache_size = event_filter_cache_size;
         self
     }
 
@@ -309,9 +313,8 @@ impl StorageBuilder {
             tracing::info!("Merkle trie pruning disabled");
         }
 
-        let running_event_filter =
-            event::reconstruct_running_event_filter(&connection.transaction()?)
-                .context("Reconstructing running event filter")?;
+        let running_event_filter = event::rebuild_running_event_filter(&connection.transaction()?)
+            .context("Rebuilding running event filter")?;
 
         connection
             .close()
@@ -321,6 +324,9 @@ impl StorageBuilder {
         Ok(StorageManager {
             database_path: self.database_path,
             journal_mode: self.journal_mode,
+            event_filter_cache: Arc::new(AggregateBloomCache::with_size(
+                self.event_filter_cache_size,
+            )),
             running_event_filter: Arc::new(Mutex::new(running_event_filter)),
             trie_prune_mode,
         })
@@ -392,6 +398,7 @@ impl Storage {
         let conn = self.0.pool.get()?;
         Ok(Connection::new(
             conn,
+            self.0.event_filter_cache.clone(),
             self.0.running_event_filter.clone(),
             self.0.trie_prune_mode,
         ))
@@ -445,6 +452,10 @@ fn setup_connection(
             connection.pragma_update(None, "synchronous", "normal")?;
         }
     };
+
+    // Register the rarray module on the connection.
+    // See: https://docs.rs/rusqlite/0.29.0/rusqlite/vtab/array/index.html
+    rusqlite::vtab::array::load_module(connection)?;
 
     Ok(())
 }
@@ -666,7 +677,7 @@ mod tests {
     }
 
     #[test]
-    fn running_event_filter_reconstructed_after_shutdown() {
+    fn running_event_filter_rebuilt_after_shutdown() {
         use std::num::NonZeroUsize;
         use std::sync::LazyLock;
 
