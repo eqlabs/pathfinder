@@ -2,8 +2,8 @@ use pathfinder_common::prelude::*;
 use pathfinder_serde::H256AsNoLeadingZerosHexStr;
 use serde::Serialize;
 
+use crate::types::receipt as v06;
 use crate::types::reply::BlockStatus;
-use crate::v06::method::get_transaction_receipt::types as v06;
 use crate::PendingData;
 
 #[derive(Serialize)]
@@ -68,7 +68,7 @@ impl BlockBodyWithReceipts {
 #[derive(Serialize)]
 // Inner type of block with receipts
 struct TransactionWithReceipt {
-    transaction: crate::v06::types::TransactionWithHash,
+    transaction: crate::types::transaction::TransactionWithHash,
     receipt: PendingTxnReceipt,
 }
 

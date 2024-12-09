@@ -2,7 +2,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, TransactionIndex};
 
 use crate::context::RpcContext;
-use crate::v06::types::TransactionWithHash;
+use crate::types::transaction::TransactionWithHash;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

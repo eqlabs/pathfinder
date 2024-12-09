@@ -74,7 +74,7 @@ pub struct Input {
     pub block_id: BlockId,
 }
 
-#[derive(serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,

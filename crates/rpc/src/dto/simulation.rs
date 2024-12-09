@@ -3,21 +3,26 @@ use pathfinder_common::{ContractAddress, ContractNonce};
 use serde::ser::Error;
 
 use super::serialize::SerializeStruct;
+use super::FeeEstimate;
 use crate::RpcVersion;
 
+/// A transaction trace.
+///
+/// This is a wrapper around the transaction trace type from the executor,
+/// with added serialization methods.
 #[derive(Debug)]
-pub struct TransactionTrace<'a> {
-    pub trace: &'a pathfinder_executor::types::TransactionTrace,
+pub struct TransactionTrace {
+    pub trace: pathfinder_executor::types::TransactionTrace,
     pub include_state_diff: bool,
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionTrace<'_> {
+impl crate::dto::serialize::SerializeForVersion for TransactionTrace {
     fn serialize(
         &self,
         serializer: super::serialize::Serializer,
     ) -> Result<super::serialize::Ok, super::serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        match self.trace {
+        match &self.trace {
             pathfinder_executor::types::TransactionTrace::Declare(trace) => {
                 serializer.serialize_field("type", &"DECLARE")?;
                 if let Some(fee_transfer_invocation) = &trace.fee_transfer_invocation {
@@ -119,8 +124,12 @@ impl crate::dto::serialize::SerializeForVersion for TransactionTrace<'_> {
     }
 }
 
+/// A function invocation.
+///
+/// This is a wrapper around the function invocation type from the executor,
+/// with added serialization methods.
 #[derive(Debug)]
-struct FunctionInvocation<'a>(&'a pathfinder_executor::types::FunctionInvocation);
+pub(crate) struct FunctionInvocation<'a>(&'a pathfinder_executor::types::FunctionInvocation);
 
 impl crate::dto::serialize::SerializeForVersion for FunctionInvocation<'_> {
     fn serialize(
@@ -191,6 +200,10 @@ impl crate::dto::serialize::SerializeForVersion for FunctionInvocation<'_> {
     }
 }
 
+/// An event.
+///
+/// This is a wrapper around the event type from the executor,
+/// with added serialization methods.
 struct Event<'a>(&'a pathfinder_executor::types::Event);
 
 impl crate::dto::serialize::SerializeForVersion for Event<'_> {
@@ -214,6 +227,10 @@ impl crate::dto::serialize::SerializeForVersion for Event<'_> {
     }
 }
 
+/// A message to L1.
+///
+/// This is a wrapper around the message to L1 type from the executor,
+/// with added serialization methods.
 struct MsgToL1<'a>(&'a pathfinder_executor::types::MsgToL1);
 
 impl crate::dto::serialize::SerializeForVersion for MsgToL1<'_> {
@@ -234,6 +251,10 @@ impl crate::dto::serialize::SerializeForVersion for MsgToL1<'_> {
     }
 }
 
+/// Computation resources.
+///
+/// This is a wrapper around the computation resources type from the executor,
+/// with added serialization methods.
 struct ComputationResources<'a>(&'a pathfinder_executor::types::ComputationResources);
 
 impl crate::dto::serialize::SerializeForVersion for ComputationResources<'_> {
@@ -295,6 +316,10 @@ impl crate::dto::serialize::SerializeForVersion for ComputationResources<'_> {
     }
 }
 
+/// Inner call execution resources.
+///
+/// This is a wrapper around the inner call execution resources type from the
+/// executor, with added serialization methods.
 struct InnerCallExecutionResources<'a>(&'a pathfinder_executor::types::InnerCallExecutionResources);
 
 impl crate::dto::serialize::SerializeForVersion for InnerCallExecutionResources<'_> {
@@ -309,6 +334,10 @@ impl crate::dto::serialize::SerializeForVersion for InnerCallExecutionResources<
     }
 }
 
+/// State diff.
+///
+/// This is a wrapper around the state diff type from the executor,
+/// with added serialization methods.
 struct StateDiff<'a>(&'a pathfinder_executor::types::StateDiff);
 
 impl crate::dto::serialize::SerializeForVersion for StateDiff<'_> {
@@ -355,6 +384,10 @@ impl crate::dto::serialize::SerializeForVersion for StateDiff<'_> {
     }
 }
 
+/// Storage diff.
+///
+/// This is a wrapper around the storage diff type from the executor,
+/// with added serialization methods.
 struct StorageDiff<'a>(
     (
         &'a ContractAddress,
@@ -378,6 +411,7 @@ impl crate::dto::serialize::SerializeForVersion for StorageDiff<'_> {
     }
 }
 
+/// Storage entry.
 struct StorageEntry<'a>(&'a pathfinder_executor::types::StorageDiff);
 
 impl crate::dto::serialize::SerializeForVersion for StorageEntry<'_> {
@@ -392,6 +426,10 @@ impl crate::dto::serialize::SerializeForVersion for StorageEntry<'_> {
     }
 }
 
+/// Declared Sierra class.
+///
+/// This is a wrapper around the declared Sierra class type from the executor,
+/// with added serialization methods.
 struct DeclaredSierraClass<'a>(&'a pathfinder_executor::types::DeclaredSierraClass);
 
 impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass<'_> {
@@ -409,6 +447,10 @@ impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass<'_> {
     }
 }
 
+/// Deployed contract.
+///
+/// This is a wrapper around the deployed contract type from the executor,
+/// with added serialization methods.
 struct DeployedContract<'a>(&'a pathfinder_executor::types::DeployedContract);
 
 impl crate::dto::serialize::SerializeForVersion for DeployedContract<'_> {
@@ -423,6 +465,10 @@ impl crate::dto::serialize::SerializeForVersion for DeployedContract<'_> {
     }
 }
 
+/// Replaced class.
+///
+/// This is a wrapper around the replaced class type from the executor,
+/// with added serialization methods.
 struct ReplacedClass<'a>(&'a pathfinder_executor::types::ReplacedClass);
 
 impl crate::dto::serialize::SerializeForVersion for ReplacedClass<'_> {
@@ -440,6 +486,10 @@ impl crate::dto::serialize::SerializeForVersion for ReplacedClass<'_> {
     }
 }
 
+/// Nonce.
+///
+/// This is a wrapper around the nonce type from the executor,
+/// with added serialization methods.
 struct Nonce<'a>((&'a ContractAddress, &'a ContractNonce));
 
 impl crate::dto::serialize::SerializeForVersion for Nonce<'_> {
@@ -454,6 +504,10 @@ impl crate::dto::serialize::SerializeForVersion for Nonce<'_> {
     }
 }
 
+/// Execution resources.
+///
+/// This is a wrapper around the execution resources type from the executor,
+/// with added serialization methods.
 struct ExecutionResources<'a>(&'a pathfinder_executor::types::ExecutionResources);
 
 impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
@@ -482,6 +536,10 @@ impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
     }
 }
 
+/// Data availability resources.
+///
+/// This is a wrapper around the data availability resources type from the
+/// executor, with added serialization methods.
 struct DataAvailabilityResources<'a>(&'a pathfinder_executor::types::DataAvailabilityResources);
 
 impl crate::dto::serialize::SerializeForVersion for DataAvailabilityResources<'_> {
@@ -496,6 +554,10 @@ impl crate::dto::serialize::SerializeForVersion for DataAvailabilityResources<'_
     }
 }
 
+/// Execute invocation.
+///
+/// This is a wrapper around the execute invocation type from the executor,
+/// with added serialization methods.
 struct ExecuteInvocation<'a>(&'a pathfinder_executor::types::ExecuteInvocation);
 
 impl crate::dto::serialize::SerializeForVersion for ExecuteInvocation<'_> {
@@ -517,5 +579,178 @@ impl crate::dto::serialize::SerializeForVersion for ExecuteInvocation<'_> {
                 serializer.end()
             }
         }
+    }
+}
+
+// --
+
+/// Call type.
+///
+/// This enum is used to represent the different types of calls that can be made
+/// in a function invocation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CallType {
+    Call,
+    _LibraryCall,
+    Delegate,
+}
+
+impl From<pathfinder_executor::types::CallType> for CallType {
+    fn from(value: pathfinder_executor::types::CallType) -> Self {
+        use pathfinder_executor::types::CallType::*;
+        match value {
+            Call => Self::Call,
+            Delegate => Self::Delegate,
+        }
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for CallType {
+    fn serialize(
+        &self,
+        serializer: super::serialize::Serializer,
+    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        match self {
+            CallType::Call => serializer.serialize_str("CALL"),
+            CallType::_LibraryCall => serializer.serialize_str("LIBRARY_CALL"),
+            CallType::Delegate => serializer.serialize_str("DELEGATE"),
+        }
+    }
+}
+
+/// Simulation flags.
+#[derive(Debug, Eq, PartialEq)]
+pub struct SimulationFlags(pub Vec<SimulationFlag>);
+
+/// Simulation flag.
+///
+/// This enum is used to represent the different flags that can be used to
+/// modify the behavior of a simulation.
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum SimulationFlag {
+    SkipFeeCharge,
+    SkipValidate,
+}
+
+impl crate::dto::DeserializeForVersion for SimulationFlag {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let value: String = value.deserialize_serde()?;
+        match value.as_str() {
+            "SKIP_FEE_CHARGE" => Ok(Self::SkipFeeCharge),
+            "SKIP_VALIDATE" => Ok(Self::SkipValidate),
+            _ => Err(serde_json::Error::custom("Invalid simulation flag")),
+        }
+    }
+}
+
+impl crate::dto::DeserializeForVersion for SimulationFlags {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let array = value.deserialize_array(SimulationFlag::deserialize)?;
+        Ok(Self(array))
+    }
+}
+
+pub struct DeployAccountTxnTrace(pub pathfinder_executor::types::DeployAccountTransactionTrace);
+pub struct EntryPointType(pub pathfinder_executor::types::EntryPointType);
+
+pub(crate) struct SimulatedTransaction(pub pathfinder_executor::types::TransactionSimulation);
+
+impl crate::dto::serialize::SerializeForVersion for SimulatedTransaction {
+    fn serialize(
+        &self,
+        serializer: super::serialize::Serializer,
+    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("fee_estimation", &FeeEstimate(&self.0.fee_estimation))?;
+        serializer.serialize_field(
+            "transaction_trace",
+            &TransactionTrace {
+                trace: self.0.trace.clone(),
+                include_state_diff: false,
+            },
+        )?;
+        serializer.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::{
+        felt,
+        BlockHeader,
+        BlockId,
+        CallParam,
+        ClassHash,
+        ContractAddress,
+        EntryPoint,
+        StarknetVersion,
+        StorageAddress,
+        StorageValue,
+        TransactionVersion,
+    };
+    use pathfinder_crypto::Felt;
+    use pathfinder_storage::Storage;
+    use starknet_gateway_test_fixtures::class_definitions::{
+        DUMMY_ACCOUNT_CLASS_HASH,
+        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
+    };
+
+    use crate::context::RpcContext;
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::{
+        CallType,
+        ComputationResources,
+        DeployAccountTxnTrace,
+        EntryPointType,
+        ExecutionResources,
+        FeeEstimate,
+        FunctionInvocation,
+        SimulatedTransaction,
+        TransactionTrace,
+    };
+    use crate::method::call::FunctionCall;
+    use crate::method::get_state_update::types::{DeployedContract, Nonce, StateDiff};
+    use crate::method::simulate_transactions::tests::fixtures;
+    use crate::types::request::{
+        BroadcastedDeclareTransaction,
+        BroadcastedDeclareTransactionV1,
+        BroadcastedTransaction,
+    };
+    use crate::types::{ContractClass, PriceUnit};
+    use crate::RpcVersion;
+
+    pub(crate) async fn setup_storage_with_starknet_version(
+        version: StarknetVersion,
+    ) -> (
+        Storage,
+        BlockHeader,
+        ContractAddress,
+        ContractAddress,
+        StorageValue,
+    ) {
+        let test_storage_key = StorageAddress::from_name(b"my_storage_var");
+        let test_storage_value = storage_value!("0x09");
+
+        // set test storage variable
+        let (storage, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_storage(version, |state_update| {
+                state_update.with_storage_update(
+                    fixtures::DEPLOYED_CONTRACT_ADDRESS,
+                    test_storage_key,
+                    test_storage_value,
+                )
+            })
+            .await;
+
+        (
+            storage,
+            last_block_header,
+            account_contract_address,
+            universal_deployer_address,
+            test_storage_value,
+        )
     }
 }
