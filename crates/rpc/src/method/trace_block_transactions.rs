@@ -997,15 +997,14 @@ pub(crate) mod tests {
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 
-        // Need to avoid skipping blocks for `insert_transaction_data`.
+        // Need to avoid skipping blocks for `insert_transaction_data`
+        // so that there is no gap in event filters.
         (0..619596)
-            .collect::<Vec<_>>()
-            .chunks(pathfinder_storage::BLOCK_RANGE_LEN as usize)
-            .map(|range| *range.last().unwrap() as u64)
-            .for_each(|block| {
-                let block = BlockNumber::new_or_panic(block);
+            .step_by(pathfinder_storage::BLOCK_RANGE_LEN as usize)
+            .for_each(|block: u64| {
+                let block = BlockNumber::new_or_panic(block.saturating_sub(1));
                 transaction
-                    .insert_transaction_data(block, &[], None)
+                    .insert_transaction_data(block, &[], Some(&[]))
                     .unwrap();
             });
 
