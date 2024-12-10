@@ -10,7 +10,6 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
-use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_common::{
     BlockNumber,
     ContractAddress,
@@ -21,6 +20,7 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
+use pathfinder_storage::connection::storage_index::TrieStorageIndex;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
@@ -67,7 +67,7 @@ impl<'tx> ContractsStorageTree<'tx> {
             block: Some(block),
             contract,
         };
-        let tree = MerkleTree::new(StorageIndex::new(root));
+        let tree = MerkleTree::new(TrieStorageIndex::new(root));
 
         Ok(Self { tree, storage })
     }
@@ -174,7 +174,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
             block: Some(block),
         };
 
-        let tree = MerkleTree::new(StorageIndex::new(root.get()));
+        let tree = MerkleTree::new(TrieStorageIndex::new(root.get()));
 
         Ok(Self { tree, storage })
     }

@@ -4,9 +4,9 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::vec::BitVec;
 use pathfinder_common::prelude::*;
-use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_crypto::Felt;
 
+use super::storage_index::TrieStorageIndex;
 use crate::prelude::*;
 use crate::{BlockId, TriePruneMode};
 
@@ -14,7 +14,7 @@ impl Transaction<'_> {
     pub fn class_root_index(
         &self,
         block_number: BlockNumber,
-    ) -> anyhow::Result<Option<StorageIndex>> {
+    ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number \
@@ -23,7 +23,7 @@ impl Transaction<'_> {
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
-            .map(|option_u64| option_u64.flatten().map(StorageIndex::new))
+            .map(|option_u64| option_u64.flatten().map(TrieStorageIndex::new))
             .map_err(Into::into)
     }
 
@@ -40,7 +40,7 @@ impl Transaction<'_> {
     pub fn storage_root_index(
         &self,
         block_number: BlockNumber,
-    ) -> anyhow::Result<Option<StorageIndex>> {
+    ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY \
@@ -49,7 +49,7 @@ impl Transaction<'_> {
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
-            .map(|option_u64| option_u64.flatten().map(StorageIndex::new))
+            .map(|option_u64| option_u64.flatten().map(TrieStorageIndex::new))
             .map_err(Into::into)
     }
 
@@ -652,7 +652,7 @@ pub enum Node {
 #[derive(Copy, Clone, Debug)]
 pub enum NodeRef {
     // A reference to a node that has already been committed to storage.
-    StorageIndex(u64),
+    TrieStorageIndex(u64),
     // A reference to a node that has not yet been committed to storage.
     // The index within the `nodes_added` vector is used as a reference.
     Index(usize),
@@ -748,14 +748,14 @@ impl Node {
         let node = match self {
             Node::Binary { left, right } => {
                 let left = match left {
-                    NodeRef::StorageIndex(id) => *id,
+                    NodeRef::TrieStorageIndex(id) => *id,
                     NodeRef::Index(idx) => *storage_indices
                         .get(idx)
                         .context("Left child index missing")?,
                 };
 
                 let right = match right {
-                    NodeRef::StorageIndex(id) => *id,
+                    NodeRef::TrieStorageIndex(id) => *id,
                     NodeRef::Index(idx) => *storage_indices
                         .get(idx)
                         .context("Right child index missing")?,
@@ -765,7 +765,7 @@ impl Node {
             }
             Node::Edge { child, path } => {
                 let child = match child {
-                    NodeRef::StorageIndex(id) => id,
+                    NodeRef::TrieStorageIndex(id) => id,
                     NodeRef::Index(idx) => {
                         storage_indices.get(idx).context("Child index missing")?
                     }
@@ -804,25 +804,25 @@ mod tests {
         tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123))
             .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(123)));
+        assert_eq!(result, Some(TrieStorageIndex::new(123)));
 
         tx.insert_class_root(BlockNumber::GENESIS + 1, RootIndexUpdate::Updated(456))
             .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(123)));
+        assert_eq!(result, Some(TrieStorageIndex::new(123)));
         let result = tx.class_root_index(BlockNumber::GENESIS + 1).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
         let result = tx.class_root_index(BlockNumber::GENESIS + 2).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
 
         tx.insert_class_root(BlockNumber::GENESIS + 10, RootIndexUpdate::Updated(789))
             .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS + 9).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
         let result = tx.class_root_index(BlockNumber::GENESIS + 10).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(789)));
+        assert_eq!(result, Some(TrieStorageIndex::new(789)));
         let result = tx.class_root_index(BlockNumber::GENESIS + 11).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(789)));
+        assert_eq!(result, Some(TrieStorageIndex::new(789)));
 
         tx.insert_class_root(BlockNumber::GENESIS + 12, RootIndexUpdate::TrieEmpty)
             .unwrap();
@@ -846,25 +846,25 @@ mod tests {
         tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123))
             .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(123)));
+        assert_eq!(result, Some(TrieStorageIndex::new(123)));
 
         tx.insert_storage_root(BlockNumber::GENESIS + 1, RootIndexUpdate::Updated(456))
             .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(123)));
+        assert_eq!(result, Some(TrieStorageIndex::new(123)));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 1).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 2).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
 
         tx.insert_storage_root(BlockNumber::GENESIS + 10, RootIndexUpdate::Updated(789))
             .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS + 9).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(456)));
+        assert_eq!(result, Some(TrieStorageIndex::new(456)));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 10).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(789)));
+        assert_eq!(result, Some(TrieStorageIndex::new(789)));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 11).unwrap();
-        assert_eq!(result, Some(StorageIndex::new(789)));
+        assert_eq!(result, Some(TrieStorageIndex::new(789)));
 
         tx.insert_storage_root(BlockNumber::GENESIS + 12, RootIndexUpdate::TrieEmpty)
             .unwrap();

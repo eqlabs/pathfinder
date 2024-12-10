@@ -1,8 +1,8 @@
 /// A newtype for the storage index of a trie node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct StorageIndex(u64);
+pub struct TrieStorageIndex(u64);
 
-impl StorageIndex {
+impl TrieStorageIndex {
     /// Create a new StorageIndex.
     pub fn new(index: u64) -> Self {
         Self(index)

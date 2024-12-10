@@ -59,9 +59,9 @@ use std::rc::Rc;
 use anyhow::Context;
 use bitvec::prelude::{BitSlice, BitVec, Msb0};
 use pathfinder_common::hash::FeltHash;
-use pathfinder_common::storage_index::StorageIndex;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
+use pathfinder_storage::connection::storage_index::TrieStorageIndex;
 use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 
 use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
@@ -80,9 +80,9 @@ pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
-    pub fn new(root: StorageIndex) -> Self {
+    pub fn new(root: TrieStorageIndex) -> Self {
         let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(
-            StorageIndex::new(root.get()),
+            TrieStorageIndex::new(root.get()),
         ))));
         Self {
             root,
@@ -171,7 +171,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     .hash(idx.get())
                     .context("Fetching stored node's hash")?
                     .context("Stored node's hash is missing")?;
-                (hash, Some(NodeRef::StorageIndex(idx.get())))
+                (hash, Some(NodeRef::TrieStorageIndex(idx.get())))
             }
             InternalNode::Leaf => {
                 let hash = if let Some(value) = self.leaves.get(&path) {
@@ -750,31 +750,31 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         let node = match node {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
-                storage_index: Some(StorageIndex::new(index)),
+                storage_index: Some(TrieStorageIndex::new(index)),
                 height,
-                left: Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(
-                    left,
-                )))),
-                right: Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(
-                    right,
-                )))),
+                left: Rc::new(RefCell::new(InternalNode::Unresolved(
+                    TrieStorageIndex::new(left),
+                ))),
+                right: Rc::new(RefCell::new(InternalNode::Unresolved(
+                    TrieStorageIndex::new(right),
+                ))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
-                storage_index: Some(StorageIndex::new(index)),
+                storage_index: Some(TrieStorageIndex::new(index)),
                 height,
                 path,
-                child: Rc::new(RefCell::new(InternalNode::Unresolved(StorageIndex::new(
-                    child,
-                )))),
+                child: Rc::new(RefCell::new(InternalNode::Unresolved(
+                    TrieStorageIndex::new(child),
+                ))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
-                storage_index: Some(StorageIndex::new(index)),
+                storage_index: Some(TrieStorageIndex::new(index)),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Leaf)),
                 right: Rc::new(RefCell::new(InternalNode::Leaf)),
             }),
             StoredNode::LeafEdge { path } => InternalNode::Edge(EdgeNode {
-                storage_index: Some(StorageIndex::new(index)),
+                storage_index: Some(TrieStorageIndex::new(index)),
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Leaf)),
@@ -1023,12 +1023,12 @@ mod tests {
             let node = match node {
                 Node::Binary { left, right } => {
                     let left = match left {
-                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::TrieStorageIndex(idx) => idx,
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
                     let right = match right {
-                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::TrieStorageIndex(idx) => idx,
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
@@ -1036,7 +1036,7 @@ mod tests {
                 }
                 Node::Edge { child, path } => {
                     let child = match child {
-                        NodeRef::StorageIndex(idx) => idx,
+                        NodeRef::TrieStorageIndex(idx) => idx,
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
@@ -1378,7 +1378,7 @@ mod tests {
             );
             assert_eq!(storage.nodes.len(), 1);
 
-            let tree = TestTree::new(StorageIndex::new(root.1));
+            let tree = TestTree::new(TrieStorageIndex::new(root.1));
             let root = commit_and_persist_without_pruning(tree, &mut storage);
             assert_eq!(
                 root.0,
@@ -1401,7 +1401,7 @@ mod tests {
             );
             assert_eq!(storage.nodes.len(), 1);
 
-            let mut tree = TestTree::new(StorageIndex::new(root.1));
+            let mut tree = TestTree::new(TrieStorageIndex::new(root.1));
             tree.set(&storage, felt!("0x1").view_bits().to_bitvec(), Felt::ZERO)
                 .unwrap();
             let root = commit_and_persist_with_pruning(tree, &mut storage);
@@ -1432,7 +1432,7 @@ mod tests {
 
             let root = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let uut = TestTree::new(StorageIndex::new(root.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root.1));
 
             assert_eq!(uut.get(&storage, key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1).unwrap(), Some(val1));
@@ -1480,7 +1480,7 @@ mod tests {
 
             // Delete the final leaf; this exercises the bug as the nodes are all in storage
             // (unresolved).
-            let mut uut = TestTree::new(StorageIndex::new(root.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root.1));
             let key = leaves[4].0.view_bits().to_bitvec();
             let val = leaves[4].1;
             uut.set(&storage, key, val).unwrap();
@@ -1505,25 +1505,25 @@ mod tests {
             uut.set(&storage, key0.clone(), val0).unwrap();
             let root0 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let mut uut = TestTree::new(StorageIndex::new(root0.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root0.1));
             uut.set(&storage, key1.clone(), val1).unwrap();
             let root1 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let mut uut = TestTree::new(StorageIndex::new(root1.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root1.1));
             uut.set(&storage, key2.clone(), val2).unwrap();
             let root2 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let uut = TestTree::new(StorageIndex::new(root0.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root0.1));
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1.clone()).unwrap(), None);
             assert_eq!(uut.get(&storage, key2.clone()).unwrap(), None);
 
-            let uut = TestTree::new(StorageIndex::new(root1.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root1.1));
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1.clone()).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, key2.clone()).unwrap(), None);
 
-            let uut = TestTree::new(StorageIndex::new(root2.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root2.1));
             assert_eq!(uut.get(&storage, key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, key2).unwrap(), Some(val2));
@@ -1544,25 +1544,25 @@ mod tests {
             uut.set(&storage, key0.clone(), val0).unwrap();
             let root0 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let mut uut = TestTree::new(StorageIndex::new(root0.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root0.1));
             uut.set(&storage, key1.clone(), val1).unwrap();
             let root1 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let mut uut = TestTree::new(StorageIndex::new(root0.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root0.1));
             uut.set(&storage, key2.clone(), val2).unwrap();
             let root2 = commit_and_persist_without_pruning(uut, &mut storage);
 
-            let uut = TestTree::new(StorageIndex::new(root0.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root0.1));
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1.clone()).unwrap(), None);
             assert_eq!(uut.get(&storage, key2.clone()).unwrap(), None);
 
-            let uut = TestTree::new(StorageIndex::new(root1.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root1.1));
             assert_eq!(uut.get(&storage, key0.clone()).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1.clone()).unwrap(), Some(val1));
             assert_eq!(uut.get(&storage, key2.clone()).unwrap(), None);
 
-            let uut = TestTree::new(StorageIndex::new(root2.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root2.1));
             assert_eq!(uut.get(&storage, key0).unwrap(), Some(val0));
             assert_eq!(uut.get(&storage, key1).unwrap(), None);
             assert_eq!(uut.get(&storage, key2).unwrap(), Some(val2));
@@ -1579,10 +1579,10 @@ mod tests {
 
             let root0 = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let uut = TestTree::new(StorageIndex::new(root0.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root0.1));
             let root1 = commit_and_persist_with_pruning(uut, &mut storage);
 
-            let uut = TestTree::new(StorageIndex::new(root1.1));
+            let uut = TestTree::new(TrieStorageIndex::new(root1.1));
             let root2 = commit_and_persist_with_pruning(uut, &mut storage);
 
             assert_eq!(root0.0, root1.0);
@@ -1693,7 +1693,7 @@ mod tests {
             );
 
             let root = commit_and_persist_with_pruning(uut, &mut storage);
-            let mut uut = TestTree::new(StorageIndex::new(root.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root.1));
             set!(
                 uut,
                 felt!("0x5c5e36947656f78c487b42ca69d96e79c01eac62f50d996f3972c9851bd5f64"),
@@ -1701,7 +1701,7 @@ mod tests {
             );
 
             let root = commit_and_persist_with_pruning(uut, &mut storage);
-            let mut uut = TestTree::new(StorageIndex::new(root.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root.1));
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
@@ -1717,7 +1717,7 @@ mod tests {
             );
 
             let root = commit_and_persist_with_pruning(uut, &mut storage);
-            let mut uut = TestTree::new(StorageIndex::new(root.1));
+            let mut uut = TestTree::new(TrieStorageIndex::new(root.1));
 
             let mut visited = vec![];
             let mut visitor_fn = |node: &InternalNode, path: &BitSlice<u8, Msb0>| {
@@ -1781,7 +1781,7 @@ mod tests {
             assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());
             assert_eq!(
                 tx.class_root_index(BlockNumber::GENESIS).unwrap(),
-                Some(StorageIndex::new(root_index))
+                Some(TrieStorageIndex::new(root_index))
             );
 
             // Open the tree but do no updates.
@@ -1804,7 +1804,7 @@ mod tests {
             assert!(!tx.class_root_exists(block_number).unwrap());
             assert_eq!(
                 tx.class_root_index(block_number).unwrap(),
-                Some(StorageIndex::new(root_index))
+                Some(TrieStorageIndex::new(root_index))
             );
 
             // Delete value

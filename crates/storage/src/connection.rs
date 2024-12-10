@@ -10,6 +10,7 @@ mod reference;
 mod reorg_counter;
 mod signature;
 mod state_update;
+pub mod storage_index;
 pub(crate) mod transaction;
 mod trie;
 
