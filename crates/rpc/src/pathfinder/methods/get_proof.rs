@@ -505,8 +505,8 @@ mod tests {
                 &pathfinder_storage::TrieUpdate {
                     nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
                     nodes_removed: (0..100)
-                    .map(|value| TrieStorageIndex::new(value as u64))
-                    .collect(),
+                        .map(|value| TrieStorageIndex::new(value as u64))
+                        .collect(),
                     root_commitment: Felt::ZERO,
                 },
                 BlockNumber::GENESIS + 3,

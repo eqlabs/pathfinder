@@ -139,11 +139,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Felt::ZERO
         };
 
-        removed.extend(self.nodes_removed.iter().map(|value|value.get()));
+        removed.extend(self.nodes_removed.iter().map(|value| value.get()));
 
         Ok(TrieUpdate {
             nodes_added: added,
-            nodes_removed: removed.into_iter().map(|value|TrieStorageIndex::new(value)).collect(),
+            nodes_removed: removed
+                .into_iter()
+                .map(|value| TrieStorageIndex::new(value))
+                .collect(),
             root_commitment: root_hash,
         })
     }
@@ -481,7 +484,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
                 self.root = None;
-                self.nodes_removed.extend(indexes_removed.iter().map(|value|TrieStorageIndex::new(*value)));
+                self.nodes_removed.extend(
+                    indexes_removed
+                        .iter()
+                        .map(|value| TrieStorageIndex::new(*value)),
+                );
                 return Ok(());
             }
         };
@@ -495,7 +502,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
 
         // All nodes below the binary node were deleted
-        self.nodes_removed.extend(indexes_removed.iter().map(|value|TrieStorageIndex::new(*value)));
+        self.nodes_removed.extend(
+            indexes_removed
+                .iter()
+                .map(|value| TrieStorageIndex::new(*value)),
+        );
 
         Ok(())
     }
@@ -752,20 +763,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             StoredNode::Binary { left, right } => InternalNode::Binary(BinaryNode {
                 storage_index: Some(TrieStorageIndex::new(index)),
                 height,
-                left: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    left,
-                ))),
-                right: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    right,
-                ))),
+                left: Rc::new(RefCell::new(InternalNode::Unresolved(left))),
+                right: Rc::new(RefCell::new(InternalNode::Unresolved(right))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
                 storage_index: Some(TrieStorageIndex::new(index)),
                 height,
                 path,
-                child: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    child,
-                ))),
+                child: Rc::new(RefCell::new(InternalNode::Unresolved(child))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
                 storage_index: Some(TrieStorageIndex::new(index)),
@@ -1032,7 +1037,10 @@ mod tests {
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
-                    StoredNode::Binary { left:TrieStorageIndex::new(left), right:TrieStorageIndex::new(right) }
+                    StoredNode::Binary {
+                        left: TrieStorageIndex::new(left),
+                        right: TrieStorageIndex::new(right),
+                    }
                 }
                 Node::Edge { child, path } => {
                     let child = match child {
@@ -1040,7 +1048,10 @@ mod tests {
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
-                    StoredNode::Edge { child:TrieStorageIndex::new(child), path }
+                    StoredNode::Edge {
+                        child: TrieStorageIndex::new(child),
+                        path,
+                    }
                 }
                 Node::LeafBinary => StoredNode::LeafBinary,
                 Node::LeafEdge { path } => StoredNode::LeafEdge { path },
@@ -1775,7 +1786,7 @@ mod tests {
             let RootIndexUpdate::Updated(root_index) = root_index_update else {
                 panic!("Expected root index to be updated");
             };
-            assert_eq!(root_index,TrieStorageIndex::new(1));
+            assert_eq!(root_index, TrieStorageIndex::new(1));
             tx.insert_class_root(BlockNumber::GENESIS, root_index_update)
                 .unwrap();
             assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());

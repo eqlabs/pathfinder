@@ -414,17 +414,21 @@ fn get_contract_proofs(
         return Ok((storage_root_hash, NodeHashToNodeMappings(vec![]), vec![]));
     };
 
-    let nodes =
-        StorageCommitmentTree::get_proofs(tx, block_number, contract_addresses, storage_root_idx.get())?
-            .into_iter()
-            .flatten()
-            .map(|(node, node_hash)| NodeHashToNodeMapping {
-                node_hash,
-                node: ProofNode(node),
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
+    let nodes = StorageCommitmentTree::get_proofs(
+        tx,
+        block_number,
+        contract_addresses,
+        storage_root_idx.get(),
+    )?
+    .into_iter()
+    .flatten()
+    .map(|(node, node_hash)| NodeHashToNodeMapping {
+        node_hash,
+        node: ProofNode(node),
+    })
+    .collect::<HashSet<_>>()
+    .into_iter()
+    .collect();
 
     let contract_proof_nodes = NodeHashToNodeMappings(nodes);
 
