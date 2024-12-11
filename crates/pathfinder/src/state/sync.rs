@@ -240,8 +240,8 @@ where
 
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
-        // Seems a better choice for an invalid block number than 0
-        BlockNumber::MAX,
+        // start from genesis if storage is empty
+        BlockNumber::GENESIS,
         BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));

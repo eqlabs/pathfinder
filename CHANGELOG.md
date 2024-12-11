@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
-- Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
-
 ### Fixed
 
 - `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.
 - `starknet_getStorageProof` returns `StorageProofNotSupported` (42) when Pathfinder is in `archive` mode and queried block's tries are empty.
+- `starknet_syncing` returns `u64::MAX` as the starting block number when starting from scratch.
+
+### Changed
+
+- Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
 
 ## [0.15.2] - 2024-12-04
 
