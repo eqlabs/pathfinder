@@ -20,6 +20,7 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
+use pathfinder_storage::connection::storage_index::TrieStorageIndex;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
@@ -173,7 +174,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
             block: Some(block),
         };
 
-        let tree = MerkleTree::new(root);
+        let tree = MerkleTree::new(TrieStorageIndex::new(root.get()));
 
         Ok(Self { tree, storage })
     }
