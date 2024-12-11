@@ -61,7 +61,7 @@
 //! filter.
 
 use std::collections::BTreeSet;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use bloomfilter::Bloom;
 use cached::{Cached, SizedCache};
@@ -238,7 +238,9 @@ struct CacheKey {
     to_block: BlockNumber,
 }
 
-pub(crate) struct AggregateBloomCache(Mutex<SizedCache<CacheKey, AggregateBloom>>);
+/// A cache for [`AggregateBloom`] filters. It is very expensive to clone these
+/// filters, so we store them in an [`Arc`] and clone it instead.
+pub(crate) struct AggregateBloomCache(Mutex<SizedCache<CacheKey, Arc<AggregateBloom>>>);
 
 impl AggregateBloomCache {
     pub fn with_size(size: usize) -> Self {
@@ -249,7 +251,11 @@ impl AggregateBloomCache {
         self.0.lock().unwrap().cache_reset();
     }
 
-    pub fn get_many(&self, from_block: BlockNumber, to_block: BlockNumber) -> Vec<AggregateBloom> {
+    pub fn get_many(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> Vec<Arc<AggregateBloom>> {
         let mut cache = self.0.lock().unwrap();
 
         let from_block = from_block.get();
@@ -277,19 +283,19 @@ impl AggregateBloomCache {
                     from_block,
                     to_block,
                 };
-                cache.cache_get(&k).cloned()
+                cache.cache_get(&k).map(Arc::clone)
             })
             .collect()
     }
 
-    pub fn set_many(&self, filters: &[AggregateBloom]) {
+    pub fn set_many(&self, filters: &[Arc<AggregateBloom>]) {
         let mut cache = self.0.lock().unwrap();
         filters.iter().for_each(|filter| {
             let k = CacheKey {
                 from_block: filter.from_block,
                 to_block: filter.to_block,
             };
-            cache.cache_set(k, filter.clone());
+            cache.cache_set(k, Arc::clone(filter));
         });
     }
 }
@@ -503,8 +509,8 @@ mod tests {
             let second_range_end = second_range_start + AggregateBloom::BLOCK_RANGE_LEN - 1;
 
             let filters = vec![
-                AggregateBloom::new(first_range_start),
-                AggregateBloom::new(second_range_start),
+                Arc::new(AggregateBloom::new(first_range_start)),
+                Arc::new(AggregateBloom::new(second_range_start)),
             ];
 
             cache.set_many(&filters);
@@ -522,8 +528,8 @@ mod tests {
             let second_range_start = BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN;
 
             let filters = vec![
-                AggregateBloom::new(first_range_start),
-                AggregateBloom::new(second_range_start),
+                Arc::new(AggregateBloom::new(first_range_start)),
+                Arc::new(AggregateBloom::new(second_range_start)),
             ];
 
             let start = first_range_start + 15;
@@ -541,10 +547,16 @@ mod tests {
             let cache = AggregateBloomCache::with_size(4);
 
             let filters = vec![
-                AggregateBloom::new(BlockNumber::GENESIS),
-                AggregateBloom::new(BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN),
-                AggregateBloom::new(BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN),
-                AggregateBloom::new(BlockNumber::GENESIS + 3 * AggregateBloom::BLOCK_RANGE_LEN),
+                Arc::new(AggregateBloom::new(BlockNumber::GENESIS)),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
+                )),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
+                )),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + 3 * AggregateBloom::BLOCK_RANGE_LEN,
+                )),
             ];
 
             cache.set_many(&filters);
