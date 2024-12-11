@@ -67,6 +67,10 @@ fn migrate_event_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let mut migrated_count: u64 = 0;
     let mut last_progress_report = Instant::now();
 
+    tracing::info!(
+        "Migrating event Bloom filters: 0.00% (0/{})",
+        bloom_filter_count
+    );
     while let Some(bloom_filter) = bloom_filters.next().transpose()? {
         let current_block = BlockNumber::new_or_panic(migrated_count);
 
@@ -96,6 +100,10 @@ fn migrate_event_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
             last_progress_report = Instant::now();
         }
     }
+    tracing::info!(
+        "Migrating event Bloom filters: 100.00% ({count}/{count})",
+        count = bloom_filter_count,
+    );
 
     Ok(())
 }
