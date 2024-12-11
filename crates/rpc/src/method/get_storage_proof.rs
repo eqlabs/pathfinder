@@ -416,7 +416,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
                             csk.contract_address,
                             header.number,
                             &csk.storage_keys,
-                            root,
+                            root.get(),
                         )?
                         .into_iter()
                         .flatten()

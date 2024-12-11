@@ -67,7 +67,7 @@ impl<'tx> ContractsStorageTree<'tx> {
             block: Some(block),
             contract,
         };
-        let tree = MerkleTree::new(TrieStorageIndex::new(root));
+        let tree = MerkleTree::new(root);
 
         Ok(Self { tree, storage })
     }

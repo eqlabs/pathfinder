@@ -320,7 +320,7 @@ pub async fn get_proof(
                     input.contract_address,
                     header.number,
                     k.view_bits(),
-                    root,
+                    root.get(),
                 )?
                 .into_iter()
                 .map(|(node, _)| node)
@@ -422,6 +422,7 @@ pub async fn get_proof_class(
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_storage::storage_index::TrieStorageIndex;
 
     use super::*;
 
@@ -454,7 +455,9 @@ mod tests {
         tx.insert_storage_trie(
             &pathfinder_storage::TrieUpdate {
                 nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
-                nodes_removed: (0..100).collect(),
+                nodes_removed: (0..100)
+                .map(|value| TrieStorageIndex::new(value as u64))
+                .collect(),
                 root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 3,

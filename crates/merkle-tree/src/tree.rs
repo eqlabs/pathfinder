@@ -72,7 +72,7 @@ use crate::storage::Storage;
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Option<Rc<RefCell<InternalNode>>>,
     leaves: HashMap<BitVec<u8, Msb0>, Felt>,
-    nodes_removed: Vec<u64>,
+    nodes_removed: Vec<TrieStorageIndex>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -139,11 +139,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
             Felt::ZERO
         };
 
-        removed.extend(self.nodes_removed);
+        removed.extend(self.nodes_removed.iter().map(|value|value.get()));
 
         Ok(TrieUpdate {
             nodes_added: added,
-            nodes_removed: removed,
+            nodes_removed: removed.into_iter().map(|value|TrieStorageIndex::new(value)).collect(),
             root_commitment: root_hash,
         })
     }
@@ -374,7 +374,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
                 let old_node = node.replace(updated);
                 if let Some(index) = old_node.storage_index() {
-                    self.nodes_removed.push(index.get());
+                    self.nodes_removed.push(index);
                 };
             }
             None => {
@@ -474,14 +474,14 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // Replace the old binary node with the new edge node.
                 let old_node = node.replace(InternalNode::Edge(new_edge));
                 if let Some(index) = old_node.storage_index() {
-                    self.nodes_removed.push(index.get());
+                    self.nodes_removed.push(index);
                 };
             }
             None => {
                 // We reached the root without a hitting binary node. The new tree
                 // must therefore be empty.
                 self.root = None;
-                self.nodes_removed.extend(indexes_removed);
+                self.nodes_removed.extend(indexes_removed.iter().map(|value|TrieStorageIndex::new(*value)));
                 return Ok(());
             }
         };
@@ -495,7 +495,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         }
 
         // All nodes below the binary node were deleted
-        self.nodes_removed.extend(indexes_removed);
+        self.nodes_removed.extend(indexes_removed.iter().map(|value|TrieStorageIndex::new(*value)));
 
         Ok(())
     }
@@ -581,8 +581,8 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     StoredNode::Binary { left, right } => {
                         // Choose the direction to go in.
                         next = match key.get(height).map(|b| Direction::from(*b)) {
-                            Some(Direction::Left) => Some(left),
-                            Some(Direction::Right) => Some(right),
+                            Some(Direction::Left) => Some(left.get()),
+                            Some(Direction::Right) => Some(right.get()),
                             None => {
                                 return Err(
                                     anyhow::anyhow!("Key path too short for binary node").into()
@@ -592,12 +592,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         height += 1;
 
                         let left = storage
-                            .hash(left)
+                            .hash(left.get())
                             .context("Querying left child's hash")?
                             .context("Left child's hash is missing")?;
 
                         let right = storage
-                            .hash(right)
+                            .hash(right.get())
                             .context("Querying right child's hash")?
                             .context("Right child's hash is missing")?;
 
@@ -611,11 +611,11 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
                         // If the path matches then we continue otherwise the proof is complete.
                         if key == path {
-                            next = Some(child);
+                            next = Some(child.get());
                         }
 
                         let child = storage
-                            .hash(child)
+                            .hash(child.get())
                             .context("Querying child child's hash")?
                             .context("Child's hash is missing")?;
 
@@ -753,10 +753,10 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 storage_index: Some(TrieStorageIndex::new(index)),
                 height,
                 left: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    TrieStorageIndex::new(left),
+                    left,
                 ))),
                 right: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    TrieStorageIndex::new(right),
+                    right,
                 ))),
             }),
             StoredNode::Edge { child, path } => InternalNode::Edge(EdgeNode {
@@ -764,7 +764,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 height,
                 path,
                 child: Rc::new(RefCell::new(InternalNode::Unresolved(
-                    TrieStorageIndex::new(child),
+                    child,
                 ))),
             }),
             StoredNode::LeafBinary => InternalNode::Binary(BinaryNode {
@@ -803,7 +803,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         if let Some(child_edge) = resolved_child.as_edge().cloned() {
             parent.path.extend_from_bitslice(&child_edge.path);
             if let Some(storage_index) = child_edge.storage_index {
-                self.nodes_removed.push(storage_index.get());
+                self.nodes_removed.push(storage_index);
             }
             parent.child = child_edge.child;
         }
@@ -1013,7 +1013,7 @@ mod tests {
 
         if prune_nodes {
             for idx in update.nodes_removed {
-                storage.nodes.remove(&idx);
+                storage.nodes.remove(&idx.get());
             }
         }
 
@@ -1032,7 +1032,7 @@ mod tests {
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
-                    StoredNode::Binary { left, right }
+                    StoredNode::Binary { left:TrieStorageIndex::new(left), right:TrieStorageIndex::new(right) }
                 }
                 Node::Edge { child, path } => {
                     let child = match child {
@@ -1040,7 +1040,7 @@ mod tests {
                         NodeRef::Index(idx) => storage.next_index + (idx as u64),
                     };
 
-                    StoredNode::Edge { child, path }
+                    StoredNode::Edge { child:TrieStorageIndex::new(child), path }
                 }
                 Node::LeafBinary => StoredNode::LeafBinary,
                 Node::LeafEdge { path } => StoredNode::LeafEdge { path },
@@ -1775,13 +1775,13 @@ mod tests {
             let RootIndexUpdate::Updated(root_index) = root_index_update else {
                 panic!("Expected root index to be updated");
             };
-            assert_eq!(root_index, 1);
+            assert_eq!(root_index,TrieStorageIndex::new(1));
             tx.insert_class_root(BlockNumber::GENESIS, root_index_update)
                 .unwrap();
             assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());
             assert_eq!(
                 tx.class_root_index(BlockNumber::GENESIS).unwrap(),
-                Some(TrieStorageIndex::new(root_index))
+                Some(TrieStorageIndex::new(root_index.get()))
             );
 
             // Open the tree but do no updates.
@@ -1804,7 +1804,7 @@ mod tests {
             assert!(!tx.class_root_exists(block_number).unwrap());
             assert_eq!(
                 tx.class_root_index(block_number).unwrap(),
-                Some(TrieStorageIndex::new(root_index))
+                Some(TrieStorageIndex::new(root_index.get()))
             );
 
             // Delete value
