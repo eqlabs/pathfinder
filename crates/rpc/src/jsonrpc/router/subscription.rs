@@ -1026,9 +1026,7 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
-                #[cfg(feature = "aggregate_bloom")]
-                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_event_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

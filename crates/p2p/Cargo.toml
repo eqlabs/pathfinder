@@ -60,12 +60,11 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
-env_logger = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
 tagged = { path = "../tagged" }
 tagged-debug-derive = { path = "../tagged-debug-derive" }
-test-log = { workspace = true, features = ["trace"] }
+test-log = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

@@ -40,13 +40,13 @@ use pathfinder_common::{
     TransactionCommitment,
     TransactionHash,
 };
+use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
-use crate::state::update_starknet_state;
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};

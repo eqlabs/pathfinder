@@ -25,7 +25,6 @@ mod revision_0062;
 mod revision_0063;
 mod revision_0064;
 mod revision_0065;
-#[cfg(feature = "aggregate_bloom")]
 mod revision_0066;
 
 pub(crate) use base::base_schema;
@@ -60,7 +59,6 @@ pub fn migrations() -> &'static [MigrationFn] {
         revision_0063::migrate,
         revision_0064::migrate,
         revision_0065::migrate,
-        #[cfg(feature = "aggregate_bloom")]
         revision_0066::migrate,
     ]
 }

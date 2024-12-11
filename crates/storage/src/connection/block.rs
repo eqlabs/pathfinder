@@ -119,18 +119,12 @@ impl Transaction<'_> {
         self.inner()
             .execute(
                 r"
-                DELETE FROM starknet_events_filters_aggregate 
+                DELETE FROM event_filters
                 WHERE from_block <= :block AND to_block >= :block
                 ",
                 named_params![":block": &block],
             )
-            .context("Deleting aggregate bloom filter")?;
-        self.inner()
-            .execute(
-                "DELETE FROM starknet_events_filters WHERE block_number = ?",
-                params![&block],
-            )
-            .context("Deleting bloom filter")?;
+            .context("Deleting event bloom filter")?;
 
         self.inner()
             .execute(

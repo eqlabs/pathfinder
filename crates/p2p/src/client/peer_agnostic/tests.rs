@@ -112,8 +112,6 @@ async fn make_header_stream(
     #[case] responses: Vec<Result<(TestPeer, Vec<BlockHeadersResponse>), TestPeer>>,
     #[case] expected_stream: Vec<(TestPeer, SignedBlockHeader)>,
 ) {
-    let _ = env_logger::builder().is_test(true).try_init();
-
     for (reverse, direction) in [(false, "forward"), (true, "backward")] {
         let (peers, responses) = unzip_fixtures(responses.clone());
         let get_peers = move || {
@@ -295,7 +293,6 @@ async fn make_transaction_stream(
     #[case] num_txns_per_block: Vec<usize>,
     #[case] expected_stream: Vec<Result<(TestPeer, Vec<TestTxn>), ()>>,
 ) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
     let get_peers = move || {
         let peers = peers.clone();
@@ -518,7 +515,6 @@ async fn make_state_diff_stream(
     #[case] state_diff_len_per_block: Vec<usize>,
     #[case] expected_stream: Vec<Result<(TestPeer, StateUpdateData), ()>>,
 ) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
     let get_peers = move || {
         let peers = peers.clone();
@@ -713,7 +709,6 @@ async fn make_class_definition_stream(
     #[case] declared_classes_per_block: Vec<usize>,
     #[case] expected_stream: Vec<Result<(TestPeer, ClassDefinition), ()>>,
 ) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
     let get_peers = move || {
         let peers = peers.clone();
@@ -904,7 +899,6 @@ async fn make_event_stream(
     #[case] events_per_block: Vec<usize>,
     #[case] expected_stream: Vec<Result<(TestPeer, TaggedEventsForBlockByTransaction), ()>>,
 ) {
-    let _ = env_logger::builder().is_test(true).try_init();
     let (peers, responses) = unzip_fixtures(responses);
     let get_peers = move || {
         let peers = peers.clone();
