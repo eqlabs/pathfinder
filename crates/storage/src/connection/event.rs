@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
+use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
@@ -11,6 +12,7 @@ use pathfinder_common::{
     EventKey,
     TransactionHash,
 };
+use rusqlite::types::Value;
 
 use crate::bloom::{AggregateBloom, BloomFilter};
 use crate::prelude::*;
@@ -69,8 +71,8 @@ pub struct PageOfEvents {
 }
 
 impl Transaction<'_> {
-    pub fn reconstruct_running_event_filter(&self) -> anyhow::Result<()> {
-        let event_filter = reconstruct_running_event_filter(self.inner())?;
+    pub fn rebuild_running_event_filter(&self) -> anyhow::Result<()> {
+        let event_filter = rebuild_running_event_filter(self.inner())?;
         let mut running_event_filter = self.running_event_filter.lock().unwrap();
         *running_event_filter = event_filter;
 
@@ -88,7 +90,7 @@ impl Transaction<'_> {
         block_number: BlockNumber,
         events: impl Iterator<Item = &'a Event>,
     ) -> anyhow::Result<()> {
-        let mut stmt = self.inner().prepare_cached(
+        let mut insert_stmt = self.inner().prepare_cached(
             r"
             INSERT INTO event_filters
             (from_block, to_block, bitmap)
@@ -111,7 +113,7 @@ impl Transaction<'_> {
         // This check is the reason that blocks cannot be skipped, if they were we would
         // risk missing the last block of the running event filter's range.
         if block_number == running_event_filter.filter.to_block {
-            stmt.execute(params![
+            insert_stmt.execute(params![
                 &running_event_filter.filter.from_block,
                 &running_event_filter.filter.to_block,
                 &running_event_filter.filter.compress_bitmap()
@@ -138,12 +140,13 @@ impl Transaction<'_> {
         keys: Vec<Vec<EventKey>>,
     ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
         let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
-            // No blocks in the database
+            // No blocks in the database.
             return Ok((vec![], None));
         };
         if from_block > latest_block {
             return Ok((vec![], None));
         }
+        let to_block = std::cmp::min(to_block, latest_block);
 
         let constraints = EventConstraints {
             contract_address,
@@ -152,14 +155,14 @@ impl Transaction<'_> {
             ..Default::default()
         };
 
-        let event_filters = self.load_event_filter_range(from_block, to_block)?;
+        let (event_filters, _) = self.load_event_filter_range(from_block, to_block, None)?;
 
         let blocks_to_scan = event_filters
             .iter()
             .flat_map(|filter| filter.check(&constraints))
             .filter(|&block| (from_block..=to_block).contains(&block));
 
-        let key_filter_is_empty = constraints.keys.iter().flatten().count() == 0;
+        let no_key_constraints = constraints.keys.iter().flatten().count() == 0;
         let keys: Vec<std::collections::HashSet<_>> = constraints
             .keys
             .iter()
@@ -189,7 +192,7 @@ impl Transaction<'_> {
                     None => true,
                 })
                 .filter(|(event, _)| {
-                    if key_filter_is_empty {
+                    if no_key_constraints {
                         return true;
                     }
 
@@ -215,13 +218,7 @@ impl Transaction<'_> {
             emitted_events.extend(events);
         }
 
-        let last_scanned_block = if latest_block > to_block {
-            to_block
-        } else {
-            latest_block
-        };
-
-        Ok((emitted_events, Some(last_scanned_block)))
+        Ok((emitted_events, Some(to_block)))
     }
 
     #[tracing::instrument(skip(self))]
@@ -235,11 +232,22 @@ impl Transaction<'_> {
             return Err(EventFilterError::PageSizeTooSmall);
         }
 
+        let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
+            // No blocks in the database.
+            return Ok(PageOfEvents {
+                events: vec![],
+                continuation_token: None,
+            });
+        };
+
         let from_block = constraints.from_block.unwrap_or(BlockNumber::GENESIS);
-        let to_block = constraints.to_block.unwrap_or(BlockNumber::MAX);
+        let to_block = match constraints.to_block {
+            Some(to_block) => std::cmp::min(to_block, latest_block),
+            None => latest_block,
+        };
 
         let (event_filters, load_limit_reached) =
-            self.load_limited_event_filter_range(from_block, to_block, max_event_filters_to_load)?;
+            self.load_event_filter_range(from_block, to_block, Some(max_event_filters_to_load))?;
 
         let blocks_to_scan = event_filters
             .iter()
@@ -252,7 +260,7 @@ impl Transaction<'_> {
             .map(|keys| keys.iter().collect())
             .collect();
 
-        let key_filter_is_empty = constraints.keys.iter().flatten().count() == 0;
+        let no_key_constraints = constraints.keys.iter().flatten().count() == 0;
         let mut offset = constraints.offset;
 
         let mut emitted_events = vec![];
@@ -272,9 +280,9 @@ impl Transaction<'_> {
             let events_required = constraints.page_size + 1 - emitted_events.len();
             tracing::trace!(%block, %events_required, "Processing block");
 
-            let Some(block_header) = self.block_header(crate::BlockId::Number(block))? else {
-                break;
-            };
+            let block_header = self
+                .block_header(crate::BlockId::Number(block))?
+                .expect("to_block <= BlockId::Latest");
 
             let events = match self.events_for_block(block.into())? {
                 Some(events) => events,
@@ -297,7 +305,7 @@ impl Transaction<'_> {
                     None => true,
                 })
                 .filter(|(event, _)| {
-                    if key_filter_is_empty {
+                    if no_key_constraints {
                         return true;
                     }
 
@@ -374,70 +382,16 @@ impl Transaction<'_> {
             })
         }
     }
+
+    /// Load the event bloom filters (either from the cache or the database) for
+    /// the given block range with an optional database load limit. Returns the
+    /// loaded filters and a boolean indicating if the load limit was reached.
     fn load_event_filter_range(
         &self,
         start_block: BlockNumber,
         end_block: BlockNumber,
-    ) -> anyhow::Result<Vec<AggregateBloom>> {
-        let mut stmt = self.inner().prepare_cached(
-            r"
-            SELECT from_block, to_block, bitmap
-            FROM event_filters
-            WHERE from_block <= :end_block AND to_block >= :start_block
-            ORDER BY from_block
-            ",
-        )?;
-
-        let mut event_filters = stmt
-            .query_map(
-                named_params![
-                    ":end_block": &end_block,
-                    ":start_block": &start_block,
-                ],
-                |row| {
-                    let from_block = row.get_block_number(0)?;
-                    let to_block = row.get_block_number(1)?;
-                    let compressed_bitmap: Vec<u8> = row.get(2)?;
-
-                    Ok(AggregateBloom::from_existing_compressed(
-                        from_block,
-                        to_block,
-                        compressed_bitmap,
-                    ))
-                },
-            )
-            .context("Querying event filter range")?
-            .collect::<Result<Vec<_>, _>>()?;
-
-        // There are no event filters in the database yet or the loaded ones
-        // don't cover the requested range.
-        let should_include_running = event_filters
-            .last()
-            .map_or(true, |a| end_block > a.to_block);
-
-        if should_include_running {
-            let running_event_filter = self.running_event_filter.lock().unwrap();
-            event_filters.push(running_event_filter.filter.clone());
-        }
-
-        Ok(event_filters)
-    }
-
-    fn load_limited_event_filter_range(
-        &self,
-        start_block: BlockNumber,
-        end_block: BlockNumber,
-        max_event_filters_to_load: NonZeroUsize,
+        max_event_filters_to_load: Option<NonZeroUsize>,
     ) -> anyhow::Result<(Vec<AggregateBloom>, bool)> {
-        let mut event_filters_in_range_stmt = self.inner().prepare_cached(
-            r"
-            SELECT from_block, to_block, bitmap
-            FROM event_filters
-            WHERE from_block <= :end_block AND to_block >= :start_block
-            ORDER BY from_block
-            LIMIT :max_event_filters_to_load
-            ",
-        )?;
         let mut total_filters_stmt = self.inner().prepare_cached(
             r"
             SELECT COUNT(*)
@@ -445,13 +399,50 @@ impl Transaction<'_> {
             WHERE from_block <= :end_block AND to_block >= :start_block
             ",
         )?;
+        let total_event_filters = total_filters_stmt.query_row(
+            named_params![
+                ":end_block": &end_block,
+                ":start_block": &start_block,
+            ],
+            |row| row.get::<_, u64>(0),
+        )?;
 
-        let mut event_filters = event_filters_in_range_stmt
+        let cached_filters = self.event_filter_cache.get_many(start_block, end_block);
+        let cache_hits = cached_filters.len() as u64;
+
+        let cached_filters_rarray = Rc::new(
+            cached_filters
+                .iter()
+                // The `event_filters` table has a unique constraint over (from_block, to_block)
+                // pairs but tuples cannot be used here. Technically, both columns individually
+                // _should_ also have unique elements.
+                .map(|filter| i64::try_from(filter.from_block.get()).unwrap())
+                .map(Value::from)
+                .collect::<Vec<Value>>(),
+        );
+
+        let mut load_stmt = self.inner().prepare_cached(
+            r"
+            SELECT from_block, to_block, bitmap
+            FROM event_filters
+            WHERE from_block <= :end_block AND to_block >= :start_block
+            AND from_block NOT IN rarray(:cached_filters)
+            ORDER BY from_block
+            LIMIT :max_event_filters_to_load
+            ",
+        )?;
+        // Use limit if provided, otherwise set it to the number of filters that cover
+        // the entire requested range.
+        let max_event_filters_to_load =
+            max_event_filters_to_load.map_or(total_event_filters, |limit| limit.get() as u64);
+
+        let mut event_filters = load_stmt
             .query_map(
-                named_params![
-                    ":end_block": &end_block,
-                    ":start_block": &start_block,
-                    ":max_event_filters_to_load": &max_event_filters_to_load.get(),
+                rusqlite::named_params![
+                    ":end_block": &end_block.get(),
+                    ":start_block": &start_block.get(),
+                    ":cached_filters": &cached_filters_rarray,
+                    ":max_event_filters_to_load": &max_event_filters_to_load,
                 ],
                 |row| {
                     let from_block = row.get_block_number(0)?;
@@ -468,20 +459,18 @@ impl Transaction<'_> {
             .context("Querying event filter range")?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.event_filter_cache.set_many(&event_filters);
+        event_filters.extend(cached_filters);
+        event_filters.sort_by_key(|filter| filter.from_block);
+
+        let total_loaded_filters = total_event_filters - cache_hits;
+        let load_limit_reached = total_loaded_filters > max_event_filters_to_load;
+
         // There are no event filters in the database yet or the loaded ones
         // don't cover the requested range.
         let should_include_running = event_filters
             .last()
-            .map_or(true, |a| end_block > a.to_block);
-
-        let total_event_filters = total_filters_stmt.query_row(
-            named_params![
-                ":end_block": &end_block,
-                ":start_block": &start_block,
-            ],
-            |row| row.get::<_, u64>(0),
-        )?;
-        let load_limit_reached = total_event_filters > max_event_filters_to_load.get() as u64;
+            .map_or(true, |last| end_block > last.to_block);
 
         if should_include_running && !load_limit_reached {
             let running_event_filter = self.running_event_filter.lock().unwrap();
@@ -552,20 +541,18 @@ impl BloomFilter {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct RunningEventFilter {
     filter: AggregateBloom,
     next_block: BlockNumber,
 }
 
-/// Reconstruct the [event filter](RunningEventFilter) for the
-/// range of blocks between the last stored `to_block` in the event
-/// filter table and the last overall block in the database. This is needed
-/// because the aggregate event filter for each [block
-/// range](crate::bloom::AggregateBloom::BLOCK_RANGE_LEN) is stored once the
-/// range is complete, before that it is kept in memory and can be lost upon
-/// shutdown.
-pub(crate) fn reconstruct_running_event_filter(
+/// Rebuild the [event filter](RunningEventFilter) for the range of blocks
+/// between the last stored `to_block` in the event filter table and the last
+/// overall block in the database. This is needed because the aggregate event
+/// filter for each [block range](crate::bloom::AggregateBloom::BLOCK_RANGE_LEN)
+/// is stored once the range is complete, before that it is kept in memory and
+/// can be lost upon shutdown.
+pub(crate) fn rebuild_running_event_filter(
     tx: &rusqlite::Transaction<'_>,
 ) -> anyhow::Result<RunningEventFilter> {
     use super::transaction;
@@ -577,7 +564,7 @@ pub(crate) fn reconstruct_running_event_filter(
         ORDER BY from_block DESC LIMIT 1
         ",
     )?;
-    let mut events_to_reconstruct_stmt = tx.prepare(
+    let mut load_events_stmt = tx.prepare(
         r"
         SELECT events
         FROM transactions
@@ -592,16 +579,15 @@ pub(crate) fn reconstruct_running_event_filter(
 
     let first_running_event_filter_block = match last_to_block {
         Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
-        // Event filter table is empty -> reconstruct running filter
-        // from the genesis block.
+        // Event filter table is empty, rebuild running filter from the genesis block.
         None => BlockNumber::GENESIS,
     };
 
-    let events_to_reconstruct: Vec<Option<Vec<Vec<Event>>>> = events_to_reconstruct_stmt
+    let rebuilt_filters: Vec<Option<BloomFilter>> = load_events_stmt
         .query_and_then(
             named_params![":first_running_event_filter_block": &first_running_event_filter_block],
             |row| {
-                let events: Option<transaction::dto::EventsForBlock> = row
+                let Some(events) = row
                     .get_optional_blob(0)?
                     .map(|events_blob| -> anyhow::Result<_> {
                         let events = transaction::compression::decompress_events(events_blob)
@@ -613,40 +599,45 @@ pub(crate) fn reconstruct_running_event_filter(
 
                         Ok(events)
                     })
-                    .transpose()?;
+                    .transpose()?
+                    .map(|efb| {
+                        efb.events()
+                            .into_iter()
+                            .flatten()
+                            .map(Event::from)
+                            .collect::<Vec<_>>()
+                    })
+                else {
+                    return Ok(None);
+                };
 
-                Ok(events.map(|events| {
-                    events
-                        .events()
-                        .into_iter()
-                        .map(|e| e.into_iter().map(Into::into).collect())
-                        .collect()
-                }))
+                let mut bloom = BloomFilter::new();
+                for event in events {
+                    bloom.set_keys(&event.keys);
+                    bloom.set_address(&event.from_address);
+                }
+
+                Ok(Some(bloom))
             },
         )
-        .context("Querying events to reconstruct")?
+        .context("Querying events to rebuild")?
         .collect::<anyhow::Result<_>>()?;
 
     let mut filter = AggregateBloom::new(first_running_event_filter_block);
 
-    for (block, events_for_block) in events_to_reconstruct.iter().enumerate() {
-        let Some(events) = events_for_block else {
+    for (block, block_bloom_filter) in rebuilt_filters.iter().enumerate() {
+        let Some(bloom) = block_bloom_filter else {
+            // Reached the end of P2P (checkpoint) synced events.
             break;
         };
 
-        let mut bloom = BloomFilter::new();
-        for event in events.iter().flatten() {
-            bloom.set_keys(&event.keys);
-            bloom.set_address(&event.from_address);
-        }
-
         let block_number = first_running_event_filter_block + block as u64;
-        filter.add_bloom(&bloom, block_number);
+        filter.add_bloom(bloom, block_number);
     }
 
     Ok(RunningEventFilter {
         filter,
-        next_block: first_running_event_filter_block + events_to_reconstruct.len() as u64,
+        next_block: first_running_event_filter_block + rebuilt_filters.len() as u64,
     })
 }
 
