@@ -86,7 +86,7 @@ Examples:
         default_value = "v07",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
-    rpc_root_version: RpcVersion,
+    rpc_root_version: RootRpcVersion,
 
     #[arg(
         long = "rpc.execution-concurrency",
@@ -334,8 +334,7 @@ impl Color {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
-pub enum RpcVersion {
-    V06,
+pub enum RootRpcVersion {
     V07,
 }
 
@@ -692,7 +691,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
-    pub rpc_root_version: RpcVersion,
+    pub rpc_root_version: RootRpcVersion,
     pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
