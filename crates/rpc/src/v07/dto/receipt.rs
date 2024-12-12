@@ -2,8 +2,8 @@ use pathfinder_common::prelude::*;
 use pathfinder_serde::H256AsNoLeadingZerosHexStr;
 use serde::Serialize;
 
+use crate::types::receipt;
 use crate::types::reply::BlockStatus;
-use crate::v06::method::get_transaction_receipt::types as v06;
 use crate::PendingData;
 
 #[derive(Serialize)]
@@ -37,7 +37,7 @@ impl From<PendingData> for PendingBlockWithReceipts {
             .map(|(t, (r, e))| (t.clone(), r.clone(), e.clone()))
             .collect::<Vec<_>>();
 
-        let body = BlockBodyWithReceipts::from_common(body, v06::FinalityStatus::AcceptedOnL2);
+        let body = BlockBodyWithReceipts::from_common(body, receipt::FinalityStatus::AcceptedOnL2);
 
         Self {
             header: value.header().into(),
@@ -54,7 +54,7 @@ struct BlockBodyWithReceipts {
 impl BlockBodyWithReceipts {
     fn from_common(
         value: Vec<(CommonTransaction, CommonReceipt, Vec<CommonEvent>)>,
-        finality_status: v06::FinalityStatus,
+        finality_status: receipt::FinalityStatus,
     ) -> Self {
         let transactions = value
             .into_iter()
@@ -68,7 +68,7 @@ impl BlockBodyWithReceipts {
 #[derive(Serialize)]
 // Inner type of block with receipts
 struct TransactionWithReceipt {
-    transaction: crate::v06::types::TransactionWithHash,
+    transaction: crate::types::transaction::TransactionWithHash,
     receipt: PendingTxnReceipt,
 }
 
@@ -77,7 +77,7 @@ impl TransactionWithReceipt {
         transaction: CommonTransaction,
         receipt: CommonReceipt,
         events: Vec<CommonEvent>,
-        finality_status: v06::FinalityStatus,
+        finality_status: receipt::FinalityStatus,
     ) -> Self {
         let receipt =
             PendingTxnReceipt::from_common(&transaction, receipt, events, finality_status);
@@ -155,7 +155,7 @@ impl PendingTxnReceipt {
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
         events: Vec<CommonEvent>,
-        finality_status: v06::FinalityStatus,
+        finality_status: receipt::FinalityStatus,
     ) -> Self {
         let common = PendingCommonReceiptProperties::from_common(
             transaction,
@@ -198,11 +198,11 @@ impl PendingTxnReceipt {
 }
 
 #[derive(Serialize)]
-pub struct ComputationResources(v06::ExecutionResourcesProperties);
+pub struct ComputationResources(receipt::ExecutionResourcesProperties);
 
 impl From<pathfinder_common::receipt::ExecutionResources> for ComputationResources {
     fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
-        Self(v06::ExecutionResourcesProperties {
+        Self(receipt::ExecutionResourcesProperties {
             steps: value.n_steps,
             memory_holes: value.n_memory_holes,
             range_check_builtin_applications: value.builtins.range_check,
@@ -255,26 +255,26 @@ pub struct CommonReceiptProperties {
     actual_fee: FeePayment,
     block_hash: BlockHash,
     block_number: BlockNumber,
-    messages_sent: Vec<v06::MessageToL1>,
-    events: Vec<v06::Event>,
+    messages_sent: Vec<receipt::MessageToL1>,
+    events: Vec<receipt::Event>,
     #[serde(skip_serializing_if = "Option::is_none")]
     revert_reason: Option<String>,
     execution_resources: ExecutionResources,
-    execution_status: v06::ExecutionStatus,
-    finality_status: v06::FinalityStatus,
+    execution_status: receipt::ExecutionStatus,
+    finality_status: receipt::FinalityStatus,
 }
 
 #[derive(Serialize)]
 pub struct PendingCommonReceiptProperties {
     transaction_hash: TransactionHash,
     actual_fee: FeePayment,
-    messages_sent: Vec<v06::MessageToL1>,
-    events: Vec<v06::Event>,
+    messages_sent: Vec<receipt::MessageToL1>,
+    events: Vec<receipt::Event>,
     #[serde(skip_serializing_if = "Option::is_none")]
     revert_reason: Option<String>,
-    execution_status: v06::ExecutionStatus,
+    execution_status: receipt::ExecutionStatus,
     execution_resources: ExecutionResources,
-    finality_status: v06::FinalityStatus,
+    finality_status: receipt::FinalityStatus,
 }
 
 impl PendingCommonReceiptProperties {
@@ -282,7 +282,7 @@ impl PendingCommonReceiptProperties {
         transaction: &CommonTransaction,
         receipt: CommonReceipt,
         events: Vec<CommonEvent>,
-        finality_status: v06::FinalityStatus,
+        finality_status: receipt::FinalityStatus,
     ) -> Self {
         let actual_fee = FeePayment {
             amount: receipt.actual_fee,
@@ -381,7 +381,7 @@ mod tests {
                 revert_reason: None,
                 execution_resources: ExecutionResources {
                     computation_resources: ComputationResources(
-                        v06::ExecutionResourcesProperties {
+                        receipt::ExecutionResourcesProperties {
                             steps: 10,
                             memory_holes: 0,
                             range_check_builtin_applications: 0,
@@ -399,8 +399,8 @@ mod tests {
                         l1_data_gas: 0,
                     },
                 },
-                execution_status: v06::ExecutionStatus::Succeeded,
-                finality_status: v06::FinalityStatus::AcceptedOnL2,
+                execution_status: receipt::ExecutionStatus::Succeeded,
+                finality_status: receipt::FinalityStatus::AcceptedOnL2,
             },
         };
 
@@ -442,7 +442,7 @@ mod tests {
                 revert_reason: None,
                 execution_resources: ExecutionResources {
                     computation_resources: ComputationResources(
-                        v06::ExecutionResourcesProperties {
+                        receipt::ExecutionResourcesProperties {
                             steps: 10,
                             memory_holes: 0,
                             range_check_builtin_applications: 0,
@@ -460,8 +460,8 @@ mod tests {
                         l1_data_gas: 0,
                     },
                 },
-                execution_status: v06::ExecutionStatus::Succeeded,
-                finality_status: v06::FinalityStatus::AcceptedOnL2,
+                execution_status: receipt::ExecutionStatus::Succeeded,
+                finality_status: receipt::FinalityStatus::AcceptedOnL2,
             },
         };
 
