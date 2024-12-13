@@ -67,34 +67,37 @@ impl From<CallError> for ApplicationError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     pub request: FunctionCall,
     pub block_id: BlockId,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
     pub calldata: Vec<CallParam>,
 }
 
-// TODO: Not used yet, just an example for now.
+impl crate::dto::DeserializeForVersion for FunctionCall {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                contract_address: value.deserialize_serde("contract_address")?,
+                entry_point_selector: value.deserialize_serde("entry_point_selector")?,
+                calldata: value
+                    .deserialize_array("calldata", crate::dto::Value::deserialize_serde)?,
+            })
+        })
+    }
+}
+
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
             Ok(Self {
-                request: value.deserialize_map("request", |value| {
-                    Ok(FunctionCall {
-                        contract_address: value.deserialize_serde("contract_address")?,
-                        entry_point_selector: value.deserialize_serde("entry_point_selector")?,
-                        calldata: value
-                            .deserialize_array("calldata", crate::dto::Value::deserialize_serde)?,
-                    })
-                })?,
+                request: value.deserialize("request")?,
                 block_id: value.deserialize_serde("block_id")?,
             })
         })
@@ -181,15 +184,18 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         #[test]
         fn positional_args() {
-            let positional = json!([
+            let positional_json = json!([
                 { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(positional).unwrap();
             let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -203,12 +209,14 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named = json!({
+            let named_json = json!({
                 "request": { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<Input>(named).unwrap();
+            let named = crate::dto::Value::new(named_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(named).unwrap();
             let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),

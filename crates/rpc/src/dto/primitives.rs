@@ -1,5 +1,5 @@
 use pathfinder_common::{ContractAddress, L1TransactionHash};
-use primitive_types::H256;
+use primitive_types::{H160, H256};
 use serde::de::Error;
 
 use super::serialize::SerializeForVersion;
@@ -211,6 +211,12 @@ impl SerializeForVersion for BlockNumber {
     }
 }
 
+impl DeserializeForVersion for u64 {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_serde()
+    }
+}
+
 impl SerializeForVersion for U64Hex {
     fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
@@ -254,6 +260,19 @@ impl DeserializeForVersion for H256 {
             serde_json::Error::custom(format!("failed to parse hex string as u256: {}", e))
         })?;
         Ok(H256(bytes))
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::EthereumAddress {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        let hex_str: String = value.deserialize_serde()?;
+        let bytes = hex_str::bytes_from_hex_str_stripped::<20>(&hex_str).map_err(|e| {
+            serde_json::Error::custom(format!(
+                "failed to parse hex string as ethereum address: {}",
+                e
+            ))
+        })?;
+        Ok(Self(H160::from(bytes)))
     }
 }
 

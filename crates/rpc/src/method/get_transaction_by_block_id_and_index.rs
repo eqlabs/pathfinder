@@ -4,8 +4,7 @@ use pathfinder_common::{BlockId, TransactionIndex};
 use crate::context::RpcContext;
 use crate::types::transaction::TransactionWithHash;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
     index: TransactionIndex,
@@ -100,15 +99,18 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         #[test]
         fn positional_args() {
-            let positional = json!([
+            let positional_json = json!([
                 {"block_hash": "0xdeadbeef"},
                 1
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(positional).unwrap();
             assert_eq!(
                 input,
                 Input {
@@ -120,12 +122,14 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named_args = json!({
+            let named_args_json = json!({
                 "block_id": {"block_hash": "0xdeadbeef"},
                 "index": 1
             });
 
-            let input = serde_json::from_value::<Input>(named_args).unwrap();
+            let named = crate::dto::Value::new(named_args_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(named).unwrap();
             assert_eq!(
                 input,
                 Input {

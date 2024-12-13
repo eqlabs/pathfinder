@@ -225,18 +225,34 @@ pub struct SyncState {
 impl Default for SyncState {
     fn default() -> Self {
         Self {
-            status: RwLock::new(Syncing::False(false)),
+            status: RwLock::new(Syncing::False),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize)]
 pub(crate) struct SubscriptionId(pub u32);
 
 impl SubscriptionId {
     pub fn next() -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for SubscriptionId {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_u64(self.0 as u64)
+    }
+}
+
+impl crate::dto::DeserializeForVersion for SubscriptionId {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let id: u32 = value.deserialize_serde()?;
+        Ok(Self(id))
     }
 }
 
@@ -816,18 +832,19 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use dto::serialize::SerializeForVersion;
+    use dto::DeserializeForVersion;
     use serde_json::json;
 
     use super::*;
+    use crate::dto::serialize::Serializer;
 
     #[test]
     fn roundtrip_syncing() {
         use crate::types::syncing::{NumberedBlock, Status, Syncing};
 
         let examples = [
-            (line!(), "false", Syncing::False(false)),
-            // this shouldn't exist but it exists now
-            (line!(), "true", Syncing::False(true)),
+            (line!(), "false", Syncing::False),
             (
                 line!(),
                 r#"{"starting_block_hash":"0xa","starting_block_num":"0x1","current_block_hash":"0xb","current_block_num":"0x2","highest_block_hash":"0xc","highest_block_num":"0x3"}"#,
@@ -840,11 +857,20 @@ mod tests {
         ];
 
         for (line, input, expected) in examples {
-            let parsed = serde_json::from_str::<Syncing>(input).unwrap();
-            let output = serde_json::to_string(&parsed).unwrap();
+            let parsed = Syncing::deserialize(crate::dto::Value::new(
+                serde_json::from_str(input).unwrap(),
+                RpcVersion::V07,
+            ))
+            .unwrap();
+            let output = parsed.serialize(Serializer::new(RpcVersion::V07)).unwrap();
 
             assert_eq!(parsed, expected, "example from line {line}");
-            assert_eq!(&output, input, "example from line {line}");
+
+            // Compare parsed JSON values instead of strings
+            let output_value: serde_json::Value =
+                serde_json::from_str(&output.to_string()).unwrap();
+            let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
+            assert_eq!(output_value, input_value, "example from line {line}");
         }
     }
 

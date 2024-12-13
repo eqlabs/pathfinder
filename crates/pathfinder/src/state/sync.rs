@@ -543,7 +543,7 @@ async fn consumer(
 
                 // Update sync status
                 match &mut *state.status.write().await {
-                    Syncing::False(_) => {}
+                    Syncing::False => {}
                     Syncing::Status(status) => {
                         status.current = NumberedBlock::from((block_hash, block_number));
 
@@ -758,7 +758,7 @@ async fn update_sync_status_latest(
         latest_hash = hash;
         let latest = NumberedBlock::from((hash, number));
         match &mut *state.status.write().await {
-            sync_status @ Syncing::False(_) => {
+            sync_status @ Syncing::False => {
                 *sync_status = Syncing::Status(syncing::Status {
                     starting,
                     current: starting,

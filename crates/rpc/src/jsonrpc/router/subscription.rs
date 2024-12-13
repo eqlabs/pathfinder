@@ -659,7 +659,9 @@ async fn handle_request(
                 panic!("subscription id overflow");
             }
             Ok(Some(RpcResponse {
-                output: Ok(serde_json::to_value(subscription_id).unwrap()),
+                output: Ok(subscription_id
+                    .serialize(serialize::Serializer::new(state.version))
+                    .unwrap()),
                 id: req_id,
                 version: state.version,
             }))
@@ -1013,7 +1015,7 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,

@@ -1,32 +1,89 @@
 use pathfinder_common::{ContractAddress, EventData, EventKey, L2ToL1MessagePayloadElem};
-use serde::Serialize;
-use serde_with::serde_as;
 
 use crate::felt::{RpcFelt, RpcFelt251};
 use crate::types::reply::BlockStatus;
 
-#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ExecutionResourcesProperties {
     pub steps: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub memory_holes: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub range_check_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub pedersen_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub poseidon_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub ec_op_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub ecdsa_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub bitwise_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub keccak_builtin_applications: u64,
-    #[serde(skip_serializing_if = "is_zero")]
+    #[cfg_attr(test, serde(skip_serializing_if = "is_zero"))]
     pub segment_arena_builtin: u64,
+}
+
+impl crate::dto::serialize::SerializeForVersion for ExecutionResourcesProperties {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("steps", &self.steps)?;
+        if !is_zero(&self.memory_holes) {
+            serializer.serialize_field("memory_holes", &self.memory_holes)?;
+        }
+        if !is_zero(&self.range_check_builtin_applications) {
+            serializer.serialize_field(
+                "range_check_builtin_applications",
+                &self.range_check_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.pedersen_builtin_applications) {
+            serializer.serialize_field(
+                "pedersen_builtin_applications",
+                &self.pedersen_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.poseidon_builtin_applications) {
+            serializer.serialize_field(
+                "poseidon_builtin_applications",
+                &self.poseidon_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.ec_op_builtin_applications) {
+            serializer.serialize_field(
+                "ec_op_builtin_applications",
+                &self.ec_op_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.ecdsa_builtin_applications) {
+            serializer.serialize_field(
+                "ecdsa_builtin_applications",
+                &self.ecdsa_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.bitwise_builtin_applications) {
+            serializer.serialize_field(
+                "bitwise_builtin_applications",
+                &self.bitwise_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.keccak_builtin_applications) {
+            serializer.serialize_field(
+                "keccak_builtin_applications",
+                &self.keccak_builtin_applications,
+            )?;
+        }
+        if !is_zero(&self.segment_arena_builtin) {
+            serializer.serialize_field("segment_arena_builtin", &self.segment_arena_builtin)?;
+        }
+        serializer.end()
+    }
 }
 
 fn is_zero(value: &u64) -> bool {
@@ -70,9 +127,9 @@ impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResources
     }
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
+#[cfg_attr(test, serde(rename_all = "SCREAMING_SNAKE_CASE"))]
 pub enum ExecutionStatus {
     Succeeded,
     Reverted,
@@ -87,23 +144,55 @@ impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
     }
 }
 
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+impl crate::dto::serialize::SerializeForVersion for ExecutionStatus {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        match self {
+            Self::Succeeded => serializer.serialize_str("SUCCEEDED"),
+            Self::Reverted => serializer.serialize_str("REVERTED"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub enum FinalityStatus {
     AcceptedOnL2,
     //AcceptedOnL1,
 }
 
+impl crate::dto::serialize::SerializeForVersion for FinalityStatus {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        match self {
+            Self::AcceptedOnL2 => serializer.serialize_str("ACCEPTED_ON_L2"),
+        }
+    }
+}
+
+impl crate::dto::DeserializeForVersion for FinalityStatus {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let s: String = value.deserialize_serde()?;
+        match s.as_str() {
+            "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
+            _ => Err(serde::de::Error::unknown_variant(
+                "Unknown finality status",
+                &["ACCEPTED_ON_L2"],
+            )),
+        }
+    }
+}
+
 /// Message sent from L2 to L1.
-#[serde_as]
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
-#[serde(deny_unknown_fields)]
 pub struct MessageToL1 {
     pub from_address: ContractAddress,
     pub to_address: ContractAddress,
-    #[serde_as(as = "Vec<RpcFelt>")]
     pub payload: Vec<L2ToL1MessagePayloadElem>,
 }
 
@@ -117,17 +206,29 @@ impl From<pathfinder_common::receipt::L2ToL1Message> for MessageToL1 {
     }
 }
 
+impl crate::dto::serialize::SerializeForVersion for MessageToL1 {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("from_address", &self.from_address)?;
+        serializer.serialize_field("to_address", &self.to_address)?;
+        serializer.serialize_iter(
+            "payload",
+            self.payload.len(),
+            &mut self.payload.iter().map(|p| RpcFelt(p.0)),
+        )?;
+        serializer.end()
+    }
+}
+
 /// Event emitted as a part of a transaction.
-#[serde_as]
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
-#[serde(deny_unknown_fields)]
 pub struct Event {
-    #[serde_as(as = "RpcFelt251")]
     pub from_address: ContractAddress,
-    #[serde_as(as = "Vec<RpcFelt>")]
     pub keys: Vec<EventKey>,
-    #[serde_as(as = "Vec<RpcFelt>")]
     pub data: Vec<EventData>,
 }
 
@@ -141,16 +242,33 @@ impl From<pathfinder_common::event::Event> for Event {
     }
 }
 
+impl crate::dto::serialize::SerializeForVersion for Event {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("from_address", &RpcFelt251(RpcFelt(self.from_address.0)))?;
+        serializer.serialize_iter(
+            "keys",
+            self.keys.len(),
+            &mut self.keys.iter().map(|k| RpcFelt(k.0)),
+        )?;
+        serializer.serialize_iter(
+            "data",
+            self.data.len(),
+            &mut self.data.iter().map(|d| RpcFelt(d.0)),
+        )?;
+        serializer.end()
+    }
+}
+
 /// Represents transaction status.
-#[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
-#[serde(deny_unknown_fields)]
 pub enum TransactionStatus {
-    #[serde(rename = "ACCEPTED_ON_L2")]
     AcceptedOnL2,
-    #[serde(rename = "ACCEPTED_ON_L1")]
     AcceptedOnL1,
-    #[serde(rename = "REJECTED")]
     Rejected,
 }
 
@@ -162,5 +280,18 @@ impl From<BlockStatus> for TransactionStatus {
             BlockStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
             BlockStatus::Rejected => TransactionStatus::Rejected,
         }
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for TransactionStatus {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_str(match self {
+            Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
+            Self::AcceptedOnL1 => "ACCEPTED_ON_L1",
+            Self::Rejected => "REJECTED",
+        })
     }
 }
