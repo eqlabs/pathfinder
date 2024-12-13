@@ -21,18 +21,15 @@ use pathfinder_common::{
     TransactionHash,
     TransactionVersion,
 };
-use serde::ser::SerializeStruct;
-use serde::Serialize;
 
 /// Equivalent to the TXN type from the specification.
 #[derive(PartialEq, Debug, Clone, Eq)]
 pub struct Transaction(pub pathfinder_common::transaction::TransactionVariant);
 
 /// A transaction and its hash, a common structure used in the spec.
-#[derive(serde::Serialize, PartialEq, Debug, Clone, Eq)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub struct TransactionWithHash {
     pub transaction_hash: TransactionHash,
-    #[serde(flatten)]
     pub txn: Transaction,
 }
 
@@ -45,11 +42,23 @@ impl From<pathfinder_common::transaction::Transaction> for TransactionWithHash {
     }
 }
 
-impl Serialize for Transaction {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for TransactionWithHash {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.flatten(&self.txn)?;
+        serializer.end()
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for Transaction {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         use pathfinder_common::transaction::TransactionVariant;
         match &self.0 {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
@@ -93,50 +102,32 @@ struct ResourcePricePerUnitHelper<'a>(&'a ResourcePricePerUnit);
 struct DataAvailabilityModeHelper<'a>(&'a DataAvailabilityMode);
 struct TipHelper<'a>(&'a Tip);
 
-impl Serialize for DeclareV0Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeclareV0", 6)?;
-        s.serialize_field("type", "DECLARE")?;
+impl crate::dto::serialize::SerializeForVersion for DeclareV0Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x0")?;
+        s.serialize_field("version", &"0x0")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
         s.end()
     }
 }
 
-impl Serialize for DeclareV1Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeclareV1", 7)?;
-        s.serialize_field("type", "DECLARE")?;
+impl crate::dto::serialize::SerializeForVersion for DeclareV1Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x1")?;
-        s.serialize_field("signature", &self.0.signature)?;
-        s.serialize_field("nonce", &self.0.nonce)?;
-        s.serialize_field("class_hash", &self.0.class_hash)?;
-        s.end()
-    }
-}
-
-impl Serialize for DeclareV2Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeclareV2", 8)?;
-        s.serialize_field("type", "DECLARE")?;
-        s.serialize_field("sender_address", &self.0.sender_address)?;
-        s.serialize_field("compiled_class_hash", &self.0.compiled_class_hash)?;
-        s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x2")?;
+        s.serialize_field("version", &"0x1")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
@@ -144,16 +135,34 @@ impl Serialize for DeclareV2Helper<'_> {
     }
 }
 
-impl Serialize for DeclareV3Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeclareV3", 13)?;
-        s.serialize_field("type", "DECLARE")?;
+impl crate::dto::serialize::SerializeForVersion for DeclareV2Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("compiled_class_hash", &self.0.compiled_class_hash)?;
-        s.serialize_field("version", "0x3")?;
+        s.serialize_field("max_fee", &self.0.max_fee)?;
+        s.serialize_field("version", &"0x2")?;
+        s.serialize_field("signature", &self.0.signature)?;
+        s.serialize_field("nonce", &self.0.nonce)?;
+        s.serialize_field("class_hash", &self.0.class_hash)?;
+        s.end()
+    }
+}
+
+impl crate::dto::serialize::SerializeForVersion for DeclareV3Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DECLARE")?;
+        s.serialize_field("sender_address", &self.0.sender_address)?;
+        s.serialize_field("compiled_class_hash", &self.0.compiled_class_hash)?;
+        s.serialize_field("version", &"0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
@@ -176,17 +185,17 @@ impl Serialize for DeclareV3Helper<'_> {
     }
 }
 
-impl Serialize for DeployV0Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Deploy", 5)?;
+impl crate::dto::serialize::SerializeForVersion for DeployV0Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
             &TransactionVersionHelper(&TransactionVersion::ZERO),
         )?;
-        s.serialize_field("type", "DEPLOY")?;
+        s.serialize_field("type", &"DEPLOY")?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
         s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
@@ -194,17 +203,17 @@ impl Serialize for DeployV0Helper<'_> {
     }
 }
 
-impl Serialize for DeployV1Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("Deploy", 5)?;
+impl crate::dto::serialize::SerializeForVersion for DeployV1Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
             &TransactionVersionHelper(&TransactionVersion::ONE),
         )?;
-        s.serialize_field("type", "DEPLOY")?;
+        s.serialize_field("type", &"DEPLOY")?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
         s.serialize_field("constructor_calldata", &self.0.constructor_calldata)?;
         s.serialize_field("class_hash", &self.0.class_hash)?;
@@ -212,15 +221,15 @@ impl Serialize for DeployV1Helper<'_> {
     }
 }
 
-impl Serialize for DeployAccountV1Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeployAccount", 8)?;
-        s.serialize_field("type", "DEPLOY_ACCOUNT")?;
+impl crate::dto::serialize::SerializeForVersion for DeployAccountV1Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DEPLOY_ACCOUNT")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x1")?;
+        s.serialize_field("version", &"0x1")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
@@ -230,14 +239,14 @@ impl Serialize for DeployAccountV1Helper<'_> {
     }
 }
 
-impl Serialize for DeployAccountV3Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("DeployAccount", 12)?;
-        s.serialize_field("type", "DEPLOY_ACCOUNT")?;
-        s.serialize_field("version", "0x3")?;
+impl crate::dto::serialize::SerializeForVersion for DeployAccountV3Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+        s.serialize_field("version", &"0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address_salt", &self.0.contract_address_salt)?;
@@ -261,15 +270,15 @@ impl Serialize for DeployAccountV3Helper<'_> {
     }
 }
 
-impl Serialize for InvokeV0Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("InvokeV0", 7)?;
-        s.serialize_field("type", "INVOKE")?;
+impl crate::dto::serialize::SerializeForVersion for InvokeV0Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x0")?;
+        s.serialize_field("version", &"0x0")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("contract_address", &self.0.sender_address)?;
         s.serialize_field("entry_point_selector", &self.0.entry_point_selector)?;
@@ -278,33 +287,33 @@ impl Serialize for InvokeV0Helper<'_> {
     }
 }
 
-impl Serialize for InvokeV1Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("InvokeV1", 7)?;
-        s.serialize_field("type", "INVOKE")?;
+impl crate::dto::serialize::SerializeForVersion for InvokeV1Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("calldata", &self.0.calldata)?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
-        s.serialize_field("version", "0x1")?;
+        s.serialize_field("version", &"0x1")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.end()
     }
 }
 
-impl Serialize for InvokeV3Helper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("InvokeV3", 12)?;
-        s.serialize_field("type", "INVOKE")?;
+impl crate::dto::serialize::SerializeForVersion for InvokeV3Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
         s.serialize_field("calldata", &self.0.calldata)?;
-        s.serialize_field("version", "0x3")?;
+        s.serialize_field("version", &"0x3")?;
         s.serialize_field("signature", &self.0.signature)?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field(
@@ -326,17 +335,17 @@ impl Serialize for InvokeV3Helper<'_> {
     }
 }
 
-impl Serialize for L1HandlerHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("L1Handler", 6)?;
+impl crate::dto::serialize::SerializeForVersion for L1HandlerHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
             &TransactionVersionHelper(&TransactionVersion::ZERO),
         )?;
-        s.serialize_field("type", "L1_HANDLER")?;
+        s.serialize_field("type", &"L1_HANDLER")?;
         s.serialize_field("nonce", &self.0.nonce)?;
         s.serialize_field("contract_address", &self.0.contract_address)?;
         s.serialize_field("entry_point_selector", &self.0.entry_point_selector)?;
@@ -345,34 +354,34 @@ impl Serialize for L1HandlerHelper<'_> {
     }
 }
 
-impl Serialize for TransactionVersionHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for TransactionVersionHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(self.0 .0.as_be_bytes()))
     }
 }
 
-impl Serialize for ResourceBoundsHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("ResourceBounds", 2)?;
+impl crate::dto::serialize::SerializeForVersion for ResourceBoundsHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
         s.serialize_field("l1_gas", &ResourceBoundHelper(&self.0.l1_gas))?;
         s.serialize_field("l2_gas", &ResourceBoundHelper(&self.0.l2_gas))?;
         s.end()
     }
 }
 
-impl Serialize for ResourceBoundHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut s = serializer.serialize_struct("ResourceBound", 2)?;
+impl crate::dto::serialize::SerializeForVersion for ResourceBoundHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut s = serializer.serialize_struct()?;
         s.serialize_field("max_amount", &ResourceAmountHelper(&self.0.max_amount))?;
         s.serialize_field(
             "max_price_per_unit",
@@ -382,31 +391,31 @@ impl Serialize for ResourceBoundHelper<'_> {
     }
 }
 
-impl Serialize for ResourceAmountHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for ResourceAmountHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
 }
 
-impl Serialize for ResourcePricePerUnitHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for ResourcePricePerUnitHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
 }
 
-impl Serialize for DataAvailabilityModeHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for DataAvailabilityModeHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         match self.0 {
             DataAvailabilityMode::L1 => serializer.serialize_str("L1"),
             DataAvailabilityMode::L2 => serializer.serialize_str("L2"),
@@ -414,11 +423,11 @@ impl Serialize for DataAvailabilityModeHelper<'_> {
     }
 }
 
-impl Serialize for TipHelper<'_> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
+impl crate::dto::serialize::SerializeForVersion for TipHelper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
@@ -437,6 +446,8 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::serialize::{SerializeForVersion, Serializer};
+        use crate::RpcVersion;
 
         #[test]
         fn declare_v0() {
@@ -460,7 +471,11 @@ mod tests {
                 "class_hash": "0x123",
             });
             let uut = Transaction(TransactionVariant::DeclareV0(original));
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -488,7 +503,11 @@ mod tests {
                 "nonce": "0xaabbcc",
             });
             let uut = Transaction(TransactionVariant::DeclareV1(original));
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -519,7 +538,11 @@ mod tests {
                 "compiled_class_hash": "0xbbbbb",
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -576,7 +599,11 @@ mod tests {
                 "account_deployment_data": [],
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -602,7 +629,11 @@ mod tests {
                 "version": "0x0",
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -634,7 +665,11 @@ mod tests {
                 "class_hash": "0x123",
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -690,7 +725,11 @@ mod tests {
                 "paymaster_data": [],
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -720,7 +759,11 @@ mod tests {
                 "signature": ["0xa1b1", "0x1a1b"],
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -749,7 +792,11 @@ mod tests {
                 "nonce": "0xaabbcc",
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -804,7 +851,11 @@ mod tests {
                 "account_deployment_data": [],
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }
@@ -828,7 +879,11 @@ mod tests {
                 "version": "0x0",
             });
             let uut = Transaction(original);
-            let result = serde_json::to_value(uut).unwrap();
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
 
             assert_eq!(result, expected);
         }

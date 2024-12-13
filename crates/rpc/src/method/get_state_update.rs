@@ -91,28 +91,38 @@ pub(crate) mod types {
         StorageAddress,
         StorageValue,
     };
-    use serde::Serialize;
-    use serde_with::skip_serializing_none;
+    #[cfg(test)]
+    use serde_with::serde_as;
 
     use crate::felt::{RpcFelt, RpcFelt251};
 
-    #[serde_with::serde_as]
-    #[skip_serializing_none]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct StateUpdate {
         /// None for `pending`
-        #[serde(default)]
-        #[serde_as(as = "Option<RpcFelt>")]
         pub block_hash: Option<BlockHash>,
         /// None for `pending`
-        #[serde(default)]
-        #[serde_as(as = "Option<RpcFelt>")]
         pub new_root: Option<StateCommitment>,
-        #[serde_as(as = "RpcFelt")]
         pub old_root: StateCommitment,
         pub state_diff: StateDiff,
+    }
+
+    impl crate::dto::serialize::SerializeForVersion for StateUpdate {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+            if let Some(block_hash) = self.block_hash {
+                serializer.serialize_field("block_hash", &RpcFelt(block_hash.0))?;
+            }
+            if let Some(new_root) = self.new_root {
+                serializer.serialize_field("new_root", &RpcFelt(new_root.0))?;
+            }
+            serializer.serialize_field("old_root", &RpcFelt(self.old_root.0))?;
+            serializer.serialize_field("state_diff", &self.state_diff)?;
+            serializer.end()
+        }
     }
 
     impl From<pathfinder_common::StateUpdate> for StateUpdate {
@@ -211,13 +221,10 @@ pub(crate) mod types {
     }
 
     /// L2 state diff.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Default)]
+    #[derive(Clone, Debug, PartialEq, Eq, Default)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct StateDiff {
         pub storage_diffs: Vec<StorageDiff>,
-        #[serde_as(as = "Vec<RpcFelt>")]
         pub deprecated_declared_classes: Vec<ClassHash>,
         pub declared_classes: Vec<DeclaredSierraClass>,
         pub deployed_contracts: Vec<DeployedContract>,
@@ -259,26 +266,89 @@ pub(crate) mod types {
         }
     }
 
+    impl crate::dto::serialize::SerializeForVersion for StateDiff {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_iter(
+                "storage_diffs",
+                self.storage_diffs.len(),
+                &mut self.storage_diffs.clone().into_iter(),
+            )?;
+            serializer.serialize_iter(
+                "deprecated_declared_classes",
+                self.deprecated_declared_classes.len(),
+                &mut self
+                    .deprecated_declared_classes
+                    .clone()
+                    .into_iter()
+                    .map(|x| RpcFelt(x.0)),
+            )?;
+            serializer.serialize_iter(
+                "declared_classes",
+                self.declared_classes.len(),
+                &mut self.declared_classes.clone().into_iter(),
+            )?;
+            serializer.serialize_iter(
+                "deployed_contracts",
+                self.deployed_contracts.len(),
+                &mut self.deployed_contracts.clone().into_iter(),
+            )?;
+            serializer.serialize_iter(
+                "replaced_classes",
+                self.replaced_classes.len(),
+                &mut self.replaced_classes.clone().into_iter(),
+            )?;
+            serializer.serialize_iter(
+                "nonces",
+                self.nonces.len(),
+                &mut self.nonces.clone().into_iter(),
+            )?;
+
+            serializer.end()
+        }
+    }
+
     /// L2 storage diff of a contract.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    #[cfg_attr(test, serde_as)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
+    #[cfg_attr(test, serde(deny_unknown_fields))]
     pub struct StorageDiff {
-        #[serde_as(as = "RpcFelt251")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub address: ContractAddress,
         pub storage_entries: Vec<StorageEntry>,
     }
 
+    impl crate::dto::serialize::SerializeForVersion for StorageDiff {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("address", &RpcFelt251(RpcFelt(self.address.0)))?;
+            serializer.serialize_iter(
+                "storage_entries",
+                self.storage_entries.len(),
+                &mut self.storage_entries.clone().into_iter(),
+            )?;
+
+            serializer.end()
+        }
+    }
+
     /// A key-value entry of a storage diff.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    #[cfg_attr(test, serde_as)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct StorageEntry {
-        #[serde_as(as = "RpcFelt251")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub key: StorageAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub value: StorageValue,
     }
 
@@ -300,15 +370,28 @@ pub(crate) mod types {
         }
     }
 
+    impl crate::dto::serialize::SerializeForVersion for StorageEntry {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("key", &RpcFelt(self.key.0))?;
+            serializer.serialize_field("value", &RpcFelt(self.value.0))?;
+
+            serializer.end()
+        }
+    }
+
     /// L2 state diff declared Sierra class item.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(test, serde_as)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct DeclaredSierraClass {
-        #[serde_as(as = "RpcFelt")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub class_hash: SierraHash,
-        #[serde_as(as = "RpcFelt")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub compiled_class_hash: CasmHash,
     }
 
@@ -321,18 +404,31 @@ pub(crate) mod types {
         }
     }
 
-    /// L2 state diff deployed contract item.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
-    pub struct DeployedContract {
-        #[serde_as(as = "RpcFelt251")]
-        pub address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
-        pub class_hash: ClassHash,
+    impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("class_hash", &RpcFelt(self.class_hash.0))?;
+            serializer
+                .serialize_field("compiled_class_hash", &RpcFelt(self.compiled_class_hash.0))?;
+
+            serializer.end()
+        }
     }
 
+    /// L2 state diff deployed contract item.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(test, serde_as)]
+    #[cfg_attr(test, derive(serde::Deserialize))]
+    pub struct DeployedContract {
+        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
+        pub address: ContractAddress,
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
+        pub class_hash: ClassHash,
+    }
     impl From<pathfinder_executor::types::DeployedContract> for DeployedContract {
         fn from(d: pathfinder_executor::types::DeployedContract) -> Self {
             Self {
@@ -342,15 +438,28 @@ pub(crate) mod types {
         }
     }
 
+    impl crate::dto::serialize::SerializeForVersion for DeployedContract {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("address", &RpcFelt(self.address.0))?;
+            serializer.serialize_field("class_hash", &RpcFelt(self.class_hash.0))?;
+
+            serializer.end()
+        }
+    }
+
     /// L2 state diff replaced class item.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(test, serde_as)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct ReplacedClass {
-        #[serde_as(as = "RpcFelt251")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub contract_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub class_hash: ClassHash,
     }
 
@@ -363,16 +472,43 @@ pub(crate) mod types {
         }
     }
 
+    impl crate::dto::serialize::SerializeForVersion for ReplacedClass {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("contract_address", &RpcFelt(self.contract_address.0))?;
+            serializer.serialize_field("class_hash", &RpcFelt(self.class_hash.0))?;
+
+            serializer.end()
+        }
+    }
+
     /// L2 state diff nonce item.
-    #[serde_with::serde_as]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    #[cfg_attr(test, serde_as)]
     #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
     pub struct Nonce {
-        #[serde_as(as = "RpcFelt251")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt251"))]
         pub contract_address: ContractAddress,
-        #[serde_as(as = "RpcFelt")]
+        #[cfg_attr(test, serde_as(as = "RpcFelt"))]
         pub nonce: ContractNonce,
+    }
+
+    impl crate::dto::serialize::SerializeForVersion for Nonce {
+        fn serialize(
+            &self,
+            serializer: crate::dto::serialize::Serializer,
+        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            let mut serializer = serializer.serialize_struct()?;
+
+            serializer.serialize_field("contract_address", &RpcFelt(self.contract_address.0))?;
+            serializer.serialize_field("nonce", &RpcFelt(self.nonce.0))?;
+
+            serializer.end()
+        }
     }
 
     #[cfg(test)]
@@ -380,6 +516,7 @@ pub(crate) mod types {
         use pathfinder_common::macro_prelude::*;
 
         use super::*;
+        use crate::RpcVersion;
 
         #[test]
         fn receipt() {
@@ -425,7 +562,20 @@ pub(crate) mod types {
             let fixture =
                 include_str!("../../fixtures/0.50.0/state_update.json").replace([' ', '\n'], "");
 
-            pretty_assertions_sorted::assert_eq!(serde_json::to_string(&data).unwrap(), fixture);
+            let fixture_pretty = serde_json::to_string_pretty(
+                &serde_json::from_str::<serde_json::Value>(&fixture).unwrap(),
+            )
+            .unwrap();
+
+            let serializer = crate::dto::serialize::Serializer::new(RpcVersion::V07);
+            let serialized = serde_json::to_string_pretty(
+                &serializer
+                    .serialize_iter(data.len(), &mut data.clone().into_iter())
+                    .unwrap(),
+            )
+            .unwrap();
+
+            pretty_assertions_sorted::assert_eq!(serialized, fixture_pretty);
             pretty_assertions_sorted::assert_eq!(
                 serde_json::from_str::<Vec<StateUpdate>>(&fixture).unwrap(),
                 data

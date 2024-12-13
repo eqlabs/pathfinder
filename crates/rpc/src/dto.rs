@@ -30,7 +30,7 @@ pub trait DeserializeForVersion: Sized {
     fn deserialize(value: Value) -> Result<Self, serde_json::Error>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Value {
     data: serde_json::Value,
     pub version: RpcVersion,
@@ -54,6 +54,10 @@ impl Value {
 
     pub fn is_null(&self) -> bool {
         self.data.is_null()
+    }
+
+    pub fn json_value(&self) -> serde_json::Value {
+        self.data.clone()
     }
 
     pub fn deserialize<T: DeserializeForVersion>(self) -> Result<T, serde_json::Error> {
