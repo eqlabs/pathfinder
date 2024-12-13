@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -392,7 +393,7 @@ impl Transaction<'_> {
         start_block: BlockNumber,
         end_block: BlockNumber,
         max_event_filters_to_load: Option<NonZeroUsize>,
-    ) -> anyhow::Result<(Vec<AggregateBloom>, bool)> {
+    ) -> anyhow::Result<(Vec<Arc<AggregateBloom>>, bool)> {
         let mut total_filters_stmt = self.inner().prepare_cached(
             r"
             SELECT COUNT(*)
@@ -439,6 +440,7 @@ impl Transaction<'_> {
 
         let mut event_filters = load_stmt
             .query_map(
+                // Cannot use crate::params::named_params![] here because of the rarray.
                 rusqlite::named_params![
                     ":end_block": &end_block.get(),
                     ":start_block": &start_block.get(),
@@ -450,11 +452,11 @@ impl Transaction<'_> {
                     let to_block = row.get_block_number(1)?;
                     let compressed_bitmap: Vec<u8> = row.get(2)?;
 
-                    Ok(AggregateBloom::from_existing_compressed(
+                    Ok(Arc::new(AggregateBloom::from_existing_compressed(
                         from_block,
                         to_block,
                         compressed_bitmap,
-                    ))
+                    )))
                 },
             )
             .context("Querying event filter range")?
@@ -475,7 +477,7 @@ impl Transaction<'_> {
 
         if should_include_running && !load_limit_reached {
             let running_event_filter = self.running_event_filter.lock().unwrap();
-            event_filters.push(running_event_filter.filter.clone());
+            event_filters.push(Arc::new(running_event_filter.filter.clone()));
         }
 
         Ok((event_filters, load_limit_reached))
