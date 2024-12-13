@@ -171,9 +171,8 @@ impl ApplicationError {
     pub fn message(&self, version: RpcVersion) -> String {
         match self {
             ApplicationError::InsufficientResourcesForValidate => match version {
-                RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
-                                                      transaction cost (validation plus fee \
-                                                      transfer)"
+                RpcVersion::V07 => "Max fee is smaller than the minimal transaction cost \
+                                    (validation plus fee transfer)"
                     .to_string(),
                 _ => self.to_string(),
             },
