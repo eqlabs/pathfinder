@@ -104,13 +104,13 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let new_root_index = match update {
             RootIndexUpdate::Unchanged => return Ok(()),
-            RootIndexUpdate::Updated(idx) => Some(idx),
+            RootIndexUpdate::Updated(idx) => Some(idx.get()),
             RootIndexUpdate::TrieEmpty => None,
         };
 
         self.inner().execute(
             "INSERT OR REPLACE INTO class_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index.unwrap().get()],
+            params![&block_number, &new_root_index],
         )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
@@ -216,12 +216,12 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let new_root_index = match update {
             RootIndexUpdate::Unchanged => return Ok(()),
-            RootIndexUpdate::Updated(idx) => Some(idx),
+            RootIndexUpdate::Updated(idx) => Some(idx.get()),
             RootIndexUpdate::TrieEmpty => None,
         };
         self.inner().execute(
             "INSERT OR REPLACE INTO storage_roots (block_number, root_index) VALUES(?, ?)",
-            params![&block_number, &new_root_index.unwrap().get()],
+            params![&block_number, &new_root_index],
         )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
@@ -263,13 +263,13 @@ impl Transaction<'_> {
     ) -> anyhow::Result<()> {
         let new_root_index = match update {
             RootIndexUpdate::Unchanged => return Ok(()),
-            RootIndexUpdate::Updated(idx) => Some(idx),
+            RootIndexUpdate::Updated(idx) => Some(idx.get()),
             RootIndexUpdate::TrieEmpty => None,
         };
         self.inner().execute(
             "INSERT OR REPLACE INTO contract_roots (block_number, contract_address, root_index) \
              VALUES(?, ?, ?)",
-            params![&block_number, &contract, &new_root_index.unwrap().get()],
+            params![&block_number, &contract, &new_root_index],
         )?;
 
         if let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode {
@@ -397,7 +397,7 @@ impl Transaction<'_> {
                 &block_number,
                 &bincode::encode_to_vec(
                     removed
-                        .into_iter()
+                        .iter()
                         .map(|trie_storaage_index| trie_storaage_index.get())
                         .collect::<Vec<u64>>(),
                     bincode::config::standard()
