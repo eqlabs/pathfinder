@@ -61,8 +61,10 @@
 //! filter.
 
 use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex};
 
 use bloomfilter::Bloom;
+use cached::{Cached, SizedCache};
 use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
 
@@ -71,9 +73,7 @@ pub const BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
 /// An aggregate of all Bloom filters for a given range of blocks.
 /// Before being added to `AggregateBloom`, each [`BloomFilter`] is
 /// rotated by 90 degrees (transposed).
-#[derive(Debug, Clone)]
-// TODO:
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct AggregateBloom {
     /// A [Self::BLOCK_RANGE_LEN] by [BloomFilter::BITVEC_LEN] matrix stored in
     /// a single array.
@@ -86,11 +86,9 @@ pub struct AggregateBloom {
     pub to_block: BlockNumber,
 }
 
-// TODO:
-#[allow(dead_code)]
 impl AggregateBloom {
     /// Maximum number of blocks to aggregate in a single `AggregateBloom`.
-    pub const BLOCK_RANGE_LEN: u64 = 32_768;
+    pub const BLOCK_RANGE_LEN: u64 = 8192;
     const BLOCK_RANGE_BYTES: u64 = Self::BLOCK_RANGE_LEN / 8;
 
     /// Create a new `AggregateBloom` for the (`from_block`, `from_block` +
@@ -218,6 +216,90 @@ impl AggregateBloom {
     }
 }
 
+impl std::fmt::Debug for AggregateBloom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        self.bitmap.hash(&mut hasher);
+        let bitmap_hash = hasher.finish();
+
+        f.debug_struct("AggregateBloom")
+            .field("from_block", &self.from_block)
+            .field("to_block", &self.to_block)
+            .field("bitmap_hash", &format!("{:#x}", bitmap_hash))
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct CacheKey {
+    from_block: BlockNumber,
+    to_block: BlockNumber,
+}
+
+/// A cache for [`AggregateBloom`] filters. It is very expensive to clone these
+/// filters, so we store them in an [`Arc`] and clone it instead.
+pub(crate) struct AggregateBloomCache(Mutex<SizedCache<CacheKey, Arc<AggregateBloom>>>);
+
+impl AggregateBloomCache {
+    pub fn with_size(size: usize) -> Self {
+        Self(Mutex::new(SizedCache::with_size(size)))
+    }
+
+    pub fn reset(&self) {
+        self.0.lock().unwrap().cache_reset();
+    }
+
+    pub fn get_many(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> Vec<Arc<AggregateBloom>> {
+        let mut cache = self.0.lock().unwrap();
+
+        let from_block = from_block.get();
+        let to_block = to_block.get();
+
+        // Align to the nearest lower multiple of BLOCK_RANGE_LEN.
+        let from_block_aligned = from_block - from_block % AggregateBloom::BLOCK_RANGE_LEN;
+        // Align to the nearest higher multiple of BLOCK_RANGE_LEN, then subtract 1
+        // (zero based indexing).
+        let to_block_aligned = to_block + AggregateBloom::BLOCK_RANGE_LEN
+            - (to_block % AggregateBloom::BLOCK_RANGE_LEN)
+            - 1;
+
+        (from_block_aligned..=to_block_aligned)
+            .step_by(AggregateBloom::BLOCK_RANGE_LEN as usize)
+            .map(|from| {
+                let to = from + AggregateBloom::BLOCK_RANGE_LEN - 1;
+                (
+                    BlockNumber::new_or_panic(from),
+                    BlockNumber::new_or_panic(to),
+                )
+            })
+            .filter_map(|(from_block, to_block)| {
+                let k = CacheKey {
+                    from_block,
+                    to_block,
+                };
+                cache.cache_get(&k).map(Arc::clone)
+            })
+            .collect()
+    }
+
+    pub fn set_many(&self, filters: &[Arc<AggregateBloom>]) {
+        let mut cache = self.0.lock().unwrap();
+        filters.iter().for_each(|filter| {
+            let k = CacheKey {
+                from_block: filter.from_block,
+                to_block: filter.to_block,
+            };
+            cache.cache_set(k, Arc::clone(filter));
+        });
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct BloomFilter(Bloom<Felt>);
 
@@ -310,98 +392,181 @@ mod tests {
     use super::*;
 
     const KEY: Felt = felt!("0x0218b538681900fad5a0b2ffe1d6781c0c3f14df5d32071ace0bdc9d46cb69ea");
-    #[allow(dead_code)]
     const KEY1: Felt = felt!("0x0218b538681900fad5a0b2ffe1d6781c0c3f14df5d32071ace0bdc9d46cb69eb");
     const KEY_NOT_IN_FILTER: Felt =
         felt!("0x0218b538681900fad5a0b2ffe1d6781c0c3f14df5d32071ace0bdc9d46cb69ec");
 
-    #[test]
-    fn add_bloom_and_check_single_block_found() {
-        let from_block = BlockNumber::new_or_panic(0);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+    mod filters {
+        use super::*;
 
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
-        bloom.set(&KEY1);
+        #[test]
+        fn add_bloom_and_check_single_block_found() {
+            let from_block = BlockNumber::new_or_panic(0);
+            let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
 
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            let mut bloom = BloomFilter::new();
+            bloom.set(&KEY);
+            bloom.set(&KEY1);
 
-        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        let expected = BTreeSet::from_iter(vec![from_block]);
-        assert_eq!(block_matches, expected);
+            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+
+            let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
+            let expected = BTreeSet::from_iter(vec![from_block]);
+            assert_eq!(block_matches, expected);
+        }
+
+        #[test]
+        fn add_blooms_and_check_multiple_blocks_found() {
+            let from_block = BlockNumber::new_or_panic(0);
+            let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+
+            let mut bloom = BloomFilter::new();
+            bloom.set(&KEY);
+
+            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+
+            let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
+            let expected = BTreeSet::from_iter(vec![from_block, from_block + 1]);
+            assert_eq!(block_matches, expected);
+        }
+
+        #[test]
+        fn key_not_in_filter_returns_empty_vec() {
+            let from_block = BlockNumber::new_or_panic(0);
+            let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+
+            let mut bloom = BloomFilter::new();
+            bloom.set(&KEY);
+            bloom.set(&KEY1);
+
+            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+
+            let block_matches_empty = aggregate_bloom_filter.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
+            assert_eq!(block_matches_empty, BTreeSet::new());
+        }
+
+        #[test]
+        fn serialize_aggregate_roundtrip() {
+            let from_block = BlockNumber::new_or_panic(0);
+            let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+
+            let mut bloom = BloomFilter::new();
+            bloom.set(&KEY);
+
+            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+
+            let compressed_bitmap = aggregate_bloom_filter.compress_bitmap();
+            let mut decompressed = AggregateBloom::from_existing_compressed(
+                aggregate_bloom_filter.from_block,
+                aggregate_bloom_filter.to_block,
+                compressed_bitmap,
+            );
+            decompressed.add_bloom(&bloom, from_block + 2);
+
+            let block_matches = decompressed.blocks_for_keys(&[KEY]);
+            let expected = BTreeSet::from_iter(vec![from_block, from_block + 1, from_block + 2]);
+            assert_eq!(block_matches, expected,);
+
+            let block_matches_empty = decompressed.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
+            assert_eq!(block_matches_empty, BTreeSet::new());
+        }
+
+        #[test]
+        #[should_panic]
+        fn invalid_insert_pos() {
+            let from_block = BlockNumber::new_or_panic(0);
+            let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+
+            let mut bloom = BloomFilter::new();
+            bloom.set(&KEY);
+
+            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+
+            let invalid_insert_pos = from_block + AggregateBloom::BLOCK_RANGE_LEN;
+            aggregate_bloom_filter.add_bloom(&bloom, invalid_insert_pos);
+        }
     }
 
-    #[test]
-    fn add_blooms_and_check_multiple_blocks_found() {
-        let from_block = BlockNumber::new_or_panic(0);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+    mod cache {
+        use super::*;
 
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
+        // Tests only use ranges so no need to compare bitmap.
+        impl PartialEq for AggregateBloom {
+            fn eq(&self, other: &Self) -> bool {
+                self.from_block == other.from_block && self.to_block == other.to_block
+            }
+        }
 
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
-        aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+        #[test]
+        fn set_then_get_many_aligned() {
+            let cache = AggregateBloomCache::with_size(2);
 
-        let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-        let expected = BTreeSet::from_iter(vec![from_block, from_block + 1]);
-        assert_eq!(block_matches, expected);
-    }
+            let first_range_start = BlockNumber::GENESIS;
+            let second_range_start = BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN;
+            let second_range_end = second_range_start + AggregateBloom::BLOCK_RANGE_LEN - 1;
 
-    #[test]
-    fn key_not_in_filter_returns_empty_vec() {
-        let from_block = BlockNumber::new_or_panic(0);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+            let filters = vec![
+                Arc::new(AggregateBloom::new(first_range_start)),
+                Arc::new(AggregateBloom::new(second_range_start)),
+            ];
 
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
-        bloom.set(&KEY1);
+            cache.set_many(&filters);
 
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
-        aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+            let retrieved = cache.get_many(first_range_start, second_range_end);
 
-        let block_matches_empty = aggregate_bloom_filter.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-        assert_eq!(block_matches_empty, BTreeSet::new());
-    }
+            assert_eq!(retrieved, filters);
+        }
 
-    #[test]
-    fn serialize_aggregate_roundtrip() {
-        let from_block = BlockNumber::new_or_panic(0);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+        #[test]
+        fn set_then_get_many_unaligned() {
+            let cache = AggregateBloomCache::with_size(2);
 
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
+            let first_range_start = BlockNumber::GENESIS;
+            let second_range_start = BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN;
 
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
-        aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+            let filters = vec![
+                Arc::new(AggregateBloom::new(first_range_start)),
+                Arc::new(AggregateBloom::new(second_range_start)),
+            ];
 
-        let compressed_bitmap = aggregate_bloom_filter.compress_bitmap();
-        let mut decompressed = AggregateBloom::from_existing_compressed(
-            aggregate_bloom_filter.from_block,
-            aggregate_bloom_filter.to_block,
-            compressed_bitmap,
-        );
-        decompressed.add_bloom(&bloom, from_block + 2);
+            let start = first_range_start + 15;
+            let end = second_range_start + 15;
 
-        let block_matches = decompressed.blocks_for_keys(&[KEY]);
-        let expected = BTreeSet::from_iter(vec![from_block, from_block + 1, from_block + 2]);
-        assert_eq!(block_matches, expected,);
+            cache.set_many(&filters);
 
-        let block_matches_empty = decompressed.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-        assert_eq!(block_matches_empty, BTreeSet::new());
-    }
+            let retrieved = cache.get_many(start, end);
 
-    #[test]
-    #[should_panic]
-    fn invalid_insert_pos() {
-        let from_block = BlockNumber::new_or_panic(0);
-        let mut aggregate_bloom_filter = AggregateBloom::new(from_block);
+            assert_eq!(retrieved, filters);
+        }
 
-        let mut bloom = BloomFilter::new();
-        bloom.set(&KEY);
+        #[test]
+        fn filters_outside_of_range_not_returned() {
+            let cache = AggregateBloomCache::with_size(4);
 
-        aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            let filters = vec![
+                Arc::new(AggregateBloom::new(BlockNumber::GENESIS)),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
+                )),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
+                )),
+                Arc::new(AggregateBloom::new(
+                    BlockNumber::GENESIS + 3 * AggregateBloom::BLOCK_RANGE_LEN,
+                )),
+            ];
 
-        let invalid_insert_pos = from_block + AggregateBloom::BLOCK_RANGE_LEN;
-        aggregate_bloom_filter.add_bloom(&bloom, invalid_insert_pos);
+            cache.set_many(&filters);
+
+            let first_range_start = BlockNumber::GENESIS;
+            let second_range_end = BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN - 1;
+
+            let retrieved = cache.get_many(first_range_start, second_range_end);
+
+            assert_eq!(retrieved, filters[0..2].to_vec());
+        }
     }
 }
