@@ -11,7 +11,7 @@ use pathfinder_common::{BlockHash, BlockNumber};
 pub use request::RpcRequest;
 pub use response::RpcResponse;
 #[cfg(test)]
-pub use router::{handle_json_rpc_socket, CATCH_UP_BATCH_SIZE};
+pub use router::handle_json_rpc_socket;
 pub use router::{
     rpc_handler,
     CatchUp,

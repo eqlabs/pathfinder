@@ -68,7 +68,7 @@ use cached::{Cached, SizedCache};
 use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
 
-pub const BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
+pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
 
 /// An aggregate of all Bloom filters for a given range of blocks.
 /// Before being added to `AggregateBloom`, each [`BloomFilter`] is
@@ -99,6 +99,7 @@ impl AggregateBloom {
         Self::from_parts(from_block, to_block, bitmap)
     }
 
+    /// Create an `AggregateBloom` from a compressed bitmap.
     pub fn from_existing_compressed(
         from_block: BlockNumber,
         to_block: BlockNumber,
@@ -127,6 +128,7 @@ impl AggregateBloom {
         }
     }
 
+    /// Compress the bitmap of the aggregate Bloom filter.
     pub fn compress_bitmap(&self) -> Vec<u8> {
         zstd::bulk::compress(&self.bitmap, 10).expect("Compressing aggregate Bloom filter")
     }
@@ -134,6 +136,11 @@ impl AggregateBloom {
     /// Rotate the [`BloomFilter`] by 90 degrees (transpose) and add it to the
     /// aggregate. It is up to the user to keep track of when the aggregate
     /// filter's block range has been exhausted and respond accordingly.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the block number is not in the range of blocks that this
+    /// aggregate covers.
     pub fn add_bloom(&mut self, bloom: &BloomFilter, block_number: BlockNumber) {
         assert!(
             (self.from_block..=self.to_block).contains(&block_number),

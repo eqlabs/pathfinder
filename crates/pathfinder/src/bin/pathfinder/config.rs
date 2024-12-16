@@ -261,7 +261,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
             "The number of aggregate event bloom filters to cache in memory. Each filter covers a {} block range.
             This cache speeds up event related RPC queries at the cost of using extra memory.
             Each cached filter takes 16 MiB of memory.",
-            pathfinder_storage::BLOCK_RANGE_LEN
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
         ),
         env = "PATHFINDER_STORAGE_EVENT_FILTER_CACHE_SIZE",
         default_value = "64"
@@ -283,7 +283,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
             "The number of uncached aggregate Bloom filters to load when querying for events.
             Each filter covers a {} block range.
             This limit is used to prevent queries from taking too long.",
-            pathfinder_storage::BLOCK_RANGE_LEN
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
         ),
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_EVENT_FILTERS_TO_LOAD",
         default_value = "12"
