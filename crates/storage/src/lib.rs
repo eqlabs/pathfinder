@@ -7,7 +7,7 @@ mod prelude;
 
 mod bloom;
 use bloom::AggregateBloomCache;
-pub use bloom::BLOCK_RANGE_LEN;
+pub use bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 mod connection;
 pub mod fake;
 mod params;

@@ -7,8 +7,6 @@ use axum::response::IntoResponse;
 use futures::{Future, FutureExt, StreamExt};
 use http::HeaderValue;
 use method::RpcMethodEndpoint;
-#[cfg(test)]
-pub use subscription::CATCH_UP_BATCH_SIZE;
 pub use subscription::{handle_json_rpc_socket, CatchUp, RpcSubscriptionFlow, SubscriptionMessage};
 use subscription::{split_ws, RpcSubscriptionEndpoint};
 
