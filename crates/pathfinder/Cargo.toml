@@ -71,6 +71,7 @@ tracing-subscriber = { workspace = true, features = [
     "ansi",
 ] }
 url = { workspace = true }
+util = { path = "../util" }
 zeroize = { workspace = true }
 zstd = { workspace = true }
 
