@@ -330,13 +330,17 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received, exiting gracefully");
-            Ok(())
         }
         _ = int_signal.recv() => {
             tracing::info!("INT signal received, exiting gracefully");
-            Ok(())
         }
     }
+
+    util::task::tracker::close();
+    tracing::info!("Waiting for all tasks to finish...");
+    util::task::tracker::wait().await;
+    tracing::info!("Waiting for all tasks to finish... done!");
+    Ok(())
 }
 
 #[cfg(feature = "tokio-console")]
@@ -614,7 +618,7 @@ fn start_feeder_gateway_sync(
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
-    tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
+    util::task::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
 }
 
 #[cfg(feature = "p2p")]
