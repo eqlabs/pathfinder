@@ -253,7 +253,7 @@ impl LatestStream {
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut interval = tokio::time::interval(head_poll_interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -346,6 +346,8 @@ mod tests {
         BlockHeaderData,
     };
 
+    const TIMEOUT: Duration = Duration::from_secs(10);
+
     /// Generate a fake chain of blocks as in
     /// [`pathfinder_storage::fake::generate`] but with additional
     /// guarantees:
@@ -382,8 +384,12 @@ mod tests {
             let db = db.transaction().unwrap();
             let header = db.block_header(expected_last.into()).unwrap();
             if let Some(header) = header {
+                let after = start.elapsed();
+                if after > TIMEOUT {
+                    break;
+                }
+
                 if header.number == expected_last {
-                    let after = start.elapsed();
                     tracing::info!(?after, "Sync done");
                     break;
                 }
@@ -478,7 +484,7 @@ mod tests {
         };
 
         tokio::select! {
-            result = tokio::time::timeout(Duration::from_secs(10), sync.run()) => match result {
+            result = tokio::time::timeout(TIMEOUT, sync.run()) => match result {
                 Ok(Ok(())) => unreachable!("Sync does not exit upon success, sync_done_watch should have been triggered"),
                 Ok(Err(e)) => tracing::debug!(%e, "Sync failed with a fatal error"),
                 Err(_) => tracing::debug!("Test timed out"),

@@ -85,14 +85,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
         util::task::spawn_std(move |cancellation_token| {
             let queue_capacity = self.inner.max_capacity();
 
-            loop {
+            while let Some(input) = self.inner.blocking_recv() {
                 if cancellation_token.is_cancelled() {
-                    return;
+                    break;
                 }
-
-                let Some(input) = self.inner.blocking_recv() else {
-                    return;
-                };
 
                 let result = match input {
                     Ok(PeerData { peer, data }) => {
@@ -144,14 +140,10 @@ impl<T: Send + 'static> SyncReceiver<T> {
             let mut peer = None;
             let mut err = None;
 
-            loop {
+            while let Some(input) = self.inner.blocking_recv() {
                 if cancellation_token.is_cancelled() {
-                    return;
+                    break;
                 }
-
-                let Some(input) = self.inner.blocking_recv() else {
-                    return;
-                };
 
                 let input = match input {
                     Ok(x) => x,
@@ -247,7 +239,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
@@ -280,7 +272,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {

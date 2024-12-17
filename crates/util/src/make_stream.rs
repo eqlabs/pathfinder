@@ -19,7 +19,7 @@ where
     V: Future<Output = ()> + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
-    tokio::spawn(src(tx));
+    crate::task::spawn(src(tx));
 
     ReceiverStream::new(rx)
 }
