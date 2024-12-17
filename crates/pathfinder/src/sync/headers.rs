@@ -119,26 +119,6 @@ pub(super) async fn next_gap(
     .context("Joining blocking task")?
 }
 
-// TODO unused code, remove
-pub(super) async fn query(
-    storage: Storage,
-    block_number: BlockNumber,
-) -> anyhow::Result<Option<BlockHeader>> {
-    // TODO tracking and cancellation
-    util::task::spawn_blocking({
-        move |_| {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            db.block_header(block_number.into())
-                .context("Querying first block without transactions")
-        }
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
 /// Ensures that the hash chain is continuous i.e. that block numbers increment
 /// and hashes become parent hashes.
 pub struct ForwardContinuity {
