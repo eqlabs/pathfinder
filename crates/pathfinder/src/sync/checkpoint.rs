@@ -38,7 +38,6 @@ use primitive_types::H160;
 use serde_json::de;
 use starknet_gateway_client::{Client, GatewayApi};
 use tokio::sync::Mutex;
-use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
 use crate::state::block_hash::calculate_transaction_commitment;
@@ -680,8 +679,7 @@ async fn rollback_to_anchor(
 }
 
 async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
-    // TODO tracking and cancellation
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -700,6 +698,8 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 
 #[cfg(test)]
 mod tests {
+    use tokio::task::spawn_blocking;
+
     use super::*;
 
     mod handle_header_stream {

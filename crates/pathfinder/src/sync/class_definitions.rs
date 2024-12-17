@@ -24,7 +24,6 @@ use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::{oneshot, Mutex};
-use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
@@ -75,8 +74,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    // TODO tracking and cancellation
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -546,8 +544,7 @@ pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
-    // TODO tracking and cancellation
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

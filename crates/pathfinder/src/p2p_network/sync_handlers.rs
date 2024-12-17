@@ -420,8 +420,7 @@ where
     let (sync_tx, mut rx) = mpsc::channel(1); // For backpressure
 
     let db_fut = async {
-        // TODO tracking and cancellation
-        tokio::task::spawn_blocking(move || {
+        util::task::spawn_blocking(move |_| {
             let _g = span.enter();
             let mut connection = storage
                 .connection()
