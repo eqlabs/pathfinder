@@ -21,10 +21,14 @@ pub fn counts_stream(
         + Send
         + 'static,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    util::make_stream::from_blocking(move |tx| {
+    util::make_stream::from_blocking(move |cancellation_token, tx| {
         let mut batch = VecDeque::new();
 
         while start <= stop {
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             if let Some(counts) = batch.pop_front() {
                 _ = tx.blocking_send(Ok(counts));
                 continue;
@@ -68,6 +72,10 @@ pub fn counts_stream(
         }
 
         while let Some(counts) = batch.pop_front() {
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             _ = tx.blocking_send(Ok(counts));
         }
     })
