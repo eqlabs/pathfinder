@@ -296,7 +296,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     if !config.disable_version_update_check {
-        tokio::spawn(update::poll_github_for_releases());
+        util::task::spawn(update::poll_github_for_releases());
     }
 
     let mut term_signal = signal(SignalKind::terminate())?;
@@ -645,7 +645,7 @@ fn start_p2p_sync(
         verify_tree_hashes,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
-    tokio::spawn(sync.run())
+    util::task::spawn(sync.run())
 }
 
 /// Spawns the monitoring task at the given address.
@@ -879,7 +879,8 @@ async fn verify_database(
     gateway_client: &starknet_gateway_client::Client,
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
-    let db_genesis = tokio::task::spawn_blocking(move || {
+
+    let db_genesis = util::task::spawn_blocking(move |_| {
         let mut conn = storage.connection().context("Create database connection")?;
         let tx = conn.transaction().context("Create database transaction")?;
 
