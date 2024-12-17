@@ -300,15 +300,15 @@ where
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
-                // TODO tracking and cancellation, rayon
-                let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
-                    let verify_result = signature
-                        .verify(
-                            sequencer_public_key,
-                            block_hash,
-                        );
-                    (verify_result, signature, state_update)
-                }).await?;
+
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                rayon::spawn(move || {
+                    let verify_result = signature.verify(sequencer_public_key, block_hash);
+                    let _ = tx.send((verify_result, signature, state_update));
+                });
+                let (verify_result, signature, state_update) =
+                    rx.await.context("Panic on rayon thread")?;
+
                 if let Err(error) = verify_result {
                     tracing::warn!(%error, block_number=%block.block_number, "Block commitment signature mismatch");
                 }
@@ -513,8 +513,8 @@ async fn download_block(
             let block = recv.await.expect("Panic on rayon thread")?;
 
             // Check if commitments and block hash are correct
-            // TODO tracking and cancellation, rayon
-            let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
                 let state_diff_commitment =
                     StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
                 let state_update = Box::new(state_update);
@@ -528,11 +528,13 @@ async fn download_block(
                     chain,
                     chain_id,
                 )
-                .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, state_update, state_diff_commitment, verify_result))
+                .with_context(move || format!("Verify block {block_number}"));
+
+                let _ = tx.send((block, state_update, state_diff_commitment, verify_result));
             });
             let (block, state_update, state_diff_commitment, verify_result) =
-                verify_hash.await.context("Verify block hash")??;
+                rx.await.context("Panic on rayon thread")?;
+            let verify_result = verify_result.context("Verify block hash")?;
 
             match (block.status, verify_result, mode) {
                 (
