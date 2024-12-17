@@ -3,6 +3,7 @@ use std::future::Future;
 use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::Stream;
+use tokio_util::sync::CancellationToken;
 
 /// Use the sender to yield items to the stream.
 ///
@@ -25,6 +26,10 @@ where
 
 /// Use the sender to yield items to the stream.
 ///
+/// A [`CancellationToken`] is provided to the closure to allow for bailing out
+/// early in case of long running tasks when a graceful shutdown is triggered.
+/// [`CancellationToken::is_cancelled`] should be used to perform the check.
+///
 /// ### Warning
 ///
 /// Implementor of the closure must ensure that the `src` closure __exits if the
@@ -34,10 +39,10 @@ where
 pub fn from_blocking<T, U>(src: U) -> impl Stream<Item = T>
 where
     T: Send + 'static,
-    U: FnOnce(Sender<T>) + Send + 'static,
+    U: FnOnce(CancellationToken, Sender<T>) + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
-    std::thread::spawn(move || src(tx));
+    crate::task::spawn_std(move |cancellation_token| src(cancellation_token, tx));
 
     ReceiverStream::new(rx)
 }

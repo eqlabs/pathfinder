@@ -375,7 +375,7 @@ pub(super) fn expected_declarations_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
-    util::make_stream::from_blocking(move |tx| {
+    util::make_stream::from_blocking(move |cancellation_token, tx| {
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
@@ -385,6 +385,10 @@ pub(super) fn expected_declarations_stream(
         };
 
         while start <= stop {
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             let db = match db.transaction().context("Creating database transaction") {
                 Ok(x) => x,
                 Err(e) => {
