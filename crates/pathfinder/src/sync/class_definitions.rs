@@ -286,7 +286,7 @@ pub(super) fn verify_declared_at(
     >,
     mut classes: BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
-    make_stream::from_future(move |tx| async move {
+    util::make_stream::from_future(move |tx| async move {
         let mut dechunker = ClassDechunker::new();
 
         while let Some(expected) = expected_declarations.next().await {
@@ -375,7 +375,7 @@ pub(super) fn expected_declarations_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
-    make_stream::from_blocking(move |tx| {
+    util::make_stream::from_blocking(move |tx| {
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
