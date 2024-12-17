@@ -27,13 +27,12 @@ pub async fn download_class<SequencerClient: GatewayApi>(
         .with_context(|| format!("Downloading class {}", class_hash.0))?
         .to_vec();
 
-    let (hash, definition) = tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-        (
-            compute_class_hash(&definition).context("Computing class hash"),
-            definition,
-        )
-    })
-    .await?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let computed_hash = compute_class_hash(&definition).context("Computing class hash");
+        let _ = tx.send((computed_hash, definition));
+    });
+    let (hash, definition) = rx.await.context("Panic on rayon thread")?;
     let hash = hash?;
 
     use starknet_gateway_types::class_hash::ComputedClassHash;
