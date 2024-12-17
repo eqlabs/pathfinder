@@ -16,7 +16,6 @@ use p2p::client::peer_agnostic::traits::{
 };
 use p2p::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
-use pathfinder_common::error::AnyhowExt;
 use pathfinder_common::{
     block_hash,
     BlockHash,
@@ -33,6 +32,7 @@ use starknet_gateway_client::{Client as GatewayClient, GatewayApi};
 use stream::ProcessStage;
 use tokio::sync::watch::{self, Receiver};
 use tokio_stream::wrappers::WatchStream;
+use util::error::AnyhowExt;
 
 use crate::state::RESET_DELAY_ON_FAILURE;
 
@@ -205,7 +205,6 @@ where
                 Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
                 Err(SyncError::Fatal(mut error)) => {
                     tracing::error!(%error, "Stopping track sync");
-                    use pathfinder_common::error::AnyhowExt;
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
