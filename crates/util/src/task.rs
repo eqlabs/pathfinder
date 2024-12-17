@@ -1,7 +1,6 @@
 use std::future::Future;
 use std::sync::LazyLock;
 
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -23,7 +22,7 @@ impl<T> FutureOutputExt for anyhow::Result<T> {
 /// [`tokio_util::task::TaskTracker`]. This ensures that upon graceful shutdown
 /// the future will have already completed or will be cancelled in an orderly
 /// fashion.
-pub fn spawn<F>(future: F) -> JoinHandle<F::Output>
+pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: FutureOutputExt + Send + 'static,
@@ -50,11 +49,11 @@ where
 /// is spawned through a [`tokio_util::task::TaskTracker`] to ensure that it
 /// will always be waited on and completed upon graceful shutdown.
 ///
-/// Additionally, a [`CancellationToken`] is provided to the closure to allow
+/// A [`CancellationToken`] is provided to the closure to allow
 /// for bailing out early in case of long running tasks when a graceful shutdown
 /// is triggered. [`CancellationToken::is_cancelled`] should be used to perform
 /// the check.
-pub fn spawn_blocking<F, R>(f: F) -> JoinHandle<R>
+pub fn spawn_blocking<F, R>(f: F) -> tokio::task::JoinHandle<R>
 where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
@@ -65,6 +64,29 @@ where
     } = HANDLE.clone();
 
     task_tracker.spawn_blocking(|| f(cancellation_token))
+}
+
+/// Runs the provided closure on an [`std::thread`] by calling
+/// [`std::thread::spawn`].
+///
+/// A [`CancellationToken`] is provided to the closure to allow for bailing out
+/// early in case of long running tasks when a graceful shutdown is triggered.
+/// [`CancellationToken::is_cancelled`] should be used to perform the check.
+///
+/// ### Important
+///
+/// Caller must take care to ensure that the spawned thread is properly joined
+/// or make sure that detachment is safe for the application.
+pub fn spawn_std<F, R>(f: F) -> std::thread::JoinHandle<R>
+where
+    F: FnOnce(CancellationToken) -> R + Send + 'static,
+    R: Send + 'static,
+{
+    let Handle {
+        cancellation_token, ..
+    } = HANDLE.clone();
+
+    std::thread::spawn(|| f(cancellation_token))
 }
 
 pub mod tracker {
