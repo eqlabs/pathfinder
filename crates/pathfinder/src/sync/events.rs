@@ -17,7 +17,6 @@ use pathfinder_common::{
 };
 use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
-use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::SyncError;
@@ -65,8 +64,8 @@ pub(super) async fn verify_commitment(
         peer,
         data: (block_number, events),
     } = events;
-    // TODO tracking and cancellation
-    let events = tokio::task::spawn_blocking(move || {
+
+    let events = util::task::spawn_blocking(move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
@@ -101,8 +100,7 @@ pub(super) async fn persist(
     storage: Storage,
     events: Vec<PeerData<EventsForBlockByTransaction>>,
 ) -> Result<BlockNumber, SyncError> {
-    // TODO tracking and cancellation
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;

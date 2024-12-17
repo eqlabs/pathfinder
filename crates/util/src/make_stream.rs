@@ -19,8 +19,7 @@ where
     V: Future<Output = ()> + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
-    // TODO tracking and cancellation, audit call instances of `from_future`
-    tokio::spawn(src(tx));
+    crate::task::spawn(src(tx));
 
     ReceiverStream::new(rx)
 }

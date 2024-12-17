@@ -152,15 +152,14 @@ where
         };
 
         // We start downloading the signature for the block
-        // TODO tracking and cancellation
-        let signature_handle = tokio::spawn({
+        let signature_handle = util::task::spawn({
             let sequencer = sequencer.clone();
             async move {
                 let t_signature = std::time::Instant::now();
                 let result = sequencer.signature(next.into()).await;
                 let t_signature = t_signature.elapsed();
 
-                (result, t_signature)
+                Ok((result, t_signature))
             }
         });
 
@@ -262,8 +261,10 @@ where
         let t_declare = t_declare.elapsed();
 
         // Download signature
-        let (signature_result, t_signature) =
-            signature_handle.await.context("Joining signature task")?;
+        let (signature_result, t_signature) = signature_handle
+            .await
+            .context("Joining signature task")?
+            .context("Task cancelled")?;
         let (signature, t_signature) = match signature_result {
             Ok(signature) => (signature, t_signature),
             Err(SequencerError::StarknetError(err))
@@ -415,8 +416,7 @@ pub async fn download_new_classes(
         return Ok(vec![]);
     }
 
-    // TODO tracking and cancellation
-    let require_downloading = tokio::task::spawn_blocking(move || {
+    let require_downloading = util::task::spawn_blocking(move |_| {
         let mut db_conn = storage
             .connection()
             .context("Creating database connection")?;

@@ -17,7 +17,6 @@ use pathfinder_common::{
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
-use tokio::task::spawn_blocking;
 
 use crate::state::block_hash::{BlockHeaderData, VerifyResult};
 use crate::sync::error::SyncError;
@@ -55,8 +54,7 @@ pub(super) async fn next_gap(
     head: BlockNumber,
     head_hash: BlockHash,
 ) -> anyhow::Result<Option<HeaderGap>> {
-    // TODO tracking and cancellation
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -127,8 +125,8 @@ pub(super) async fn query(
     block_number: BlockNumber,
 ) -> anyhow::Result<Option<BlockHeader>> {
     // TODO tracking and cancellation
-    spawn_blocking({
-        move || {
+    util::task::spawn_blocking({
+        move |_| {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;

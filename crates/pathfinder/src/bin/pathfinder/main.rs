@@ -296,8 +296,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     if !config.disable_version_update_check {
-        // TODO tracking and cancellation
-        tokio::spawn(update::poll_github_for_releases());
+        util::task::spawn(update::poll_github_for_releases());
     }
 
     let mut term_signal = signal(SignalKind::terminate())?;
@@ -631,11 +630,7 @@ fn start_feeder_gateway_sync(
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
-    tracing::error!("start_feeder_gateway_sync");
-
-    // TODO tracking and cancellation
     util::task::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
-    // tokio::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
 }
 
 #[cfg(feature = "p2p")]
@@ -662,8 +657,7 @@ fn start_p2p_sync(
         verify_tree_hashes,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
-    // TODO tracking and cancellation
-    tokio::spawn(sync.run())
+    util::task::spawn(sync.run())
 }
 
 /// Spawns the monitoring task at the given address.
@@ -897,7 +891,6 @@ async fn verify_database(
     gateway_client: &starknet_gateway_client::Client,
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
-    // TODO tracking and cancellation
 
     let db_genesis = util::task::spawn_blocking(move |_| {
         let mut conn = storage.connection().context("Create database connection")?;

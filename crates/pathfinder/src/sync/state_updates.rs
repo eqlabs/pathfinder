@@ -33,7 +33,6 @@ use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_merkle_tree::StorageCommitmentTree;
 use pathfinder_storage::{Storage, TrieUpdate};
 use tokio::sync::mpsc;
-use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
@@ -46,8 +45,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    // TODO tracking and cancellation
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -261,8 +259,7 @@ pub async fn batch_update_starknet_state(
     verify_tree_hashes: bool,
     state_updates: Vec<PeerData<(StateUpdateData, BlockNumber)>>,
 ) -> Result<PeerData<BlockNumber>, SyncError> {
-    // TODO tracking and cancellation
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
