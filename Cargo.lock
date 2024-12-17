@@ -6537,14 +6537,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "make-stream"
-version = "0.15.2"
-dependencies = [
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "match_cfg"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7151,7 +7143,6 @@ dependencies = [
  "hex",
  "ipnet",
  "libp2p",
- "make-stream",
  "p2p_proto",
  "p2p_stream",
  "pathfinder-common",
@@ -7174,6 +7165,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unsigned-varint 0.8.0",
+ "util",
  "void",
  "zeroize",
 ]
@@ -7357,7 +7349,6 @@ dependencies = [
  "http 1.1.0",
  "ipnet",
  "jemallocator",
- "make-stream",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
@@ -10486,6 +10477,7 @@ version = "0.15.2"
 dependencies = [
  "anyhow",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
 ]

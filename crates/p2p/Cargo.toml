@@ -34,7 +34,6 @@ libp2p = { workspace = true, features = [
     "tokio",
     "yamux",
 ] }
-make-stream = { path = "../make-stream" }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
 pathfinder-common = { path = "../common" }
@@ -55,6 +54,7 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 unsigned-varint = { workspace = true, features = ["futures"] }
+util = { path = "../util" }
 void = { workspace = true }
 zeroize = { workspace = true }
 
