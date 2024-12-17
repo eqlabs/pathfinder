@@ -82,11 +82,18 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        // TODO tracking and cancellation
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let queue_capacity = self.inner.max_capacity();
 
-            while let Some(input) = self.inner.blocking_recv() {
+            loop {
+                if cancellation_token.is_cancelled() {
+                    return;
+                }
+
+                let Some(input) = self.inner.blocking_recv() else {
+                    return;
+                };
+
                 let result = match input {
                     Ok(PeerData { peer, data }) => {
                         // Stats for tracing and metrics.
@@ -132,13 +139,20 @@ impl<T: Send + 'static> SyncReceiver<T> {
     pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        // TODO tracking and cancellation
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let mut chunk = Vec::with_capacity(capacity);
             let mut peer = None;
             let mut err = None;
 
-            while let Some(input) = self.inner.blocking_recv() {
+            loop {
+                if cancellation_token.is_cancelled() {
+                    return;
+                }
+
+                let Some(input) = self.inner.blocking_recv() else {
+                    return;
+                };
+
                 let input = match input {
                     Ok(x) => x,
                     Err(e) => {
