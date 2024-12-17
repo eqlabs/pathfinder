@@ -18,7 +18,7 @@ impl<T> FutureOutputExt for anyhow::Result<T> {
     }
 }
 
-/// Spawns a future on the tokio runtime through a
+/// Spawns a future on the `tokio` runtime through a
 /// [`tokio_util::task::TaskTracker`]. This ensures that upon graceful shutdown
 /// the future will have already completed or will be cancelled in an orderly
 /// fashion.
@@ -44,7 +44,7 @@ where
     })
 }
 
-/// Runs the provided closure on a thread where blocking is acceptable,
+/// Runs the provided closure on a `tokio` thread where blocking is acceptable,
 /// similarly to [`tokio::task::spawn_blocking`], however internally the closure
 /// is spawned through a [`tokio_util::task::TaskTracker`] to ensure that it
 /// will always be waited on and completed upon graceful shutdown.
@@ -92,7 +92,7 @@ where
 pub mod tracker {
     use super::*;
 
-    /// Close the task tracker and then cancel all tracked futures. See
+    /// Close the task tracker and then **cancel all tracked futures**. See
     /// [`TaskTracker::close`] and [`CancellationToken::cancel`].
     pub fn close() {
         let Handle {
