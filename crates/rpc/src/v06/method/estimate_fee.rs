@@ -478,7 +478,7 @@ pub(crate) mod tests {
                 l1_data_gas_consumed: None,
                 l1_data_gas_price: None,
                 l2_gas_consumed: 0.into(),
-                l2_gas_price: 0.into(),
+                l2_gas_price: 1.into(),
                 overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
             };
@@ -488,7 +488,7 @@ pub(crate) mod tests {
                 l1_data_gas_consumed: None,
                 l1_data_gas_price: None,
                 l2_gas_consumed: 0.into(),
-                l2_gas_price: 0.into(),
+                l2_gas_price: 1.into(),
                 overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
             };
@@ -498,18 +498,18 @@ pub(crate) mod tests {
                 l1_data_gas_consumed: None,
                 l1_data_gas_price: None,
                 l2_gas_consumed: 0.into(),
-                l2_gas_price: 0.into(),
+                l2_gas_price: 1.into(),
                 overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v0_expected = FeeEstimate {
-                l1_gas_consumed: 1669.into(),
+                l1_gas_consumed: 1652.into(),
                 l1_gas_price: 1.into(),
                 l1_data_gas_consumed: None,
                 l1_data_gas_price: None,
                 l2_gas_consumed: 0.into(),
-                l2_gas_price: 0.into(),
-                overall_fee: 1669.into(),
+                l2_gas_price: 1.into(),
+                overall_fee: 1652.into(),
                 unit: PriceUnit::Wei,
             };
             let invoke_v3_expected = FeeEstimate {
@@ -518,7 +518,7 @@ pub(crate) mod tests {
                 l1_data_gas_consumed: None,
                 l1_data_gas_price: None,
                 l2_gas_consumed: 0.into(),
-                l2_gas_price: 0.into(),
+                l2_gas_price: 1.into(),
                 overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
             };

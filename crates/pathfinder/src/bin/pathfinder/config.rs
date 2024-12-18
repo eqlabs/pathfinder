@@ -1156,7 +1156,7 @@ mod tests {
     #[test]
     fn parse_versioned_constants_success() {
         super::parse_versioned_constants(
-            "../executor/resources/versioned_constants_13_1_1.json".into(),
+            "../executor/resources/versioned_constants_0_13_1_1.json".into(),
         )
         .unwrap();
     }
