@@ -48,7 +48,7 @@ impl<'tx> PathfinderStateReader<'tx> {
             ))
         })?;
 
-        let casm_definition = if self.ignore_block_number_for_classes {
+        let block_number_and_casm_definition = if self.ignore_block_number_for_classes {
             self.transaction
                 .casm_definition_with_block_number(pathfinder_class_hash)
         } else {
@@ -57,25 +57,16 @@ impl<'tx> PathfinderStateReader<'tx> {
         };
 
         if let Some((definition_block_number, casm_definition)) =
-            casm_definition.map_err(map_anyhow_to_state_err)?
+            block_number_and_casm_definition.map_err(map_anyhow_to_state_err)?
         {
-            let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
-                StateError::StateReadError(format!(
-                    "Class definition is not valid UTF-8: {}",
-                    error
-                ))
-            })?;
+            // This is a Sierra class.
+            #[cfg(feature = "cairo-native")]
+            let runnable_class =
+                self.sierra_class_as_native(pathfinder_class_hash, casm_definition)?;
+            #[cfg(not(feature = "cairo-native"))]
+            let runnable_class = self.sierra_class_as_casm(casm_definition)?;
 
-            let casm_class =
-                blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
-                    &casm_definition,
-                )
-                .map_err(StateError::ProgramError)?;
-
-            return Ok((
-                definition_block_number,
-                RunnableCompiledClass::V1(casm_class),
-            ));
+            return Ok((definition_block_number, runnable_class));
         }
 
         let definition = if self.ignore_block_number_for_classes {
@@ -92,6 +83,7 @@ impl<'tx> PathfinderStateReader<'tx> {
         if let Some((definition_block_number, definition)) =
             definition.map_err(map_anyhow_to_state_err)?
         {
+            // This is a Cairo 0 class.
             let definition = String::from_utf8(definition).map_err(|error| {
                 StateError::StateReadError(format!(
                     "Class definition is not valid UTF-8: {}",
@@ -111,6 +103,82 @@ impl<'tx> PathfinderStateReader<'tx> {
         tracing::trace!("Class definition not found");
 
         Err(StateError::UndeclaredClassHash(*class_hash))
+    }
+
+    #[cfg(feature = "cairo-native")]
+    fn sierra_class_as_native(
+        &self,
+        class_hash: ClassHash,
+        casm_definition: Vec<u8>,
+    ) -> Result<RunnableCompiledClass, StateError> {
+        // FIXME: unwraps
+        let sierra_definition = self
+            .transaction
+            .class_definition(class_hash)
+            .map_err(map_anyhow_to_state_err)?
+            .expect("Sierra class should be present if we have CASM");
+        let mut sierra_definition: serde_json::Value =
+            serde_json::from_slice(&sierra_definition)
+                .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+        sierra_definition["abi"] = serde_json::from_str(sierra_definition["abi"].as_str().unwrap())
+            .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+
+        let sierra_class: cairo_lang_starknet_classes::contract_class::ContractClass =
+            serde_json::from_value(sierra_definition)
+                .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+        let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
+            StateError::StateReadError(format!(
+                "Error parsing Sierra
+                program: {}",
+                e
+            ))
+        })?;
+
+        use blockifier::execution::native::contract_class::NativeCompiledClassV1;
+        use cairo_native::executor::AotContractExecutor;
+        use cairo_vm::types::errors::program_errors::ProgramError;
+
+        let contract_executor = AotContractExecutor::new(
+            &sierra_program,
+            &sierra_class.entry_points_by_type,
+            Default::default(),
+        )
+        .unwrap();
+
+        let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
+            StateError::StateReadError(format!("Class definition is not valid UTF-8: {}", error))
+        })?;
+
+        let casm_class =
+            blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
+                &casm_definition,
+            )
+            .map_err(StateError::ProgramError)?;
+
+        let runnable_class = RunnableCompiledClass::V1Native(NativeCompiledClassV1::new(
+            contract_executor,
+            casm_class,
+        ));
+
+        Ok(runnable_class)
+    }
+
+    #[cfg(not(feature = "cairo-native"))]
+    fn sierra_class_as_casm(
+        &self,
+        casm_definition: Vec<u8>,
+    ) -> Result<RunnableCompiledClass, StateError> {
+        let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
+            StateError::StateReadError(format!("Class definition is not valid UTF-8: {}", error))
+        })?;
+
+        let casm_class =
+            blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
+                &casm_definition,
+            )
+            .map_err(StateError::ProgramError)?;
+
+        Ok(RunnableCompiledClass::V1(casm_class))
     }
 }
 
