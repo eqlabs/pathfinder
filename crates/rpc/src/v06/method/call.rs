@@ -95,7 +95,7 @@ pub struct CallOutput(#[serde_as(as = "Vec<RpcFelt>")] pub Vec<CallResultValue>)
 
 pub async fn call(context: RpcContext, input: CallInput) -> Result<CallOutput, CallError> {
     let span = tracing::Span::current();
-    let result = util::task::spawn_blocking(move |_| {
+    let result = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let mut db = context

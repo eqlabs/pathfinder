@@ -126,7 +126,7 @@ pub(crate) async fn estimate_message_fee_impl(
     l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<pathfinder_executor::types::FeeEstimate, EstimateMessageFeeError> {
     let span = tracing::Span::current();
-    let mut result = util::task::spawn_blocking(move |_| {
+    let mut result = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

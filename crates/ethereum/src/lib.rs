@@ -154,7 +154,7 @@ impl EthereumApi for EthereumClient {
         let (finalized_block_tx, mut finalized_block_rx) =
             tokio::sync::mpsc::channel::<L1BlockNumber>(1);
 
-        util::task::spawn(async move {
+        util::task::spawn(file!(), line!(),async move {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
                 interval.tick().await;

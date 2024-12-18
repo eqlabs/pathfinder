@@ -201,7 +201,7 @@ impl RpcServer {
 
         let router = router.layer(middleware);
 
-        let server_handle = util::task::spawn(async move {
+        let server_handle = util::task::spawn(file!(), line!(), async move {
             axum::serve(listener, router.into_make_service())
                 .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())
                 .await

@@ -253,7 +253,7 @@ impl LatestStream {
         // No buffer, for backpressure
         let (tx, rx) = watch::channel((BlockNumber::GENESIS, BlockHash::ZERO));
 
-        util::task::spawn(async move {
+        util::task::spawn(file!(), line!(),async move {
             let mut interval = tokio::time::interval(head_poll_interval);
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 

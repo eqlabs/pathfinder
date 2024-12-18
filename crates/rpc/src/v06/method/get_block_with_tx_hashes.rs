@@ -27,7 +27,7 @@ pub async fn get_block_with_tx_hashes(
 ) -> Result<types::Block, GetBlockError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()

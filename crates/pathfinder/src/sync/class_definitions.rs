@@ -74,7 +74,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -285,7 +285,7 @@ pub(super) fn verify_declared_at(
     >,
     mut classes: BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
-    util::make_stream::from_future(move |tx| async move {
+    util::make_stream::from_future(file!(), line!(), move |tx| async move {
         let mut dechunker = ClassDechunker::new();
 
         while let Some(expected) = expected_declarations.next().await {
@@ -374,7 +374,7 @@ pub(super) fn expected_declarations_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
-    util::make_stream::from_blocking(move |cancellation_token, tx| {
+    util::make_stream::from_blocking(file!(), line!(), move |cancellation_token, tx| {
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
@@ -544,7 +544,7 @@ pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

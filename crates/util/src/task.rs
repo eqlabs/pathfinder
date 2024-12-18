@@ -22,27 +22,34 @@ impl<T> FutureOutputExt for anyhow::Result<T> {
 /// [`tokio_util::task::TaskTracker`]. This ensures that upon graceful shutdown
 /// the future will have already completed or will be cancelled in an orderly
 /// fashion.
-pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+pub fn spawn<F>(file: &str, line: u32, future: F) -> tokio::task::JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
     F::Output: FutureOutputExt + Send + 'static,
 {
-    tracing::error!("spawn");
-
     let Handle {
         task_tracker,
         cancellation_token,
+        registry,
     } = HANDLE.clone();
 
+    let key = format!("spawn {}:{}", file, line);
+
+    registry.insert(key.clone());
+
     task_tracker.spawn(async move {
-        tokio::select! {
+        let x = tokio::select! {
             _ = cancellation_token.cancelled() => {
                 F::Output::cancelled()
             }
             res = future => {
                 res
             }
-        }
+        };
+
+        registry.remove(&key);
+
+        x
     })
 }
 
@@ -55,7 +62,7 @@ where
 /// for bailing out early in case of long running tasks when a graceful shutdown
 /// is triggered. [`CancellationToken::is_cancelled`] should be used to perform
 /// the check.
-pub fn spawn_blocking<F, R>(f: F) -> tokio::task::JoinHandle<R>
+pub fn spawn_blocking<F, R>(file: &str, line: u32, f: F) -> tokio::task::JoinHandle<R>
 where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
@@ -65,9 +72,20 @@ where
     let Handle {
         task_tracker,
         cancellation_token,
+        registry,
     } = HANDLE.clone();
 
-    task_tracker.spawn_blocking(|| f(cancellation_token))
+    let key = format!("spawn_blocking {}:{}", file, line);
+
+    registry.insert(key.clone());
+
+    task_tracker.spawn_blocking(move || {
+        let x = f(cancellation_token);
+
+        registry.remove(&key);
+
+        x
+    })
 }
 
 /// Runs the provided closure on an [`std::thread`] by calling
@@ -81,7 +99,7 @@ where
 ///
 /// Caller must take care to ensure that the spawned thread is properly joined
 /// or make sure that detachment is safe for the application.
-pub fn spawn_std<F, R>(f: F) -> std::thread::JoinHandle<R>
+pub fn spawn_std<F, R>(file: &str, line: u32, f: F) -> std::thread::JoinHandle<R>
 where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
@@ -89,10 +107,22 @@ where
     tracing::error!("spawn_std");
 
     let Handle {
-        cancellation_token, ..
+        cancellation_token,
+        registry,
+        ..
     } = HANDLE.clone();
 
-    std::thread::spawn(|| f(cancellation_token))
+    let key = format!("spawn_std {}:{}", file, line);
+
+    registry.insert(key.clone());
+
+    std::thread::spawn(move || {
+        let x = f(cancellation_token);
+
+        registry.remove(&key);
+
+        x
+    })
 }
 
 /// Returns a [`CancellationToken`] that can be used to check for graceful
@@ -119,15 +149,22 @@ pub mod tracker {
         let Handle { task_tracker, .. } = HANDLE.clone();
         task_tracker.wait().await;
     }
+
+    pub fn log_registry() {
+        let Handle { registry, .. } = HANDLE.clone();
+        tracing::error!("registry: {:#?}", registry);
+    }
 }
 
 #[derive(Clone)]
 struct Handle {
     task_tracker: TaskTracker,
     cancellation_token: CancellationToken,
+    registry: std::sync::Arc<dashmap::DashSet<String>>,
 }
 
 static HANDLE: LazyLock<Handle> = LazyLock::new(|| Handle {
     task_tracker: TaskTracker::new(),
     cancellation_token: CancellationToken::new(),
+    registry: std::sync::Arc::new(dashmap::DashSet::new()),
 });

@@ -86,13 +86,13 @@ async fn handle_socket(socket: WebSocket, router: RpcRouter) {
 
     let (response_sender, response_receiver) = mpsc::channel(10);
 
-    util::task::spawn(write(
+    util::task::spawn(file!(), line!(),write(
         ws_sender,
         response_receiver,
         websocket_context.socket_buffer_capacity,
         router.version,
     ));
-    util::task::spawn(read(ws_receiver, response_sender, router));
+    util::task::spawn(file!(), line!(),read(ws_receiver, response_sender, router));
 }
 
 async fn write(
@@ -293,7 +293,7 @@ impl SubscriptionManager {
         let handle = match params {
             Params::NewHeads => {
                 let receiver = websocket_source.new_head.subscribe();
-                util::task::spawn(header_subscription(
+                util::task::spawn(file!(), line!(),header_subscription(
                     response_sender,
                     receiver,
                     subscription_id,
@@ -302,7 +302,7 @@ impl SubscriptionManager {
             Params::Events(filter) => {
                 let l2_blocks = websocket_source.l2_blocks.subscribe();
                 let pending_data = websocket_source.pending_data.clone();
-                util::task::spawn(event_subscription(
+                util::task::spawn(file!(), line!(),event_subscription(
                     response_sender,
                     l2_blocks,
                     pending_data,
@@ -311,7 +311,7 @@ impl SubscriptionManager {
                 ))
             }
             Params::TransactionStatus(params) => {
-                util::task::spawn(transaction_status_subscription(
+                util::task::spawn(file!(), line!(),transaction_status_subscription(
                     response_sender,
                     subscription_id,
                     params.transaction_hash,

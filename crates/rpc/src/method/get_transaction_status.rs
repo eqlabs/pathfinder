@@ -42,7 +42,7 @@ crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result<Output, Error> {
     // Check database.
     let span = tracing::Span::current();
-    let db_status = util::task::spawn_blocking(move |_| {
+    let db_status = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let mut db = context

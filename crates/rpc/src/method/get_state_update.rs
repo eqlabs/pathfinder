@@ -43,7 +43,7 @@ impl dto::serialize::SerializeForVersion for Output {
 pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Output, Error> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-    let jh = util::task::spawn_blocking(move |_| {
+    let jh = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()

@@ -60,7 +60,7 @@ impl From<Error> for crate::jsonrpc::RpcError {
 /// Get the compiled casm for a given class hash.
 pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    let jh = util::task::spawn_blocking(move |_| -> Result<Output, Error> {
+    let jh = util::task::spawn_blocking(file!(), line!(), move |_| -> Result<Output, Error> {
         let _g = span.enter();
 
         let mut db = context

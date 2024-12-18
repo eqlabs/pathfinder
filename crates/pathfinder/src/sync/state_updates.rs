@@ -45,7 +45,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -259,7 +259,7 @@ pub async fn batch_update_starknet_state(
     verify_tree_hashes: bool,
     state_updates: Vec<PeerData<(StateUpdateData, BlockNumber)>>,
 ) -> Result<PeerData<BlockNumber>, SyncError> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

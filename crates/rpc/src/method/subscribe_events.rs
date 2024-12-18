@@ -101,7 +101,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let params = params.clone().unwrap_or_default();
         let storage = state.storage.clone();
-        let (events, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+        let (events, last_block) = util::task::spawn_blocking(file!(), line!(), move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             let events = db

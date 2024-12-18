@@ -152,7 +152,7 @@ where
         };
 
         // We start downloading the signature for the block
-        let signature_handle = util::task::spawn({
+        let signature_handle = util::task::spawn(file!(), line!(),{
             let sequencer = sequencer.clone();
             async move {
                 let t_signature = std::time::Instant::now();
@@ -416,7 +416,7 @@ pub async fn download_new_classes(
         return Ok(vec![]);
     }
 
-    let require_downloading = util::task::spawn_blocking(move |_| {
+    let require_downloading = util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut db_conn = storage
             .connection()
             .context("Creating database connection")?;

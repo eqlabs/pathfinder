@@ -156,7 +156,7 @@ pub async fn get_events(
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
-    let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(move |_| {
+    let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()

@@ -292,7 +292,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
     };
 
     let span = tracing::Span::current();
-    let jh = util::task::spawn_blocking(move |_| {
+    let jh = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let mut db = context
