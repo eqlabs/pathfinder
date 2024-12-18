@@ -27,6 +27,8 @@ where
     F: Future + Send + 'static,
     F::Output: FutureOutputExt + Send + 'static,
 {
+    tracing::error!("spawn");
+
     let Handle {
         task_tracker,
         cancellation_token,
@@ -58,6 +60,8 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
+    tracing::error!("spawn_blocking");
+
     let Handle {
         task_tracker,
         cancellation_token,
@@ -82,6 +86,8 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
+    tracing::error!("spawn_std");
+
     let Handle {
         cancellation_token, ..
     } = HANDLE.clone();
@@ -102,10 +108,8 @@ pub mod tracker {
     /// [`TaskTracker::close`] and [`CancellationToken::cancel`].
     pub fn close() {
         let Handle {
-            task_tracker,
-            cancellation_token,
+            cancellation_token, ..
         } = HANDLE.clone();
-        task_tracker.close();
         cancellation_token.cancel();
     }
 
