@@ -34,6 +34,7 @@ pub async fn spawn_server(
     let addr = listener.local_addr()?;
     let spawn = util::task::spawn(async move {
         axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())
             .await
             .expect("server error")
     });
