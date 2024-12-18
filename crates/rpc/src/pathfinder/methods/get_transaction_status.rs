@@ -26,8 +26,7 @@ pub async fn get_transaction_status(
     input: GetGatewayTransactionInput,
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
     let span = tracing::Span::current();
-
-    let db_status = tokio::task::spawn_blocking(move || {
+    let db_status = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context

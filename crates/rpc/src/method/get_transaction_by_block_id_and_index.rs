@@ -38,8 +38,7 @@ pub async fn get_transaction_by_block_id_and_index(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
