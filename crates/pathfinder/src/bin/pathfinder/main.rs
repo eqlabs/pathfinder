@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -350,9 +350,17 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     util::task::tracker::close();
     tracing::info!("Waiting for all tasks to finish...");
-    util::task::tracker::wait().await;
-    tracing::info!("Waiting for all tasks to finish... done!");
-    Ok(())
+    // Force exit after a grace period
+    match tokio::time::timeout(Duration::from_secs(10), util::task::tracker::wait()).await {
+        Ok(_) => {
+            tracing::info!("All tasks finished successfully");
+            Ok(())
+        }
+        Err(_) => {
+            tracing::warn!("Graceful shutdown timed out");
+            Err(anyhow::anyhow!("Graceful shutdown timed out"))
+        }
+    }
 }
 
 #[cfg(feature = "tokio-console")]
