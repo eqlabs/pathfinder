@@ -89,6 +89,12 @@ where
     std::thread::spawn(|| f(cancellation_token))
 }
 
+/// Returns a [`CancellationToken`] that can be used to check for graceful
+/// shutdown.
+pub fn cancellation_token() -> CancellationToken {
+    HANDLE.clone().cancellation_token
+}
+
 pub mod tracker {
     use super::*;
 
