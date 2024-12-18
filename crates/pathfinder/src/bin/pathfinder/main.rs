@@ -45,6 +45,10 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
+    // All of the following code is sync and blocking down the point where the
+    // monitoring server is spawned. If an error occurs before that point, the
+    // process will just exit with that error, regardless of whether any of the
+    // signals were received.
     let mut term_signal =
         signal(SignalKind::terminate()).context("Creating listener to TERM signal")?;
     let mut int_signal =
@@ -252,10 +256,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     // Spawn monitoring if configured.
     if let Some(address) = config.monitor_address {
-        util::task::tracker::log_registry();
-
-        anyhow::bail!("Monitoring task ended unexpectedly");
-
         spawn_monitoring(
             network_label,
             address,
@@ -268,9 +268,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .context("Starting monitoring task")?;
     }
 
-    // From this point onwards, till the final select, we cannot exit the process
-    // even if some error is encountered as it would result in tasks being detached
-    // and cancelled abruptly without a chance to clean up.
+    // From this point onwards, until the final select, we cannot exit the process
+    // even if some error is encountered or a signal was received as it would result
+    // in tasks being detached and cancelled abruptly without a chance to clean
+    // up. We need to wait for the final select where we can cancel all the tasks
+    // and wait for them to finish. Only then can we exit the process and return an
+    // error if some of the tasks failed or no error if we have received a signal.
 
     let (p2p_handle, gossiper, p2p_client) = start_p2p(
         pathfinder_context.network_id,
@@ -282,7 +285,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         (
             // We want to reach the final select, so we can cancel all the other tasks in an
             // orderly fashion, and then return this error from the main function.
-            tokio::task::spawn(futures::future::ready(Err(error.context("Starting P2P")))),
+            tokio::task::spawn(std::future::ready(Err(error.context("Starting P2P")))),
             Default::default(),
             None,
         )
@@ -304,7 +307,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             config.verify_tree_hashes,
         )
     } else {
-        tokio::task::spawn(futures::future::pending())
+        tokio::task::spawn(std::future::pending())
     };
 
     let rpc_handle = if config.is_rpc_enabled {
@@ -319,12 +322,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             }
             // We want to reach the final select, so we can cancel all the other tasks in an
             // orderly fashion, and then return this error from the main function.
-            Err(error) => tokio::task::spawn(futures::future::ready(Err(
+            Err(error) => tokio::task::spawn(std::future::ready(Err(
                 error.context("Starting RPC server")
             ))),
         }
     } else {
-        tokio::spawn(std::future::pending())
+        tokio::task::spawn(std::future::pending())
     };
 
     if !config.disable_version_update_check {
@@ -529,7 +532,7 @@ async fn start_p2p(
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
-    let join_handle = util::task::spawn(file!(), line!(), futures::future::pending());
+    let join_handle = tokio::task::spawn(std::future::pending());
 
     Ok((join_handle, Default::default(), None))
 }
@@ -909,16 +912,12 @@ async fn verify_database(
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
 
-    let db_genesis = util::task::spawn_blocking(file!(), line!(), move |_| {
-        let mut conn = storage.connection().context("Create database connection")?;
-        let tx = conn.transaction().context("Create database transaction")?;
-
-        tx.block_id(BlockNumber::GENESIS.into())
-    })
-    .await
-    .context("Joining database task")?
-    .context("Fetching genesis hash from database")?
-    .map(|x| x.1);
+    let mut conn = storage.connection().context("Create database connection")?;
+    let tx = conn.transaction().context("Create database transaction")?;
+    let db_genesis = tx
+        .block_id(BlockNumber::GENESIS.into())
+        .context("Fetching genesis hash from database")?
+        .map(|x| x.1);
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{

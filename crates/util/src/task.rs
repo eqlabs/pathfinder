@@ -35,6 +35,8 @@ where
 
     let key = format!("spawn {}:{}", file, line);
 
+    // tracing::error!(%key);
+
     registry.insert(key.clone());
 
     task_tracker.spawn(async move {
@@ -67,8 +69,6 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
-    tracing::error!("spawn_blocking");
-
     let Handle {
         task_tracker,
         cancellation_token,
@@ -76,6 +76,8 @@ where
     } = HANDLE.clone();
 
     let key = format!("spawn_blocking {}:{}", file, line);
+
+    // tracing::error!(%key);
 
     registry.insert(key.clone());
 
@@ -104,8 +106,6 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
-    tracing::error!("spawn_std");
-
     let Handle {
         cancellation_token,
         registry,
@@ -113,6 +113,8 @@ where
     } = HANDLE.clone();
 
     let key = format!("spawn_std {}:{}", file, line);
+
+    // tracing::error!(%key);
 
     registry.insert(key.clone());
 
