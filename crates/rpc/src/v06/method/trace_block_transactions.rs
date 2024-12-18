@@ -205,8 +205,7 @@ pub async fn trace_block_transactions_impl(
     let span = tracing::Span::current();
 
     let storage = context.execution_storage.clone();
-    // TODO tracking and cancellation
-    let traces = tokio::task::spawn_blocking(move || {
+    let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = storage.connection()?;

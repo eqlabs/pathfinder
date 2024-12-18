@@ -39,8 +39,7 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
 pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

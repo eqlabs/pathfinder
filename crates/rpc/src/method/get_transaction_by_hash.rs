@@ -31,8 +31,7 @@ pub async fn get_transaction_by_hash(
 ) -> Result<Output, GetTransactionByHashError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()

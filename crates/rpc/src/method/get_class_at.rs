@@ -57,8 +57,7 @@ impl SerializeForVersion for Output {
 /// Get a contract class.
 pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractClass, Error> {
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

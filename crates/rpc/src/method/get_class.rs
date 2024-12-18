@@ -43,8 +43,7 @@ impl From<ContractClass> for Output {
 /// Get a contract class.
 pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    let jh = tokio::task::spawn_blocking(move || -> Result<Output, Error> {
+    let jh = util::task::spawn_blocking(move |_| -> Result<Output, Error> {
         let _g = span.enter();
         let mut db = context
             .storage
