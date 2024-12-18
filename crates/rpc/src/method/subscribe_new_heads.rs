@@ -79,7 +79,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         to: BlockNumber,
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let storage = state.storage.clone();
-        let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+        let headers = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             db.block_range(from, to).map_err(RpcError::InternalError)

@@ -107,7 +107,7 @@ pub async fn simulate_transactions_impl(
     l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<SimulateTransactionOutput, SimulateTransactionError> {
     let span = tracing::Span::current();
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let skip_validate = input

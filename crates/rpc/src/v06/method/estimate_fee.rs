@@ -156,8 +156,7 @@ pub async fn estimate_fee_impl(
     l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     let span = tracing::Span::current();
-
-    let result = tokio::task::spawn_blocking(move || {
+    let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .execution_storage
