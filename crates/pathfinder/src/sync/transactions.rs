@@ -46,7 +46,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

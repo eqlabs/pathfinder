@@ -52,6 +52,7 @@ tower-http = { workspace = true, features = [
     "util",
 ] }
 tracing = { workspace = true }
+util = { path = "../util" }
 zstd = { workspace = true }
 
 [dev-dependencies]
