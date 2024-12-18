@@ -1,3 +1,4 @@
+use blockifier::blockifier::transaction_executor::TransactionExecutorError;
 use blockifier::execution::errors::{
     ConstructorEntryPointExecutionError,
     EntryPointExecutionError as BlockifierEntryPointExecutionError,
@@ -133,6 +134,20 @@ impl TransactionExecutionError {
     pub fn new(transaction_index: usize, error: BlockifierTransactionExecutionError) -> Self {
         let error_stack = gen_tx_execution_error_trace(&error);
 
+        Self::ExecutionError {
+            transaction_index,
+            error: error.to_string(),
+            error_stack: error_stack.into(),
+        }
+    }
+
+    pub fn new_new(transaction_index: usize, error: TransactionExecutorError) -> Self {
+        let error_stack =
+            if let TransactionExecutorError::TransactionExecutionError(ref inner) = error {
+                gen_tx_execution_error_trace(&inner)
+            } else {
+                blockifier::execution::stack_trace::ErrorStack::default()
+            };
         Self::ExecutionError {
             transaction_index,
             error: error.to_string(),

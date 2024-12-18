@@ -1,5 +1,6 @@
+use blockifier::blockifier::config::TransactionExecutorConfig;
+use blockifier::blockifier::transaction_executor::TransactionExecutor;
 use blockifier::transaction::transaction_execution::Transaction;
-use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
@@ -12,7 +13,12 @@ pub fn estimate(
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let (state, block_context) = execution_state.starknet_state()?;
+    let mut tx_exec = TransactionExecutor::new(
+        state,
+        block_context.clone(),
+        TransactionExecutorConfig::default(),
+    );
 
     let mut fees = Vec::with_capacity(transactions.len());
     for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
@@ -31,8 +37,8 @@ pub fn estimate(
         };
         let tx_info: Result<
             blockifier::transaction::objects::TransactionExecutionInfo,
-            blockifier::transaction::errors::TransactionExecutionError,
-        > = transaction.execute(&mut state, &block_context);
+            blockifier::blockifier::transaction_executor::TransactionExecutorError,
+        > = tx_exec.execute(&transaction);
 
         match tx_info {
             Ok(tx_info) => {
@@ -58,7 +64,7 @@ pub fn estimate(
             }
             Err(error) => {
                 tracing::debug!(%error, %transaction_idx, "Transaction estimation failed");
-                return Err(TransactionExecutionError::new(transaction_idx, error));
+                return Err(TransactionExecutionError::new_new(transaction_idx, error));
             }
         }
     }
