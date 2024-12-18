@@ -34,7 +34,7 @@ impl crate::dto::DeserializeForVersion for EstimateMessageFeeInput {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MsgFromL1 {
     pub from_address: EthereumAddress,
     pub to_address: ContractAddress,
@@ -44,8 +44,15 @@ pub struct MsgFromL1 {
 
 impl crate::dto::DeserializeForVersion for MsgFromL1 {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        // TODO: Replace this when DeserializeForVersion is available project-wide
-        value.deserialize_serde()
+        value.deserialize_map(|value| {
+            Ok(Self {
+                from_address: value.deserialize("from_address")?,
+                to_address: value.deserialize("to_address").map(ContractAddress)?,
+                entry_point_selector: value.deserialize("entry_point_selector").map(EntryPoint)?,
+                payload: value
+                    .deserialize_array("payload", |value| value.deserialize().map(CallParam))?,
+            })
+        })
     }
 }
 

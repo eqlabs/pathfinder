@@ -1,31 +1,37 @@
 use pathfinder_common::prelude::*;
-use pathfinder_serde::H256AsNoLeadingZerosHexStr;
-use serde::Serialize;
+use pathfinder_serde::h256_as_no_leading_zeros_hex_str;
 
 use crate::types::receipt;
 use crate::types::reply::BlockStatus;
 use crate::PendingData;
 
-#[derive(Serialize)]
-pub struct BlockWithReceipts {
-    status: BlockStatus,
-    #[serde(flatten)]
-    header: crate::v07::dto::header::Header,
-    #[serde(flatten)]
-    body: BlockBodyWithReceipts,
-}
-
-#[derive(Serialize)]
-pub struct PendingBlockWithReceipts {
-    #[serde(flatten)]
-    header: crate::v07::dto::header::PendingHeader,
-    #[serde(flatten)]
-    body: BlockBodyWithReceipts,
-}
-
 type CommonTransaction = pathfinder_common::transaction::Transaction;
 type CommonReceipt = pathfinder_common::receipt::Receipt;
 type CommonEvent = pathfinder_common::event::Event;
+
+pub struct BlockWithReceipts {
+    status: BlockStatus,
+    header: crate::v07::dto::header::Header,
+    body: BlockBodyWithReceipts,
+}
+
+impl crate::dto::serialize::SerializeForVersion for BlockWithReceipts {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("status", &self.status)?;
+        serializer.flatten(&self.header)?;
+        serializer.flatten(&self.body)?;
+        serializer.end()
+    }
+}
+
+pub struct PendingBlockWithReceipts {
+    header: crate::v07::dto::header::PendingHeader,
+    body: BlockBodyWithReceipts,
+}
 
 impl From<PendingData> for PendingBlockWithReceipts {
     fn from(value: PendingData) -> Self {
@@ -46,7 +52,18 @@ impl From<PendingData> for PendingBlockWithReceipts {
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for PendingBlockWithReceipts {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.flatten(&self.header)?;
+        serializer.flatten(&self.body)?;
+        serializer.end()
+    }
+}
+
 struct BlockBodyWithReceipts {
     transactions: Vec<TransactionWithReceipt>,
 }
@@ -65,7 +82,21 @@ impl BlockBodyWithReceipts {
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for BlockBodyWithReceipts {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_iter(
+            "transactions",
+            self.transactions.len(),
+            &mut self.transactions.iter(),
+        )?;
+        serializer.end()
+    }
+}
+
 // Inner type of block with receipts
 struct TransactionWithReceipt {
     transaction: crate::types::transaction::TransactionWithHash,
@@ -89,65 +120,153 @@ impl TransactionWithReceipt {
     }
 }
 
-#[serde_with::serde_as]
-#[derive(Serialize)]
-#[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
+impl crate::dto::serialize::SerializeForVersion for &TransactionWithReceipt {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("transaction", &self.transaction)?;
+        serializer.serialize_field("receipt", &self.receipt)?;
+        serializer.end()
+    }
+}
+
 #[allow(unused)]
 pub enum TxnReceipt {
     Invoke {
-        #[serde(flatten)]
         common: CommonReceiptProperties,
     },
     L1Handler {
-        #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
         message_hash: primitive_types::H256,
-        #[serde(flatten)]
         common: CommonReceiptProperties,
     },
     Declare {
-        #[serde(flatten)]
         common: CommonReceiptProperties,
     },
     Deploy {
         contract_address: ContractAddress,
-        #[serde(flatten)]
         common: CommonReceiptProperties,
     },
     DeployAccount {
         contract_address: ContractAddress,
-        #[serde(flatten)]
         common: CommonReceiptProperties,
     },
 }
 
-#[serde_with::serde_as]
-#[derive(Serialize)]
-#[serde(tag = "type", rename_all = "SCREAMING_SNAKE_CASE")]
+impl crate::dto::serialize::SerializeForVersion for TxnReceipt {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        match self {
+            Self::Invoke { common } => {
+                serializer.serialize_field("type", &"INVOKE")?;
+                serializer.flatten(common)?;
+            }
+            Self::L1Handler {
+                message_hash,
+                common,
+            } => {
+                serializer.serialize_field("type", &"L1_HANDLER")?;
+                serializer.serialize_field(
+                    "message_hash",
+                    &h256_as_no_leading_zeros_hex_str(message_hash),
+                )?;
+                serializer.flatten(common)?;
+            }
+            Self::Declare { common } => {
+                serializer.serialize_field("type", &"DECLARE")?;
+                serializer.flatten(common)?;
+            }
+            Self::Deploy {
+                contract_address,
+                common,
+            } => {
+                serializer.serialize_field("type", &"DEPLOY")?;
+                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.flatten(common)?;
+            }
+            Self::DeployAccount {
+                contract_address,
+                common,
+            } => {
+                serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.flatten(common)?;
+            }
+        }
+        serializer.end()
+    }
+}
+
 pub enum PendingTxnReceipt {
     Invoke {
-        #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
     L1Handler {
-        #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
         message_hash: primitive_types::H256,
-        #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
     Declare {
-        #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
     Deploy {
         contract_address: ContractAddress,
-        #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
     DeployAccount {
         contract_address: ContractAddress,
-        #[serde(flatten)]
         common: PendingCommonReceiptProperties,
     },
+}
+
+impl crate::dto::serialize::SerializeForVersion for PendingTxnReceipt {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        match self {
+            Self::Invoke { common } => {
+                serializer.serialize_field("type", &"INVOKE")?;
+                serializer.flatten(common)?;
+            }
+            Self::L1Handler {
+                message_hash,
+                common,
+            } => {
+                serializer.serialize_field("type", &"L1_HANDLER")?;
+                serializer.serialize_field(
+                    "message_hash",
+                    &h256_as_no_leading_zeros_hex_str(message_hash),
+                )?;
+                serializer.flatten(common)?;
+            }
+            Self::Declare { common } => {
+                serializer.serialize_field("type", &"DECLARE")?;
+                serializer.flatten(common)?;
+            }
+            Self::Deploy {
+                contract_address,
+                common,
+            } => {
+                serializer.serialize_field("type", &"DEPLOY")?;
+                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.flatten(common)?;
+            }
+            Self::DeployAccount {
+                contract_address,
+                common,
+            } => {
+                serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
+                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.flatten(common)?;
+            }
+        }
+        serializer.end()
+    }
 }
 
 impl PendingTxnReceipt {
@@ -197,7 +316,6 @@ impl PendingTxnReceipt {
     }
 }
 
-#[derive(Serialize)]
 pub struct ComputationResources(receipt::ExecutionResourcesProperties);
 
 impl From<pathfinder_common::receipt::ExecutionResources> for ComputationResources {
@@ -217,9 +335,16 @@ impl From<pathfinder_common::receipt::ExecutionResources> for ComputationResourc
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for ComputationResources {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
 pub struct ExecutionResources {
-    #[serde(flatten)]
     computation_resources: ComputationResources,
     data_availability: DataResources,
 }
@@ -233,7 +358,18 @@ impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResources
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for ExecutionResources {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.flatten(&self.computation_resources)?;
+        serializer.serialize_field("data_availability", &self.data_availability)?;
+        serializer.end()
+    }
+}
+
 /// An object embedded within EXECUTION_RESOURCES.
 struct DataResources {
     l1_gas: u128,
@@ -249,7 +385,18 @@ impl From<pathfinder_common::receipt::L1Gas> for DataResources {
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for DataResources {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("l1_gas", &self.l1_gas)?;
+        serializer.serialize_field("l1_data_gas", &self.l1_data_gas)?;
+        serializer.end()
+    }
+}
+
 pub struct CommonReceiptProperties {
     transaction_hash: TransactionHash,
     actual_fee: FeePayment,
@@ -257,20 +404,45 @@ pub struct CommonReceiptProperties {
     block_number: BlockNumber,
     messages_sent: Vec<receipt::MessageToL1>,
     events: Vec<receipt::Event>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     revert_reason: Option<String>,
     execution_resources: ExecutionResources,
     execution_status: receipt::ExecutionStatus,
     finality_status: receipt::FinalityStatus,
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for CommonReceiptProperties {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.serialize_field("actual_fee", &self.actual_fee)?;
+        serializer.serialize_field("block_hash", &self.block_hash)?;
+        serializer.serialize_field("block_number", &self.block_number)?;
+        serializer.serialize_iter(
+            "messages_sent",
+            self.messages_sent.len(),
+            &mut self.messages_sent.iter().cloned(),
+        )?;
+        serializer.serialize_iter(
+            "events",
+            self.events.len(),
+            &mut self.events.iter().cloned(),
+        )?;
+        serializer.serialize_optional("revert_reason", self.revert_reason.clone())?;
+        serializer.serialize_field("execution_resources", &self.execution_resources)?;
+        serializer.serialize_field("execution_status", &self.execution_status)?;
+        serializer.serialize_field("finality_status", &self.finality_status)?;
+        serializer.end()
+    }
+}
+
 pub struct PendingCommonReceiptProperties {
     transaction_hash: TransactionHash,
     actual_fee: FeePayment,
     messages_sent: Vec<receipt::MessageToL1>,
     events: Vec<receipt::Event>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     revert_reason: Option<String>,
     execution_status: receipt::ExecutionStatus,
     execution_resources: ExecutionResources,
@@ -312,14 +484,49 @@ impl PendingCommonReceiptProperties {
     }
 }
 
-#[derive(Serialize)]
+impl crate::dto::serialize::SerializeForVersion for PendingCommonReceiptProperties {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.serialize_field("actual_fee", &self.actual_fee)?;
+        serializer.serialize_iter(
+            "messages_sent",
+            self.messages_sent.len(),
+            &mut self.messages_sent.iter().cloned(),
+        )?;
+        serializer.serialize_iter(
+            "events",
+            self.events.len(),
+            &mut self.events.iter().cloned(),
+        )?;
+        serializer.serialize_optional("revert_reason", self.revert_reason.clone())?;
+        serializer.serialize_field("execution_resources", &self.execution_resources)?;
+        serializer.serialize_field("execution_status", &self.execution_status)?;
+        serializer.serialize_field("finality_status", &self.finality_status)?;
+        serializer.end()
+    }
+}
+
 struct FeePayment {
     amount: Fee,
     unit: PriceUnit,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+impl crate::dto::serialize::SerializeForVersion for FeePayment {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("amount", &self.amount)?;
+        serializer.serialize_field("unit", &self.unit)?;
+        serializer.end()
+    }
+}
+
 pub enum PriceUnit {
     Wei,
     Fri,
@@ -336,12 +543,26 @@ impl From<TransactionVersion> for PriceUnit {
     }
 }
 
+impl crate::dto::serialize::SerializeForVersion for PriceUnit {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer.serialize_str(match self {
+            Self::Wei => "WEI",
+            Self::Fri => "FRI",
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
 
     #[test]
     fn txn_receipt() {
@@ -404,7 +625,11 @@ mod tests {
             },
         };
 
-        let encoded = serde_json::to_value(uut).unwrap();
+        let encoded = uut
+            .serialize(Serializer {
+                version: RpcVersion::V07,
+            })
+            .unwrap();
 
         assert_eq!(encoded, expected);
     }
@@ -465,7 +690,11 @@ mod tests {
             },
         };
 
-        let encoded = serde_json::to_value(uut).unwrap();
+        let encoded = uut
+            .serialize(Serializer {
+                version: RpcVersion::V07,
+            })
+            .unwrap();
         assert_eq!(encoded, expected);
     }
 }

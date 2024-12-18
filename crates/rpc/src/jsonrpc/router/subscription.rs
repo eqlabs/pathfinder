@@ -659,7 +659,9 @@ async fn handle_request(
                 panic!("subscription id overflow");
             }
             Ok(Some(RpcResponse {
-                output: Ok(serde_json::to_value(subscription_id).unwrap()),
+                output: Ok(subscription_id
+                    .serialize(serialize::Serializer::new(state.version))
+                    .unwrap()),
                 id: req_id,
                 version: state.version,
             }))
