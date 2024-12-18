@@ -156,8 +156,7 @@ pub async fn get_events(
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    let db_events: JoinHandle<Result<_, GetEventsError>> = tokio::task::spawn_blocking(move || {
+    let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()

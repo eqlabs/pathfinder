@@ -10,8 +10,7 @@ crate::error::generate_rpc_error_subset!(Error: NoBlocks);
 /// Get the latest block number.
 pub async fn block_number(context: RpcContext) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    // TODO tracking and cancellation
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

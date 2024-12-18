@@ -101,8 +101,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let params = params.clone().unwrap_or_default();
         let storage = state.storage.clone();
-        // TODO tracking and cancellation
-        let (events, last_block) = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+        let (events, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             let events = db
@@ -697,7 +696,6 @@ mod tests {
         assert!(num_blocks == 0 || num_blocks > SubscribeEvents::CATCH_UP_BATCH_SIZE);
 
         let storage = StorageBuilder::in_memory().unwrap();
-        // TODO tracking and cancellation
         tokio::task::spawn_blocking({
             let storage = storage.clone();
             move || {
