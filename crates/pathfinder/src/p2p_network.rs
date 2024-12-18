@@ -13,7 +13,11 @@ mod sync_handlers;
 use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_transactions};
 
 // Silence clippy
-pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
+pub type P2PNetworkHandle = (
+    peer_agnostic::Client,
+    HeadRx,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+);
 
 pub struct P2PContext {
     pub cfg: p2p::Config,
@@ -103,7 +107,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                     tokio::select! {
                         _ = &mut main_loop_handle => {
                             tracing::error!("p2p task ended unexpectedly");
-                            break;
+                            break Err(anyhow::anyhow!("p2p task ended unexpectedly"));
                         }
                         Some(event) = p2p_events.recv() => {
                             match handle_p2p_event(event, storage.clone(), &mut tx).await {

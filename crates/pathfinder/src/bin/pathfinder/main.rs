@@ -21,6 +21,7 @@ use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::task::JoinError;
 use tracing::{info, warn};
 
 use crate::config::{NetworkConfig, StateTries};
@@ -44,6 +45,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
+    let mut term_signal =
+        signal(SignalKind::terminate()).context("Creating listener to TERM signal")?;
+    let mut int_signal =
+        signal(SignalKind::interrupt()).context("Creating listener to INT signal")?;
+
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
         std::env::set_var("RUST_LOG", "pathfinder=info");
@@ -95,24 +101,12 @@ async fn async_main() -> anyhow::Result<()> {
             .default_network()
             .context("Using default Starknet network based on Ethereum configuration")?,
     };
-
-    // Spawn monitoring if configured.
-    if let Some(address) = config.monitor_address {
-        let network_label = match &network {
-            NetworkConfig::Mainnet => "mainnet",
-            NetworkConfig::SepoliaTestnet => "testnet-sepolia",
-            NetworkConfig::SepoliaIntegration => "integration-sepolia",
-            NetworkConfig::Custom { .. } => "custom",
-        };
-        spawn_monitoring(
-            network_label,
-            address,
-            readiness.clone(),
-            sync_state.clone(),
-        )
-        .await
-        .context("Starting monitoring task")?;
-    }
+    let network_label = match &network {
+        NetworkConfig::Mainnet => "mainnet",
+        NetworkConfig::SepoliaTestnet => "testnet-sepolia",
+        NetworkConfig::SepoliaIntegration => "integration-sepolia",
+        NetworkConfig::Custom { .. } => "custom",
+    };
 
     let pathfinder_context = PathfinderContext::configure_and_proxy_check(
         network,
@@ -132,7 +126,6 @@ async fn async_main() -> anyhow::Result<()> {
         .context("Fetching Starknet gateway public key")?;
 
     // Setup and verify database
-
     let storage_manager =
         pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
             .journal_mode(config.sqlite_wal)
@@ -257,12 +250,41 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    // Spawn monitoring if configured.
+    if let Some(address) = config.monitor_address {
+        anyhow::bail!("Monitoring task ended unexpectedly");
+
+        spawn_monitoring(
+            network_label,
+            address,
+            readiness.clone(),
+            sync_state.clone(),
+        )
+        .await
+        // We can still bail out here as there are no other tasks running which would have to be
+        // cancelled gracefully
+        .context("Starting monitoring task")?;
+    }
+
+    // From this point onwards, till the final select, we cannot exit the process
+    // even if some error is encountered as it would result in tasks being detached
+    // and cancelled abruptly without a chance to clean up.
+
     let (p2p_handle, gossiper, p2p_client) = start_p2p(
         pathfinder_context.network_id,
         p2p_storage,
         config.p2p.clone(),
     )
-    .await?;
+    .await
+    .unwrap_or_else(|error| {
+        (
+            // We want to reach the final select, so we can cancel all the other tasks in an
+            // orderly fashion, and then return this error from the main function.
+            tokio::task::spawn(futures::future::ready(Err(error.context("Starting P2P")))),
+            Default::default(),
+            None,
+        )
+    });
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -284,13 +306,21 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let rpc_handle = if config.is_rpc_enabled {
-        let (rpc_handle, local_addr) = rpc_server
+        match rpc_server
             .with_max_connections(config.max_rpc_connections.get())
             .spawn()
             .await
-            .context("Starting the RPC server")?;
-        info!("📡 HTTP-RPC server started on: {}", local_addr);
-        rpc_handle
+        {
+            Ok((rpc_handle, local_addr)) => {
+                info!("📡 RPC server started on: {local_addr}");
+                rpc_handle
+            }
+            // We want to reach the final select, so we can cancel all the other tasks in an
+            // orderly fashion, and then return this error from the main function.
+            Err(error) => tokio::task::spawn(futures::future::ready(Err(
+                error.context("Starting RPC server")
+            ))),
+        }
     } else {
         tokio::spawn(std::future::pending())
     };
@@ -299,68 +329,39 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         util::task::spawn(update::poll_github_for_releases());
     }
 
-    let mut term_signal = signal(SignalKind::terminate())?;
-    let mut int_signal = signal(SignalKind::interrupt())?;
-
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
     // Monitor our critical spawned process tasks.
-    tokio::select! {
-        result = sync_handle => {
-            match result {
-                Ok(task_result) => tracing::error!(?task_result, "Sync task ended unexpectedly"),
-                Err(error) if error.is_cancelled() => tracing::debug!("Sync task cancelled successfully"),
-                Err(error) => {
-                    // `JoinError` is either a cancellation or a panic.
-                    tracing::error!(%error, "Sync task panicked");
-                },
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
-        result = rpc_handle => {
-            match result {
-                Ok(task_result) => tracing::error!(?task_result, "RPC task ended unexpectedly"),
-                Err(error) if error.is_cancelled() => tracing::debug!("RPC task cancelled successfully"),
-                Err(error) => {
-                    tracing::error!(%error, "RPC task panicked");
-                },
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
-        result = p2p_handle => {
-            match result {
-                Ok(task_result) => tracing::error!(?task_result, "P2P task ended unexpectedly"),
-                Err(error) if error.is_cancelled() => tracing::debug!("P2P task cancelled successfully"),
-                Err(error) => {
-                    tracing::error!(%error, "P2P task panicked");
-                },
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
+    let main_result = tokio::select! {
+        result = sync_handle => handle_critical_task_result("Sync", result),
+        result = rpc_handle => handle_critical_task_result("RPC", result),
+        result = p2p_handle => handle_critical_task_result("P2P", result),
         _ = term_signal.recv() => {
-            util::task::tracker::close();
-            tracing::info!("TERM signal received, exiting gracefully");
+            tracing::info!("TERM signal received");
+            Ok(())
         }
         _ = int_signal.recv() => {
-            util::task::tracker::close();
-            tracing::info!("INT signal received, exiting gracefully");
+            tracing::info!("INT signal received");
+            Ok(())
         }
-    }
+    };
 
+    // If we get here either a signal was received or a task ended unexpectedly,
+    // which means we need to cancel all the remaining tasks.
+    tracing::info!("Shutdown started, waiting for tasks to finish...");
     util::task::tracker::close();
-    tracing::info!("Waiting for all tasks to finish...");
     // Force exit after a grace period
     match tokio::time::timeout(config.shutdown_grace_period, util::task::tracker::wait()).await {
         Ok(_) => {
-            tracing::info!("All tasks finished successfully");
-            Ok(())
+            tracing::info!("Shutdown finished successfully")
         }
         Err(_) => {
-            tracing::warn!("Graceful shutdown timed out");
-            Err(anyhow::anyhow!("Graceful shutdown timed out"))
+            tracing::error!("Some tasks failed to finish in time, forcing exit");
         }
     }
+
+    main_result
 }
 
 #[cfg(feature = "tokio-console")]
@@ -436,7 +437,7 @@ async fn start_p2p(
     storage: Storage,
     config: config::P2PConfig,
 ) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
@@ -520,11 +521,11 @@ async fn start_p2p(
     _: Storage,
     _: config::P2PConfig,
 ) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
-    let join_handle = tokio::task::spawn(futures::future::pending());
+    let join_handle = util::task::spawn(futures::future::pending());
 
     Ok((join_handle, Default::default(), None))
 }
@@ -950,4 +951,29 @@ async fn verify_database(
     }
 
     Ok(())
+}
+
+fn handle_critical_task_result(
+    task_name: &str,
+    task_result: Result<anyhow::Result<()>, JoinError>,
+) -> anyhow::Result<()> {
+    match task_result {
+        Ok(task_result) => {
+            tracing::error!(?task_result, "{} task ended unexpectedly", task_name);
+            task_result
+        }
+        Err(error) if error.is_panic() => {
+            tracing::error!(%error, "{} task panicked", task_name);
+            Err(anyhow::anyhow!("{} task panicked", task_name))
+        }
+        // Cancelling all tracked tasks via [`util::task::tracker::close()`] does not cause join
+        // errors on registered task handles, so this is unexpected and we should threat it as error
+        Err(_) => {
+            tracing::error!("{} task was cancelled unexpectedly", task_name);
+            Err(anyhow::anyhow!(
+                "{} task was cancelled unexpectedly",
+                task_name
+            ))
+        }
+    }
 }
