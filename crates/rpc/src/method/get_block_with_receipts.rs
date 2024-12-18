@@ -39,7 +39,7 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
 pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

@@ -177,20 +177,21 @@ where
                     .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
                 let storage = router.context.storage.clone();
 
-                let current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-                    let mut conn = storage.connection().map_err(RpcError::InternalError)?;
-                    let db = conn.transaction().map_err(RpcError::InternalError)?;
-                    db.block_number(first_block)
-                        .map_err(RpcError::InternalError)?
-                        .ok_or_else(|| ApplicationError::BlockNotFound.into())
-                })
-                .await
-                .map_err(|e| RpcError::InternalError(e.into()))??;
+                let current_block =
+                    util::task::spawn_blocking(file!(), line!(), move |_| -> Result<_, RpcError> {
+                        let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+                        let db = conn.transaction().map_err(RpcError::InternalError)?;
+                        db.block_number(first_block)
+                            .map_err(RpcError::InternalError)?
+                            .ok_or_else(|| ApplicationError::BlockNotFound.into())
+                    })
+                    .await
+                    .map_err(|e| RpcError::InternalError(e.into()))??;
                 Some(current_block)
             }
         };
 
-        Ok(util::task::spawn(async move {
+        Ok(util::task::spawn(file!(), line!(), async move {
             let _subscription_guard = SubscriptionsGuard {
                 subscription_id,
                 subscriptions,
@@ -245,7 +246,7 @@ where
 
             // Subscribe to new blocks. Receive the first subscription message.
             let (tx1, mut rx1) = mpsc::channel::<SubscriptionMessage<T::Notification>>(1024);
-            util::task::spawn({
+            util::task::spawn(file!(), line!(), {
                 let params = params.clone();
                 let context = router.context.clone();
                 let tx = tx.clone();
@@ -353,7 +354,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     let (mut ws_sender, mut ws_receiver) = ws.split();
     // Send messages to the websocket using an MPSC channel.
     let (sender_tx, mut sender_rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
-    util::task::spawn(async move {
+    util::task::spawn(file!(), line!(), async move {
         while let Some(msg) = sender_rx.recv().await {
             match msg {
                 Ok(msg) => {
@@ -380,7 +381,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     });
     // Receive messages from the websocket using an MPSC channel.
     let (receiver_tx, receiver_rx) = mpsc::channel::<Result<Message, axum::Error>>(1024);
-    util::task::spawn(async move {
+    util::task::spawn(file!(), line!(), async move {
         while let Some(msg) = ws_receiver.next().await {
             if receiver_tx.send(msg).await.is_err() {
                 break;
@@ -398,7 +399,7 @@ pub fn handle_json_rpc_socket(
     let subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>> =
         Default::default();
     // Read and handle messages from the websocket.
-    util::task::spawn(async move {
+    util::task::spawn(file!(), line!(), async move {
         loop {
             let request = match ws_rx.recv().await {
                 Some(Ok(Message::Text(msg))) => msg,

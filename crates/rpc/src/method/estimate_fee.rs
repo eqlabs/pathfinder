@@ -47,7 +47,7 @@ pub struct Output(Vec<pathfinder_executor::types::FeeEstimate>);
 
 pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, EstimateFeeError> {
     let span = tracing::Span::current();
-    let result = util::task::spawn_blocking(move |_| {
+    let result = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut db = context
             .execution_storage

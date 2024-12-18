@@ -205,7 +205,7 @@ pub async fn trace_block_transactions_impl(
     let span = tracing::Span::current();
 
     let storage = context.execution_storage.clone();
-    let traces = util::task::spawn_blocking(move |_| {
+    let traces = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let mut db = storage.connection()?;

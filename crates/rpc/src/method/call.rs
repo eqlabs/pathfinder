@@ -106,7 +106,7 @@ pub struct Output(pub Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
     let span = tracing::Span::current();
-    let result = util::task::spawn_blocking(move |_| {
+    let result = util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let mut db = context

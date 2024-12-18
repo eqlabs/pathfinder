@@ -606,7 +606,7 @@ struct LocalState {
 impl LocalState {
     async fn from_db(storage: Storage, checkpoint: EthereumStateUpdate) -> anyhow::Result<Self> {
         // TODO: this should include header gaps.
-        util::task::spawn_blocking(move |_| {
+        util::task::spawn_blocking(file!(), line!(),move |_| {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
@@ -640,7 +640,7 @@ async fn rollback_to_anchor(
     local: BlockNumber,
     anchor: Option<BlockNumber>,
 ) -> anyhow::Result<()> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(),move |_| {
         tracing::info!(%local, ?anchor, "Rolling back storage to anchor point");
 
         let last_block_to_remove = anchor.map(|n| n + 1).unwrap_or_default();
@@ -679,7 +679,7 @@ async fn rollback_to_anchor(
 }
 
 async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

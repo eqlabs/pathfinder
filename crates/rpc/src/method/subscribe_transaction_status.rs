@@ -147,7 +147,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                 // Check if we have the transaction in our database, and if so, send the
                 // relevant transaction status updates.
                 let (first_block, l1_state, tx_with_receipt) =
-                    util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+                    util::task::spawn_blocking(file!(), line!(), move |_| -> Result<_, RpcError> {
                         let mut conn = storage.connection().map_err(RpcError::InternalError)?;
                         let db = conn.transaction().map_err(RpcError::InternalError)?;
                         let first_block = db
@@ -340,7 +340,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                 // here because it guarantees that the ACCEPTED_ON_L2 update will be
                                 // sent before the ACCEPTED_ON_L1 update.
                                 let storage = state.storage.clone();
-                                let l1_state = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+                                let l1_state = util::task::spawn_blocking(file!(), line!(), move |_| -> Result<_, RpcError> {
                                     let mut conn = storage.connection().map_err(RpcError::InternalError)?;
                                     let db = conn.transaction().map_err(RpcError::InternalError)?;
                                     let l1_state = db.latest_l1_state().map_err(RpcError::InternalError)?;

@@ -252,6 +252,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     // Spawn monitoring if configured.
     if let Some(address) = config.monitor_address {
+        util::task::tracker::log_registry();
+
         anyhow::bail!("Monitoring task ended unexpectedly");
 
         spawn_monitoring(
@@ -326,7 +328,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     if !config.disable_version_update_check {
-        util::task::spawn(update::poll_github_for_releases());
+        util::task::spawn(file!(), line!(), update::poll_github_for_releases());
     }
 
     // We are now ready.
@@ -360,6 +362,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             tracing::error!("Some tasks failed to finish in time, forcing exit");
         }
     }
+
+    util::task::tracker::log_registry();
 
     main_result
 }
@@ -525,7 +529,7 @@ async fn start_p2p(
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
-    let join_handle = util::task::spawn(futures::future::pending());
+    let join_handle = util::task::spawn(file!(), line!(), futures::future::pending());
 
     Ok((join_handle, Default::default(), None))
 }
@@ -639,7 +643,11 @@ fn start_feeder_gateway_sync(
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,
     };
 
-    util::task::spawn(state::sync(sync_context, state::l1::sync, state::l2::sync))
+    util::task::spawn(
+        file!(),
+        line!(),
+        state::sync(sync_context, state::l1::sync, state::l2::sync),
+    )
 }
 
 #[cfg(feature = "p2p")]
@@ -666,7 +674,7 @@ fn start_p2p_sync(
         verify_tree_hashes,
         block_hash_db: Some(BlockHashDb::new(pathfinder_context.network)),
     };
-    util::task::spawn(sync.run())
+    util::task::spawn(file!(), line!(), sync.run())
 }
 
 /// Spawns the monitoring task at the given address.
@@ -901,7 +909,7 @@ async fn verify_database(
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
 
-    let db_genesis = util::task::spawn_blocking(move |_| {
+    let db_genesis = util::task::spawn_blocking(file!(), line!(), move |_| {
         let mut conn = storage.connection().context("Create database connection")?;
         let tx = conn.transaction().context("Create database transaction")?;
 

@@ -34,7 +34,7 @@ pub async fn simulate_transactions(
     input: SimulateTransactionInput,
 ) -> Result<Output, SimulateTransactionError> {
     let span = tracing::Span::current();
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
 
         let skip_validate = input

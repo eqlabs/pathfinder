@@ -13,13 +13,13 @@ use tokio_util::sync::CancellationToken;
 /// sender fails to send an item__ (ie. fails to yield an item to the stream).
 /// Otherwise, the `src` future will never complete and will keep running,
 /// because it is detached via `tokio::spawn`.
-pub fn from_future<T, U, V>(src: U) -> impl Stream<Item = T>
+pub fn from_future<T, U, V>(file: &str, line: u32, src: U) -> impl Stream<Item = T>
 where
     U: FnOnce(Sender<T>) -> V + Send + 'static,
     V: Future<Output = ()> + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
-    crate::task::spawn(src(tx));
+    crate::task::spawn(file, line, src(tx));
 
     ReceiverStream::new(rx)
 }
@@ -36,13 +36,15 @@ where
 /// sender fails to send an item__ (ie. fails to yield an item to the stream).
 /// Otherwise, the `src` closure will never complete and will keep running,
 /// because it is detached via `std::thread::spawn`.
-pub fn from_blocking<T, U>(src: U) -> impl Stream<Item = T>
+pub fn from_blocking<T, U>(file: &str, line: u32, src: U) -> impl Stream<Item = T>
 where
     T: Send + 'static,
     U: FnOnce(CancellationToken, Sender<T>) + Send + 'static,
 {
     let (tx, rx) = mpsc::channel(1);
-    crate::task::spawn_std(move |cancellation_token| src(cancellation_token, tx));
+    crate::task::spawn_std(file, line, move |cancellation_token| {
+        src(cancellation_token, tx)
+    });
 
     ReceiverStream::new(rx)
 }

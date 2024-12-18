@@ -65,7 +65,7 @@ pub(super) async fn verify_commitment(
         data: (block_number, events),
     } = events;
 
-    let events = util::task::spawn_blocking(move |_| {
+    let events = util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
@@ -100,7 +100,7 @@ pub(super) async fn persist(
     storage: Storage,
     events: Vec<PeerData<EventsForBlockByTransaction>>,
 ) -> Result<BlockNumber, SyncError> {
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(),move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;

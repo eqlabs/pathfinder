@@ -52,7 +52,7 @@ pub async fn trace_transaction<'a>(
 
     let span = tracing::Span::current();
     let local =
-        util::task::spawn_blocking(move |_| -> Result<LocalExecution, TraceTransactionError> {
+        util::task::spawn_blocking(file!(), line!(), move |_| -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
 
             let mut db = context

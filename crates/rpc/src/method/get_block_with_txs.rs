@@ -40,7 +40,7 @@ pub enum Output {
 /// Get block information with full transactions given the block id
 pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    util::task::spawn_blocking(move |_| {
+    util::task::spawn_blocking(file!(), line!(), move |_| {
         let _g = span.enter();
         let mut connection = context
             .storage

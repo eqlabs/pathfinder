@@ -21,7 +21,7 @@ pub fn counts_stream(
         + Send
         + 'static,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    util::make_stream::from_blocking(move |cancellation_token, tx| {
+    util::make_stream::from_blocking(file!(), line!(), move |cancellation_token, tx| {
         let mut batch = VecDeque::new();
 
         while start <= stop {

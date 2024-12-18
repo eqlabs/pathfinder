@@ -82,7 +82,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        util::task::spawn_std(move |cancellation_token| {
+        util::task::spawn_std(file!(), line!(), move |cancellation_token| {
             let queue_capacity = self.inner.max_capacity();
 
             while let Some(input) = self.inner.blocking_recv() {
@@ -135,7 +135,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
     pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        util::task::spawn_std(move |cancellation_token| {
+        util::task::spawn_std(file!(), line!(), move |cancellation_token| {
             let mut chunk = Vec::with_capacity(capacity);
             let mut peer = None;
             let mut err = None;
@@ -239,7 +239,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        util::task::spawn(async move {
+        util::task::spawn(file!(), line!(), async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
@@ -272,7 +272,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        util::task::spawn(async move {
+        util::task::spawn(file!(), line!(), async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
