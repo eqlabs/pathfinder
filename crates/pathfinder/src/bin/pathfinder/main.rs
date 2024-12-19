@@ -44,6 +44,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
+    // All of the following code is either sync and blocking or async but called
+    // sequentially down to the point where the monitoring server is spawned. No
+    // tokio tasks are spawned to that point. If an error occurs before that
+    // point, the process will just exit with that error, regardless of whether
+    // any of the signals were received and no tasks will be left detached.
+    let mut term_signal = signal(SignalKind::terminate())?;
+    let mut int_signal = signal(SignalKind::interrupt())?;
+
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
         std::env::set_var("RUST_LOG", "pathfinder=info");
@@ -95,24 +103,12 @@ async fn async_main() -> anyhow::Result<()> {
             .default_network()
             .context("Using default Starknet network based on Ethereum configuration")?,
     };
-
-    // Spawn monitoring if configured.
-    if let Some(address) = config.monitor_address {
-        let network_label = match &network {
-            NetworkConfig::Mainnet => "mainnet",
-            NetworkConfig::SepoliaTestnet => "testnet-sepolia",
-            NetworkConfig::SepoliaIntegration => "integration-sepolia",
-            NetworkConfig::Custom { .. } => "custom",
-        };
-        spawn_monitoring(
-            network_label,
-            address,
-            readiness.clone(),
-            sync_state.clone(),
-        )
-        .await
-        .context("Starting monitoring task")?;
-    }
+    let network_label = match &network {
+        NetworkConfig::Mainnet => "mainnet",
+        NetworkConfig::SepoliaTestnet => "testnet-sepolia",
+        NetworkConfig::SepoliaIntegration => "integration-sepolia",
+        NetworkConfig::Custom { .. } => "custom",
+    };
 
     let pathfinder_context = PathfinderContext::configure_and_proxy_check(
         network,
@@ -257,6 +253,25 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         None => rpc_server,
     };
 
+    // Spawn monitoring if configured.
+    if let Some(address) = config.monitor_address {
+        spawn_monitoring(
+            network_label,
+            address,
+            readiness.clone(),
+            sync_state.clone(),
+        )
+        .await
+        .context("Starting monitoring task")?;
+    }
+
+    // From this point onwards, until the final select, we cannot exit the process
+    // even if some error is encountered or a signal is received as it would result
+    // in tasks being detached and cancelled abruptly without a chance to clean
+    // up. We need to wait for the final select where we can cancel all the tasks
+    // and wait for them to finish. Only then can we exit the process and return an
+    // error if some of the tasks failed or no error if we have received a signal.
+
     let (p2p_handle, gossiper, p2p_client) = start_p2p(
         pathfinder_context.network_id,
         p2p_storage,
@@ -298,9 +313,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     if !config.disable_version_update_check {
         util::task::spawn(update::poll_github_for_releases());
     }
-
-    let mut term_signal = signal(SignalKind::terminate())?;
-    let mut int_signal = signal(SignalKind::interrupt())?;
 
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -888,16 +900,13 @@ async fn verify_database(
 ) -> anyhow::Result<()> {
     let storage = storage.clone();
 
-    let db_genesis = util::task::spawn_blocking(move |_| {
-        let mut conn = storage.connection().context("Create database connection")?;
-        let tx = conn.transaction().context("Create database transaction")?;
+    let mut conn = storage.connection().context("Create database connection")?;
+    let tx = conn.transaction().context("Create database transaction")?;
 
-        tx.block_id(BlockNumber::GENESIS.into())
-    })
-    .await
-    .context("Joining database task")?
-    .context("Fetching genesis hash from database")?
-    .map(|x| x.1);
+    let db_genesis = tx
+        .block_id(BlockNumber::GENESIS.into())
+        .context("Fetching genesis hash from database")?
+        .map(|x| x.1);
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
