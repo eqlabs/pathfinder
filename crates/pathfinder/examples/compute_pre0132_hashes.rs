@@ -8,7 +8,6 @@ use pathfinder_common::{
     ReceiptCommitment,
     StarknetVersion,
     StateCommitment,
-    StorageCommitment,
 };
 use pathfinder_lib::state::block_hash::{
     calculate_event_commitment,
@@ -118,10 +117,6 @@ fn main() -> anyhow::Result<()> {
         ensure!(
             header.state_commitment != StateCommitment::ZERO,
             "state_commitment missing"
-        );
-        ensure!(
-            header.storage_commitment != StorageCommitment::ZERO,
-            "storage_commitment missing"
         );
 
         // Compute the block hash in the 0.13.2 style

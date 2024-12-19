@@ -185,9 +185,6 @@ mod prop {
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
                 .into_iter().map(|Block { header, .. }| pathfinder_common::SignedBlockHeader {
                     header: pathfinder_common::BlockHeader {
-                        // TODO Set the storage and class commitment
-                        storage_commitment: Default::default(),
-                        class_commitment: Default::default(),
                         ..header.header
                     },
                     signature: header.signature,

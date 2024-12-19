@@ -4,6 +4,7 @@ use pathfinder_common::{
     BlockNumber,
     ClassCommitment,
     ClassCommitmentLeafHash,
+    StateCommitment,
     StorageCommitment,
 };
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
@@ -37,31 +38,30 @@ pub fn revert_starknet_state(
     target_block: BlockNumber,
     target_header: BlockHeader,
 ) -> Result<(), anyhow::Error> {
-    revert_contract_updates(
-        transaction,
-        head,
-        target_block,
-        target_header.storage_commitment,
-    )?;
-    revert_class_updates(
-        transaction,
-        head,
-        target_block,
-        target_header.class_commitment,
-    )?;
+    let storage_commitment = revert_contract_updates(transaction, head, target_block)?;
+    let class_commitment = revert_class_updates(transaction, head, target_block)?;
+
+    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+    if state_commitment != target_header.state_commitment {
+        anyhow::bail!(
+            "State commitment mismatch: expected {}, calculated {}",
+            target_header.state_commitment,
+            state_commitment,
+        );
+    }
+
     transaction.coalesce_trie_removals(target_block)
 }
 
 /// Revert all contract/global storage trie updates.
 ///
 /// Fetches reverse updates from the database and updates all tries, returning
-/// the storage commitment and the storage root node index.
+/// the [`StorageCommitment`].
 fn revert_contract_updates(
     transaction: &Transaction<'_>,
     head: BlockNumber,
     target_block: BlockNumber,
-    expected_storage_commitment: StorageCommitment,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<StorageCommitment> {
     let updates = transaction.reverse_contract_updates(head, target_block)?;
 
     let mut global_tree =
@@ -91,14 +91,6 @@ fn revert_contract_updates(
         .commit()
         .context("Committing global state tree")?;
 
-    if expected_storage_commitment != storage_commitment {
-        anyhow::bail!(
-            "Storage commitment mismatch: expected {}, calculated {}",
-            expected_storage_commitment,
-            storage_commitment
-        );
-    }
-
     let root_idx = transaction
         .insert_storage_trie(&trie_update, target_block)
         .context("Persisting storage trie")?;
@@ -108,16 +100,18 @@ fn revert_contract_updates(
         .context("Inserting storage root index")?;
     tracing::debug!(%target_block, %storage_commitment, "Committed global state tree");
 
-    Ok(())
+    Ok(storage_commitment)
 }
 
 /// Revert all class trie updates.
+///
+/// Fetches reverse updates from the database and updates all tries, returning
+/// the [`ClassCommitment`].
 fn revert_class_updates(
     transaction: &Transaction<'_>,
     head: BlockNumber,
     target_block: BlockNumber,
-    expected_class_commitment: ClassCommitment,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<ClassCommitment> {
     let updates = transaction.reverse_sierra_class_updates(head, target_block)?;
 
     let mut class_tree =
@@ -143,14 +137,6 @@ fn revert_class_updates(
 
     let (class_commitment, trie_update) = class_tree.commit().context("Committing class trie")?;
 
-    if expected_class_commitment != class_commitment {
-        anyhow::bail!(
-            "Storage commitment mismatch: expected {}, calculated {}",
-            expected_class_commitment,
-            class_commitment
-        );
-    }
-
     let root_idx = transaction
         .insert_class_trie(&trie_update, target_block)
         .context("Persisting class trie")?;
@@ -161,5 +147,5 @@ fn revert_class_updates(
 
     tracing::debug!(%target_block, %class_commitment, "Committed class trie");
 
-    Ok(())
+    Ok(class_commitment)
 }

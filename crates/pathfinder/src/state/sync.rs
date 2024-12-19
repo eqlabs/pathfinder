@@ -912,10 +912,8 @@ async fn l2_update(
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             starknet_version: block.starknet_version,
-            class_commitment,
             event_commitment,
             state_commitment,
-            storage_commitment,
             transaction_commitment,
             transaction_count,
             event_count,

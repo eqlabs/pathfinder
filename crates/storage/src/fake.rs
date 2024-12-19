@@ -524,8 +524,6 @@ pub mod generate {
             )
             .unwrap();
             let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-            header.header.storage_commitment = storage_commitment;
-            header.header.class_commitment = class_commitment;
             header.header.state_commitment = state_commitment;
             state_update.state_commitment = state_commitment;
         }
