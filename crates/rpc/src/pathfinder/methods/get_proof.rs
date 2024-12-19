@@ -185,11 +185,6 @@ pub struct GetProofOutput {
     /// [contract_proof](GetProofOutput#contract_proof) is the global state
     /// commitment.
     state_commitment: Option<StateCommitment>,
-    /// Required to verify that the hash of the class commitment and the root of
-    /// the [contract_proof](GetProofOutput::contract_proof) matches the
-    /// [state_commitment](Self#state_commitment). Present only for Starknet
-    /// blocks 0.11.0 onwards.
-    class_commitment: Option<ClassCommitment>,
 
     /// Membership / Non-membership proof for the queried contract
     contract_proof: ProofNodes,
@@ -201,11 +196,6 @@ pub struct GetProofOutput {
 #[derive(Debug, Serialize, PartialEq)]
 #[skip_serializing_none]
 pub struct GetClassProofOutput {
-    /// Required to verify that the hash of the class commitment and the root of
-    /// the [contract_proof](GetProofOutput::contract_proof) matches the
-    /// [state_commitment](Self#state_commitment). Present only for Starknet
-    /// blocks 0.11.0 onwards.
-    class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
 }
@@ -256,10 +246,6 @@ pub async fn get_proof(
             StateCommitment::ZERO => None,
             other => Some(other),
         };
-        let class_commitment = match header.class_commitment {
-            ClassCommitment::ZERO => None,
-            other => Some(other),
-        };
 
         let storage_root_idx = tx
             .storage_root_index(header.number)
@@ -275,7 +261,6 @@ pub async fn get_proof(
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetProofOutput {
                     state_commitment,
-                    class_commitment,
                     contract_proof: ProofNodes(vec![]),
                     contract_data: None,
                 });
@@ -303,7 +288,6 @@ pub async fn get_proof(
         if contract_state_hash.is_none() {
             return Ok(GetProofOutput {
                 state_commitment,
-                class_commitment,
                 contract_proof,
                 contract_data: None,
             });
@@ -359,7 +343,6 @@ pub async fn get_proof(
 
         Ok(GetProofOutput {
             state_commitment,
-            class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
         })
@@ -402,11 +385,6 @@ pub async fn get_class_proof(
             .context("Fetching block header")?
             .ok_or(GetProofError::BlockNotFound)?;
 
-        let class_commitment = match header.class_commitment {
-            ClassCommitment::ZERO => None,
-            other => Some(other),
-        };
-
         let class_root_idx = tx
             .class_root_index(header.number)
             .context("Querying class root index")?;
@@ -420,7 +398,6 @@ pub async fn get_class_proof(
                 // - or all leaves were removed resulting in an empty trie
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetClassProofOutput {
-                    class_commitment,
                     class_proof: ProofNodes(vec![]),
                 });
             }
@@ -436,10 +413,7 @@ pub async fn get_class_proof(
 
         let class_proof = ProofNodes(class_proof);
 
-        Ok(GetClassProofOutput {
-            class_commitment,
-            class_proof,
-        })
+        Ok(GetClassProofOutput { class_proof })
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -660,7 +634,6 @@ mod tests {
             assert_eq!(
                 output,
                 GetClassProofOutput {
-                    class_commitment: None,
                     class_proof: ProofNodes(vec![])
                 }
             );
