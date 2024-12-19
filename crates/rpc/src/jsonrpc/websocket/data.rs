@@ -240,10 +240,8 @@ impl serde::Serialize for BlockHeader {
             strk_l2_gas_price,
             sequencer_address,
             starknet_version,
-            class_commitment,
             event_commitment,
             state_commitment,
-            storage_commitment,
             transaction_commitment,
             transaction_count,
             event_count,
@@ -267,10 +265,8 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("strk_l2_gas_price", &strk_l2_gas_price)?;
         map.serialize_entry("sequencer_address", &sequencer_address)?;
         map.serialize_entry("starknet_version", &starknet_version.to_string())?;
-        map.serialize_entry("class_commitment", &class_commitment)?;
         map.serialize_entry("event_commitment", &event_commitment)?;
         map.serialize_entry("state_commitment", &state_commitment)?;
-        map.serialize_entry("storage_commitment", &storage_commitment)?;
         map.serialize_entry("transaction_commitment", &transaction_commitment)?;
         map.serialize_entry("transaction_count", &transaction_count)?;
         map.serialize_entry("event_count", &event_count)?;

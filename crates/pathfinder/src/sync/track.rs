@@ -788,12 +788,8 @@ impl ProcessStage for StoreBlock {
             strk_l2_gas_price: header.strk_l2_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
-            // Class commitment is updated after the class tries are updated.
-            class_commitment: ClassCommitment::ZERO,
             event_commitment: header.event_commitment,
             state_commitment: header.state_commitment,
-            // Storage commitment is updated after the storage tries are updated.
-            storage_commitment: StorageCommitment::ZERO,
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
@@ -840,9 +836,6 @@ impl ProcessStage for StoreBlock {
                     "State root mismatch");
             return Err(SyncError::StateRootMismatch(*peer));
         }
-
-        db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
-            .context("Updating storage and class commitments")?;
 
         classes.into_iter().try_for_each(
             |CompiledClass {
