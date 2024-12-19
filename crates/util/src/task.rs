@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::sync::atomic::AtomicUsize;
 use std::sync::LazyLock;
 
 use tokio_util::sync::CancellationToken;
@@ -18,6 +19,21 @@ impl<T> FutureOutputExt for anyhow::Result<T> {
     }
 }
 
+fn next_id_spawn() -> usize {
+    static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn next_id_spawn_blocking() -> usize {
+    static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn next_id_spawn_std() -> usize {
+    static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
+    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Spawns a future on the `tokio` runtime through a
 /// [`tokio_util::task::TaskTracker`]. This ensures that upon graceful shutdown
 /// the future will have already completed or will be cancelled in an orderly
@@ -27,20 +43,28 @@ where
     F: Future + Send + 'static,
     F::Output: FutureOutputExt + Send + 'static,
 {
+    let id = next_id_spawn();
+
     let Handle {
         task_tracker,
         cancellation_token,
     } = HANDLE.clone();
 
     task_tracker.spawn(async move {
-        tokio::select! {
+        tracing::error!("spawn START {id}");
+
+        let x = tokio::select! {
             _ = cancellation_token.cancelled() => {
                 F::Output::cancelled()
             }
             res = future => {
                 res
             }
-        }
+        };
+
+        tracing::error!("spawn EXIT  {id}");
+
+        x
     })
 }
 
@@ -58,12 +82,22 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
+    let id = next_id_spawn_blocking();
+
     let Handle {
         task_tracker,
         cancellation_token,
     } = HANDLE.clone();
 
-    task_tracker.spawn_blocking(|| f(cancellation_token))
+    task_tracker.spawn_blocking(move || {
+        tracing::error!("spawn_blocking START {id}");
+
+        let x = f(cancellation_token);
+
+        tracing::error!("spawn_blocking EXIT  {id}");
+
+        x
+    })
 }
 
 /// Runs the provided closure on an [`std::thread`] by calling
@@ -82,11 +116,18 @@ where
     F: FnOnce(CancellationToken) -> R + Send + 'static,
     R: Send + 'static,
 {
+    let id = next_id_spawn_std();
+
     let Handle {
         cancellation_token, ..
     } = HANDLE.clone();
 
-    std::thread::spawn(|| f(cancellation_token))
+    std::thread::spawn(move || {
+        tracing::error!("spawn_std START {id}");
+        let x = f(cancellation_token);
+        tracing::error!("spawn_std EXIT  {id}");
+        x
+    })
 }
 
 /// Returns a [`CancellationToken`] that can be used to check for graceful
