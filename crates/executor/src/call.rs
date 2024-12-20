@@ -37,7 +37,9 @@ pub fn call(
         entry_point_type: EntryPointType::External,
         entry_point_selector,
         calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
-        initial_gas: VersionedConstants::latest_constants().default_initial_gas_cost(),
+        initial_gas: VersionedConstants::latest_constants()
+            .initial_gas_no_user_l2_bound()
+            .0,
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
