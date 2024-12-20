@@ -111,16 +111,22 @@ impl<'tx> PathfinderStateReader<'tx> {
         class_hash: ClassHash,
         casm_definition: Vec<u8>,
     ) -> Result<RunnableCompiledClass, StateError> {
-        // FIXME: unwraps
         let sierra_definition = self
             .transaction
             .class_definition(class_hash)
             .map_err(map_anyhow_to_state_err)?
-            .expect("Sierra class should be present if we have CASM");
+            .ok_or_else(|| {
+                StateError::StateReadError("Sierra class definition not found".to_owned())
+            })?;
         let mut sierra_definition: serde_json::Value =
             serde_json::from_slice(&sierra_definition)
                 .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
-        sierra_definition["abi"] = serde_json::from_str(sierra_definition["abi"].as_str().unwrap())
+        let sierra_abi_str = sierra_definition
+            .get("abi")
+            .ok_or_else(|| StateError::StateReadError("Sierra ABI is missing".to_owned()))?
+            .as_str()
+            .ok_or_else(|| StateError::StateReadError("Sierra ABI is not a string".to_owned()))?;
+        sierra_definition["abi"] = serde_json::from_str(sierra_abi_str)
             .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
 
         let sierra_class: cairo_lang_starknet_classes::contract_class::ContractClass =
@@ -143,7 +149,7 @@ impl<'tx> PathfinderStateReader<'tx> {
             &sierra_class.entry_points_by_type,
             Default::default(),
         )
-        .unwrap();
+        .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
 
         let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
             StateError::StateReadError(format!("Class definition is not valid UTF-8: {}", error))
