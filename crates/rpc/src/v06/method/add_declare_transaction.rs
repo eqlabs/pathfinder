@@ -147,7 +147,7 @@ pub struct AddDeclareTransactionInput {
 
 impl crate::dto::DeserializeForVersion for AddDeclareTransactionInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        value.deserialize_serde()
+        value.deserialize()
     }
 }
 

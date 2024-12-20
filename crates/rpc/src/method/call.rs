@@ -98,7 +98,7 @@ impl crate::dto::DeserializeForVersion for Input {
         value.deserialize_map(|value| {
             Ok(Self {
                 request: value.deserialize("request")?,
-                block_id: value.deserialize_serde("block_id")?,
+                block_id: value.deserialize("block_id")?,
             })
         })
     }

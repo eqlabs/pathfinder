@@ -176,7 +176,7 @@ impl crate::dto::serialize::SerializeForVersion for FinalityStatus {
 
 impl crate::dto::DeserializeForVersion for FinalityStatus {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let s: String = value.deserialize_serde()?;
+        let s: String = value.deserialize()?;
         match s.as_str() {
             "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
             _ => Err(serde::de::Error::unknown_variant(

@@ -319,7 +319,7 @@ impl SerializeForVersion for DataAvailabilityMode<'_> {
 
 impl DeserializeForVersion for pathfinder_common::TransactionIndex {
     fn deserialize(value: dto::Value) -> Result<Self, serde_json::Error> {
-        let idx = value.deserialize_serde()?;
+        let idx = value.deserialize()?;
         Self::new(idx).ok_or_else(|| serde_json::Error::custom("Invalid transaction index"))
     }
 }

@@ -21,7 +21,7 @@ impl crate::dto::DeserializeForVersion for Input {
                 request: value.deserialize_array("request", BroadcastedTransaction::deserialize)?,
                 simulation_flags: value
                     .deserialize_array("simulation_flags", SimulationFlag::deserialize)?,
-                block_id: value.deserialize_serde("block_id")?,
+                block_id: value.deserialize("block_id")?,
             })
         })
     }
@@ -34,7 +34,7 @@ pub enum SimulationFlag {
 
 impl crate::dto::DeserializeForVersion for SimulationFlag {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let value: String = value.deserialize_serde()?;
+        let value: String = value.deserialize()?;
         match value.as_str() {
             "SKIP_VALIDATE" => Ok(Self::SkipValidate),
             _ => Err(serde_json::Error::custom("Invalid flag")),

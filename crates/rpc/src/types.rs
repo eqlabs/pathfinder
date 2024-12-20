@@ -135,7 +135,7 @@ impl crate::dto::serialize::SerializeForVersion for DataAvailabilityMode {
 
 impl crate::dto::DeserializeForVersion for DataAvailabilityMode {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let value: String = value.deserialize_serde()?;
+        let value: String = value.deserialize()?;
         match value.as_str() {
             "L1" => Ok(Self::L1),
             "L2" => Ok(Self::L2),
@@ -220,7 +220,7 @@ pub mod request {
     impl crate::dto::DeserializeForVersion for BroadcastedTransaction {
         fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
             value.deserialize_map(|value| {
-                let tag: String = value.deserialize_serde("type")?;
+                let tag: String = value.deserialize("type")?;
                 match tag.as_str() {
                     "DECLARE" => Ok(Self::Declare(BroadcastedDeclareTransaction::deserialize(
                         value,

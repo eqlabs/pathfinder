@@ -251,7 +251,7 @@ impl crate::dto::serialize::SerializeForVersion for SubscriptionId {
 
 impl crate::dto::DeserializeForVersion for SubscriptionId {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let id: u32 = value.deserialize_serde()?;
+        let id: u32 = value.deserialize()?;
         Ok(Self(id))
     }
 }
