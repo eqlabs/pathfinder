@@ -111,45 +111,68 @@ impl<'tx> PathfinderStateReader<'tx> {
         class_hash: ClassHash,
         casm_definition: Vec<u8>,
     ) -> Result<RunnableCompiledClass, StateError> {
-        let sierra_definition = self
-            .transaction
-            .class_definition(class_hash)
-            .map_err(map_anyhow_to_state_err)?
-            .ok_or_else(|| {
-                StateError::StateReadError("Sierra class definition not found".to_owned())
-            })?;
-        let mut sierra_definition: serde_json::Value =
-            serde_json::from_slice(&sierra_definition)
-                .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
-        let sierra_abi_str = sierra_definition
-            .get("abi")
-            .ok_or_else(|| StateError::StateReadError("Sierra ABI is missing".to_owned()))?
-            .as_str()
-            .ok_or_else(|| StateError::StateReadError("Sierra ABI is not a string".to_owned()))?;
-        sierra_definition["abi"] = serde_json::from_str(sierra_abi_str)
-            .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
-
-        let sierra_class: cairo_lang_starknet_classes::contract_class::ContractClass =
-            serde_json::from_value(sierra_definition)
-                .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
-        let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
-            StateError::StateReadError(format!(
-                "Error parsing Sierra
-                program: {}",
-                e
-            ))
-        })?;
-
         use blockifier::execution::native::contract_class::NativeCompiledClassV1;
         use cairo_native::executor::AotContractExecutor;
         use cairo_vm::types::errors::program_errors::ProgramError;
 
-        let contract_executor = AotContractExecutor::new(
-            &sierra_program,
-            &sierra_class.entry_points_by_type,
-            Default::default(),
-        )
-        .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
+        let mut class_path = std::env::temp_dir();
+        class_path.push(format!("native_class_{}", class_hash));
+
+        let contract_executor = if class_path.is_file() {
+            let contract_executor = AotContractExecutor::load(&class_path).map_err(|e| {
+                StateError::StateReadError(format!("Error loading native class: {e}"))
+            })?;
+
+            contract_executor
+        } else {
+            let sierra_definition = self
+                .transaction
+                .class_definition(class_hash)
+                .map_err(map_anyhow_to_state_err)?
+                .ok_or_else(|| {
+                    StateError::StateReadError("Sierra class definition not found".to_owned())
+                })?;
+            let mut sierra_definition: serde_json::Value =
+                serde_json::from_slice(&sierra_definition)
+                    .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+            let sierra_abi_str = sierra_definition
+                .get("abi")
+                .ok_or_else(|| StateError::StateReadError("Sierra ABI is missing".to_owned()))?
+                .as_str()
+                .ok_or_else(|| {
+                    StateError::StateReadError("Sierra ABI is not a string".to_owned())
+                })?;
+            sierra_definition["abi"] = serde_json::from_str(sierra_abi_str)
+                .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+
+            let sierra_class: cairo_lang_starknet_classes::contract_class::ContractClass =
+                serde_json::from_value(sierra_definition)
+                    .map_err(|e| StateError::ProgramError(ProgramError::Parse(e)))?;
+            let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
+                StateError::StateReadError(format!(
+                    "Error parsing Sierra
+                    program: {}",
+                    e
+                ))
+            })?;
+
+            let mut contract_executor = AotContractExecutor::new(
+                &sierra_program,
+                &sierra_class.entry_points_by_type,
+                Default::default(),
+            )
+            .map_err(|e| {
+                StateError::StateReadError(format!("Error compiling native class: {e}"))
+            })?;
+
+            let mut class_path = std::env::temp_dir();
+            class_path.push(format!("native_class_{}", class_hash));
+            contract_executor.save(&class_path).map_err(|e| {
+                StateError::StateReadError(format!("Error saving native class: {e}"))
+            })?;
+
+            contract_executor
+        };
 
         let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
             StateError::StateReadError(format!("Class definition is not valid UTF-8: {}", error))
