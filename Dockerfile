@@ -27,8 +27,13 @@ RUN TARGETARCH=${TARGETARCH} ./prepare.sh
 # input required for cargo chef cook, the command that will build out our dependencies.
 COPY --from=rust-planner /usr/src/pathfinder/recipe.json recipe.json
 COPY ./build/cargo-chef-cook.sh ./cargo-chef-cook.sh
-RUN TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --profile release-lto --recipe-path recipe.json --package pathfinder --bin pathfinder ${CARGO_EXTRA_ARGS}
-
+RUN TARGETARCH=${TARGETARCH} \
+    ./cargo-chef-cook.sh \
+    --profile release-lto \
+    --recipe-path recipe.json \
+    --package pathfinder \
+    --bin pathfinder \
+    ${CARGO_EXTRA_ARGS}
 # Compile the actual libraries and binary now
 COPY . .
 ARG PATHFINDER_FORCE_VERSION
