@@ -85,7 +85,7 @@ impl ToSql for L1DataAvailabilityMode {
         };
         ToSqlOutput::Owned(rusqlite::types::Value::Integer(value))
     }
-}
+} 
 
 to_sql_felt!(
     BlockHash,
@@ -126,6 +126,8 @@ to_sql_compressed_felt!(ContractNonce, StorageValue, TransactionNonce);
 
 to_sql_int!(BlockNumber, BlockTimestamp);
 to_sql_int!(L1BlockNumber);
+to_sql_int!(TrieStorageIndex);
+
 
 to_sql_builtin!(
     String,
@@ -502,6 +504,8 @@ macro_rules! row_felt_wrapper {
         }
     };
 }
+
+use crate::storage_index::TrieStorageIndex;
 
 use {
     row_felt_wrapper,

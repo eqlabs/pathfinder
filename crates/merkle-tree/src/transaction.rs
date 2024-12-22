@@ -1,7 +1,7 @@
 use bitvec::view::BitView;
 use pathfinder_common::hash::FeltHash;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::StoredNode;
+use pathfinder_storage::{storage_index::TrieStorageIndex, StoredNode};
 
 use crate::tree::MerkleTree;
 
@@ -30,11 +30,11 @@ impl<H: FeltHash> Default for TransactionOrEventTree<H> {
 struct NullStorage;
 
 impl crate::storage::Storage for NullStorage {
-    fn get(&self, _: u64) -> anyhow::Result<Option<StoredNode>> {
+    fn get(&self, _: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
         Ok(None)
     }
 
-    fn hash(&self, _: u64) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, _: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         Ok(None)
     }
 

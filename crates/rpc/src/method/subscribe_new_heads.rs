@@ -176,27 +176,28 @@ mod tests {
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
 
+    use super::*;
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter, CATCH_UP_BATCH_SIZE};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks() {
-        happy_path_test(2000).await;
+        happy_path_test(SubscribeNewHeads::CATCH_UP_BATCH_SIZE + 10).await;
     }
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_no_batching() {
-        happy_path_test(CATCH_UP_BATCH_SIZE - 5).await;
+        happy_path_test(SubscribeNewHeads::CATCH_UP_BATCH_SIZE - 5).await;
     }
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_batching_edge_cases() {
-        happy_path_test(2 * CATCH_UP_BATCH_SIZE).await;
-        happy_path_test(2 * (CATCH_UP_BATCH_SIZE - 1)).await;
-        happy_path_test(2 * (CATCH_UP_BATCH_SIZE + 1)).await;
+        happy_path_test(2 * SubscribeNewHeads::CATCH_UP_BATCH_SIZE).await;
+        happy_path_test(2 * (SubscribeNewHeads::CATCH_UP_BATCH_SIZE - 1)).await;
+        happy_path_test(2 * (SubscribeNewHeads::CATCH_UP_BATCH_SIZE + 1)).await;
     }
 
     #[tokio::test]
@@ -547,7 +548,7 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_event_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

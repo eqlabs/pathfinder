@@ -614,7 +614,7 @@ impl Transaction<'_> {
             .prepare_cached(&format!("SELECT hash FROM {table} WHERE idx = ?"))
             .context("Creating get statement")?;
 
-        stmt.query_row(params![&index.get()], |row| row.get_felt(0))
+        stmt.query_row(params![&index], |row| row.get_felt(0))
             .optional()
             .map_err(Into::into)
     }

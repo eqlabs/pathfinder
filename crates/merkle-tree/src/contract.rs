@@ -20,7 +20,7 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_storage::connection::storage_index::TrieStorageIndex;
+use pathfinder_storage::storage_index::TrieStorageIndex;
 use pathfinder_storage::{Transaction, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
@@ -174,7 +174,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
             block: Some(block),
         };
 
-        let tree = MerkleTree::new(TrieStorageIndex::new(root.get()));
+        let tree = MerkleTree::new(root);
 
         Ok(Self { tree, storage })
     }
@@ -231,7 +231,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         addresses: &[ContractAddress],
-        root: u64,
+        root: TrieStorageIndex,
     ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
@@ -243,7 +243,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
             .map(|addr| addr.0.view_bits())
             .collect::<Vec<_>>();
 
-        MerkleTree::<PedersenHash, 251>::get_proofs(root, &storage, &keys)
+        MerkleTree::<PedersenHash, 251>::get_proofs(root.get(), &storage, &keys)
     }
 
     /// See [`MerkleTree::dfs`]
@@ -262,12 +262,12 @@ struct ContractStorage<'tx> {
 }
 
 impl crate::storage::Storage for ContractStorage<'_> {
-    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.tx.contract_trie_node(index)
+    fn get(&self, index: TrieStorageIndex) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.tx.contract_trie_node(index.get())
     }
 
-    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
-        self.tx.contract_trie_node_hash(index)
+    fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
+        self.tx.contract_trie_node_hash(index.get())
     }
 
     fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
@@ -295,12 +295,12 @@ struct StorageTrieStorage<'tx> {
 }
 
 impl crate::storage::Storage for StorageTrieStorage<'_> {
-    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
-        self.tx.storage_trie_node(index)
+    fn get(&self, index: TrieStorageIndex) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+        self.tx.storage_trie_node(index.get())
     }
 
-    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
-        self.tx.storage_trie_node_hash(index)
+    fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
+        self.tx.storage_trie_node_hash(index.get())
     }
 
     fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {

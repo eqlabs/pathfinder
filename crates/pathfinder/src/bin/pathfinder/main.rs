@@ -136,7 +136,7 @@ async fn async_main() -> anyhow::Result<()> {
     let storage_manager =
         pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
             .journal_mode(config.sqlite_wal)
-            .bloom_filter_cache_size(config.event_bloom_filter_cache_size.get())
+            .event_filter_cache_size(config.event_filter_cache_size.get())
             .trie_prune_mode(match config.state_tries {
                 Some(StateTries::Pruned(num_blocks_kept)) => {
                     Some(pathfinder_storage::TriePruneMode::Prune { num_blocks_kept })
@@ -217,7 +217,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let rpc_config = pathfinder_rpc::context::RpcConfig {
         batch_concurrency_limit: config.rpc_batch_concurrency_limit,
         get_events_max_blocks_to_scan: config.get_events_max_blocks_to_scan,
-        get_events_max_event_filters_to_load: config.get_events_max_event_filters_to_load,
+        get_events_max_uncached_event_filters_to_load: config
+            .get_events_max_uncached_event_filters_to_load,
         custom_versioned_constants: config.custom_versioned_constants.take(),
     };
 
@@ -247,8 +248,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let default_version = match config.rpc_root_version {
-        config::RpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
-        config::RpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
+        config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
     };
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);

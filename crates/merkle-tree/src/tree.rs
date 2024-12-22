@@ -61,7 +61,7 @@ use bitvec::prelude::{BitSlice, BitVec, Msb0};
 use pathfinder_common::hash::FeltHash;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::connection::storage_index::TrieStorageIndex;
+use pathfinder_storage::storage_index::TrieStorageIndex;
 use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 
 use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
@@ -81,9 +81,7 @@ pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     pub fn new(root: TrieStorageIndex) -> Self {
-        let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(
-            TrieStorageIndex::new(root.get()),
-        ))));
+        let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(root))));
         Self {
             root,
             _hasher: std::marker::PhantomData,
@@ -120,7 +118,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // If the root node is unresolved that means that there have been no changes made
                 // to the tree.
                 InternalNode::Unresolved(idx) => storage
-                    .hash(idx.get())
+                    .hash(*idx)
                     .context("Fetching root node's hash")?
                     .context("Root node's hash is missing")?,
                 other => {
@@ -143,10 +141,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
         Ok(TrieUpdate {
             nodes_added: added,
-            nodes_removed: removed
-                .into_iter()
-                .map(|value| TrieStorageIndex::new(value))
-                .collect(),
+            nodes_removed: removed.into_iter().map(TrieStorageIndex::new).collect(),
             root_commitment: root_hash,
         })
     }
@@ -171,7 +166,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 // Unresolved nodes are already committed, but we need their hash for subsequent
                 // iterations.
                 let hash = storage
-                    .hash(idx.get())
+                    .hash(*idx)
                     .context("Fetching stored node's hash")?
                     .context("Stored node's hash is missing")?;
                 (hash, Some(NodeRef::TrieStorageIndex(idx.get())))
@@ -580,7 +575,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                 let node = match node_cache.get(&index) {
                     Some(node) => node.clone(),
                     None => {
-                        let Some(node) = storage.get(index).context("Resolving node")? else {
+                        let Some(node) = storage.get(TrieStorageIndex::new(index)).context("Resolving node")? else {
                             return Err(GetProofError::StorageNodeMissing(index));
                         };
                         node_cache.insert(index, node.clone());
@@ -603,12 +598,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         height += 1;
 
                         let left = storage
-                            .hash(left.get())
+                            .hash(left)
                             .context("Querying left child's hash")?
                             .context("Left child's hash is missing")?;
 
                         let right = storage
-                            .hash(right.get())
+                            .hash(right)
                             .context("Querying right child's hash")?
                             .context("Right child's hash is missing")?;
 
@@ -626,7 +621,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                         }
 
                         let child = storage
-                            .hash(child.get())
+                            .hash(child)
                             .context("Querying child child's hash")?
                             .context("Child's hash is missing")?;
 
@@ -666,7 +661,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
                     Some(&hash) => hash,
                     None => {
                         let hash = storage
-                            .hash(index)
+                            .hash(TrieStorageIndex::new(index))
                             .context("Querying node hash")?
                             .context("Node hash is missing")?;
                         node_hash_cache.insert(index, hash);
@@ -756,7 +751,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         );
 
         let node = storage
-            .get(index)?
+            .get(TrieStorageIndex::new(index))?
             .with_context(|| format!("Node {index} at height {height} is missing"))?;
 
         let node = match node {
@@ -972,12 +967,12 @@ mod tests {
     }
 
     impl Storage for TestStorage {
-        fn get(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
-            Ok(self.nodes.get(&index).map(|x| x.1.clone()))
+        fn get(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
+            Ok(self.nodes.get(&index.get()).map(|x| x.1.clone()))
         }
 
-        fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
-            Ok(self.nodes.get(&index).map(|x| x.0))
+        fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
+            Ok(self.nodes.get(&index.get()).map(|x| x.0))
         }
 
         fn leaf(&self, path: &BitSlice<u8, Msb0>) -> anyhow::Result<Option<Felt>> {
@@ -1603,11 +1598,7 @@ mod tests {
 
     mod real_world {
         use pathfinder_common::{
-            class_commitment,
-            class_commitment_leaf_hash,
-            felt,
-            sierra_hash,
-            BlockNumber,
+            class_commitment, class_commitment_leaf_hash, felt, sierra_hash, BlockNumber,
             ClassCommitmentLeafHash,
         };
         use pathfinder_storage::RootIndexUpdate;

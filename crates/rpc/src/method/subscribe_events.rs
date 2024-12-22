@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::async_trait;
 use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
+use pathfinder_storage::{AGGREGATE_BLOOM_BLOCK_RANGE_LEN, EVENT_KEY_FILTER_LIMIT};
 use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
@@ -65,6 +65,7 @@ const SUBSCRIPTION_NAME: &str = "starknet_subscriptionEvents";
 impl RpcSubscriptionFlow for SubscribeEvents {
     type Params = Option<Params>;
     type Notification = Notification;
+    const CATCH_UP_BATCH_SIZE: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
     fn validate_params(params: &Self::Params) -> Result<(), RpcError> {
         if let Some(params) = params {
@@ -256,14 +257,15 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, CATCH_UP_BATCH_SIZE};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, RpcSubscriptionFlow};
+    use crate::method::subscribe_events::SubscribeEvents;
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SyncState};
 
     #[tokio::test]
     async fn no_filtering() {
-        let num_blocks = 2000;
+        let num_blocks = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
         let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -325,7 +327,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -391,7 +393,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_keys() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -457,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -524,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn too_many_keys_filter() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -691,7 +693,7 @@ mod tests {
     }
 
     async fn setup(num_blocks: u64) -> RpcRouter {
-        assert!(num_blocks == 0 || num_blocks > CATCH_UP_BATCH_SIZE);
+        assert!(num_blocks == 0 || num_blocks > SubscribeEvents::CATCH_UP_BATCH_SIZE);
 
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
@@ -738,7 +740,7 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 64.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1024.try_into().unwrap(),
-                get_events_max_event_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

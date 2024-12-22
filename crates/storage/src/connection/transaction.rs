@@ -99,14 +99,11 @@ impl Transaction<'_> {
         transactions: &[(StarknetTransaction, Receipt)],
         events: Option<&[Vec<Event>]>,
     ) -> anyhow::Result<()> {
-        if transactions.is_empty() {
-            if let Some(events) = events {
-                // Advance the running event bloom filter even if there's nothing to add since
-                // it requires that no blocks are skipped.
-                self.upsert_block_event_filters(block_number, events.iter().flatten())
-                    .context("Inserting events into Bloom filter")?;
-            };
-
+        if let Some(events) = events {
+            self.upsert_block_event_filters(block_number, events.iter().flatten())
+                .context("Inserting events into Bloom filter")?;
+        }
+        if transactions.is_empty() && events.map_or(true, |evts| evts.is_empty()) {
             return Ok(());
         }
 
@@ -150,20 +147,19 @@ impl Transaction<'_> {
             compression::compress_transactions(&transactions_with_receipts)
                 .context("Compressing transaction")?;
 
-        let encoded_events = match events {
-            Some(events) => {
+        let encoded_events = events
+            .map(|evts| {
                 let events = dto::EventsForBlock::V0 {
-                    events: events
+                    events: evts
                         .iter()
-                        .map(|events| events.iter().cloned().map(Into::into).collect())
+                        .map(|evts| evts.iter().cloned().map(Into::into).collect())
                         .collect(),
                 };
                 let events = bincode::serde::encode_to_vec(events, bincode::config::standard())
                     .context("Serializing events")?;
-                Some(compression::compress_events(&events).context("Compressing events")?)
-            }
-            None => None,
-        };
+                compression::compress_events(&events).context("Compressing events")
+            })
+            .transpose()?;
 
         insert_transaction_stmt
             .execute(named_params![
@@ -172,12 +168,6 @@ impl Transaction<'_> {
                 ":events": &encoded_events,
             ])
             .context("Inserting transaction data")?;
-
-        if let Some(events) = events {
-            let events = events.iter().flatten();
-            self.upsert_block_event_filters(block_number, events)
-                .context("Inserting events into Bloom filter")?;
-        }
 
         Ok(())
     }

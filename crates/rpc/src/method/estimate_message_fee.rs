@@ -1,21 +1,60 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockId, CallParam, ChainId, TransactionNonce};
+use pathfinder_common::{
+    BlockId,
+    CallParam,
+    ChainId,
+    ContractAddress,
+    EntryPoint,
+    EthereumAddress,
+    TransactionNonce,
+};
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
-use crate::v06::method::estimate_message_fee as v06;
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct EstimateMessageFeeInput {
+    pub message: MsgFromL1,
+    pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for EstimateMessageFeeInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                message: value.deserialize("message")?,
+                block_id: value.deserialize("block_id")?,
+            })
+        })
+    }
+}
+
+#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+pub struct MsgFromL1 {
+    pub from_address: EthereumAddress,
+    pub to_address: ContractAddress,
+    pub entry_point_selector: EntryPoint,
+    pub payload: Vec<CallParam>,
+}
+
+impl crate::dto::DeserializeForVersion for MsgFromL1 {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        // TODO: Replace this when DeserializeForVersion is available project-wide
+        value.deserialize_serde()
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output(pathfinder_executor::types::FeeEstimate);
 
 pub async fn estimate_message_fee(
     context: RpcContext,
-    input: v06::EstimateMessageFeeInput,
+    input: EstimateMessageFeeInput,
 ) -> Result<Output, EstimateMessageFeeError> {
     let span = tracing::Span::current();
 
@@ -90,7 +129,7 @@ pub async fn estimate_message_fee(
 }
 
 fn create_executor_transaction(
-    input: v06::EstimateMessageFeeInput,
+    input: EstimateMessageFeeInput,
     chain_id: ChainId,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
     let from_address =
@@ -217,8 +256,8 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
     use primitive_types::H160;
 
+    use super::*;
     use crate::context::RpcContext;
-    use crate::v06::method::estimate_message_fee::*;
 
     enum Setup {
         Full,

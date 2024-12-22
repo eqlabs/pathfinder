@@ -16,8 +16,6 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
 
-pub const CATCH_UP_BATCH_SIZE: u64 = 64;
-
 /// See [`RpcSubscriptionFlow`].
 #[axum::async_trait]
 pub(super) trait RpcSubscriptionEndpoint: Send + Sync {
@@ -66,6 +64,8 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
     /// The notification type to be sent to the client.
     type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
+    /// The maximum number of blocks to catch up to in a single batch.
+    const CATCH_UP_BATCH_SIZE: u64 = 64;
 
     /// Validate the subscription parameters. If the parameters are invalid,
     /// return an error.
@@ -204,7 +204,7 @@ where
                     // -1 because the end is inclusive, otherwise we get batches of
                     // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
                     // matter, but it's misleading.
-                    let end = *current_block + CATCH_UP_BATCH_SIZE - 1;
+                    let end = *current_block + Self::CATCH_UP_BATCH_SIZE - 1;
                     let catch_up =
                         match T::catch_up(&router.context, &params, *current_block, end).await {
                             Ok(messages) => messages,
@@ -1026,7 +1026,7 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_event_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 custom_versioned_constants: None,
             },
         };

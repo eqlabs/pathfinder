@@ -432,7 +432,7 @@ pub async fn get_class_proof(
             &tx,
             header.number,
             input.class_hash,
-            class_root_idx.get(),
+            class_root_idx,
         )?
         .into_iter()
         .map(|(node, _)| node)

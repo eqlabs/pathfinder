@@ -418,7 +418,7 @@ fn get_contract_proofs(
         tx,
         block_number,
         contract_addresses,
-        storage_root_idx.get(),
+        storage_root_idx,
     )?
     .into_iter()
     .flatten()

@@ -240,8 +240,8 @@ where
 
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
-        // Seems a better choice for an invalid block number than 0
-        BlockNumber::MAX,
+        // start from genesis if storage is empty
+        BlockNumber::GENESIS,
         BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));
@@ -1081,8 +1081,8 @@ async fn l2_reorg(
         }
 
         transaction
-            .reconstruct_running_event_filter()
-            .context("Reconstructing running event filter after purge")?;
+            .reset()
+            .context("Resetting local DB state after reorg")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;

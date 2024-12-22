@@ -12,7 +12,7 @@ use bitvec::prelude::BitVec;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::FeltHash;
 use pathfinder_crypto::Felt;
-use pathfinder_storage::connection::storage_index::TrieStorageIndex;
+use pathfinder_storage::storage_index::TrieStorageIndex;
 
 /// A node in a Binary Merkle-Patricia Tree graph.
 #[derive(Clone, Debug, PartialEq)]

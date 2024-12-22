@@ -86,7 +86,7 @@ Examples:
         default_value = "v07",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
-    rpc_root_version: RpcVersion,
+    rpc_root_version: RootRpcVersion,
 
     #[arg(
         long = "rpc.execution-concurrency",
@@ -256,33 +256,39 @@ This should only be enabled for debugging purposes as it adds substantial proces
     feeder_gateway_fetch_concurrency: std::num::NonZeroUsize,
 
     #[arg(
-        long = "storage.event-bloom-filter-cache-size",
-        long_help = "The number of blocks whose event bloom filters are cached in memory. This \
-                     cache speeds up event related RPC queries at the cost of using extra memory. \
-                     Each cached filter takes 2 KiB of memory.",
-        env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
-        default_value = "524288"
+        long = "storage.event-filter-cache-size",
+        long_help = format!(
+            "The number of aggregate event bloom filters to cache in memory. Each filter covers a {} block range.
+            This cache speeds up event related RPC queries at the cost of using extra memory.
+            Each cached filter takes 16 MiB of memory.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_STORAGE_EVENT_FILTER_CACHE_SIZE",
+        default_value = "64"
     )]
-    event_bloom_filter_cache_size: std::num::NonZeroUsize,
+    event_filter_cache_size: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
-        long_help = "The number of blocks to scan for events when querying for events. This limit \
-                     is used to prevent queries from taking too long.",
+        long_help = "The number of blocks to scan when querying for events. This limit is used to \
+                     prevent queries from taking too long.",
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
         default_value = "500"
     )]
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-event-filters-to-load",
-        long_help = format!("The number of aggregate Bloom filters to load for events when querying for events. \
-                    Each filter covers a {} block range. \
-                    This limit is used to prevent queries from taking too long.", pathfinder_storage::BLOCK_RANGE_LEN),
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_EVENT_FILTERS_TO_LOAD",
-        default_value = "3"
+        long = "rpc.get-events-max-uncached-event-filters-to-load",
+        long_help = format!(
+            "The number of uncached aggregate Bloom filters to load when querying for events.
+            Each filter covers a {} block range.
+            This limit is used to prevent queries from taking too long.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_EVENT_FILTERS_TO_LOAD",
+        default_value = "12"
     )]
-    get_events_max_event_filters_to_load: std::num::NonZeroUsize,
+    get_events_max_uncached_event_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
         long = "storage.state-tries",
@@ -334,8 +340,7 @@ impl Color {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
-pub enum RpcVersion {
-    V06,
+pub enum RootRpcVersion {
     V07,
 }
 
@@ -692,7 +697,7 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
-    pub rpc_root_version: RpcVersion,
+    pub rpc_root_version: RootRpcVersion,
     pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
@@ -712,9 +717,9 @@ pub struct Config {
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
     pub gateway_timeout: Duration,
-    pub event_bloom_filter_cache_size: NonZeroUsize,
+    pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_event_filters_to_load: NonZeroUsize,
+    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
@@ -1002,9 +1007,10 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
-            event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
+            event_filter_cache_size: cli.event_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_event_filters_to_load: cli.get_events_max_event_filters_to_load,
+            get_events_max_uncached_event_filters_to_load: cli
+                .get_events_max_uncached_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,

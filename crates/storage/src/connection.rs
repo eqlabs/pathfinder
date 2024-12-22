@@ -29,10 +29,13 @@ pub(crate) use reorg_counter::ReorgCounter;
 pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
 
+use crate::bloom::AggregateBloomCache;
+
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 pub struct Connection {
     connection: PooledConnection,
+    event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
@@ -40,11 +43,13 @@ pub struct Connection {
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
+        event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
     ) -> Self {
         Self {
             connection,
+            event_filter_cache,
             running_event_filter,
             trie_prune_mode,
         }
@@ -54,6 +59,7 @@ impl Connection {
         let tx = self.connection.transaction()?;
         Ok(Transaction {
             transaction: tx,
+            event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
@@ -66,6 +72,7 @@ impl Connection {
         let tx = self.connection.transaction_with_behavior(behavior)?;
         Ok(Transaction {
             transaction: tx,
+            event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
@@ -74,6 +81,7 @@ impl Connection {
 
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
+    event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
@@ -108,5 +116,13 @@ impl Transaction<'_> {
 
     pub fn trie_pruning_enabled(&self) -> bool {
         matches!(self.trie_prune_mode, TriePruneMode::Prune { .. })
+    }
+
+    /// Resets the [`Storage`](crate::Storage) state. Required after each reorg.
+    pub fn reset(&self) -> anyhow::Result<()> {
+        self.rebuild_running_event_filter()?;
+        self.event_filter_cache.reset();
+
+        Ok(())
     }
 }
