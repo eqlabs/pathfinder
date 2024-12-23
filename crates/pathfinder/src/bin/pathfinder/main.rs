@@ -41,10 +41,13 @@ fn main() -> anyhow::Result<()> {
         .thread_stack_size(8 * 1024 * 1024)
         .build()
         .unwrap()
-        .block_on(async { async_main().await })
+        .block_on(async {
+            async_main().await?;
+            Ok(())
+        })
 }
 
-async fn async_main() -> anyhow::Result<()> {
+async fn async_main() -> anyhow::Result<Storage> {
     // All of the following code is either sync and blocking or async but called
     // sequentially down to the point where the monitoring server is spawned. No
     // tokio tasks are spawned to that point. If an error occurs before that
@@ -182,7 +185,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
-
     // 5 is enough for normal sync operations, and then `available_parallelism` for
     // the rayon thread pool workers to use.
     let p2p_storage = storage_manager
@@ -193,7 +195,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
-
     info!(location=?pathfinder_context.database, "Database migrated.");
     verify_database(
         &sync_storage,
@@ -284,7 +285,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
-            sync_storage,
+            sync_storage.clone(),
             pathfinder_context,
             ethereum.client,
             sync_state.clone(),
@@ -349,7 +350,11 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
     }
 
-    main_result
+    // If a RO db connection pool remains after all RW connection pools have been
+    // dropped, WAL & SHM files are never cleaned up. To avoid this, we make sure
+    // that all RO pools and all but one RW pools are dropped when task tracker
+    // finishes waiting, and then we drop the last RW pool.
+    main_result.map(|_| sync_storage)
 }
 
 #[cfg(feature = "tokio-console")]
