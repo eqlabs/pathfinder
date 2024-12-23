@@ -9,8 +9,7 @@ use pathfinder_merkle_tree::{
     ContractsStorageTree,
     StorageCommitmentTree,
 };
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
+use serde::Serialize;
 
 use crate::context::RpcContext;
 
@@ -21,7 +20,7 @@ pub struct GetProofInput {
     pub keys: Vec<StorageAddress>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetClassProofInput {
     pub block_id: BlockId,
     pub class_hash: ClassHash,
@@ -101,7 +100,7 @@ struct PathWrapper {
 
 /// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
 /// crate.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProofNodes(Vec<TrieNode>);
 
 impl Serialize for ProofNodes {
@@ -157,7 +156,7 @@ impl Serialize for ProofNodes {
 }
 
 /// Holds the data and proofs for a specific contract.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ContractData {
     /// Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
@@ -177,8 +176,7 @@ pub struct ContractData {
 
 /// Holds the membership/non-membership of a contract and its associated
 /// contract contract if the contract exists.
-#[derive(Debug, Serialize)]
-#[skip_serializing_none]
+#[derive(Debug)]
 pub struct GetProofOutput {
     /// The global state commitment for Starknet 0.11.0 blocks onwards, if
     /// absent the hash of the first node in the
@@ -198,8 +196,21 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-#[derive(Debug, Serialize, PartialEq)]
-#[skip_serializing_none]
+impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional("class_commitment", self.class_commitment)?;
+        serializer.serialize_field("contract_proof", &self.contract_proof)?;
+        serializer.serialize_optional("contract_data", self.contract_data.clone())?;
+        serializer.end()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct GetClassProofOutput {
     /// Required to verify that the hash of the class commitment and the root of
     /// the [contract_proof](GetProofOutput::contract_proof) matches the
@@ -208,6 +219,18 @@ pub struct GetClassProofOutput {
     class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
+}
+
+impl crate::dto::serialize::SerializeForVersion for GetClassProofOutput {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional("class_commitment", self.class_commitment)?;
+        serializer.serialize_field("class_proof", &self.class_proof)?;
+        serializer.end()
+    }
 }
 
 /// Returns all the necessary data to trustlessly verify storage slots for a

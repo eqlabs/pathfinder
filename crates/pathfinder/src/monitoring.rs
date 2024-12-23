@@ -158,7 +158,7 @@ mod tests {
         let readiness = Arc::new(AtomicBool::new(false));
         let handle = PrometheusBuilder::new().build_recorder().handle();
         let sync_state = Arc::new(SyncState {
-            status: RwLock::new(Syncing::False(false)),
+            status: RwLock::new(Syncing::False),
         });
         let (addr, _) = super::spawn_server(
             ([127, 0, 0, 1], 0),

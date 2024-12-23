@@ -7,8 +7,6 @@ use crate::context::RpcContext;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Input {
     pub block_id: BlockId,
 }

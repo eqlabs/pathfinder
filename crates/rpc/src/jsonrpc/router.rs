@@ -453,8 +453,8 @@ mod tests {
                 fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
                     value.deserialize_map(|value| {
                         Ok(Self {
-                            minuend: value.deserialize_serde("minuend")?,
-                            subtrahend: value.deserialize_serde("subtrahend")?,
+                            minuend: value.deserialize("minuend")?,
+                            subtrahend: value.deserialize("subtrahend")?,
                         })
                     })
                 }
@@ -469,9 +469,7 @@ mod tests {
 
             impl DeserializeForVersion for SumInput {
                 fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-                    Ok(Self(
-                        value.deserialize_array(|value| value.deserialize_serde())?,
-                    ))
+                    Ok(Self(value.deserialize_array(|value| value.deserialize())?))
                 }
             }
 

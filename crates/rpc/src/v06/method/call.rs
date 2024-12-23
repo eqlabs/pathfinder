@@ -77,7 +77,7 @@ pub struct CallInput {
 
 impl crate::dto::DeserializeForVersion for CallInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        value.deserialize_serde()
+        value.deserialize()
     }
 }
 

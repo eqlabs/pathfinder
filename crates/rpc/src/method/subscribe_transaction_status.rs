@@ -455,10 +455,11 @@ mod tests {
     use tokio::sync::mpsc;
 
     use crate::context::{RpcConfig, RpcContext};
+    use crate::dto::serialize::{SerializeForVersion, Serializer};
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
-    use crate::{v08, Notifications, PendingData, Reorg, SubscriptionId, SyncState};
+    use crate::{v08, Notifications, PendingData, Reorg, RpcVersion, SubscriptionId, SyncState};
 
     #[tokio::test]
     async fn transaction_already_exists_in_db_accepted_on_l2_succeeded() {
@@ -478,7 +479,7 @@ mod tests {
                                         "finality_status": "RECEIVED",
                                     }
                                 },
-                                "subscription_id": subscription_id
+                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                             }
                         }),
                         serde_json::json!({
@@ -492,9 +493,9 @@ mod tests {
                                         "execution_status": "SUCCEEDED",
                                     }
                                 },
-                                "subscription_id": subscription_id
+                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                             }
-                        }),
+                        })
                     ]
                 },
             )
@@ -579,7 +580,7 @@ mod tests {
                             "execution_status": "SUCCEEDED",
                         }
                     },
-                    "subscription_id": subscription_id,
+                    "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                 }
             })
         );
@@ -608,7 +609,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -623,7 +624,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                 ]
@@ -653,7 +654,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -667,7 +668,7 @@ mod tests {
                                     "execution_status": "SUCCEEDED"
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -681,7 +682,7 @@ mod tests {
                                     "execution_status": "SUCCEEDED"
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                 ]
@@ -713,7 +714,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -728,7 +729,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -743,7 +744,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
                         }
                     }),
                 ]
@@ -1121,7 +1122,9 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let subscription_id: SubscriptionId = serde_json::from_value(subscription_id).unwrap();
+
+        let subscription_id = crate::dto::Value::new(subscription_id, RpcVersion::V07);
+        let subscription_id: SubscriptionId = subscription_id.deserialize().unwrap();
         for msg in expected(subscription_id) {
             let status = sender_rx.recv().await.unwrap().unwrap();
             let json: serde_json::Value = match status {
@@ -1155,7 +1158,7 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,

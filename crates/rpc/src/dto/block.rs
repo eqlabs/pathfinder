@@ -13,7 +13,7 @@ pub struct PendingBlockHeader<'a>(pub &'a starknet_gateway_types::reply::Pending
 impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
     fn deserialize(value: super::Value) -> Result<Self, serde_json::Error> {
         if value.is_string() {
-            let value: String = value.deserialize_serde()?;
+            let value: String = value.deserialize()?;
             match value.as_str() {
                 "latest" => Ok(Self::Latest),
                 "pending" => Ok(Self::Pending),
@@ -23,10 +23,8 @@ impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
             value.deserialize_map(|value| {
                 if value.contains_key("block_number") {
                     Ok(Self::Number(
-                        pathfinder_common::BlockNumber::new(
-                            value.deserialize_serde("block_number")?,
-                        )
-                        .ok_or_else(|| serde_json::Error::custom("Invalid block number"))?,
+                        pathfinder_common::BlockNumber::new(value.deserialize("block_number")?)
+                            .ok_or_else(|| serde_json::Error::custom("Invalid block number"))?,
                     ))
                 } else if value.contains_key("block_hash") {
                     Ok(Self::Hash(pathfinder_common::BlockHash(

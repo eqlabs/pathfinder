@@ -8,11 +8,11 @@ pub struct Output(Syncing);
 pub async fn syncing(context: RpcContext) -> Result<Output, Error> {
     // Scoped so I don't have to think too hard about mutex guard drop semantics.
     let value = match *context.sync_status.status.read().await {
-        Syncing::False(_) => Syncing::False(false),
+        Syncing::False => Syncing::False,
         Syncing::Status(status) => {
             if status.highest.number.get() - status.current.number.get() < 6 {
                 // In case we're (almost) caught up we just return false.
-                Syncing::False(false)
+                Syncing::False
             } else {
                 Syncing::Status(status)
             }
@@ -28,7 +28,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
         serializer: crate::dto::serialize::Serializer,
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         match self.0 {
-            Syncing::False(_) => serializer.serialize_bool(false),
+            Syncing::False => serializer.serialize_bool(false),
             Syncing::Status(status) => serializer.serialize(&crate::dto::SyncStatus(&status)),
         }
     }
@@ -45,9 +45,9 @@ mod tests {
     async fn not_started_yet() {
         let context = RpcContext::for_tests();
 
-        *context.sync_status.status.write().await = Syncing::False(false);
+        *context.sync_status.status.write().await = Syncing::False;
 
-        assert_eq!(syncing(context).await.unwrap().0, Syncing::False(false));
+        assert_eq!(syncing(context).await.unwrap().0, Syncing::False);
     }
 
     #[tokio::test]
@@ -69,7 +69,7 @@ mod tests {
             },
         });
 
-        assert_eq!(syncing(context).await.unwrap().0, Syncing::False(false));
+        assert_eq!(syncing(context).await.unwrap().0, Syncing::False);
     }
 
     #[tokio::test]

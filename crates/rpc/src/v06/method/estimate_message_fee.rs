@@ -89,7 +89,7 @@ pub struct EstimateMessageFeeInput {
 
 impl crate::dto::DeserializeForVersion for EstimateMessageFeeInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        value.deserialize_serde()
+        value.deserialize()
     }
 }
 

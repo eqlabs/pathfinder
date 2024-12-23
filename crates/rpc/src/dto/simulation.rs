@@ -562,7 +562,7 @@ pub enum SimulationFlag {
 
 impl crate::dto::DeserializeForVersion for SimulationFlag {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let value: String = value.deserialize_serde()?;
+        let value: String = value.deserialize()?;
         match value.as_str() {
             "SKIP_FEE_CHARGE" => Ok(Self::SkipFeeCharge),
             "SKIP_VALIDATE" => Ok(Self::SkipValidate),

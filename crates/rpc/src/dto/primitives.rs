@@ -1,5 +1,5 @@
 use pathfinder_common::{ContractAddress, L1TransactionHash};
-use primitive_types::H256;
+use primitive_types::{H160, H256};
 use serde::de::Error;
 
 use super::serialize::SerializeForVersion;
@@ -152,14 +152,82 @@ pub mod hex_str {
         Ok(buf)
     }
 }
+impl DeserializeForVersion for u64 {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::Number(n) => n
+                .as_u64()
+                .ok_or_else(|| serde_json::Error::custom("invalid u64 value")),
+            _ => Err(serde_json::Error::custom("expected number")),
+        }
+    }
+}
+
+impl DeserializeForVersion for u32 {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::Number(n) => n
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| serde_json::Error::custom("value is too large for u32")),
+            _ => Err(serde_json::Error::custom("expected number")),
+        }
+    }
+}
+
+impl DeserializeForVersion for i32 {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::Number(n) => n
+                .as_i64()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or_else(|| serde_json::Error::custom("value is outside i32 range")),
+            _ => Err(serde_json::Error::custom("expected number")),
+        }
+    }
+}
+
+impl DeserializeForVersion for usize {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::Number(n) => n
+                .as_u64()
+                .and_then(|n| usize::try_from(n).ok())
+                .ok_or_else(|| serde_json::Error::custom("value is outside usize range")),
+            _ => Err(serde_json::Error::custom("expected number")),
+        }
+    }
+}
+
+impl DeserializeForVersion for bool {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::Bool(b) => Ok(*b),
+            _ => Err(serde_json::Error::custom("expected boolean")),
+        }
+    }
+}
+
+impl DeserializeForVersion for String {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::String(s) => Ok(s.clone()),
+            _ => Err(serde_json::Error::custom("expected string")),
+        }
+    }
+}
 
 impl DeserializeForVersion for U64Hex {
     fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
-        let hex_str: String = value.deserialize_serde()?;
-        let bytes = hex_str::bytes_from_hex_str_stripped::<8>(&hex_str).map_err(|e| {
-            serde_json::Error::custom(format!("failed to parse hex string as u64: {}", e))
-        })?;
-        Ok(Self(u64::from_be_bytes(bytes)))
+        match &value.data {
+            serde_json::Value::String(s) => {
+                let bytes = hex_str::bytes_from_hex_str_stripped::<8>(s).map_err(|e| {
+                    serde_json::Error::custom(format!("failed to parse hex string as u64: {}", e))
+                })?;
+                Ok(Self(u64::from_be_bytes(bytes)))
+            }
+            _ => Err(serde_json::Error::custom("expected hex string")),
+        }
     }
 }
 
@@ -185,10 +253,15 @@ impl SerializeForVersion for Felt<'_> {
 
 impl DeserializeForVersion for pathfinder_crypto::Felt {
     fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
-        let hex_str: String = value.deserialize_serde()?;
-        let bytes = hex_str::bytes_from_hex_str_stripped::<32>(&hex_str)
-            .map_err(|e| serde_json::Error::custom(format!("failed to parse hex string: {}", e)))?;
-        Self::from_be_bytes(bytes).map_err(|e| serde_json::Error::custom("felt overflow"))
+        match &value.data {
+            serde_json::Value::String(hex_str) => {
+                let bytes = hex_str::bytes_from_hex_str_stripped::<32>(hex_str).map_err(|e| {
+                    serde_json::Error::custom(format!("failed to parse hex string: {}", e))
+                })?;
+                Self::from_be_bytes(bytes).map_err(|_| serde_json::Error::custom("felt overflow"))
+            }
+            _ => Err(serde_json::Error::custom("expected hex string")),
+        }
     }
 }
 
@@ -225,11 +298,15 @@ impl SerializeForVersion for U128Hex {
 
 impl DeserializeForVersion for U128Hex {
     fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
-        let hex_str: String = value.deserialize_serde()?;
-        let bytes = hex_str::bytes_from_hex_str_stripped::<16>(&hex_str).map_err(|e| {
-            serde_json::Error::custom(format!("failed to parse hex string as u128: {}", e))
-        })?;
-        Ok(Self(u128::from_be_bytes(bytes)))
+        match &value.data {
+            serde_json::Value::String(s) => {
+                let bytes = hex_str::bytes_from_hex_str_stripped::<16>(s).map_err(|e| {
+                    serde_json::Error::custom(format!("failed to parse hex string as u128: {}", e))
+                })?;
+                Ok(Self(u128::from_be_bytes(bytes)))
+            }
+            _ => Err(serde_json::Error::custom("expected hex string")),
+        }
     }
 }
 
@@ -249,11 +326,32 @@ impl SerializeForVersion for U256Hex {
 
 impl DeserializeForVersion for H256 {
     fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
-        let hex_str: String = value.deserialize_serde()?;
-        let bytes = hex_str::bytes_from_hex_str_stripped::<32>(&hex_str).map_err(|e| {
-            serde_json::Error::custom(format!("failed to parse hex string as u256: {}", e))
-        })?;
-        Ok(H256(bytes))
+        match &value.data {
+            serde_json::Value::String(hex_str) => {
+                let bytes = hex_str::bytes_from_hex_str_stripped::<32>(hex_str).map_err(|e| {
+                    serde_json::Error::custom(format!("failed to parse hex string as u256: {}", e))
+                })?;
+                Ok(H256(bytes))
+            }
+            _ => Err(serde_json::Error::custom("expected hex string")),
+        }
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::EthereumAddress {
+    fn deserialize(value: Value) -> Result<Self, serde_json::Error> {
+        match &value.data {
+            serde_json::Value::String(hex_str) => {
+                let bytes = hex_str::bytes_from_hex_str_stripped::<20>(hex_str).map_err(|e| {
+                    serde_json::Error::custom(format!(
+                        "failed to parse hex string as ethereum address: {}",
+                        e
+                    ))
+                })?;
+                Ok(Self(H160::from(bytes)))
+            }
+            _ => Err(serde_json::Error::custom("expected hex string")),
+        }
     }
 }
 

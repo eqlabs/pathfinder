@@ -23,7 +23,7 @@ pub struct TraceTransactionInput {
 
 impl crate::dto::DeserializeForVersion for TraceTransactionInput {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        value.deserialize_serde()
+        value.deserialize()
     }
 }
 
