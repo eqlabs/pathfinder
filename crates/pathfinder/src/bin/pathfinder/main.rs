@@ -21,6 +21,7 @@ use pathfinder_storage::Storage;
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::task::JoinError;
 use tracing::{info, warn};
 
 use crate::config::{NetworkConfig, StateTries};
@@ -320,49 +321,35 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
     // Monitor our critical spawned process tasks.
-    tokio::select! {
-        result = sync_handle => {
-            match result {
-                Ok(task_result) => tracing::error!("Sync process ended unexpected with: {:?}", task_result),
-                Err(err) => tracing::error!("Sync process ended unexpected; failed to join task handle: {:?}", err),
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
-        result = rpc_handle => {
-            match result {
-                Ok(_) => tracing::error!("RPC server process ended unexpectedly"),
-                Err(err) => tracing::error!(error=%err, "RPC server process ended unexpectedly"),
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
-        result = p2p_handle => {
-            match result {
-                Ok(_) => tracing::error!("P2P process ended unexpectedly"),
-                Err(err) => tracing::error!(error=%err, "P2P process ended unexpectedly"),
-            }
-            anyhow::bail!("Unexpected shutdown");
-        }
+    let main_result = tokio::select! {
+        result = sync_handle => handle_critical_task_result("Sync", result),
+        result = rpc_handle => handle_critical_task_result("RPC", result),
+        result = p2p_handle => handle_critical_task_result("P2P", result),
         _ = term_signal.recv() => {
-            tracing::info!("TERM signal received, exiting gracefully");
+            tracing::info!("TERM signal received");
+            Ok(())
         }
         _ = int_signal.recv() => {
-            tracing::info!("INT signal received, exiting gracefully");
+            tracing::info!("INT signal received");
+            Ok(())
         }
-    }
+    };
 
+    // If we get here either a signal was received or a task ended unexpectedly,
+    // which means we need to cancel all the remaining tasks.
+    tracing::info!("Shutdown started, waiting for tasks to finish...");
     util::task::tracker::close();
-    tracing::info!("Waiting for all tasks to finish...");
     // Force exit after a grace period
     match tokio::time::timeout(config.shutdown_grace_period, util::task::tracker::wait()).await {
         Ok(_) => {
-            tracing::info!("All tasks finished successfully");
-            Ok(())
+            tracing::info!("Shutdown finished successfully")
         }
         Err(_) => {
-            tracing::warn!("Graceful shutdown timed out");
-            Err(anyhow::anyhow!("Graceful shutdown timed out"))
+            tracing::error!("Some tasks failed to finish in time, forcing exit");
         }
     }
+
+    main_result
 }
 
 #[cfg(feature = "tokio-console")]
@@ -438,7 +425,7 @@ async fn start_p2p(
     storage: Storage,
     config: config::P2PConfig,
 ) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
@@ -522,7 +509,7 @@ async fn start_p2p(
     _: Storage,
     _: config::P2PConfig,
 ) -> anyhow::Result<(
-    tokio::task::JoinHandle<()>,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
     state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
@@ -949,4 +936,29 @@ async fn verify_database(
     }
 
     Ok(())
+}
+
+fn handle_critical_task_result(
+    task_name: &str,
+    task_result: Result<anyhow::Result<()>, JoinError>,
+) -> anyhow::Result<()> {
+    match task_result {
+        Ok(task_result) => {
+            tracing::error!(?task_result, "{} task ended unexpectedly", task_name);
+            task_result
+        }
+        Err(error) if error.is_panic() => {
+            tracing::error!(%error, "{} task panicked", task_name);
+            Err(anyhow::anyhow!("{} task panicked", task_name))
+        }
+        // Cancelling all tracked tasks via [`util::task::tracker::close()`] does not cause join
+        // errors on registered task handles, so this is unexpected and we should threat it as error
+        Err(_) => {
+            tracing::error!("{} task was cancelled unexpectedly", task_name);
+            Err(anyhow::anyhow!(
+                "{} task was cancelled unexpectedly",
+                task_name
+            ))
+        }
+    }
 }
