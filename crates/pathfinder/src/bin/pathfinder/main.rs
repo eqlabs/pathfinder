@@ -48,14 +48,6 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<Storage> {
-    // All of the following code is either sync and blocking or async but called
-    // sequentially down to the point where the monitoring server is spawned. No
-    // tokio tasks are spawned to that point. If an error occurs before that
-    // point, the process will just exit with that error, regardless of whether
-    // any of the signals were received and no tasks will be left detached.
-    let mut term_signal = signal(SignalKind::terminate())?;
-    let mut int_signal = signal(SignalKind::interrupt())?;
-
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
         std::env::set_var("RUST_LOG", "pathfinder=info");
@@ -145,6 +137,7 @@ async fn async_main() -> anyhow::Result<Storage> {
                 None => None,
             })
             .migrate()?;
+
     let sync_storage = storage_manager
         // 5 is enough for normal sync operations, and then `available_parallelism` for
         // the rayon thread pool workers to use.
@@ -212,6 +205,12 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .prune_tries()
         .context("Pruning tries on startup")?;
 
+    // Register signal handlers here, because we want to be able to interrupt long
+    // running migrations or trie pruning. No tasks are spawned before this point so
+    // we don't worry about detachment.
+    let mut term_signal = signal(SignalKind::terminate())?;
+    let mut int_signal = signal(SignalKind::interrupt())?;
+
     let (tx_pending, rx_pending) = tokio::sync::watch::channel(Default::default());
 
     let rpc_config = pathfinder_rpc::context::RpcConfig {
@@ -269,7 +268,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         .context("Starting monitoring task")?;
     }
 
-    // From this point onwards, until the final select, we cannot exit the process
+    // From this point onwards, until the final select, we don't exit the process
     // even if some error is encountered or a signal is received as it would result
     // in tasks being detached and cancelled abruptly without a chance to clean
     // up. We need to wait for the final select where we can cancel all the tasks
