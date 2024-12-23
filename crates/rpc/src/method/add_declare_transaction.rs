@@ -135,7 +135,7 @@ pub enum Transaction {
 impl crate::dto::DeserializeForVersion for Transaction {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
-            let tag: String = value.deserialize_serde("type")?;
+            let tag: String = value.deserialize("type")?;
             if tag != "DECLARE" {
                 return Err(serde::de::Error::custom("Invalid transaction type"));
             }

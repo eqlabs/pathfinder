@@ -27,7 +27,7 @@ impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
             Ok(Self {
-                block_id: value.deserialize_serde("block_id")?,
+                block_id: value.deserialize("block_id")?,
             })
         })
     }

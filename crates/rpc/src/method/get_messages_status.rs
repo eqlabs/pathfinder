@@ -47,7 +47,7 @@ impl crate::dto::serialize::SerializeForVersion for FinalityStatus {
 
 impl crate::dto::DeserializeForVersion for FinalityStatus {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let status_str: String = value.deserialize_serde()?;
+        let status_str: String = value.deserialize()?;
         match status_str.as_str() {
             "RECEIVED" => Ok(Self::Received),
             "REJECTED" => Ok(Self::Rejected),

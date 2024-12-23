@@ -91,7 +91,7 @@ impl crate::dto::DeserializeForVersion for EventFilter {
                         value.deserialize_array(|value| value.deserialize().map(EventKey))
                     })?
                     .unwrap_or_default(),
-                chunk_size: value.deserialize_serde("chunk_size")?,
+                chunk_size: value.deserialize("chunk_size")?,
                 continuation_token: value.deserialize_optional_serde("continuation_token")?,
             })
         })
