@@ -182,8 +182,10 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
 
+    // 5 is enough for normal sync operations, and then `available_parallelism` for
+    // the rayon thread pool workers to use.
     let p2p_storage = storage_manager
-        .create_pool(NonZeroU32::new(1).unwrap())
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
         .context(
             r"Creating database connection pool for p2p
 
