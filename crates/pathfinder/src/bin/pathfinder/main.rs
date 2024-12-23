@@ -281,7 +281,16 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         p2p_storage,
         config.p2p.clone(),
     )
-    .await?;
+    .await
+    .unwrap_or_else(|error| {
+        (
+            tokio::task::spawn(std::future::ready(
+                Err(error.context("P2P failed to start")),
+            )),
+            Default::default(),
+            None,
+        )
+    });
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -303,13 +312,19 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let rpc_handle = if config.is_rpc_enabled {
-        let (rpc_handle, local_addr) = rpc_server
+        match rpc_server
             .with_max_connections(config.max_rpc_connections.get())
             .spawn()
             .await
-            .context("Starting the RPC server")?;
-        info!("📡 HTTP-RPC server started on: {}", local_addr);
-        rpc_handle
+        {
+            Ok((rpc_handle, on)) => {
+                info!(%on, "📡 RPC server started");
+                rpc_handle
+            }
+            Err(error) => tokio::task::spawn(std::future::ready(Err(
+                error.context("RPC server failed to start")
+            ))),
+        }
     } else {
         tokio::spawn(std::future::pending())
     };
