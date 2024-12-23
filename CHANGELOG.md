@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
+
 ### Removed
 
 - `storage_commitment` and `class_commitment` fields from the `pathfinder_subscribe_newHeads` method response.
