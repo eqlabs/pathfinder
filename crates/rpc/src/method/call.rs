@@ -109,7 +109,7 @@ pub struct Output(pub Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
     let span = tracing::Span::current();
-    let result = tokio::task::spawn_blocking(move || {
+    let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context

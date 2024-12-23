@@ -316,6 +316,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
         action=ArgAction::Set
     )]
     fetch_casm_from_fgw: bool,
+
+    #[arg(
+        long = "shutdown.grace-period",
+        value_name = "Seconds",
+        long_help = "Timeout duration for graceful shutdown after receiving a SIGINT or SIGTERM",
+        env = "PATHFINDER_SHUTDOWN_GRACE_PERIOD",
+        default_value = "10"
+    )]
+    shutdown_grace_period: std::num::NonZeroU64,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -704,8 +713,8 @@ pub struct Config {
     pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroUsize,
-    pub poll_interval: std::time::Duration,
-    pub l1_poll_interval: std::time::Duration,
+    pub poll_interval: Duration,
+    pub l1_poll_interval: Duration,
     pub color: Color,
     pub log_output_json: bool,
     pub disable_version_update_check: bool,
@@ -724,6 +733,7 @@ pub struct Config {
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
+    pub shutdown_grace_period: Duration,
 }
 
 pub struct Ethereum {
@@ -769,7 +779,7 @@ pub struct P2PConfig;
 
 pub struct DebugConfig {
     pub pretty_log: bool,
-    pub restart_delay: std::time::Duration,
+    pub restart_delay: Duration,
 }
 
 impl NetworkConfig {
@@ -955,7 +965,7 @@ impl DebugConfig {
     fn parse(_: ()) -> Self {
         Self {
             pretty_log: false,
-            restart_delay: std::time::Duration::from_secs(60),
+            restart_delay: Duration::from_secs(60),
         }
     }
 }
@@ -965,7 +975,7 @@ impl DebugConfig {
     fn parse(args: DebugCli) -> Self {
         Self {
             pretty_log: args.pretty_log,
-            restart_delay: std::time::Duration::from_secs(args.restart_delay),
+            restart_delay: Duration::from_secs(args.restart_delay),
         }
     }
 }
@@ -1018,6 +1028,7 @@ impl Config {
                 .custom_versioned_constants_path
                 .map(parse_versioned_constants_or_exit),
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
+            shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
         }
     }
 }

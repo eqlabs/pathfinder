@@ -30,8 +30,7 @@ crate::error::generate_rpc_error_subset!(Error: ContractNotFound, BlockNotFound)
 /// Get the value of the storage at the given address and key.
 pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

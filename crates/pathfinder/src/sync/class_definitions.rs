@@ -24,7 +24,6 @@ use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::{oneshot, Mutex};
-use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
@@ -75,7 +74,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -286,7 +285,7 @@ pub(super) fn verify_declared_at(
     >,
     mut classes: BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
-    make_stream::from_future(move |tx| async move {
+    util::make_stream::from_future(move |tx| async move {
         let mut dechunker = ClassDechunker::new();
 
         while let Some(expected) = expected_declarations.next().await {
@@ -375,7 +374,7 @@ pub(super) fn expected_declarations_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
-    make_stream::from_blocking(move |tx| {
+    util::make_stream::from_blocking(move |cancellation_token, tx| {
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
@@ -385,6 +384,10 @@ pub(super) fn expected_declarations_stream(
         };
 
         while start <= stop {
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             let db = match db.transaction().context("Creating database transaction") {
                 Ok(x) => x,
                 Err(e) => {
@@ -541,7 +544,7 @@ pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

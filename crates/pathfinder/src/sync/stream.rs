@@ -82,10 +82,14 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let queue_capacity = self.inner.max_capacity();
 
             while let Some(input) = self.inner.blocking_recv() {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+
                 let result = match input {
                     Ok(PeerData { peer, data }) => {
                         // Stats for tracing and metrics.
@@ -131,12 +135,16 @@ impl<T: Send + 'static> SyncReceiver<T> {
     pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let mut chunk = Vec::with_capacity(capacity);
             let mut peer = None;
             let mut err = None;
 
             while let Some(input) = self.inner.blocking_recv() {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+
                 let input = match input {
                     Ok(x) => x,
                     Err(e) => {
@@ -231,7 +239,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
@@ -264,7 +272,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {

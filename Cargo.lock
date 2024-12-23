@@ -6537,14 +6537,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "make-stream"
-version = "0.15.2"
-dependencies = [
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "match_cfg"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7151,7 +7143,6 @@ dependencies = [
  "hex",
  "ipnet",
  "libp2p",
- "make-stream",
  "p2p_proto",
  "p2p_stream",
  "pathfinder-common",
@@ -7174,6 +7165,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unsigned-varint 0.8.0",
+ "util",
  "void",
  "zeroize",
 ]
@@ -7357,7 +7349,6 @@ dependencies = [
  "http 1.1.0",
  "ipnet",
  "jemallocator",
- "make-stream",
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
@@ -7400,6 +7391,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "util",
  "warp",
  "zeroize",
  "zstd 0.13.2",
@@ -7494,6 +7486,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "util",
 ]
 
 [[package]]
@@ -7593,6 +7586,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "util",
  "zstd 0.13.2",
 ]
 
@@ -10061,13 +10055,15 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.12"
+version = "0.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61e7c3654c13bcd040d4a03abee2c75b1d14a37b423cf5a813ceae1cc903ec6a"
+checksum = "d7fcaa8d55a2bdd6b83ace262b016eca0d79ee02818c5c1bcdf0305114081078"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
+ "hashbrown 0.14.5",
  "pin-project-lite",
  "tokio",
 ]
@@ -10476,6 +10472,17 @@ name = "utf8parse"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
+
+[[package]]
+name = "util"
+version = "0.15.2"
+dependencies = [
+ "anyhow",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+]
 
 [[package]]
 name = "uuid"
