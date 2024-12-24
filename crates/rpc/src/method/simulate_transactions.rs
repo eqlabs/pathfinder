@@ -99,22 +99,22 @@ pub async fn simulate_transactions(
     .context("Simulating transaction")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(TransactionSimulation))
     }
 }
 
 struct TransactionSimulation<'a>(&'a pathfinder_executor::types::TransactionSimulation);
 
-impl crate::dto::serialize::SerializeForVersion for TransactionSimulation<'_> {
+impl crate::dto::SerializeForVersion for TransactionSimulation<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field(
             "fee_estimation",
@@ -222,8 +222,7 @@ pub(crate) mod tests {
 
     use super::simulate_transactions;
     use crate::context::RpcContext;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
-    use crate::dto::DeserializeForVersion;
+    use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
     use crate::method::simulate_transactions::SimulateTransactionInput;
     use crate::types::request::{
         BroadcastedDeclareTransaction,
@@ -1969,7 +1968,7 @@ pub(crate) mod tests {
         };
         let result = simulate_transactions(context, input).await.unwrap();
 
-        let serializer = crate::dto::serialize::Serializer {
+        let serializer = crate::dto::Serializer {
             version: RpcVersion::V07,
         };
 

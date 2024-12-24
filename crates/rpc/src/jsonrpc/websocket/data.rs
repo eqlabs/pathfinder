@@ -14,7 +14,6 @@ use serde::ser::Error;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::dto::serialize;
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
 
@@ -144,11 +143,11 @@ impl ResponseEvent {
     }
 }
 
-impl serialize::SerializeForVersion for ResponseEvent {
+impl crate::dto::SerializeForVersion for ResponseEvent {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             ResponseEvent::InvalidRequest(e) => {
                 RpcResponse::invalid_request(e.clone(), serializer.version).serialize(serializer)

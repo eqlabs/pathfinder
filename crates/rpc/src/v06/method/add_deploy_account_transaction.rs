@@ -217,7 +217,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::dto::serialize::{self, SerializeForVersion};
+    use crate::dto::{self, SerializeForVersion};
     use crate::types::request::BroadcastedDeployAccountTransactionV3;
     use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
