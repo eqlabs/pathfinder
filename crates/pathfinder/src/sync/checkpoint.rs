@@ -785,8 +785,6 @@ mod tests {
                         eth_l2_gas_price: GasPrice(0),
                         strk_l2_gas_price: GasPrice(0),
                         l1_da_mode: L1DataAvailabilityMode::Calldata,
-                        class_commitment: ClassCommitment::ZERO,
-                        storage_commitment: StorageCommitment::ZERO,
                     },
                     signature: BlockCommitmentSignature {
                         r: dto.signature[0],

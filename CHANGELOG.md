@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Removed
+
+- `storage_commitment` and `class_commitment` fields from the `pathfinder_subscribe_newHeads` method response.
+- `class_commitment` from the `pathfinder_getProof` and `pathfinder_getClassProof` method responses.
+
 ### Fixed
 
 - `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.

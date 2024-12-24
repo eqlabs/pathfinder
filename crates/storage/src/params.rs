@@ -197,18 +197,11 @@ pub trait RowExt {
         Ok(self.get_optional_felt(index)?.map(CasmHash))
     }
 
-    fn get_optional_storage_commitment<Index: RowIndex>(
+    fn get_optional_state_commitment<Index: RowIndex>(
         &self,
         index: Index,
-    ) -> rusqlite::Result<Option<StorageCommitment>> {
-        Ok(self.get_optional_felt(index)?.map(StorageCommitment))
-    }
-
-    fn get_optional_class_commitment<Index: RowIndex>(
-        &self,
-        index: Index,
-    ) -> rusqlite::Result<Option<ClassCommitment>> {
-        Ok(self.get_optional_felt(index)?.map(ClassCommitment))
+    ) -> rusqlite::Result<Option<StateCommitment>> {
+        Ok(self.get_optional_felt(index)?.map(StateCommitment))
     }
 
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
@@ -266,16 +259,6 @@ pub trait RowExt {
         Ok(self
             .get_optional_felt(index)?
             .map(EventCommitment)
-            .unwrap_or_default())
-    }
-
-    fn get_class_commitment<Index: RowIndex>(
-        &self,
-        index: Index,
-    ) -> rusqlite::Result<ClassCommitment> {
-        Ok(self
-            .get_optional_felt(index)?
-            .map(ClassCommitment)
             .unwrap_or_default())
     }
 
@@ -357,7 +340,6 @@ pub trait RowExt {
     row_felt_wrapper!(get_class_hash, ClassHash);
     row_felt_wrapper!(get_state_commitment, StateCommitment);
     row_felt_wrapper!(get_state_diff_commitment, StateDiffCommitment);
-    row_felt_wrapper!(get_storage_commitment, StorageCommitment);
     row_felt_wrapper!(get_sequencer_address, SequencerAddress);
     row_felt_wrapper!(get_contract_root, ContractRoot);
     row_felt_wrapper!(get_contract_nonce, ContractNonce);

@@ -149,9 +149,6 @@ pub fn hdr(tag: i32) -> SignedBlockHeader {
     Tagged::get(format!("header {tag}"), || SignedBlockHeader {
         header: BlockHeader {
             number: BlockNumber::new_or_panic(tag as u64),
-            // TODO Set storage and class commitment
-            storage_commitment: Default::default(),
-            class_commitment: Default::default(),
             ..Faker.fake()
         },
         ..Faker.fake()

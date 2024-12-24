@@ -303,8 +303,6 @@ pub async fn batch_update_starknet_state(
             "State root mismatch");
             return Err(SyncError::StateRootMismatch(peer));
         }
-        db.update_storage_and_class_commitments(tail, storage_commitment, class_commitment)
-            .context("Updating storage and class commitments")?;
         db.commit().context("Committing db transaction")?;
 
         Ok(PeerData::new(peer, tail))

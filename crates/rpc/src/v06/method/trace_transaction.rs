@@ -346,10 +346,8 @@ pub mod tests {
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             starknet_version: block.starknet_version,
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count,
             event_count,

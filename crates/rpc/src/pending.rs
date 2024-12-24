@@ -36,10 +36,8 @@ impl PendingData {
             starknet_version: self.block.starknet_version,
             // Pending block does not know what these are yet.
             hash: Default::default(),
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count: Default::default(),
             event_count: Default::default(),

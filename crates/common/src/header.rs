@@ -17,10 +17,8 @@ pub struct BlockHeader {
     pub strk_l2_gas_price: GasPrice,
     pub sequencer_address: SequencerAddress,
     pub starknet_version: StarknetVersion,
-    pub class_commitment: ClassCommitment,
     pub event_commitment: EventCommitment,
     pub state_commitment: StateCommitment,
-    pub storage_commitment: StorageCommitment,
     pub transaction_commitment: TransactionCommitment,
     pub transaction_count: usize,
     pub event_count: usize,
@@ -88,11 +86,14 @@ impl BlockHeaderBuilder {
         self
     }
 
-    /// Sets the [StateCommitment] by calculating its value from the current
+    /// Sets the [StateCommitment] by calculating its value from the passed
     /// [StorageCommitment] and [ClassCommitment].
-    pub fn calculated_state_commitment(mut self) -> Self {
-        self.0.state_commitment =
-            StateCommitment::calculate(self.0.storage_commitment, self.0.class_commitment);
+    pub fn calculated_state_commitment(
+        mut self,
+        storage_commitment: StorageCommitment,
+        class_commitment: ClassCommitment,
+    ) -> Self {
+        self.0.state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
         self
     }
 
@@ -143,16 +144,6 @@ impl BlockHeaderBuilder {
 
     pub fn event_commitment(mut self, event_commitment: EventCommitment) -> Self {
         self.0.event_commitment = event_commitment;
-        self
-    }
-
-    pub fn storage_commitment(mut self, storage_commitment: StorageCommitment) -> Self {
-        self.0.storage_commitment = storage_commitment;
-        self
-    }
-
-    pub fn class_commitment(mut self, class_commitment: ClassCommitment) -> Self {
-        self.0.class_commitment = class_commitment;
         self
     }
 
