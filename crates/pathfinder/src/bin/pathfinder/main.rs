@@ -970,8 +970,8 @@ fn handle_critical_task_result(
             tracing::error!(%error, "{} task panicked", task_name);
             Err(anyhow::anyhow!("{} task panicked", task_name))
         }
-        // Cancelling all tracked tasks via [`util::task::tracker::close()`] does not cause join
-        // errors on registered task handles, so this is unexpected and we should threat it as error
+        // Cancelling all tracked tasks via [`util::task::tracker::close`] does not cause join
+        // errors on registered task handles, so this is unexpected and we should treat it as error
         Err(_) => {
             tracing::error!("{} task was cancelled unexpectedly", task_name);
             Err(anyhow::anyhow!(
