@@ -196,11 +196,11 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
+impl crate::dto::SerializeForVersion for GetProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("state_commitment", self.state_commitment)?;
         serializer.serialize_optional("class_commitment", self.class_commitment)?;
@@ -221,11 +221,11 @@ pub struct GetClassProofOutput {
     class_proof: ProofNodes,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetClassProofOutput {
+impl crate::dto::SerializeForVersion for GetClassProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("class_commitment", self.class_commitment)?;
         serializer.serialize_field("class_proof", &self.class_proof)?;

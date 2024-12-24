@@ -229,7 +229,7 @@ mod tests {
         use serde_json::json;
 
         use super::*;
-        use crate::dto::serialize::{self, SerializeForVersion};
+        use crate::dto::{self, SerializeForVersion};
 
         #[test]
         fn positional_args() {

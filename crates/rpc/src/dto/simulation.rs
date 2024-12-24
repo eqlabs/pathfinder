@@ -2,8 +2,7 @@ use anyhow::anyhow;
 use pathfinder_common::{ContractAddress, ContractNonce};
 use serde::ser::Error;
 
-use super::serialize::SerializeStruct;
-use super::FeeEstimate;
+use super::{FeeEstimate, SerializeStruct};
 use crate::RpcVersion;
 
 #[derive(Debug)]
@@ -12,11 +11,11 @@ pub struct TransactionTrace {
     pub include_state_diff: bool,
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionTrace {
+impl crate::dto::SerializeForVersion for TransactionTrace {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         match &self.trace {
             pathfinder_executor::types::TransactionTrace::Declare(trace) => {
@@ -123,11 +122,11 @@ impl crate::dto::serialize::SerializeForVersion for TransactionTrace {
 #[derive(Debug)]
 pub(crate) struct FunctionInvocation<'a>(&'a pathfinder_executor::types::FunctionInvocation);
 
-impl crate::dto::serialize::SerializeForVersion for FunctionInvocation<'_> {
+impl crate::dto::SerializeForVersion for FunctionInvocation<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field(
             "call_type",
@@ -194,11 +193,11 @@ impl crate::dto::serialize::SerializeForVersion for FunctionInvocation<'_> {
 
 struct Event<'a>(&'a pathfinder_executor::types::Event);
 
-impl crate::dto::serialize::SerializeForVersion for Event<'_> {
+impl crate::dto::SerializeForVersion for Event<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("order", &self.0.order)?;
         serializer.serialize_iter(
@@ -217,11 +216,11 @@ impl crate::dto::serialize::SerializeForVersion for Event<'_> {
 
 struct MsgToL1<'a>(&'a pathfinder_executor::types::MsgToL1);
 
-impl crate::dto::serialize::SerializeForVersion for MsgToL1<'_> {
+impl crate::dto::SerializeForVersion for MsgToL1<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("order", &self.0.order)?;
         serializer.serialize_iter(
@@ -237,11 +236,11 @@ impl crate::dto::serialize::SerializeForVersion for MsgToL1<'_> {
 
 struct ComputationResources<'a>(&'a pathfinder_executor::types::ComputationResources);
 
-impl crate::dto::serialize::SerializeForVersion for ComputationResources<'_> {
+impl crate::dto::SerializeForVersion for ComputationResources<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("steps", &self.0.steps)?;
         if self.0.memory_holes != 0 {
@@ -298,11 +297,11 @@ impl crate::dto::serialize::SerializeForVersion for ComputationResources<'_> {
 
 struct InnerCallExecutionResources<'a>(&'a pathfinder_executor::types::InnerCallExecutionResources);
 
-impl crate::dto::serialize::SerializeForVersion for InnerCallExecutionResources<'_> {
+impl crate::dto::SerializeForVersion for InnerCallExecutionResources<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
         serializer.serialize_field("l2_gas", &self.0.l2_gas)?;
@@ -312,11 +311,11 @@ impl crate::dto::serialize::SerializeForVersion for InnerCallExecutionResources<
 
 struct StateDiff<'a>(&'a pathfinder_executor::types::StateDiff);
 
-impl crate::dto::serialize::SerializeForVersion for StateDiff<'_> {
+impl crate::dto::SerializeForVersion for StateDiff<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_iter(
             "storage_diffs",
@@ -363,11 +362,11 @@ struct StorageDiff<'a>(
     ),
 );
 
-impl crate::dto::serialize::SerializeForVersion for StorageDiff<'_> {
+impl crate::dto::SerializeForVersion for StorageDiff<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("address", &crate::dto::Felt(&self.0 .0 .0))?;
         serializer.serialize_iter(
@@ -381,11 +380,11 @@ impl crate::dto::serialize::SerializeForVersion for StorageDiff<'_> {
 
 struct StorageEntry<'a>(&'a pathfinder_executor::types::StorageDiff);
 
-impl crate::dto::serialize::SerializeForVersion for StorageEntry<'_> {
+impl crate::dto::SerializeForVersion for StorageEntry<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("key", &crate::dto::Felt(&self.0.key.0))?;
         serializer.serialize_field("value", &crate::dto::Felt(&self.0.value.0))?;
@@ -395,11 +394,11 @@ impl crate::dto::serialize::SerializeForVersion for StorageEntry<'_> {
 
 struct DeclaredSierraClass<'a>(&'a pathfinder_executor::types::DeclaredSierraClass);
 
-impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass<'_> {
+impl crate::dto::SerializeForVersion for DeclaredSierraClass<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("class_hash", &crate::dto::Felt(&self.0.class_hash.0))?;
         serializer.serialize_field(
@@ -412,11 +411,11 @@ impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass<'_> {
 
 struct DeployedContract<'a>(&'a pathfinder_executor::types::DeployedContract);
 
-impl crate::dto::serialize::SerializeForVersion for DeployedContract<'_> {
+impl crate::dto::SerializeForVersion for DeployedContract<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("address", &crate::dto::Felt(&self.0.address.0))?;
         serializer.serialize_field("class_hash", &crate::dto::Felt(&self.0.class_hash.0))?;
@@ -426,11 +425,11 @@ impl crate::dto::serialize::SerializeForVersion for DeployedContract<'_> {
 
 struct ReplacedClass<'a>(&'a pathfinder_executor::types::ReplacedClass);
 
-impl crate::dto::serialize::SerializeForVersion for ReplacedClass<'_> {
+impl crate::dto::SerializeForVersion for ReplacedClass<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field(
             "contract_address",
@@ -443,11 +442,11 @@ impl crate::dto::serialize::SerializeForVersion for ReplacedClass<'_> {
 
 struct Nonce<'a>((&'a ContractAddress, &'a ContractNonce));
 
-impl crate::dto::serialize::SerializeForVersion for Nonce<'_> {
+impl crate::dto::SerializeForVersion for Nonce<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("contract_address", &crate::dto::Felt(&self.0 .0 .0))?;
         serializer.serialize_field("nonce", &crate::dto::Felt(&self.0 .1 .0))?;
@@ -457,11 +456,11 @@ impl crate::dto::serialize::SerializeForVersion for Nonce<'_> {
 
 struct ExecutionResources<'a>(&'a pathfinder_executor::types::ExecutionResources);
 
-impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
+impl crate::dto::SerializeForVersion for ExecutionResources<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match serializer.version {
             RpcVersion::V08 => {
                 let mut serializer = serializer.serialize_struct()?;
@@ -485,11 +484,11 @@ impl crate::dto::serialize::SerializeForVersion for ExecutionResources<'_> {
 
 struct DataAvailabilityResources<'a>(&'a pathfinder_executor::types::DataAvailabilityResources);
 
-impl crate::dto::serialize::SerializeForVersion for DataAvailabilityResources<'_> {
+impl crate::dto::SerializeForVersion for DataAvailabilityResources<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
         serializer.serialize_field("l1_data_gas", &self.0.l1_data_gas)?;
@@ -499,11 +498,11 @@ impl crate::dto::serialize::SerializeForVersion for DataAvailabilityResources<'_
 
 struct ExecuteInvocation<'a>(&'a pathfinder_executor::types::ExecuteInvocation);
 
-impl crate::dto::serialize::SerializeForVersion for ExecuteInvocation<'_> {
+impl crate::dto::SerializeForVersion for ExecuteInvocation<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(invocation)) => {
                 FunctionInvocation(invocation).serialize(serializer)
@@ -538,11 +537,11 @@ impl From<pathfinder_executor::types::CallType> for CallType {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for CallType {
+impl crate::dto::SerializeForVersion for CallType {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             CallType::Call => serializer.serialize_str("CALL"),
             CallType::_LibraryCall => serializer.serialize_str("LIBRARY_CALL"),
@@ -580,11 +579,11 @@ impl crate::dto::DeserializeForVersion for SimulationFlags {
 
 pub(crate) struct SimulatedTransaction(pub pathfinder_executor::types::TransactionSimulation);
 
-impl crate::dto::serialize::SerializeForVersion for SimulatedTransaction {
+impl crate::dto::SerializeForVersion for SimulatedTransaction {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("fee_estimation", &FeeEstimate(&self.0.fee_estimation))?;
         serializer.serialize_field(
@@ -623,13 +622,14 @@ mod tests {
     };
 
     use crate::context::RpcContext;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
     use crate::dto::{
         CallType,
         ComputationResources,
         ExecutionResources,
         FeeEstimate,
         FunctionInvocation,
+        SerializeForVersion,
+        Serializer,
         SimulatedTransaction,
         TransactionTrace,
     };

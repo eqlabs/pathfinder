@@ -30,11 +30,11 @@ enum FinalityStatus {
     AcceptedOnL1,
 }
 
-impl crate::dto::serialize::SerializeForVersion for FinalityStatus {
+impl crate::dto::SerializeForVersion for FinalityStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let status_str = match self {
             FinalityStatus::Received => "RECEIVED",
             FinalityStatus::Rejected => "REJECTED",
@@ -116,20 +116,20 @@ pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Ou
     Ok(Output(res))
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.clone().into_iter())
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for L1HandlerTransactionStatus {
+impl crate::dto::SerializeForVersion for L1HandlerTransactionStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.serialize_field("finality_status", &self.finality_status)?;

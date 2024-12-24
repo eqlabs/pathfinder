@@ -11,7 +11,6 @@ pub use subscription::{handle_json_rpc_socket, CatchUp, RpcSubscriptionFlow, Sub
 use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;
-use crate::dto::serialize;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::RpcRequest;
 use crate::jsonrpc::response::RpcResponse;
@@ -207,12 +206,12 @@ pub async fn rpc_handler(
                     RpcResponses::Empty => ().into_response(),
                     RpcResponses::Single(response) => response.into_response(),
                     RpcResponses::Multiple(responses) => {
-                        use serialize::SerializeForVersion;
+                        use crate::dto::SerializeForVersion;
                         let values = responses
                             .into_iter()
                             .map(|response| {
                                 response
-                                    .serialize(serialize::Serializer::new(state.version))
+                                    .serialize(crate::dto::Serializer::new(state.version))
                                     .unwrap()
                             })
                             .collect::<Vec<_>>();
@@ -249,11 +248,11 @@ pub(super) enum RpcResponses {
     Multiple(Vec<RpcResponse>),
 }
 
-impl serialize::SerializeForVersion for RpcResponses {
+impl crate::dto::SerializeForVersion for RpcResponses {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Self::Empty => serializer.serialize(&()),
             Self::Single(response) => serializer.serialize(response),

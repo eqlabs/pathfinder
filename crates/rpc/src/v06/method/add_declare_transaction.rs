@@ -353,7 +353,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::dto::serialize::{self, SerializeForVersion};
+            use crate::dto::{self, SerializeForVersion};
             use crate::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {

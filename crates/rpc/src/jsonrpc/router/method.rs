@@ -16,8 +16,7 @@ use super::{
     RpcRouter,
 };
 use crate::context::RpcContext;
-use crate::dto::serialize::{SerializeForVersion, Serializer};
-use crate::dto::DeserializeForVersion;
+use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::response::RpcResult;
 use crate::jsonrpc::router::RpcEndpointInner;

@@ -529,11 +529,11 @@ fn map_gateway_computation_resources(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TraceBlockTransactionsOutput {
+impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(
             self.traces.len(),
             &mut self.traces.iter().map(|(hash, trace)| Trace {
@@ -551,11 +551,11 @@ struct Trace<'a> {
     pub include_state_diff: bool,
 }
 
-impl crate::dto::serialize::SerializeForVersion for Trace<'_> {
+impl crate::dto::SerializeForVersion for Trace<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field(
             "transaction_hash",
@@ -643,7 +643,7 @@ pub(crate) mod tests {
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
     use super::*;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     #[derive(Debug)]
