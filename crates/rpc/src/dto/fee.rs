@@ -1,9 +1,6 @@
 use super::U256Hex;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct FeeEstimate<'a>(pub &'a pathfinder_executor::types::FeeEstimate);
-
-impl crate::dto::SerializeForVersion for FeeEstimate<'_> {
+impl crate::dto::SerializeForVersion for pathfinder_executor::types::FeeEstimate {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -11,40 +8,34 @@ impl crate::dto::SerializeForVersion for FeeEstimate<'_> {
         let mut serializer = serializer.serialize_struct()?;
 
         if serializer.version >= crate::dto::RpcVersion::V08 {
-            serializer.serialize_field("l1_gas_consumed", &U256Hex(self.0.l1_gas_consumed))?;
-            serializer.serialize_field("l1_gas_price", &U256Hex(self.0.l1_gas_price))?;
-            serializer.serialize_field(
-                "l1_data_gas_consumed",
-                &U256Hex(self.0.l1_data_gas_consumed),
-            )?;
-            serializer.serialize_field("l1_data_gas_price", &U256Hex(self.0.l1_data_gas_price))?;
-            serializer.serialize_field("l2_gas_consumed", &U256Hex(self.0.l2_gas_consumed))?;
-            serializer.serialize_field("l2_gas_price", &U256Hex(self.0.l2_gas_price))?;
-            serializer.serialize_field("overall_fee", &U256Hex(self.0.overall_fee))?;
-            serializer.serialize_field("unit", &PriceUnit(&self.0.unit))?;
-        } else {
-            serializer.serialize_field("gas_price", &U256Hex(self.0.l1_gas_price))?;
-            serializer.serialize_field("gas_consumed", &U256Hex(self.0.l1_gas_consumed))?;
+            serializer.serialize_field("l1_gas_consumed", &U256Hex(self.l1_gas_consumed))?;
+            serializer.serialize_field("l1_gas_price", &U256Hex(self.l1_gas_price))?;
             serializer
-                .serialize_field("data_gas_consumed", &U256Hex(self.0.l1_data_gas_consumed))?;
-            serializer.serialize_field("data_gas_price", &U256Hex(self.0.l1_data_gas_price))?;
-            serializer.serialize_field("overall_fee", &U256Hex(self.0.overall_fee))?;
-            serializer.serialize_field("unit", &PriceUnit(&self.0.unit))?;
+                .serialize_field("l1_data_gas_consumed", &U256Hex(self.l1_data_gas_consumed))?;
+            serializer.serialize_field("l1_data_gas_price", &U256Hex(self.l1_data_gas_price))?;
+            serializer.serialize_field("l2_gas_consumed", &U256Hex(self.l2_gas_consumed))?;
+            serializer.serialize_field("l2_gas_price", &U256Hex(self.l2_gas_price))?;
+            serializer.serialize_field("overall_fee", &U256Hex(self.overall_fee))?;
+            serializer.serialize_field("unit", &self.unit)?;
+        } else {
+            serializer.serialize_field("gas_price", &U256Hex(self.l1_gas_price))?;
+            serializer.serialize_field("gas_consumed", &U256Hex(self.l1_gas_consumed))?;
+            serializer.serialize_field("data_gas_consumed", &U256Hex(self.l1_data_gas_consumed))?;
+            serializer.serialize_field("data_gas_price", &U256Hex(self.l1_data_gas_price))?;
+            serializer.serialize_field("overall_fee", &U256Hex(self.overall_fee))?;
+            serializer.serialize_field("unit", &self.unit)?;
         }
 
         serializer.end()
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct PriceUnit<'a>(&'a pathfinder_executor::types::PriceUnit);
-
-impl crate::dto::SerializeForVersion for PriceUnit<'_> {
+impl crate::dto::SerializeForVersion for pathfinder_executor::types::PriceUnit {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_str(match self.0 {
+        serializer.serialize_str(match self {
             pathfinder_executor::types::PriceUnit::Wei => "WEI",
             pathfinder_executor::types::PriceUnit::Fri => "FRI",
         })

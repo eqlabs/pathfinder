@@ -30,9 +30,9 @@ impl SerializeForVersion for StateUpdate<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("block_hash", &dto::BlockHash(&self.0.block_hash))?;
-        serializer.serialize_field("old_root", &dto::Felt(&self.0.state_commitment.0))?;
-        serializer.serialize_field("new_root", &dto::Felt(&self.0.parent_state_commitment.0))?;
+        serializer.serialize_field("block_hash", &self.0.block_hash)?;
+        serializer.serialize_field("old_root", &self.0.state_commitment.0)?;
+        serializer.serialize_field("new_root", &self.0.parent_state_commitment.0)?;
         serializer.serialize_field("state_diff", &StateDiff(self.0))?;
 
         serializer.end()
@@ -43,7 +43,7 @@ impl SerializeForVersion for PendingStateUpdate<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("old_root", &dto::Felt(&self.0.state_commitment.0))?;
+        serializer.serialize_field("old_root", &self.0.state_commitment.0)?;
         serializer.serialize_field("state_diff", &StateDiff(self.0))?;
 
         serializer.end()
@@ -72,8 +72,8 @@ impl SerializeForVersion for StateDiff<'_> {
             ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
-                serializer.serialize_field("class_hash", &dto::Felt(&self.sierra.0))?;
-                serializer.serialize_field("compiled_class_hash", &dto::Felt(&self.casm.0))?;
+                serializer.serialize_field("class_hash", &self.sierra.0)?;
+                serializer.serialize_field("compiled_class_hash", &self.casm.0)?;
 
                 serializer.end()
             }
@@ -86,8 +86,8 @@ impl SerializeForVersion for StateDiff<'_> {
             ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
-                serializer.serialize_field("contract_address", &dto::Address(self.address))?;
-                serializer.serialize_field("class_hash", &dto::Felt(&self.hash.0))?;
+                serializer.serialize_field("contract_address", &self.address)?;
+                serializer.serialize_field("class_hash", &self.hash.0)?;
 
                 serializer.end()
             }
@@ -100,8 +100,8 @@ impl SerializeForVersion for StateDiff<'_> {
             ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
-                serializer.serialize_field("contract_address", &dto::Address(self.address))?;
-                serializer.serialize_field("nonce", &dto::Felt(&self.nonce.0))?;
+                serializer.serialize_field("contract_address", &self.address)?;
+                serializer.serialize_field("nonce", &self.nonce.0)?;
 
                 serializer.end()
             }
@@ -127,11 +127,7 @@ impl SerializeForVersion for StateDiff<'_> {
                 });
         let diff_count = storage_diffs.clone().count();
 
-        let mut deprecated_classes = self
-            .0
-            .declared_cairo_classes
-            .iter()
-            .map(|x| dto::Felt(&x.0));
+        let mut deprecated_classes = self.0.declared_cairo_classes.iter();
 
         let mut declared_classes = self
             .0
@@ -211,8 +207,8 @@ impl SerializeForVersion for ContractStorageDiffItem<'_> {
             ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
-                serializer.serialize_field("key", &dto::Felt(&self.key.0))?;
-                serializer.serialize_field("value", &dto::Felt(&self.value.0))?;
+                serializer.serialize_field("key", &self.key.0)?;
+                serializer.serialize_field("value", &self.value.0)?;
 
                 serializer.end()
             }
@@ -220,7 +216,7 @@ impl SerializeForVersion for ContractStorageDiffItem<'_> {
 
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("address", &dto::Felt(&self.address.0))?;
+        serializer.serialize_field("address", &self.address)?;
         serializer.serialize_iter(
             "storage_entries",
             self.storage_entries.len(),
@@ -238,8 +234,8 @@ impl SerializeForVersion for DeployedContractItem<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("address", &dto::Felt(&self.address.0))?;
-        serializer.serialize_field("class_hash", &dto::Felt(&self.class_hash.0))?;
+        serializer.serialize_field("address", &self.address)?;
+        serializer.serialize_field("class_hash", &self.class_hash.0)?;
 
         serializer.end()
     }
