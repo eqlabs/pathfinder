@@ -157,8 +157,8 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
             finality: *finality,
         })?;
 
-        serializer.serialize_optional("block_hash", block_hash.map(dto::BlockHash))?;
-        serializer.serialize_optional("block_number", block_number.map(dto::BlockNumber))?;
+        serializer.serialize_optional("block_hash", *block_hash)?;
+        serializer.serialize_optional("block_number", *block_number)?;
 
         serializer.end()
     }
@@ -211,7 +211,7 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY")?;
-        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+        serializer.serialize_field("contract_address", &contract_address)?;
 
         serializer.end()
     }
@@ -241,7 +241,7 @@ impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
-        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+        serializer.serialize_field("contract_address", &contract_address)?;
 
         serializer.end()
     }
@@ -297,7 +297,7 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.0.transaction.hash))?;
+        serializer.serialize_field("transaction_hash", &self.0.transaction.hash)?;
         serializer.serialize_field(
             "actual_fee",
             &FeePayment {
@@ -336,7 +336,7 @@ impl SerializeForVersion for FeePayment<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("amount", &dto::Felt(&self.amount.0))?;
+        serializer.serialize_field("amount", &self.amount)?;
         serializer.serialize_field("unit", &PriceUnit(self.transaction_version))?;
 
         serializer.end()
@@ -347,8 +347,8 @@ impl SerializeForVersion for MsgToL1<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
-        serializer.serialize_field("to_address", &dto::Felt(&self.0.to_address.0))?;
+        serializer.serialize_field("from_address", &self.0.from_address)?;
+        serializer.serialize_field("to_address", &self.0.to_address)?;
         serializer.serialize_iter("payload", self.0.payload.len(), &mut self.0.payload.iter())?;
 
         serializer.end()
