@@ -1,7 +1,7 @@
 use axum::response::IntoResponse;
 use serde_json::Value;
 
-use crate::dto::serialize::{self, SerializeForVersion};
+use crate::dto::SerializeForVersion;
 use crate::error::ApplicationError;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::RequestId;
@@ -58,11 +58,11 @@ impl RpcResponse {
 
 pub type RpcResult = Result<Value, RpcError>;
 
-impl serialize::SerializeForVersion for RpcResponse {
+impl crate::dto::SerializeForVersion for RpcResponse {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut obj = serializer.serialize_struct()?;
         obj.serialize_field("jsonrpc", &"2.0")?;
 
@@ -82,11 +82,11 @@ impl serialize::SerializeForVersion for RpcResponse {
     }
 }
 
-impl serialize::SerializeForVersion for &RpcResponse {
+impl crate::dto::SerializeForVersion for &RpcResponse {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut obj = serializer.serialize_struct()?;
         obj.serialize_field("jsonrpc", &"2.0")?;
 
@@ -122,7 +122,7 @@ impl IntoResponse for RpcResponse {
 
         serde_json::to_vec(
             &self
-                .serialize(serialize::Serializer::new(self.version))
+                .serialize(crate::dto::Serializer::new(self.version))
                 .unwrap(),
         )
         .unwrap()
@@ -149,7 +149,7 @@ mod tests {
         let parsing_err = RpcError::InvalidParams(parsing_err);
 
         let serialized = response
-            .serialize(serialize::Serializer::new(RpcVersion::V07))
+            .serialize(crate::dto::Serializer::new(RpcVersion::V07))
             .unwrap();
 
         let expected = json!({
@@ -172,7 +172,7 @@ mod tests {
             id: RequestId::Number(1),
             version: RpcVersion::V07,
         }
-        .serialize(serialize::Serializer::new(RpcVersion::V07))
+        .serialize(crate::dto::Serializer::new(RpcVersion::V07))
         .unwrap();
 
         let expected = json!({

@@ -1,8 +1,7 @@
 use serde_with::ser::SerializeAsWrap;
 
 use super::U64Hex;
-use crate::dto::serialize::SerializeForVersion;
-use crate::dto::{serialize, Felt};
+use crate::dto::{Felt, SerializeForVersion};
 use crate::types;
 
 pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
@@ -28,15 +27,15 @@ pub struct StructMember<'a>(pub &'a types::StructMember);
 impl SerializeForVersion for DeprecatedContractClass<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         struct EntryPointsByType<'a>(&'a types::ContractEntryPoints);
 
         impl SerializeForVersion for EntryPointsByType<'_> {
             fn serialize(
                 &self,
-                serializer: serialize::Serializer,
-            ) -> Result<serialize::Ok, serialize::Error> {
+                serializer: crate::dto::Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
                 serializer.serialize_iter(
@@ -77,15 +76,15 @@ impl SerializeForVersion for DeprecatedContractClass<'_> {
 impl SerializeForVersion for ContractClass<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         struct EntryPointsByType<'a>(&'a types::SierraEntryPoints);
 
         impl SerializeForVersion for EntryPointsByType<'_> {
             fn serialize(
                 &self,
-                serializer: serialize::Serializer,
-            ) -> Result<serialize::Ok, serialize::Error> {
+                serializer: crate::dto::Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
                 serializer.serialize_iter(
@@ -135,8 +134,8 @@ impl SerializeForVersion for ContractClass<'_> {
 impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("offset", &self.0.offset)?;
@@ -149,8 +148,8 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
 impl SerializeForVersion for SierraEntryPoint<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("selector", &Felt(&self.0.selector))?;
@@ -163,8 +162,8 @@ impl SerializeForVersion for SierraEntryPoint<'_> {
 impl SerializeForVersion for ContractAbi<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter().map(ContractAbiEntry))
     }
 }
@@ -172,8 +171,8 @@ impl SerializeForVersion for ContractAbi<'_> {
 impl SerializeForVersion for ContractAbiEntry<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             types::ContractAbiEntry::Function(f) => FunctionAbiEntry(f).serialize(serializer),
             types::ContractAbiEntry::Event(e) => EventAbiEntry(e).serialize(serializer),
@@ -185,8 +184,8 @@ impl SerializeForVersion for ContractAbiEntry<'_> {
 impl SerializeForVersion for FunctionAbiEntry<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("type", &FunctionAbiType(self.0.r#type))?;
@@ -221,8 +220,8 @@ impl SerializeForVersion for FunctionAbiEntry<'_> {
 impl SerializeForVersion for EventAbiEntry<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("type", &EventAbiType)?;
@@ -241,8 +240,8 @@ impl SerializeForVersion for EventAbiEntry<'_> {
 impl SerializeForVersion for StructAbiEntry<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("type", &StructAbiType)?;
@@ -263,8 +262,8 @@ impl SerializeForVersion for StructAbiEntry<'_> {
 impl SerializeForVersion for FunctionAbiType {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             types::FunctionAbiType::Function => "function",
             types::FunctionAbiType::L1Handler => "l1_handler",
@@ -277,8 +276,8 @@ impl SerializeForVersion for FunctionAbiType {
 impl SerializeForVersion for EventAbiType {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str("event")
     }
 }
@@ -286,8 +285,8 @@ impl SerializeForVersion for EventAbiType {
 impl SerializeForVersion for StructAbiType {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str("struct")
     }
 }
@@ -295,8 +294,8 @@ impl SerializeForVersion for StructAbiType {
 impl SerializeForVersion for TypedParameter<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("name", &self.0.name)?;
@@ -309,8 +308,8 @@ impl SerializeForVersion for TypedParameter<'_> {
 impl SerializeForVersion for FunctionStateMutability {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str("view")
     }
 }
@@ -318,8 +317,8 @@ impl SerializeForVersion for FunctionStateMutability {
 impl SerializeForVersion for StructMember<'_> {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         // FIXME: these clones could be removed if the types::* definitions were

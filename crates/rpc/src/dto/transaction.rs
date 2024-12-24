@@ -4,8 +4,7 @@ use serde::de::Error;
 
 use super::{DeserializeForVersion, U128Hex, U64Hex};
 use crate::dto;
-use crate::dto::serialize;
-use crate::dto::serialize::{SerializeForVersion, Serializer};
+use crate::dto::{SerializeForVersion, Serializer};
 
 pub struct TxnHash<'a>(pub &'a TransactionHash);
 
@@ -19,13 +18,13 @@ struct ResourceBound<'a>(&'a pathfinder_common::transaction::ResourceBound);
 struct DataAvailabilityMode<'a>(&'a pathfinder_common::transaction::DataAvailabilityMode);
 
 impl SerializeForVersion for TxnHash<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         dto::Felt(&self.0 .0).serialize(serializer)
     }
 }
 
 impl SerializeForVersion for Transaction<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         match &self.0.variant {
             TransactionVariant::DeclareV0(tx) => {
@@ -278,7 +277,7 @@ impl SerializeForVersion for Transaction<'_> {
 }
 
 impl SerializeForVersion for TransactionWithHash<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("transaction_hash", &TxnHash(&self.0.hash))?;
         s.flatten(&Transaction(self.0))?;
@@ -287,7 +286,7 @@ impl SerializeForVersion for TransactionWithHash<'_> {
 }
 
 impl SerializeForVersion for ResourceBounds<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("l1_gas", &ResourceBound(&self.0.l1_gas))?;
         s.serialize_field("l2_gas", &ResourceBound(&self.0.l2_gas))?;
@@ -296,7 +295,7 @@ impl SerializeForVersion for ResourceBounds<'_> {
 }
 
 impl SerializeForVersion for ResourceBound<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("max_amount", &U64Hex(self.0.max_amount.0))?;
         s.serialize_field("max_price_per_unit", &U128Hex(self.0.max_price_per_unit.0))?;
@@ -305,7 +304,7 @@ impl SerializeForVersion for ResourceBound<'_> {
 }
 
 impl SerializeForVersion for DataAvailabilityMode<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             pathfinder_common::transaction::DataAvailabilityMode::L1 => {
                 serializer.serialize_str("L1")

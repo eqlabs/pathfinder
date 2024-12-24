@@ -241,11 +241,11 @@ impl SubscriptionId {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for SubscriptionId {
+impl crate::dto::SerializeForVersion for SubscriptionId {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_u64(self.0 as u64)
     }
 }
@@ -827,12 +827,11 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use dto::serialize::SerializeForVersion;
-    use dto::DeserializeForVersion;
+    use dto::{DeserializeForVersion, SerializeForVersion};
     use serde_json::json;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
+    use crate::dto::Serializer;
 
     #[test]
     fn roundtrip_syncing() {

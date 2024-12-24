@@ -1,7 +1,7 @@
 use pathfinder_common::{GasPrice, L1DataAvailabilityMode};
 use serde::de::Error;
 
-use super::serialize::SerializeStruct;
+use crate::dto::SerializeStruct;
 use crate::{Reorg, RpcVersion};
 
 #[derive(Debug)]
@@ -38,11 +38,11 @@ impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for BlockHeader<'_> {
+impl crate::dto::SerializeForVersion for BlockHeader<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("block_hash", &crate::dto::Felt(&self.0.hash.0))?;
         serializer.serialize_field("parent_hash", &crate::dto::Felt(&self.0.parent_hash.0))?;
@@ -88,11 +88,11 @@ impl crate::dto::serialize::SerializeForVersion for BlockHeader<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for PendingBlockHeader<'_> {
+impl crate::dto::SerializeForVersion for PendingBlockHeader<'_> {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("parent_hash", &crate::dto::Felt(&self.0.parent_hash.0))?;
         serializer.serialize_field("timestamp", &self.0.timestamp.get())?;
@@ -141,11 +141,11 @@ struct ResourcePrice {
     pub price_in_fri: GasPrice,
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourcePrice {
+impl crate::dto::SerializeForVersion for ResourcePrice {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("price_in_wei", &crate::dto::U128Hex(self.price_in_wei.0))?;
         serializer.serialize_field("price_in_fri", &crate::dto::U128Hex(self.price_in_fri.0))?;
@@ -153,11 +153,11 @@ impl crate::dto::serialize::SerializeForVersion for ResourcePrice {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Reorg {
+impl crate::dto::SerializeForVersion for Reorg {
     fn serialize(
         &self,
-        serializer: super::serialize::Serializer,
-    ) -> Result<super::serialize::Ok, super::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("first_block_number", &self.first_block_number.get())?;
         serializer.serialize_field(

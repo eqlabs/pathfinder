@@ -22,11 +22,11 @@ pub async fn syncing(context: RpcContext) -> Result<Output, Error> {
     Ok(Output(value))
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             Syncing::False => serializer.serialize_bool(false),
             Syncing::Status(status) => serializer.serialize(&crate::dto::SyncStatus(&status)),

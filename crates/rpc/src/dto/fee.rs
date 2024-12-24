@@ -3,11 +3,11 @@ use super::U256Hex;
 #[derive(Debug, PartialEq, Eq)]
 pub struct FeeEstimate<'a>(pub &'a pathfinder_executor::types::FeeEstimate);
 
-impl crate::dto::serialize::SerializeForVersion for FeeEstimate<'_> {
+impl crate::dto::SerializeForVersion for FeeEstimate<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         if serializer.version >= crate::dto::RpcVersion::V08 {
@@ -39,11 +39,11 @@ impl crate::dto::serialize::SerializeForVersion for FeeEstimate<'_> {
 #[derive(Debug, PartialEq, Eq)]
 struct PriceUnit<'a>(&'a pathfinder_executor::types::PriceUnit);
 
-impl crate::dto::serialize::SerializeForVersion for PriceUnit<'_> {
+impl crate::dto::SerializeForVersion for PriceUnit<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(match self.0 {
             pathfinder_executor::types::PriceUnit::Wei => "WEI",
             pathfinder_executor::types::PriceUnit::Fri => "FRI",

@@ -2,9 +2,8 @@ use pathfinder_common::{ContractAddress, L1TransactionHash};
 use primitive_types::{H160, H256};
 use serde::de::Error;
 
-use super::serialize::SerializeForVersion;
-use super::{DeserializeForVersion, Value};
-use crate::dto::serialize::{self, Serializer};
+use super::{DeserializeForVersion, SerializeForVersion, Value};
+use crate::dto::{self, Serializer};
 
 pub struct SyncStatus<'a>(pub &'a crate::types::syncing::Status);
 
@@ -232,7 +231,7 @@ impl DeserializeForVersion for U64Hex {
 }
 
 impl SerializeForVersion for SyncStatus<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("starting_block_hash", &BlockHash(&self.0.starting.hash))?;
         serializer.serialize_field("starting_block_num", &BlockNumber(self.0.starting.number))?;
@@ -245,7 +244,7 @@ impl SerializeForVersion for SyncStatus<'_> {
 }
 
 impl SerializeForVersion for Felt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
@@ -266,32 +265,32 @@ impl DeserializeForVersion for pathfinder_crypto::Felt {
 }
 
 impl SerializeForVersion for BlockHash<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize(&Felt(&self.0 .0))
     }
 }
 
 impl SerializeForVersion for ChainId<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let hex_str = hex_str::bytes_to_hex_str_stripped(self.0 .0.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
 
 impl SerializeForVersion for BlockNumber {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_u64(self.0.get())
     }
 }
 
 impl SerializeForVersion for U64Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
     }
 }
 
 impl SerializeForVersion for U128Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
     }
 }
@@ -311,13 +310,13 @@ impl DeserializeForVersion for U128Hex {
 }
 
 impl SerializeForVersion for H256Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_bytes()))
     }
 }
 
 impl SerializeForVersion for U256Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&<[u8; 32]>::from(
             self.0,
         )))
@@ -356,13 +355,13 @@ impl DeserializeForVersion for pathfinder_common::EthereumAddress {
 }
 
 impl SerializeForVersion for Address<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize(&Felt(&self.0 .0))
     }
 }
 
 impl SerializeForVersion for EthAddress<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let hex_str = hex_str::bytes_to_hex_str_full(self.0 .0.as_bytes());
         serializer.serialize_str(&hex_str)
     }
@@ -376,7 +375,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
+    use crate::dto::Serializer;
 
     #[test]
     fn felt() {

@@ -3,7 +3,7 @@ use pathfinder_common::{BlockId, ContractAddress};
 
 use crate::context::RpcContext;
 use crate::dto;
-use crate::dto::serialize::SerializeForVersion;
+use crate::dto::SerializeForVersion;
 use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
@@ -41,10 +41,7 @@ impl From<ContractClass> for Output {
 }
 
 impl SerializeForVersion for Output {
-    fn serialize(
-        &self,
-        serializer: dto::serialize::Serializer,
-    ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
+    fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
             Output::DeprecatedClass(cairo) => {
                 dto::DeprecatedContractClass(cairo).serialize(serializer)

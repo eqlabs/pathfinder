@@ -24,7 +24,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
 use super::{EmittedEvent, Params, TransactionStatusUpdate};
-use crate::dto::serialize::{self, SerializeForVersion};
+use crate::dto::SerializeForVersion;
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -116,7 +116,7 @@ async fn send_response(
 ) -> ControlFlow<()> {
     let message = match serde_json::to_string(
         &response
-            .serialize(serialize::Serializer::new(version))
+            .serialize(crate::dto::Serializer::new(version))
             .unwrap(),
     ) {
         Ok(x) => x,
@@ -1725,7 +1725,7 @@ mod tests {
             // Deserialize it to a generic value to avoid field ordering issues.
             let received: Value = serde_json::from_str(&raw_text).unwrap();
             let expected = response
-                .serialize(serialize::Serializer::new(RpcVersion::V07))
+                .serialize(crate::dto::Serializer::new(RpcVersion::V07))
                 .unwrap();
             assert_eq!(received, expected);
         }

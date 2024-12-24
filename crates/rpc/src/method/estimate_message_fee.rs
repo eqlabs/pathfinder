@@ -182,11 +182,11 @@ fn create_executor_transaction(
     Ok(transaction)
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         crate::dto::FeeEstimate(&self.0).serialize(serializer)
     }
 }

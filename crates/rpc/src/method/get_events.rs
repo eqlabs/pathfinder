@@ -15,8 +15,7 @@ use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::{self, SerializeForVersion, Serializer};
-use crate::dto::{self};
+use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::PendingData;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
@@ -573,7 +572,7 @@ pub struct GetEventsResult {
 }
 
 impl SerializeForVersion for EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|d| d.0))?;
@@ -589,13 +588,13 @@ impl SerializeForVersion for EmittedEvent {
 }
 
 impl SerializeForVersion for &'_ EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         (*self).serialize(serializer)
     }
 }
 
 impl SerializeForVersion for GetEventsResult {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;

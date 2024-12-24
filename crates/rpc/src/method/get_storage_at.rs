@@ -80,11 +80,11 @@ pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output,
     jh.await.context("Database read panic or shutting down")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize(&crate::dto::Felt(&self.0 .0))
     }
 }

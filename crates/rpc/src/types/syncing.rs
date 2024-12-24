@@ -22,11 +22,11 @@ impl std::fmt::Display for Syncing {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Syncing {
+impl crate::dto::SerializeForVersion for Syncing {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Syncing::False => serializer.serialize_bool(false),
             Syncing::Status(status) => status.serialize(serializer),
@@ -69,11 +69,11 @@ impl std::fmt::Display for Status {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Status {
+impl crate::dto::SerializeForVersion for Status {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("starting_block_hash", &self.starting.hash)?;
         serializer.serialize_field(
