@@ -166,7 +166,7 @@ impl EthereumApi for EthereumClient {
                     let _ = finalized_block_tx.send(block_number).await.unwrap();
                 }
             }
-            // This it to mitigate the warning: "this function depends on never type
+            // This is to mitigate the warning: "this function depends on never type
             // fallback being `()`" as we are unable to implement
             // [`util::task::FutureOutputExt`] for the never type `!`. Consequently, when
             // this warning becomes a hard error we should keep this workaround or by then
