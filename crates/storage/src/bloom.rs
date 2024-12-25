@@ -60,7 +60,6 @@
 //! specific set of keys without having to load and check each individual bloom
 //! filter.
 
-use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use bloomfilter::Bloom;
@@ -88,14 +87,17 @@ pub struct AggregateBloom {
 
 impl AggregateBloom {
     /// Maximum number of blocks to aggregate in a single `AggregateBloom`.
-    pub const BLOCK_RANGE_LEN: u64 = 8192;
-    const BLOCK_RANGE_BYTES: u64 = Self::BLOCK_RANGE_LEN / 8;
+    #[cfg(not(test))]
+    pub const BLOCK_RANGE_LEN: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+    #[cfg(test)]
+    pub const BLOCK_RANGE_LEN: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN_TEST;
+    const BLOCK_RANGE_BYTES: usize = Self::BLOCK_RANGE_LEN as usize / 8;
 
     /// Create a new `AggregateBloom` for the (`from_block`, `from_block` +
     /// [`block_range_length`](Self::BLOCK_RANGE_LEN) - 1) range.
     pub fn new(from_block: BlockNumber) -> Self {
         let to_block = from_block + Self::BLOCK_RANGE_LEN - 1;
-        let bitmap = vec![0; Self::BLOCK_RANGE_BYTES as usize * BloomFilter::BITVEC_LEN as usize];
+        let bitmap = vec![0; Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN as usize];
         Self::from_parts(from_block, to_block, bitmap)
     }
 
@@ -107,7 +109,7 @@ impl AggregateBloom {
     ) -> Self {
         let bitmap = zstd::bulk::decompress(
             &compressed_bitmap,
-            AggregateBloom::BLOCK_RANGE_BYTES as usize * BloomFilter::BITVEC_LEN as usize,
+            AggregateBloom::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN as usize,
         )
         .expect("Decompressing aggregate Bloom filter");
 
@@ -118,7 +120,7 @@ impl AggregateBloom {
         assert_eq!(from_block + Self::BLOCK_RANGE_LEN - 1, to_block);
         assert_eq!(
             bitmap.len() as u64,
-            Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN
+            Self::BLOCK_RANGE_BYTES as u64 * BloomFilter::BITVEC_LEN
         );
 
         Self {
@@ -141,7 +143,7 @@ impl AggregateBloom {
     ///
     /// Panics if the block number is not in the range of blocks that this
     /// aggregate covers.
-    pub fn add_bloom(&mut self, bloom: &BloomFilter, block_number: BlockNumber) {
+    pub fn insert(&mut self, bloom: &BloomFilter, block_number: BlockNumber) {
         assert!(
             (self.from_block..=self.to_block).contains(&block_number),
             "Block number {} is not in the range {}..={}",
@@ -151,91 +153,190 @@ impl AggregateBloom {
         );
         assert_eq!(bloom.0.number_of_hash_functions(), BloomFilter::K_NUM);
 
-        let bloom = bloom.0.bit_vec().to_bytes();
-        assert_eq!(bloom.len() as u64, BloomFilter::BITVEC_BYTES);
+        let bloom_bytes = bloom.0.bit_vec().to_bytes();
+        assert_eq!(bloom_bytes.len(), BloomFilter::BITVEC_BYTES as usize);
 
-        let relative_block_number = block_number.get() - self.from_block.get();
-        let byte_idx = (relative_block_number / 8) as usize;
-        let bit_idx = (relative_block_number % 8) as usize;
-        for (i, bloom_byte) in bloom.iter().enumerate() {
-            if *bloom_byte == 0 {
-                continue;
-            }
+        let relative_block_number = usize::try_from(block_number.get() - self.from_block.get())
+            .expect("usize can fit a u64");
 
-            let base = 8 * i;
-            for j in 0..8 {
-                let row_idx = base + j;
-                *self.bitmap_at_mut(row_idx, byte_idx) |= ((bloom_byte >> (7 - j)) & 1) << bit_idx;
-            }
-        }
+        // Column in the bitmap.
+        let byte_idx = relative_block_number / 8;
+        // Block number offset within a bitmap byte.
+        let bit_idx = relative_block_number % 8;
+
+        bloom_bytes
+            .into_iter()
+            .enumerate()
+            .filter(|(_, b)| *b != 0)
+            .for_each(|(i, bloom_byte)| {
+                let row_idx_base = 8 * i;
+
+                // Each bit (possible key index) in the Bloom filter has its own row.
+                for offset in 0..8 {
+                    let row_idx = (row_idx_base + offset) * AggregateBloom::BLOCK_RANGE_BYTES;
+                    let bitmap_idx = row_idx + byte_idx;
+                    // Reverse the offsets so that the most significant bit is considered as the
+                    // first.
+                    let bit = (bloom_byte >> (7 - offset)) & 1;
+                    self.bitmap[bitmap_idx] |= bit << (7 - bit_idx);
+                }
+            });
     }
 
-    /// Returns a set of [block numbers](BlockNumber) for which the given keys
-    /// are present in the aggregate.
-    pub fn blocks_for_keys(&self, keys: &[Felt]) -> BTreeSet<BlockNumber> {
+    /// Returns a [bit array](BlockRange) where each bit position represents an
+    /// offset from the [starting block][Self::from_block] of the aggregate
+    /// filter. If the bit is set, this block contains one of the gives keys.
+    /// False positives are possible.
+    ///
+    /// See [BlockRange::iter_ones].
+    pub fn blocks_for_keys(&self, keys: &[Felt]) -> BlockRange {
         if keys.is_empty() {
-            return self.all_blocks();
+            return BlockRange::FULL;
         }
 
-        let mut block_matches = BTreeSet::new();
+        let mut block_matches = BlockRange::EMPTY;
 
         for k in keys {
-            let mut row_to_check = vec![u8::MAX; Self::BLOCK_RANGE_BYTES as usize];
+            let mut matches_for_key = BlockRange::FULL;
 
             let indices = BloomFilter::indices_for_key(k);
             for row_idx in indices {
-                for (col_idx, row_byte) in row_to_check.iter_mut().enumerate() {
-                    *row_byte &= self.bitmap_at(row_idx, col_idx);
-                }
+                let row_start = row_idx * Self::BLOCK_RANGE_BYTES;
+                let row_end = row_start + Self::BLOCK_RANGE_BYTES;
+
+                let block_range = BlockRange::copy_from_slice(&self.bitmap[row_start..row_end]);
+
+                matches_for_key &= block_range;
             }
 
-            for (col_idx, byte) in row_to_check.iter().enumerate() {
-                if *byte == 0 {
-                    continue;
-                }
-
-                for i in 0..8 {
-                    if byte & (1 << i) != 0 {
-                        let match_number = self.from_block + col_idx as u64 * 8 + i as u64;
-                        block_matches.insert(match_number);
-                    }
-                }
-            }
+            block_matches |= matches_for_key;
         }
 
         block_matches
-    }
-
-    pub(super) fn all_blocks(&self) -> BTreeSet<BlockNumber> {
-        (self.from_block.get()..=self.to_block.get())
-            .map(BlockNumber::new_or_panic)
-            .collect()
-    }
-
-    fn bitmap_at(&self, row: usize, col: usize) -> u8 {
-        let idx = row * Self::BLOCK_RANGE_BYTES as usize + col;
-        self.bitmap[idx]
-    }
-
-    fn bitmap_at_mut(&mut self, row: usize, col: usize) -> &mut u8 {
-        let idx = row * Self::BLOCK_RANGE_BYTES as usize + col;
-        &mut self.bitmap[idx]
     }
 }
 
 impl std::fmt::Debug for AggregateBloom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use std::hash::{DefaultHasher, Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        self.bitmap.hash(&mut hasher);
-        let bitmap_hash = hasher.finish();
-
         f.debug_struct("AggregateBloom")
             .field("from_block", &self.from_block)
             .field("to_block", &self.to_block)
-            .field("bitmap_hash", &format!("{:#x}", bitmap_hash))
+            .field("bitmap_hash", &"...")
             .finish()
+    }
+}
+
+/// A [`AGGREGATE_BLOOM_BLOCK_RANGE_LEN`] sized bit array. Each bit represents
+/// an offset from the starting block of an [`AggregateBloom`].
+///
+/// Intended use is for return values of functions that check presence of keys
+/// inside an [`AggregateBloom`] filter. If a bit at position N is set, then the
+/// `aggregate_blom.from_block + N` [block number](BlockNumber) contains the
+/// given key. False positives are possible.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct BlockRange([u8; AggregateBloom::BLOCK_RANGE_BYTES]);
+
+#[allow(dead_code)]
+impl BlockRange {
+    /// An empty `BlockRange`.
+    pub(crate) const EMPTY: BlockRange = BlockRange([u8::MIN; AggregateBloom::BLOCK_RANGE_BYTES]);
+
+    /// A full `BlockRange`.
+    pub(crate) const FULL: BlockRange = BlockRange([u8::MAX; AggregateBloom::BLOCK_RANGE_BYTES]);
+
+    /// Create a `BlockRange` from a byte slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the slice is not of length
+    /// [`AggregateBloom::BLOCK_RANGE_BYTES`].
+    fn copy_from_slice(s: &[u8]) -> Self {
+        assert_eq!(s.len(), AggregateBloom::BLOCK_RANGE_BYTES);
+        let mut bytes = [0; AggregateBloom::BLOCK_RANGE_BYTES];
+        bytes.copy_from_slice(s);
+        Self(bytes)
+    }
+
+    /// Set the value of a bit at the given index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds of the block range.
+    fn set(&mut self, idx: usize, value: bool) {
+        assert!(idx < AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize);
+
+        let byte_idx = idx / 8;
+        let bit_idx = idx % 8;
+        if value {
+            self.0[byte_idx] |= 1 << (7 - bit_idx);
+        } else {
+            self.0[byte_idx] &= !(1 << (7 - bit_idx));
+        }
+    }
+
+    /// Create an iterator over the indices of bits that are set.
+    pub(crate) fn iter_ones(&self) -> impl Iterator<Item = usize> + '_ {
+        self.iter_val(true)
+    }
+
+    /// Create an iterator over the indices of bits that are not set.
+    pub(crate) fn iter_zeros(&self) -> impl Iterator<Item = usize> + '_ {
+        self.iter_val(false)
+    }
+
+    fn iter_val(&self, val: bool) -> impl Iterator<Item = usize> + '_ {
+        self.0
+            .iter()
+            .enumerate()
+            .flat_map(move |(byte_idx, &byte)| {
+                (0..8).filter_map(move |bit_idx| {
+                    if (byte >> (7 - bit_idx)) & 1 == val as u8 {
+                        Some(byte_idx * 8 + bit_idx)
+                    } else {
+                        None
+                    }
+                })
+            })
+    }
+}
+
+impl Default for BlockRange {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl std::ops::BitAndAssign for BlockRange {
+    fn bitand_assign(&mut self, rhs: Self) {
+        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
+            *a &= b;
+        }
+    }
+}
+
+impl std::ops::BitAnd for BlockRange {
+    type Output = Self;
+
+    fn bitand(mut self, rhs: Self) -> Self::Output {
+        self &= rhs;
+        self
+    }
+}
+
+impl std::ops::BitOrAssign for BlockRange {
+    fn bitor_assign(&mut self, rhs: Self) {
+        for (a, b) in self.0.iter_mut().zip(rhs.0.iter()) {
+            *a |= b;
+        }
+    }
+}
+
+impl std::ops::BitOr for BlockRange {
+    type Output = Self;
+
+    fn bitor(mut self, rhs: Self) -> Self::Output {
+        self |= rhs;
+        self
     }
 }
 
@@ -403,6 +504,17 @@ mod tests {
     const KEY_NOT_IN_FILTER: Felt =
         felt!("0x0218b538681900fad5a0b2ffe1d6781c0c3f14df5d32071ace0bdc9d46cb69ec");
 
+    macro_rules! blockrange {
+        ($($block:expr),* $(,)?) => {{
+            let mut bits = BlockRange::EMPTY;
+            $(
+                let idx = $block.get() - BlockNumber::GENESIS.get();
+                bits.set(idx as usize, true);
+            )*
+            bits
+        }};
+    }
+
     mod filters {
         use super::*;
 
@@ -415,10 +527,10 @@ mod tests {
             bloom.set(&KEY);
             bloom.set(&KEY1);
 
-            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            aggregate_bloom_filter.insert(&bloom, from_block);
 
             let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-            let expected = BTreeSet::from_iter(vec![from_block]);
+            let expected = blockrange![from_block];
             assert_eq!(block_matches, expected);
         }
 
@@ -430,11 +542,11 @@ mod tests {
             let mut bloom = BloomFilter::new();
             bloom.set(&KEY);
 
-            aggregate_bloom_filter.add_bloom(&bloom, from_block);
-            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+            aggregate_bloom_filter.insert(&bloom, from_block);
+            aggregate_bloom_filter.insert(&bloom, from_block + 1);
 
             let block_matches = aggregate_bloom_filter.blocks_for_keys(&[KEY]);
-            let expected = BTreeSet::from_iter(vec![from_block, from_block + 1]);
+            let expected = blockrange![from_block, from_block + 1];
             assert_eq!(block_matches, expected);
         }
 
@@ -447,11 +559,11 @@ mod tests {
             bloom.set(&KEY);
             bloom.set(&KEY1);
 
-            aggregate_bloom_filter.add_bloom(&bloom, from_block);
-            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+            aggregate_bloom_filter.insert(&bloom, from_block);
+            aggregate_bloom_filter.insert(&bloom, from_block + 1);
 
             let block_matches_empty = aggregate_bloom_filter.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-            assert_eq!(block_matches_empty, BTreeSet::new());
+            assert_eq!(block_matches_empty, BlockRange::EMPTY);
         }
 
         #[test]
@@ -462,8 +574,8 @@ mod tests {
             let mut bloom = BloomFilter::new();
             bloom.set(&KEY);
 
-            aggregate_bloom_filter.add_bloom(&bloom, from_block);
-            aggregate_bloom_filter.add_bloom(&bloom, from_block + 1);
+            aggregate_bloom_filter.insert(&bloom, from_block);
+            aggregate_bloom_filter.insert(&bloom, from_block + 1);
 
             let compressed_bitmap = aggregate_bloom_filter.compress_bitmap();
             let mut decompressed = AggregateBloom::from_existing_compressed(
@@ -471,14 +583,14 @@ mod tests {
                 aggregate_bloom_filter.to_block,
                 compressed_bitmap,
             );
-            decompressed.add_bloom(&bloom, from_block + 2);
+            decompressed.insert(&bloom, from_block + 2);
 
             let block_matches = decompressed.blocks_for_keys(&[KEY]);
-            let expected = BTreeSet::from_iter(vec![from_block, from_block + 1, from_block + 2]);
-            assert_eq!(block_matches, expected,);
+            let expected = blockrange![from_block, from_block + 1, from_block + 2];
+            assert_eq!(block_matches, expected);
 
             let block_matches_empty = decompressed.blocks_for_keys(&[KEY_NOT_IN_FILTER]);
-            assert_eq!(block_matches_empty, BTreeSet::new());
+            assert_eq!(block_matches_empty, BlockRange::EMPTY);
         }
 
         #[test]
@@ -490,10 +602,10 @@ mod tests {
             let mut bloom = BloomFilter::new();
             bloom.set(&KEY);
 
-            aggregate_bloom_filter.add_bloom(&bloom, from_block);
+            aggregate_bloom_filter.insert(&bloom, from_block);
 
-            let invalid_insert_pos = from_block + AggregateBloom::BLOCK_RANGE_LEN;
-            aggregate_bloom_filter.add_bloom(&bloom, invalid_insert_pos);
+            let invalid_insert_pos = from_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+            aggregate_bloom_filter.insert(&bloom, invalid_insert_pos);
         }
     }
 

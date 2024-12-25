@@ -74,7 +74,7 @@ fn migrate_event_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     while let Some(bloom_filter) = bloom_filters.next().transpose()? {
         let current_block = BlockNumber::new_or_panic(migrated_count);
 
-        aggregate.add_bloom(&bloom_filter, current_block);
+        aggregate.insert(&bloom_filter, current_block);
 
         if current_block == aggregate.to_block {
             insert_aggregate_stmt

@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,7 +15,7 @@ use pathfinder_common::{
 };
 use rusqlite::types::Value;
 
-use crate::bloom::{AggregateBloom, BloomFilter};
+use crate::bloom::{AggregateBloom, BlockRange, BloomFilter};
 use crate::prelude::*;
 
 // We're using the upper 4 bits of the 32 byte representation of a felt
@@ -109,7 +108,7 @@ impl Transaction<'_> {
             bloom.set_address(&event.from_address);
         }
 
-        running_event_filter.filter.add_bloom(&bloom, block_number);
+        running_event_filter.filter.insert(&bloom, block_number);
         running_event_filter.next_block = block_number + 1;
 
         // This check is the reason that blocks cannot be skipped, if they were we would
@@ -490,43 +489,53 @@ impl Transaction<'_> {
 
 impl AggregateBloom {
     /// Returns the block numbers that match the given constraints.
-    pub fn check(&self, constraints: &EventConstraints) -> BTreeSet<BlockNumber> {
+    pub fn check(&self, constraints: &EventConstraints) -> Vec<BlockNumber> {
         let addr_blocks = self.check_address(constraints.contract_address);
         let keys_blocks = self.check_keys(&constraints.keys);
 
-        addr_blocks.intersection(&keys_blocks).cloned().collect()
+        let block_matches = addr_blocks & keys_blocks;
+
+        block_matches
+            .iter_ones()
+            .map(|offset| self.from_block + offset as u64)
+            .collect()
     }
 
-    fn check_address(&self, address: Option<ContractAddress>) -> BTreeSet<BlockNumber> {
+    fn check_address(&self, address: Option<ContractAddress>) -> BlockRange {
         match address {
             Some(addr) => self.blocks_for_keys(&[addr.0]),
-            None => self.all_blocks(),
+            None => BlockRange::FULL,
         }
     }
 
-    fn check_keys(&self, keys: &[Vec<EventKey>]) -> BTreeSet<BlockNumber> {
-        if keys.is_empty() {
-            return self.all_blocks();
+    fn check_keys(&self, keys: &[Vec<EventKey>]) -> BlockRange {
+        if keys.is_empty() || keys.iter().any(Vec::is_empty) {
+            return BlockRange::FULL;
         }
 
-        keys.iter()
-            .enumerate()
-            .map(|(idx, key_group)| {
-                let indexed_keys: Vec<_> = key_group
-                    .iter()
-                    .map(|key| {
-                        let mut key_with_idx = key.0;
-                        key_with_idx.as_mut_be_bytes()[0] |= (idx as u8) << 4;
-                        key_with_idx
-                    })
-                    .collect();
+        let mut result = BlockRange::FULL;
 
-                self.blocks_for_keys(&indexed_keys)
-            })
-            .reduce(|blocks, blocks_for_key| {
-                blocks.intersection(&blocks_for_key).cloned().collect()
-            })
-            .unwrap_or_default()
+        for (idx, key_group) in keys.iter().enumerate() {
+            let indexed_keys: Vec<_> = key_group
+                .iter()
+                .map(|key| {
+                    let mut key_with_idx = key.0;
+                    key_with_idx.as_mut_be_bytes()[0] |= (idx as u8) << 4;
+                    key_with_idx
+                })
+                .collect();
+
+            let blocks_for_key = self.blocks_for_keys(&indexed_keys);
+
+            // No point to continue AND operations with an empty range.
+            if blocks_for_key == BlockRange::EMPTY {
+                return BlockRange::EMPTY;
+            }
+
+            result &= blocks_for_key;
+        }
+
+        result
     }
 }
 
@@ -688,7 +697,7 @@ pub(crate) fn rebuild_running_event_filter(
         };
 
         let block_number = first_running_event_filter_block + block as u64;
-        filter.add_bloom(bloom, block_number);
+        filter.insert(bloom, block_number);
     }
 
     Ok(RunningEventFilter {
@@ -763,8 +772,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -776,7 +785,7 @@ mod tests {
 
             assert_eq!(
                 aggregate.check(&constraints),
-                BTreeSet::from_iter(vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1])
+                vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1]
             );
         }
 
@@ -788,8 +797,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -799,7 +808,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
@@ -810,8 +819,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -821,7 +830,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
@@ -832,8 +841,8 @@ mod tests {
             filter.set_address(&contract_address!("0x1234"));
             filter.set_keys(&[event_key!("0xdeadbeef")]);
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -848,7 +857,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
@@ -859,8 +868,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
