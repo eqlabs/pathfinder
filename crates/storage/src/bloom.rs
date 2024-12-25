@@ -67,37 +67,42 @@ use cached::{Cached, SizedCache};
 use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
 
-pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = AggregateBloom::BLOCK_RANGE_LEN;
+/// Maximum number of blocks to aggregate in a single `AggregateBloom`.
+#[cfg(not(test))]
+pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = 8192;
+
+/// Make testing faster and easier by using a smaller range.
+#[cfg(test)]
+pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = 16;
 
 /// An aggregate of all Bloom filters for a given range of blocks.
 /// Before being added to `AggregateBloom`, each [`BloomFilter`] is
 /// rotated by 90 degrees (transposed).
 #[derive(Clone)]
 pub struct AggregateBloom {
-    /// A [Self::BLOCK_RANGE_LEN] by [BloomFilter::BITVEC_LEN] matrix stored in
-    /// a single array.
+    /// A [AGGREGATE_BLOOM_BLOCK_RANGE_LEN] by [BloomFilter::BITVEC_LEN] matrix
+    /// stored in a single array.
     bitmap: Vec<u8>,
+
     /// Starting (inclusive) block number for the range of blocks that this
     /// aggregate covers.
     pub from_block: BlockNumber,
+
     /// Ending (inclusive) block number for the range of blocks that this
     /// aggregate covers.
     pub to_block: BlockNumber,
 }
 
 impl AggregateBloom {
-    /// Maximum number of blocks to aggregate in a single `AggregateBloom`.
-    #[cfg(not(test))]
-    pub const BLOCK_RANGE_LEN: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
-    #[cfg(test)]
-    pub const BLOCK_RANGE_LEN: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN_TEST;
-    const BLOCK_RANGE_BYTES: usize = Self::BLOCK_RANGE_LEN as usize / 8;
+    /// Number of bytes that an `AggregateBloom` block range is represented by.
+    const BLOCK_RANGE_BYTES: usize = AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize / 8;
 
-    /// Create a new `AggregateBloom` for the (`from_block`, `from_block` +
-    /// [`block_range_length`](Self::BLOCK_RANGE_LEN) - 1) range.
+    /// Create a new `AggregateBloom` for the following range:
+    ///
+    /// \[`from_block`, `from_block + (AGGREGATE_BLOOM_BLOCK_RANGE_LEN) - 1`\]
     pub fn new(from_block: BlockNumber) -> Self {
-        let to_block = from_block + Self::BLOCK_RANGE_LEN - 1;
-        let bitmap = vec![0; Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN as usize];
+        let to_block = from_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
+        let bitmap = vec![0; Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN];
         Self::from_parts(from_block, to_block, bitmap)
     }
 
@@ -109,7 +114,7 @@ impl AggregateBloom {
     ) -> Self {
         let bitmap = zstd::bulk::decompress(
             &compressed_bitmap,
-            AggregateBloom::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN as usize,
+            Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN,
         )
         .expect("Decompressing aggregate Bloom filter");
 
@@ -117,10 +122,10 @@ impl AggregateBloom {
     }
 
     fn from_parts(from_block: BlockNumber, to_block: BlockNumber, bitmap: Vec<u8>) -> Self {
-        assert_eq!(from_block + Self::BLOCK_RANGE_LEN - 1, to_block);
+        assert_eq!(from_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1, to_block);
         assert_eq!(
-            bitmap.len() as u64,
-            Self::BLOCK_RANGE_BYTES as u64 * BloomFilter::BITVEC_LEN
+            bitmap.len(),
+            Self::BLOCK_RANGE_BYTES * BloomFilter::BITVEC_LEN
         );
 
         Self {
@@ -154,7 +159,7 @@ impl AggregateBloom {
         assert_eq!(bloom.0.number_of_hash_functions(), BloomFilter::K_NUM);
 
         let bloom_bytes = bloom.0.bit_vec().to_bytes();
-        assert_eq!(bloom_bytes.len(), BloomFilter::BITVEC_BYTES as usize);
+        assert_eq!(bloom_bytes.len(), BloomFilter::BITVEC_BYTES);
 
         let relative_block_number = usize::try_from(block_number.get() - self.from_block.get())
             .expect("usize can fit a u64");
@@ -173,7 +178,7 @@ impl AggregateBloom {
 
                 // Each bit (possible key index) in the Bloom filter has its own row.
                 for offset in 0..8 {
-                    let row_idx = (row_idx_base + offset) * AggregateBloom::BLOCK_RANGE_BYTES;
+                    let row_idx = (row_idx_base + offset) * Self::BLOCK_RANGE_BYTES;
                     let bitmap_idx = row_idx + byte_idx;
                     // Reverse the offsets so that the most significant bit is considered as the
                     // first.
@@ -351,14 +356,18 @@ struct CacheKey {
 pub(crate) struct AggregateBloomCache(Mutex<SizedCache<CacheKey, Arc<AggregateBloom>>>);
 
 impl AggregateBloomCache {
+    /// Create a new cache with the given size.
     pub fn with_size(size: usize) -> Self {
         Self(Mutex::new(SizedCache::with_size(size)))
     }
 
+    /// Reset the cache. Removes all entries and frees the memory.
     pub fn reset(&self) {
         self.0.lock().unwrap().cache_reset();
     }
 
+    /// Retrieve all [AggregateBloom] filters whose range of blocks overlaps
+    /// with the given range.
     pub fn get_many(
         &self,
         from_block: BlockNumber,
@@ -370,17 +379,17 @@ impl AggregateBloomCache {
         let to_block = to_block.get();
 
         // Align to the nearest lower multiple of BLOCK_RANGE_LEN.
-        let from_block_aligned = from_block - from_block % AggregateBloom::BLOCK_RANGE_LEN;
+        let from_block_aligned = from_block - from_block % AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
         // Align to the nearest higher multiple of BLOCK_RANGE_LEN, then subtract 1
         // (zero based indexing).
-        let to_block_aligned = to_block + AggregateBloom::BLOCK_RANGE_LEN
-            - (to_block % AggregateBloom::BLOCK_RANGE_LEN)
+        let to_block_aligned = to_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+            - (to_block % AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
             - 1;
 
         (from_block_aligned..=to_block_aligned)
-            .step_by(AggregateBloom::BLOCK_RANGE_LEN as usize)
+            .step_by(AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize)
             .map(|from| {
-                let to = from + AggregateBloom::BLOCK_RANGE_LEN - 1;
+                let to = from + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
                 (
                     BlockNumber::new_or_panic(from),
                     BlockNumber::new_or_panic(to),
@@ -396,6 +405,7 @@ impl AggregateBloomCache {
             .collect()
     }
 
+    /// Store the given filters in the cache.
     pub fn set_many(&self, filters: &[Arc<AggregateBloom>]) {
         let mut cache = self.0.lock().unwrap();
         filters.iter().for_each(|filter| {
@@ -413,15 +423,15 @@ pub(crate) struct BloomFilter(Bloom<Felt>);
 
 impl BloomFilter {
     // The size of the bitmap used by the Bloom filter.
-    const BITVEC_LEN: u64 = 16_384;
+    const BITVEC_LEN: usize = 16_384;
     // The size of the bitmap used by the Bloom filter (in bytes).
-    const BITVEC_BYTES: u64 = Self::BITVEC_LEN / 8;
+    const BITVEC_BYTES: usize = Self::BITVEC_LEN / 8;
     // The number of hash functions used by the Bloom filter.
     // We need this value to be able to re-create the filter with the deserialized
     // bitmap.
     const K_NUM: u32 = 12;
     // The maximal number of items anticipated to be inserted into the Bloom filter.
-    const ITEMS_COUNT: u32 = 1024;
+    const ITEMS_COUNT: usize = 1024;
     // The seed used by the hash functions of the filter.
     // This is a randomly generated vector of 32 bytes.
     const SEED: [u8; 32] = [
@@ -431,18 +441,14 @@ impl BloomFilter {
     ];
 
     pub fn new() -> Self {
-        let bloom = Bloom::new_with_seed(
-            Self::BITVEC_BYTES as usize,
-            Self::ITEMS_COUNT as usize,
-            &Self::SEED,
-        );
+        let bloom = Bloom::new_with_seed(Self::BITVEC_BYTES, Self::ITEMS_COUNT, &Self::SEED);
         assert_eq!(bloom.number_of_hash_functions(), Self::K_NUM);
 
         Self(bloom)
     }
 
     pub fn from_compressed_bytes(bytes: &[u8]) -> Self {
-        let bytes = zstd::bulk::decompress(bytes, Self::BITVEC_BYTES as usize * 2)
+        let bytes = zstd::bulk::decompress(bytes, Self::BITVEC_BYTES * 2)
             .expect("Decompressing Bloom filter");
         Self::from_bytes(&bytes)
     }
@@ -454,7 +460,7 @@ impl BloomFilter {
         let k4 = u64::from_le_bytes(Self::SEED[24..32].try_into().unwrap());
         let bloom = Bloom::from_existing(
             bytes,
-            Self::BITVEC_BYTES * 8,
+            Self::BITVEC_BYTES as u64 * 8,
             Self::K_NUM,
             [(k1, k2), (k3, k4)],
         );
@@ -621,44 +627,49 @@ mod tests {
 
         #[test]
         fn set_then_get_many_aligned() {
-            let cache = AggregateBloomCache::with_size(2);
+            let cache = AggregateBloomCache::with_size(3);
 
-            let first_range_start = BlockNumber::GENESIS;
-            let second_range_start = BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN;
-            let second_range_end = second_range_start + AggregateBloom::BLOCK_RANGE_LEN - 1;
+            let range_start1 = BlockNumber::GENESIS;
+            let range_start2 = BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+            let range_start3 = BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+
+            let range_end2 = range_start2 + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
 
             let filters = vec![
-                Arc::new(AggregateBloom::new(first_range_start)),
-                Arc::new(AggregateBloom::new(second_range_start)),
+                Arc::new(AggregateBloom::new(range_start1)),
+                Arc::new(AggregateBloom::new(range_start2)),
+                Arc::new(AggregateBloom::new(range_start3)),
             ];
 
             cache.set_many(&filters);
 
-            let retrieved = cache.get_many(first_range_start, second_range_end);
+            let retrieved = cache.get_many(range_start1, range_end2);
 
-            assert_eq!(retrieved, filters);
+            assert_eq!(retrieved, filters[0..2]);
         }
 
         #[test]
         fn set_then_get_many_unaligned() {
-            let cache = AggregateBloomCache::with_size(2);
+            let cache = AggregateBloomCache::with_size(3);
 
-            let first_range_start = BlockNumber::GENESIS;
-            let second_range_start = BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN;
+            let range_start1 = BlockNumber::GENESIS;
+            let range_start2 = BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+            let range_start3 = BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
             let filters = vec![
-                Arc::new(AggregateBloom::new(first_range_start)),
-                Arc::new(AggregateBloom::new(second_range_start)),
+                Arc::new(AggregateBloom::new(range_start1)),
+                Arc::new(AggregateBloom::new(range_start2)),
+                Arc::new(AggregateBloom::new(range_start3)),
             ];
 
-            let start = first_range_start + 15;
-            let end = second_range_start + 15;
+            let start = range_start2 + 15;
+            let end = range_start3 + 15;
 
             cache.set_many(&filters);
 
             let retrieved = cache.get_many(start, end);
 
-            assert_eq!(retrieved, filters);
+            assert_eq!(retrieved, &filters[1..3]);
         }
 
         #[test]
@@ -668,24 +679,57 @@ mod tests {
             let filters = vec![
                 Arc::new(AggregateBloom::new(BlockNumber::GENESIS)),
                 Arc::new(AggregateBloom::new(
-                    BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
+                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
                 )),
                 Arc::new(AggregateBloom::new(
-                    BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
+                    BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
                 )),
                 Arc::new(AggregateBloom::new(
-                    BlockNumber::GENESIS + 3 * AggregateBloom::BLOCK_RANGE_LEN,
+                    BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
                 )),
             ];
 
             cache.set_many(&filters);
 
-            let first_range_start = BlockNumber::GENESIS;
-            let second_range_end = BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN - 1;
+            let range_start1 = BlockNumber::GENESIS;
+            let range_end2 = BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
 
-            let retrieved = cache.get_many(first_range_start, second_range_end);
+            let retrieved = cache.get_many(range_start1, range_end2);
 
             assert_eq!(retrieved, filters[0..2].to_vec());
+        }
+
+        #[test]
+        fn cache_edge_cases() {
+            let cache = AggregateBloomCache::with_size(2);
+
+            let first_range_start = BlockNumber::GENESIS;
+            let first_range_end = first_range_start + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
+            let second_range_start = first_range_end + 1;
+            let second_range_end = second_range_start + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
+
+            let filters = vec![
+                Arc::new(AggregateBloom::new(first_range_start)),
+                Arc::new(AggregateBloom::new(second_range_start)),
+            ];
+
+            cache.set_many(&filters);
+
+            // Edge cases around the lower bound.
+            let retrieved = cache.get_many(first_range_end - 1, second_range_end);
+            assert_eq!(retrieved, filters[..]);
+            let retrieved = cache.get_many(first_range_end, second_range_end);
+            assert_eq!(retrieved, filters[..]);
+            let retrieved = cache.get_many(first_range_end + 1, second_range_end);
+            assert_eq!(retrieved, filters[1..]);
+
+            // Edge cases around the upper bound.
+            let retrieved = cache.get_many(first_range_start, first_range_end - 1);
+            assert_eq!(retrieved, filters[0..1]);
+            let retrieved = cache.get_many(first_range_start, first_range_end);
+            assert_eq!(retrieved, filters[0..1]);
+            let retrieved = cache.get_many(first_range_start, first_range_end + 1);
+            assert_eq!(retrieved, filters[0..=1]);
         }
     }
 }

@@ -561,7 +561,17 @@ fn schema_version(connection: &rusqlite::Connection) -> anyhow::Result<usize> {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+    use std::sync::LazyLock;
+
+    use rstest::rstest;
+    use test_utils::*;
+
     use super::*;
+    static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
+    static MAX_EVENT_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(5).unwrap());
 
     #[test]
     fn schema_version_defaults_to_zero() {
@@ -678,22 +688,13 @@ mod tests {
 
     #[test]
     fn running_event_filter_rebuilt_after_shutdown() {
-        use std::num::NonZeroUsize;
-        use std::sync::LazyLock;
-
-        use test_utils::*;
-
-        static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
-            LazyLock::new(|| NonZeroUsize::new(10).unwrap());
-        static MAX_EVENT_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
-            LazyLock::new(|| NonZeroUsize::new(3).unwrap());
-
-        let blocks = [0, 1, 2, 3, 4, 5];
+        let n_blocks = 6;
         let transactions_per_block = 2;
-        let headers = create_blocks(&blocks);
+        let headers = create_blocks(n_blocks);
         let transactions_and_receipts =
-            create_transactions_and_receipts(blocks.len(), transactions_per_block);
-        let emitted_events = extract_events(&headers, &transactions_and_receipts);
+            create_transactions_and_receipts(n_blocks, transactions_per_block);
+        let emitted_events =
+            extract_events(&headers, &transactions_and_receipts, transactions_per_block);
         let insert_block_data = |tx: &Transaction<'_>, idx: usize| {
             let header = &headers[idx];
 
@@ -797,5 +798,108 @@ mod tests {
         for e in events_before {
             assert!(events_after.contains(&e));
         }
+    }
+
+    #[rstest]
+    #[case::block_before_full_range(AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1, 0)]
+    #[case::full_block_range(AGGREGATE_BLOOM_BLOCK_RANGE_LEN, 1)]
+    #[case::block_after_full_range(AGGREGATE_BLOOM_BLOCK_RANGE_LEN + 1, 1)]
+    fn rebuild_running_event_filter_edge_cases(
+        #[case] n_blocks: u64,
+        #[case] expected_insert_count: u64,
+    ) {
+        let n_blocks = usize::try_from(n_blocks).unwrap();
+        let transactions_per_block = 1;
+        let headers = create_blocks(n_blocks);
+        let transactions_and_receipts =
+            create_transactions_and_receipts(n_blocks, transactions_per_block);
+        let emitted_events =
+            extract_events(&headers, &transactions_and_receipts, transactions_per_block);
+        let events_per_block = emitted_events.len() / n_blocks;
+
+        let insert_block_data = |tx: &Transaction<'_>, idx: usize| {
+            let header = &headers[idx];
+
+            tx.insert_block_header(header).unwrap();
+            tx.insert_transaction_data(
+                header.number,
+                &transactions_and_receipts
+                    [idx * transactions_per_block..(idx + 1) * transactions_per_block]
+                    .iter()
+                    .cloned()
+                    .map(|(tx, receipt, ..)| (tx, receipt))
+                    .collect::<Vec<_>>(),
+                Some(
+                    &transactions_and_receipts
+                        [idx * transactions_per_block..(idx + 1) * transactions_per_block]
+                        .iter()
+                        .cloned()
+                        .map(|(_, _, events)| events)
+                        .collect::<Vec<_>>(),
+                ),
+            )
+            .unwrap();
+        };
+
+        let db = crate::StorageBuilder::in_memory().unwrap();
+        let db_path = Arc::clone(&db.0.database_path).to_path_buf();
+
+        // Keep this around so that the in-memory database doesn't get dropped.
+        let mut rsqlite_conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        let mut conn = db.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        for i in 0..n_blocks {
+            insert_block_data(&tx, i);
+        }
+
+        // Pretend like we shut down by dropping these.
+        tx.commit().unwrap();
+        drop(conn);
+        drop(db);
+
+        let db = crate::StorageBuilder::file(db_path)
+            .journal_mode(JournalMode::Rollback)
+            .migrate()
+            .unwrap()
+            .create_pool(NonZeroU32::new(5).unwrap())
+            .unwrap();
+
+        let mut conn = db.connection().unwrap();
+        let tx = conn.transaction().unwrap();
+
+        let to_block = BlockNumber::GENESIS + n_blocks as u64;
+
+        let constraints = EventConstraints {
+            from_block: None,
+            to_block: Some(to_block),
+            contract_address: None,
+            keys: vec![],
+            page_size: 1024,
+            offset: 0,
+        };
+
+        let events = tx
+            .events(
+                &constraints,
+                *MAX_BLOCKS_TO_SCAN,
+                *MAX_EVENT_FILTERS_TO_LOAD,
+            )
+            .unwrap()
+            .events;
+
+        let inserted_event_filter_count = rsqlite_conn
+            .transaction()
+            .unwrap()
+            .prepare("SELECT COUNT(*) FROM event_filters")
+            .unwrap()
+            .query_row([], |row| row.get::<_, u64>(0))
+            .unwrap();
+
+        assert_eq!(inserted_event_filter_count, expected_insert_count);
+
+        let expected = &emitted_events[..events_per_block * n_blocks];
+        assert_eq!(events, expected);
     }
 }

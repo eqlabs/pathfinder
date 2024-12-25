@@ -31,8 +31,9 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 }
 
 /// Migrate individual event bloom filters to the new aggregate table. We only
-/// need to migrate all of the [AggregateBloom::BLOCK_RANGE_LEN] sized chunks.
-/// The remainder will be reconstructed by the [crate::StorageManager] as the
+/// need to migrate all of the [crate::bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN]
+/// sized chunks. The remainder will be reconstructed by the
+/// [crate::StorageManager] as the
 /// [RunningEventFilter](crate::connection::event::RunningEventFilter).
 fn migrate_event_filters(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     let bloom_filter_count = tx
