@@ -10,7 +10,6 @@ members = [
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
     "crates/gateway-types",
-    "crates/make-stream",
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_proto",
@@ -23,6 +22,7 @@ members = [
     "crates/storage",
     "crates/tagged",
     "crates/tagged-debug-derive",
+    "crates/util",
 ]
 exclude = [
     "crates/load-test",
@@ -137,6 +137,7 @@ tokio = "1.37.0"
 tokio-retry = "0.3.0"
 tokio-stream = "0.1.14"
 tokio-tungstenite = "0.21"
+tokio-util = { version = "0.7.13", features = ["rt"] }
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
 tracing = "0.1.37"

@@ -5,7 +5,6 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 name = "pathfinder_lib"
@@ -30,7 +29,6 @@ futures = { workspace = true, features = ["alloc"] }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }
-make-stream = { path = "../make-stream" }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 p2p = { path = "../p2p" }
@@ -71,6 +69,7 @@ tracing-subscriber = { workspace = true, features = [
     "ansi",
 ] }
 url = { workspace = true }
+util = { path = "../util" }
 zeroize = { workspace = true }
 zstd = { workspace = true }
 

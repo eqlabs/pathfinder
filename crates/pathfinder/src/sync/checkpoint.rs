@@ -38,7 +38,6 @@ use primitive_types::H160;
 use serde_json::de;
 use starknet_gateway_client::{Client, GatewayApi};
 use tokio::sync::Mutex;
-use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
 use crate::state::block_hash::calculate_transaction_commitment;
@@ -607,7 +606,7 @@ struct LocalState {
 impl LocalState {
     async fn from_db(storage: Storage, checkpoint: EthereumStateUpdate) -> anyhow::Result<Self> {
         // TODO: this should include header gaps.
-        spawn_blocking(move || {
+        util::task::spawn_blocking(move |_| {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
@@ -641,7 +640,7 @@ async fn rollback_to_anchor(
     local: BlockNumber,
     anchor: Option<BlockNumber>,
 ) -> anyhow::Result<()> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         tracing::info!(%local, ?anchor, "Rolling back storage to anchor point");
 
         let last_block_to_remove = anchor.map(|n| n + 1).unwrap_or_default();
@@ -671,6 +670,8 @@ async fn rollback_to_anchor(
             .reset()
             .context("Resetting local DB state after reorg")?;
 
+        transaction.commit().context("Committing transaction")?;
+
         Ok(())
     })
     .await
@@ -678,7 +679,7 @@ async fn rollback_to_anchor(
 }
 
 async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -697,6 +698,8 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 
 #[cfg(test)]
 mod tests {
+    use tokio::task::spawn_blocking;
+
     use super::*;
 
     mod handle_header_stream {

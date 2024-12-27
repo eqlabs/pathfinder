@@ -152,14 +152,14 @@ where
         };
 
         // We start downloading the signature for the block
-        let signature_handle = tokio::spawn({
+        let signature_handle = util::task::spawn({
             let sequencer = sequencer.clone();
             async move {
                 let t_signature = std::time::Instant::now();
                 let result = sequencer.signature(next.into()).await;
                 let t_signature = t_signature.elapsed();
 
-                (result, t_signature)
+                Ok((result, t_signature))
             }
         });
 
@@ -261,8 +261,10 @@ where
         let t_declare = t_declare.elapsed();
 
         // Download signature
-        let (signature_result, t_signature) =
-            signature_handle.await.context("Joining signature task")?;
+        let (signature_result, t_signature) = signature_handle
+            .await
+            .context("Joining signature task")?
+            .context("Task cancelled")?;
         let (signature, t_signature) = match signature_result {
             Ok(signature) => (signature, t_signature),
             Err(SequencerError::StarknetError(err))
@@ -299,14 +301,14 @@ where
         let (signature, state_update) = match block_validation_mode {
             BlockValidationMode::Strict => {
                 let block_hash = block.block_hash;
-                let (verify_result, signature, state_update) = tokio::task::spawn_blocking(move || -> (Result<(), pathfinder_crypto::signature::SignatureError>, BlockCommitmentSignature, Box<StateUpdate>) {
-                    let verify_result = signature
-                        .verify(
-                            sequencer_public_key,
-                            block_hash,
-                        );
-                    (verify_result, signature, state_update)
-                }).await?;
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                rayon::spawn(move || {
+                    let verify_result = signature.verify(sequencer_public_key, block_hash);
+                    let _ = tx.send((verify_result, signature, state_update));
+                });
+                let (verify_result, signature, state_update) =
+                    rx.await.context("Panic on rayon thread")?;
+
                 if let Err(error) = verify_result {
                     tracing::warn!(%error, block_number=%block.block_number, "Block commitment signature mismatch");
                 }
@@ -413,7 +415,7 @@ pub async fn download_new_classes(
         return Ok(vec![]);
     }
 
-    let require_downloading = tokio::task::spawn_blocking(move || {
+    let require_downloading = util::task::spawn_blocking(move |_| {
         let mut db_conn = storage
             .connection()
             .context("Creating database connection")?;
@@ -510,7 +512,8 @@ async fn download_block(
             let block = recv.await.expect("Panic on rayon thread")?;
 
             // Check if commitments and block hash are correct
-            let verify_hash = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            rayon::spawn(move || {
                 let state_diff_commitment =
                     StateUpdateData::from(state_update.clone()).compute_state_diff_commitment();
                 let state_update = Box::new(state_update);
@@ -524,11 +527,13 @@ async fn download_block(
                     chain,
                     chain_id,
                 )
-                .with_context(move || format!("Verify block {block_number}"))?;
-                Ok((block, state_update, state_diff_commitment, verify_result))
+                .with_context(move || format!("Verify block {block_number}"));
+
+                let _ = tx.send((block, state_update, state_diff_commitment, verify_result));
             });
             let (block, state_update, state_diff_commitment, verify_result) =
-                verify_hash.await.context("Verify block hash")??;
+                rx.await.context("Panic on rayon thread")?;
+            let verify_result = verify_result.context("Verify block hash")?;
 
             match (block.status, verify_result, mode) {
                 (

@@ -153,7 +153,8 @@ impl EthereumApi for EthereumClient {
         let provider_clone = provider.clone();
         let (finalized_block_tx, mut finalized_block_rx) =
             tokio::sync::mpsc::channel::<L1BlockNumber>(1);
-        tokio::spawn(async move {
+
+        util::task::spawn(async move {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
                 interval.tick().await;
@@ -165,6 +166,14 @@ impl EthereumApi for EthereumClient {
                     let _ = finalized_block_tx.send(block_number).await.unwrap();
                 }
             }
+            // This it to mitigate the warning: "this function depends on never type
+            // fallback being `()`" as we are unable to implement
+            // [`util::task::FutureOutputExt`] for the never type `!`. Consequently, when
+            // this warning becomes a hard error we should keep this workaround or by then
+            // the `!` type will not be experimental anymore.
+            // Warning related issue: https://github.com/rust-lang/rust/issues/123748
+            #[allow(unreachable_code)]
+            ()
         });
 
         // Process incoming events

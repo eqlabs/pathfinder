@@ -1,5 +1,6 @@
 [package]
-name = "make-stream"
+name = "util"
+description = "Common Rust utilities"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -7,5 +8,8 @@ license = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+anyhow = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }

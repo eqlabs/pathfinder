@@ -38,8 +38,7 @@ pub enum Output {
 /// Get block information with full transactions given the block id
 pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut connection = context
             .storage

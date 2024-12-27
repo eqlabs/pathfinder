@@ -198,7 +198,6 @@ impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("state_commitment", self.state_commitment)?;
-        serializer.serialize_optional("class_commitment", self.class_commitment)?;
         serializer.serialize_field("contract_proof", &self.contract_proof)?;
         serializer.serialize_optional("contract_data", self.contract_data.clone())?;
         serializer.end()
@@ -217,7 +216,6 @@ impl crate::dto::serialize::SerializeForVersion for GetClassProofOutput {
         serializer: crate::dto::serialize::Serializer,
     ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_optional("class_commitment", self.class_commitment)?;
         serializer.serialize_field("class_proof", &self.class_proof)?;
         serializer.end()
     }
@@ -248,8 +246,7 @@ pub async fn get_proof(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -391,8 +388,7 @@ pub async fn get_class_proof(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
