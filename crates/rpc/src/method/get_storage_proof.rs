@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
@@ -9,6 +7,7 @@ use pathfinder_common::{
     ClassHash,
     ContractAddress,
     ContractNonce,
+    ContractRoot,
     StorageAddress,
 };
 use pathfinder_crypto::Felt;
@@ -376,7 +375,7 @@ fn get_class_proofs(
                 node_hash,
                 node: ProofNode(node),
             })
-            .collect::<HashSet<_>>()
+            .collect::<Vec<_>>()
             .into_iter()
             .collect();
     let classes_proof = NodeHashToNodeMappings(nodes);
@@ -421,7 +420,7 @@ fn get_contract_proofs(
                 node_hash,
                 node: ProofNode(node),
             })
-            .collect::<HashSet<_>>()
+            .collect::<Vec<_>>()
             .into_iter()
             .collect();
 
@@ -460,31 +459,52 @@ fn get_contract_storage_proofs(
         Some(contracts_storage_keys) => {
             let mut proofs = vec![];
             for csk in contracts_storage_keys {
-                let root = tx
-                    .contract_root_index(block_number, csk.contract_address)
-                    .context("Querying contract root index")?;
+                if csk.storage_keys.is_empty() {
+                    let contract_root = tx
+                        .contract_root(block_number, csk.contract_address)
+                        .context("Querying contract's root")?
+                        .unwrap_or_default();
 
-                if let Some(root) = root {
-                    let nodes: Vec<NodeHashToNodeMapping> = ContractsStorageTree::get_proofs(
-                        &tx,
-                        csk.contract_address,
-                        block_number,
-                        &csk.storage_keys,
-                        root,
-                    )?
-                    .into_iter()
-                    .flatten()
-                    .map(|(node, node_hash)| NodeHashToNodeMapping {
+                    let ContractRoot(node_hash) = contract_root;
+
+                    let merkle = TrieNode::Binary {
+                        left: Felt::default(),
+                        right: Felt::default(),
+                    };
+
+                    let node_map = NodeHashToNodeMapping {
                         node_hash,
-                        node: ProofNode(node),
-                    })
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect();
+                        node: ProofNode(merkle),
+                    };
 
-                    proofs.push(NodeHashToNodeMappings(nodes));
+                    proofs.push(NodeHashToNodeMappings(vec![node_map]));
                 } else {
-                    proofs.push(NodeHashToNodeMappings(vec![]));
+                    let root = tx
+                        .contract_root_index(block_number, csk.contract_address)
+                        .context("Querying contract root index")?;
+
+                    if let Some(root) = root {
+                        ContractsStorageTree::get_proofs(
+                            &tx,
+                            csk.contract_address,
+                            block_number,
+                            &csk.storage_keys,
+                            root,
+                        )?
+                        .into_iter()
+                        .for_each(|vec_nodes| {
+                            let nodes = vec_nodes
+                                .into_iter()
+                                .map(|(node, node_hash)| NodeHashToNodeMapping {
+                                    node_hash,
+                                    node: ProofNode(node),
+                                })
+                                .collect::<Vec<_>>();
+                            proofs.push(NodeHashToNodeMappings(nodes));
+                        });
+                    } else {
+                        proofs.push(NodeHashToNodeMappings(vec![]));
+                    }
                 }
             }
 
@@ -861,6 +881,7 @@ mod tests {
         Class,
         ContractNonce,
         ContractStorage,
+        ContractStorageEmptyKeys,
     }
 
     impl PartialRequest {
@@ -922,6 +943,25 @@ mod tests {
                         }]),
                     }
                 }
+                Self::ContractStorageEmptyKeys => {
+                    let (contract_address, _update) = block
+                        .state_update
+                        .as_ref()
+                        .unwrap()
+                        .contract_updates
+                        .iter()
+                        .next()
+                        .unwrap();
+                    Input {
+                        block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+                        class_hashes: None,
+                        contract_addresses: None,
+                        contracts_storage_keys: Some(vec![ContractStorageKeys {
+                            contract_address: *contract_address,
+                            storage_keys: vec![],
+                        }]),
+                    }
+                }
             }
         }
     }
@@ -930,6 +970,7 @@ mod tests {
     #[case::class_request(PartialRequest::Class)]
     #[case::contract_request(PartialRequest::ContractNonce)]
     #[case::contract_storage_request(PartialRequest::ContractStorage)]
+    #[case::contract_storage_request(PartialRequest::ContractStorageEmptyKeys)]
     #[tokio::test]
     async fn partial_query(#[case] req: PartialRequest) {
         use pathfinder_storage::fake::{fill, generate};
@@ -983,6 +1024,23 @@ mod tests {
             PartialRequest::ContractStorage => {
                 // Some contract storage proof should be present
                 assert!(!output.contracts_storage_proofs.is_empty());
+                // The rest should be empty
+                assert!(output.classes_proof.0.is_empty());
+                assert!(output.contracts_proof.nodes.0.is_empty());
+                assert!(output.contracts_proof.contract_leaves_data.is_empty());
+            }
+            PartialRequest::ContractStorageEmptyKeys => {
+                // Some contract storage proof should be present
+                assert!(!output.contracts_storage_proofs.is_empty());
+                // It should have only one element and the nodes should be default empty
+                assert!(output.contracts_storage_proofs.len() == 1);
+                assert_eq!(
+                    output.contracts_storage_proofs[0].0[0].node.0,
+                    TrieNode::Binary {
+                        left: Felt::default(),
+                        right: Felt::default(),
+                    }
+                );
                 // The rest should be empty
                 assert!(output.classes_proof.0.is_empty());
                 assert!(output.contracts_proof.nodes.0.is_empty());
