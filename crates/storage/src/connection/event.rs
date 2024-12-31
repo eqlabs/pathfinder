@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,7 +15,7 @@ use pathfinder_common::{
 };
 use rusqlite::types::Value;
 
-use crate::bloom::{AggregateBloom, BloomFilter};
+use crate::bloom::{AggregateBloom, BlockRange, BloomFilter};
 use crate::prelude::*;
 
 // We're using the upper 4 bits of the 32 byte representation of a felt
@@ -109,7 +108,7 @@ impl Transaction<'_> {
             bloom.set_address(&event.from_address);
         }
 
-        running_event_filter.filter.add_bloom(&bloom, block_number);
+        running_event_filter.filter.insert(&bloom, block_number);
         running_event_filter.next_block = block_number + 1;
 
         // This check is the reason that blocks cannot be skipped, if they were we would
@@ -490,43 +489,53 @@ impl Transaction<'_> {
 
 impl AggregateBloom {
     /// Returns the block numbers that match the given constraints.
-    pub fn check(&self, constraints: &EventConstraints) -> BTreeSet<BlockNumber> {
+    pub fn check(&self, constraints: &EventConstraints) -> Vec<BlockNumber> {
         let addr_blocks = self.check_address(constraints.contract_address);
         let keys_blocks = self.check_keys(&constraints.keys);
 
-        addr_blocks.intersection(&keys_blocks).cloned().collect()
+        let block_matches = addr_blocks & keys_blocks;
+
+        block_matches
+            .iter_ones()
+            .map(|offset| self.from_block + offset as u64)
+            .collect()
     }
 
-    fn check_address(&self, address: Option<ContractAddress>) -> BTreeSet<BlockNumber> {
+    fn check_address(&self, address: Option<ContractAddress>) -> BlockRange {
         match address {
             Some(addr) => self.blocks_for_keys(&[addr.0]),
-            None => self.all_blocks(),
+            None => BlockRange::FULL,
         }
     }
 
-    fn check_keys(&self, keys: &[Vec<EventKey>]) -> BTreeSet<BlockNumber> {
-        if keys.is_empty() {
-            return self.all_blocks();
+    fn check_keys(&self, keys: &[Vec<EventKey>]) -> BlockRange {
+        if keys.is_empty() || keys.iter().any(Vec::is_empty) {
+            return BlockRange::FULL;
         }
 
-        keys.iter()
-            .enumerate()
-            .map(|(idx, key_group)| {
-                let indexed_keys: Vec<_> = key_group
-                    .iter()
-                    .map(|key| {
-                        let mut key_with_idx = key.0;
-                        key_with_idx.as_mut_be_bytes()[0] |= (idx as u8) << 4;
-                        key_with_idx
-                    })
-                    .collect();
+        let mut result = BlockRange::FULL;
 
-                self.blocks_for_keys(&indexed_keys)
-            })
-            .reduce(|blocks, blocks_for_key| {
-                blocks.intersection(&blocks_for_key).cloned().collect()
-            })
-            .unwrap_or_default()
+        for (idx, key_group) in keys.iter().enumerate() {
+            let indexed_keys: Vec<_> = key_group
+                .iter()
+                .map(|key| {
+                    let mut key_with_idx = key.0;
+                    key_with_idx.as_mut_be_bytes()[0] |= (idx as u8) << 4;
+                    key_with_idx
+                })
+                .collect();
+
+            let blocks_for_key = self.blocks_for_keys(&indexed_keys);
+
+            // No point to continue AND operations with an empty range.
+            if blocks_for_key == BlockRange::EMPTY {
+                return BlockRange::EMPTY;
+            }
+
+            result &= blocks_for_key;
+        }
+
+        result
     }
 }
 
@@ -552,7 +561,7 @@ pub(crate) struct RunningEventFilter {
 /// Rebuild the [event filter](RunningEventFilter) for the range of blocks
 /// between the last stored `to_block` in the event filter table and the last
 /// overall block in the database. This is needed because the aggregate event
-/// filter for each [block range](crate::bloom::AggregateBloom::BLOCK_RANGE_LEN)
+/// filter for each [block range](crate::bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
 /// is stored once the range is complete, before that it is kept in memory and
 /// can be lost upon shutdown.
 pub(crate) fn rebuild_running_event_filter(
@@ -688,7 +697,7 @@ pub(crate) fn rebuild_running_event_filter(
         };
 
         let block_number = first_running_event_filter_block + block as u64;
-        filter.add_bloom(bloom, block_number);
+        filter.insert(bloom, block_number);
     }
 
     Ok(RunningEventFilter {
@@ -741,14 +750,15 @@ mod tests {
     use pathfinder_common::{transaction as common, BlockHeader, BlockTimestamp, EntryPoint, Fee};
     use pathfinder_crypto::Felt;
     use pretty_assertions_sorted::assert_eq;
+    use rstest::rstest;
 
     use super::*;
-    use crate::test_utils;
+    use crate::{test_utils, AGGREGATE_BLOOM_BLOCK_RANGE_LEN};
 
     static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
-    static MAX_BLOOM_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
-        LazyLock::new(|| NonZeroUsize::new(3).unwrap());
+    static MAX_EVENT_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(10).unwrap());
 
     mod event_bloom {
         use pretty_assertions_sorted::assert_eq;
@@ -763,8 +773,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -776,7 +786,7 @@ mod tests {
 
             assert_eq!(
                 aggregate.check(&constraints),
-                BTreeSet::from_iter(vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1])
+                vec![BlockNumber::GENESIS, BlockNumber::GENESIS + 1]
             );
         }
 
@@ -788,8 +798,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -799,7 +809,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
@@ -810,8 +820,8 @@ mod tests {
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -821,7 +831,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
@@ -832,8 +842,8 @@ mod tests {
             filter.set_address(&contract_address!("0x1234"));
             filter.set_keys(&[event_key!("0xdeadbeef")]);
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -848,19 +858,25 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), BTreeSet::new());
+            assert_eq!(aggregate.check(&constraints), Vec::<BlockNumber>::new());
         }
 
         #[test]
         fn no_constraints() {
+            fn all_blocks(bloom: &AggregateBloom) -> Vec<BlockNumber> {
+                (bloom.from_block.get()..=bloom.to_block.get())
+                    .map(BlockNumber::new_or_panic)
+                    .collect()
+            }
+
             let mut aggregate = AggregateBloom::new(BlockNumber::GENESIS);
 
             let mut filter = BloomFilter::new();
             filter.set_keys(&[event_key!("0xdeadbeef")]);
             filter.set_address(&contract_address!("0x1234"));
 
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS);
-            aggregate.add_bloom(&filter, BlockNumber::GENESIS + 1);
+            aggregate.insert(&filter, BlockNumber::GENESIS);
+            aggregate.insert(&filter, BlockNumber::GENESIS + 1);
             let constraints = EventConstraints {
                 from_block: None,
                 to_block: None,
@@ -870,7 +886,7 @@ mod tests {
                 offset: 0,
             };
 
-            assert_eq!(aggregate.check(&constraints), aggregate.all_blocks());
+            assert_eq!(aggregate.check(&constraints), all_blocks(&aggregate));
         }
     }
 
@@ -886,7 +902,7 @@ mod tests {
             from_block: Some(expected_event.block_number),
             to_block: Some(expected_event.block_number),
             contract_address: Some(expected_event.from_address),
-            // we're using a key which is present in _all_ events as the 2nd key
+            // We're using a key which is present in _all_ events as the 2nd key.
             keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
             page_size: test_utils::NUM_EVENTS,
             offset: 0,
@@ -896,7 +912,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1001,7 +1017,7 @@ mod tests {
                     offset: 0,
                 },
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap()
             .events
@@ -1040,7 +1056,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1075,7 +1091,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1108,7 +1124,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
@@ -1138,7 +1154,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
@@ -1172,7 +1188,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1206,7 +1222,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1239,7 +1255,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1260,7 +1276,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1292,7 +1308,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1324,7 +1340,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1351,7 +1367,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1378,7 +1394,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1411,7 +1427,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1449,7 +1465,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1477,7 +1493,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1505,7 +1521,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1533,7 +1549,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1558,7 +1574,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1590,7 +1606,7 @@ mod tests {
             .events(
                 &constraints,
                 1.try_into().unwrap(),
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1617,7 +1633,7 @@ mod tests {
             .events(
                 &constraints,
                 1.try_into().unwrap(),
-                *MAX_BLOOM_FILTERS_TO_LOAD,
+                *MAX_EVENT_FILTERS_TO_LOAD,
             )
             .unwrap();
         assert_eq!(
@@ -1634,30 +1650,12 @@ mod tests {
 
     #[test]
     fn crossing_event_filter_range_stores_and_updates_running() {
-        let blocks: Vec<usize> = [
-            // First event filter start.
-            BlockNumber::GENESIS,
-            BlockNumber::GENESIS + 1,
-            BlockNumber::GENESIS + 2,
-            BlockNumber::GENESIS + 3,
-            // End.
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN - 1,
-            // Second event filter start.
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 1,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 2,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 3,
-            // End.
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN - 1,
-            // Third event filter start.
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN + 1,
-        ]
-        .iter()
-        .map(|&n| n.get() as usize)
-        .collect();
+        // Two and a half ranges.
+        let n_blocks = 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN + AGGREGATE_BLOOM_BLOCK_RANGE_LEN / 2;
+        let n_blocks = usize::try_from(n_blocks).unwrap();
 
-        let (storage, _) = test_utils::setup_custom_test_storage(&blocks, 2);
+        let (storage, test_data) = test_utils::setup_custom_test_storage(n_blocks, 1);
+        let emitted_events = test_data.events;
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -1673,37 +1671,46 @@ mod tests {
         // Running event filter starts from next block range.
         assert_eq!(
             running_event_filter.filter.from_block,
-            2 * AggregateBloom::BLOCK_RANGE_LEN
+            2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        );
+        // Lock needed in `events()`.
+        drop(running_event_filter);
+
+        let constraints = EventConstraints {
+            from_block: None,
+            to_block: None,
+            contract_address: None,
+            // We're using a key which is present in _all_ events as the 2nd key.
+            keys: vec![vec![], vec![event_key!("0xdeadbeef")]],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+
+        let events = tx
+            .events(
+                &constraints,
+                *MAX_BLOCKS_TO_SCAN,
+                *MAX_EVENT_FILTERS_TO_LOAD,
+            )
+            .unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                events: emitted_events,
+                continuation_token: None,
+            }
         );
     }
 
     #[test]
     fn event_filter_filter_load_limit() {
-        let blocks: Vec<usize> = [
-            // First event filter start.
-            BlockNumber::GENESIS,
-            BlockNumber::GENESIS + 1,
-            BlockNumber::GENESIS + 2,
-            BlockNumber::GENESIS + 3,
-            // End.
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN - 1,
-            // Second event filter start.
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 1,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 2,
-            BlockNumber::GENESIS + AggregateBloom::BLOCK_RANGE_LEN + 3,
-            // End.
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN - 1,
-            // Third event filter start.
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN,
-            BlockNumber::GENESIS + 2 * AggregateBloom::BLOCK_RANGE_LEN + 1,
-        ]
-        .iter()
-        .map(|&n| n.get() as usize)
-        .collect();
+        let n_blocks = 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN + AGGREGATE_BLOOM_BLOCK_RANGE_LEN / 2;
+        let n_blocks = usize::try_from(n_blocks).unwrap();
 
-        let (storage, test_data) = test_utils::setup_custom_test_storage(&blocks, 2);
+        let (storage, test_data) = test_utils::setup_custom_test_storage(n_blocks, 1);
         let emitted_events = test_data.events;
+        let events_per_block = emitted_events.len() / n_blocks;
+
         let mut connection = storage.connection().unwrap();
         let tx = connection.transaction().unwrap();
 
@@ -1721,20 +1728,22 @@ mod tests {
             .events(&constraints, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap())
             .unwrap();
 
-        let first_event_filter_range = BlockNumber::GENESIS.get()..AggregateBloom::BLOCK_RANGE_LEN;
-        for event in events.events {
-            // ...but only events from the first bloom filter range are returned.
-            assert!(
-                first_event_filter_range.contains(&event.block_number.get()),
-                "Event block number: {} should have been in the range: {:?}",
-                event.block_number.get(),
-                first_event_filter_range
-            );
-        }
-        let continue_from_block = events.continuation_token.unwrap().block_number;
-        assert_eq!(continue_from_block, first_event_filter_range.end);
+        let block_range_len = usize::try_from(AGGREGATE_BLOOM_BLOCK_RANGE_LEN).unwrap();
+        assert_eq!(
+            events,
+            PageOfEvents {
+                // ...but only events from the first bloom filter range are returned...
+                events: emitted_events[..events_per_block * block_range_len].to_vec(),
+                // ...with a continuation token pointing to the next block range.
+                continuation_token: Some(ContinuationToken {
+                    block_number: BlockNumber::new_or_panic(AGGREGATE_BLOOM_BLOCK_RANGE_LEN),
+                    offset: 0,
+                })
+            }
+        );
 
         let constraints_with_offset = EventConstraints {
+            // Use the provided continuation token.
             from_block: Some(events.continuation_token.unwrap().block_number),
             to_block: None,
             contract_address: None,
@@ -1751,19 +1760,96 @@ mod tests {
                 1.try_into().unwrap(),
             )
             .unwrap();
-        assert!(events.continuation_token.is_none());
+        assert_eq!(
+            events,
+            PageOfEvents {
+                // ...but only events from the second (loaded) and third (running) event filter
+                // range are returned...
+                events: emitted_events[events_per_block * block_range_len..].to_vec(),
+                // ...without a continuation token.
+                continuation_token: None,
+            }
+        );
+    }
 
-        let second_event_filter_range =
-            AggregateBloom::BLOCK_RANGE_LEN..(2 * AggregateBloom::BLOCK_RANGE_LEN);
-        let third_event_filter_range =
-            2 * AggregateBloom::BLOCK_RANGE_LEN..(3 * AggregateBloom::BLOCK_RANGE_LEN);
-        for event in events.events {
-            // ...but only events from the second (loaded) and third (running) event filter
-            // range are returned.
-            assert!(
-                (second_event_filter_range.start..third_event_filter_range.end)
-                    .contains(&event.block_number.get())
-            );
+    #[rustfmt::skip]
+    #[rstest]
+    #[case(0,  0,  0, 0, 0)] //  0     ..=(N    )
+    #[case(0,  0, -1, 0, 0)] //  0     ..=(N - 1)
+    #[case(0,  0,  1, 0, 2)] //  0     ..=(N + 1)
+    #[case(1,  0,  0, 1, 1)] // (N    )..=(2 * N)
+    #[case(1, -2,  0, 0, 1)] // (N - 1)..=(2 * N)
+    #[case(1,  1,  0, 1, 1)] // (N + 1)..=(2 * N)
+    fn event_filter_edge_cases(
+        #[case] range_idx: usize,
+        #[case] offset_from: i32,
+        #[case] offset_to: i32,
+        #[case] range_start_idx: usize,
+        #[case] range_end_idx: usize,
+    ) {
+        use std::collections::BTreeSet;
+
+        fn contained_blocks(page: &PageOfEvents) -> BTreeSet<BlockNumber> {
+            page.events
+                .iter()
+                .map(|event| event.block_number)
+                .collect::<BTreeSet<_>>()
         }
+
+        let n_blocks = 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+        let n_blocks = usize::try_from(n_blocks).unwrap();
+
+        let (storage, test_data) = test_utils::setup_custom_test_storage(n_blocks, 1);
+        let emitted_events = test_data.events;
+
+        let mut connection = storage.connection().unwrap();
+        let tx = connection.transaction().unwrap();
+
+        let ranges = [
+            (
+                BlockNumber::GENESIS,
+                BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            ),
+            (
+                BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
+                BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            ),
+            (
+                BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
+                BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            ),
+            (
+                BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
+                BlockNumber::GENESIS + 4 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+            ),
+        ];
+
+        let from_block = ranges[range_idx].0.get() as i32 + offset_from;
+        let to_block = ranges[range_idx].1.get() as i32 + offset_to;
+
+        let constraints = EventConstraints {
+            from_block: Some(BlockNumber::new_or_panic(u64::try_from(from_block).unwrap())),
+            to_block: Some(BlockNumber::new_or_panic(u64::try_from(to_block).unwrap())),
+            contract_address: None,
+            keys: vec![],
+            page_size: emitted_events.len(),
+            offset: 0,
+        };
+
+        let page = tx
+            .events(
+                &constraints,
+                *MAX_BLOCKS_TO_SCAN,
+                *MAX_EVENT_FILTERS_TO_LOAD,
+            )
+            .unwrap();
+        let blocks = contained_blocks(&page);
+
+        let expected = (ranges[range_start_idx].0.get()..=ranges[range_end_idx].1.get())
+            .filter(|&block| (from_block..=to_block).contains(&(block as i32)))
+            .map(BlockNumber::new_or_panic)
+            .collect::<BTreeSet<_>>();
+
+        assert_eq!(blocks, expected);
     }
 }
