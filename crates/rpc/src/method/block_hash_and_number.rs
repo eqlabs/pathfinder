@@ -30,11 +30,11 @@ pub async fn block_hash_and_number(context: RpcContext) -> Result<Output, Error>
     jh.await.context("Database read panic or shutting down")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("block_hash", &crate::dto::BlockHash(&self.hash))?;
         serializer.serialize_field("block_number", &crate::dto::BlockNumber(self.number))?;

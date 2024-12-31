@@ -37,11 +37,11 @@ pub enum Notification {
     Reorg(Arc<Reorg>),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Self::BlockHeader(header) => crate::dto::BlockHeader(header).serialize(serializer),
             Self::Reorg(reorg) => reorg.serialize(serializer),

@@ -2,13 +2,11 @@ use pathfinder_common::{ContractAddress, L1TransactionHash};
 use primitive_types::{H160, H256};
 use serde::de::Error;
 
-use super::serialize::SerializeForVersion;
-use super::{DeserializeForVersion, Value};
-use crate::dto::serialize::{self, Serializer};
+use super::{DeserializeForVersion, SerializeForVersion, Value};
+use crate::dto::{self, Serializer};
 
 pub struct SyncStatus<'a>(pub &'a crate::types::syncing::Status);
 
-pub struct Felt<'a>(pub &'a pathfinder_crypto::Felt);
 pub struct BlockHash<'a>(pub &'a pathfinder_common::BlockHash);
 pub struct ChainId<'a>(pub &'a pathfinder_common::ChainId);
 pub struct BlockNumber(pub pathfinder_common::BlockNumber);
@@ -231,22 +229,22 @@ impl DeserializeForVersion for U64Hex {
     }
 }
 
-impl SerializeForVersion for SyncStatus<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+impl SerializeForVersion for crate::types::syncing::Status {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("starting_block_hash", &BlockHash(&self.0.starting.hash))?;
-        serializer.serialize_field("starting_block_num", &BlockNumber(self.0.starting.number))?;
-        serializer.serialize_field("current_block_hash", &BlockHash(&self.0.current.hash))?;
-        serializer.serialize_field("current_block_num", &BlockNumber(self.0.current.number))?;
-        serializer.serialize_field("highest_block_hash", &BlockHash(&self.0.highest.hash))?;
-        serializer.serialize_field("highest_block_num", &BlockNumber(self.0.highest.number))?;
+        serializer.serialize_field("starting_block_hash", &self.starting.hash)?;
+        serializer.serialize_field("starting_block_num", &self.starting.number)?;
+        serializer.serialize_field("current_block_hash", &self.current.hash)?;
+        serializer.serialize_field("current_block_num", &self.current.number)?;
+        serializer.serialize_field("highest_block_hash", &self.highest.hash)?;
+        serializer.serialize_field("highest_block_num", &self.highest.number)?;
         serializer.end()
     }
 }
 
-impl SerializeForVersion for Felt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        let hex_str = hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes());
+impl SerializeForVersion for pathfinder_crypto::Felt {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_stripped(self.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
@@ -265,33 +263,33 @@ impl DeserializeForVersion for pathfinder_crypto::Felt {
     }
 }
 
-impl SerializeForVersion for BlockHash<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        serializer.serialize(&Felt(&self.0 .0))
+impl SerializeForVersion for pathfinder_common::BlockHash {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&self.0)
     }
 }
 
-impl SerializeForVersion for ChainId<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        let hex_str = hex_str::bytes_to_hex_str_stripped(self.0 .0.as_be_bytes());
+impl SerializeForVersion for pathfinder_common::ChainId {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let hex_str = hex_str::bytes_to_hex_str_stripped(self.0.as_be_bytes());
         serializer.serialize_str(&hex_str)
     }
 }
 
 impl SerializeForVersion for BlockNumber {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_u64(self.0.get())
     }
 }
 
 impl SerializeForVersion for U64Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
     }
 }
 
 impl SerializeForVersion for U128Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&self.0.to_be_bytes()))
     }
 }
@@ -311,13 +309,13 @@ impl DeserializeForVersion for U128Hex {
 }
 
 impl SerializeForVersion for H256Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(self.0.as_bytes()))
     }
 }
 
 impl SerializeForVersion for U256Hex {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(&hex_str::bytes_to_hex_str_stripped(&<[u8; 32]>::from(
             self.0,
         )))
@@ -355,14 +353,14 @@ impl DeserializeForVersion for pathfinder_common::EthereumAddress {
     }
 }
 
-impl SerializeForVersion for Address<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
-        serializer.serialize(&Felt(&self.0 .0))
+impl SerializeForVersion for pathfinder_common::ContractAddress {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&self.0)
     }
 }
 
 impl SerializeForVersion for EthAddress<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let hex_str = hex_str::bytes_to_hex_str_full(self.0 .0.as_bytes());
         serializer.serialize_str(&hex_str)
     }
@@ -376,11 +374,11 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
+    use crate::dto::Serializer;
 
     #[test]
     fn felt() {
-        let uut = Felt(&felt!("0x1234"));
+        let uut = &felt!("0x1234");
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 
@@ -390,8 +388,8 @@ mod tests {
     #[test]
     fn block_hash() {
         let hash = block_hash!("0x1234");
-        let expected = Felt(&hash.0).serialize(Default::default()).unwrap();
-        let encoded = BlockHash(&hash).serialize(Default::default()).unwrap();
+        let expected = &hash.0.serialize(Default::default()).unwrap();
+        let encoded = &hash.serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
     }
@@ -400,7 +398,7 @@ mod tests {
     fn block_number() {
         let number = pathfinder_common::BlockNumber::new_or_panic(1234);
         let expected = json!(1234);
-        let encoded = BlockNumber(number).serialize(Default::default()).unwrap();
+        let encoded = number.serialize(Default::default()).unwrap();
 
         assert_eq!(encoded, expected);
     }
@@ -426,22 +424,22 @@ mod tests {
         let s = Serializer::default();
 
         let expected = json!({
-           "starting_block_hash": BlockHash(&status.starting.hash).serialize(s).unwrap(),
-           "current_block_hash": BlockHash(&status.current.hash).serialize(s).unwrap(),
-           "highest_block_hash": BlockHash(&status.highest.hash).serialize(s).unwrap(),
-           "starting_block_num": BlockNumber(status.starting.number).serialize(s).unwrap(),
-           "current_block_num": BlockNumber(status.current.number).serialize(s).unwrap(),
-           "highest_block_num": BlockNumber(status.highest.number).serialize(s).unwrap(),
+           "starting_block_hash": &status.starting.hash.serialize(s).unwrap(),
+           "current_block_hash": &status.current.hash.serialize(s).unwrap(),
+           "highest_block_hash": &status.highest.hash.serialize(s).unwrap(),
+           "starting_block_num": status.starting.number.serialize(s).unwrap(),
+           "current_block_num": status.current.number.serialize(s).unwrap(),
+           "highest_block_num": status.highest.number.serialize(s).unwrap(),
         });
 
-        let encoded = SyncStatus(&status).serialize(s).unwrap();
+        let encoded = status.serialize(s).unwrap();
 
         assert_eq!(encoded, expected);
     }
 
     #[test]
     fn chain_id() {
-        let uut = ChainId(&pathfinder_common::ChainId(felt!("0x1234")));
+        let uut = pathfinder_common::ChainId(felt!("0x1234"));
         let expected = json!("0x1234");
         let encoded = uut.serialize(Default::default()).unwrap();
 

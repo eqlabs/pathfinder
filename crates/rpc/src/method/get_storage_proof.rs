@@ -17,8 +17,7 @@ use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageC
 use pathfinder_storage::Transaction;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::SerializeForVersion;
-use crate::dto::DeserializeForVersion;
+use crate::dto::{DeserializeForVersion, SerializeForVersion};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContractStorageKeys {
@@ -118,8 +117,8 @@ struct ProofNode(TrieNode);
 impl SerializeForVersion for ProofNode {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         match &self.0 {
             TrieNode::Binary { left, right } => {
@@ -148,8 +147,8 @@ struct NodeHashToNodeMapping {
 impl SerializeForVersion for &NodeHashToNodeMapping {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("node_hash", &self.node_hash)?;
         s.serialize_field("node", &self.node)?;
@@ -163,8 +162,8 @@ struct NodeHashToNodeMappings(Vec<NodeHashToNodeMapping>);
 impl SerializeForVersion for &NodeHashToNodeMappings {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
@@ -178,8 +177,8 @@ struct ContractLeafData {
 impl SerializeForVersion for &ContractLeafData {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("nonce", &self.nonce)?;
         s.serialize_field("class_hash", &self.class_hash)?;
@@ -196,8 +195,8 @@ struct ContractsProof {
 impl SerializeForVersion for ContractsProof {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_iter("nodes", self.nodes.0.len(), &mut self.nodes.0.iter())?;
         s.serialize_iter(
@@ -219,8 +218,8 @@ struct GlobalRoots {
 impl SerializeForVersion for GlobalRoots {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("contracts_tree_root", &self.contracts_tree_root)?;
         s.serialize_field("classes_tree_root", &self.classes_tree_root)?;
@@ -240,8 +239,8 @@ pub struct Output {
 impl SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_iter(
             "classes_proof",
@@ -503,7 +502,7 @@ mod tests {
     use pathfinder_storage::fake::{Block, Config, OccurrencePerBlock};
 
     use super::*;
-    use crate::dto::serialize::SerializeForVersion;
+    use crate::dto::SerializeForVersion;
 
     mod serialization {
         use bitvec::bitvec;
@@ -733,9 +732,7 @@ mod tests {
             }),
         )]
         fn serialization_output(#[case] output: Output, #[case] expected: serde_json::Value) {
-            let output = output
-                .serialize(crate::dto::serialize::Serializer::default())
-                .unwrap();
+            let output = output.serialize(crate::dto::Serializer::default()).unwrap();
 
             assert_eq!(output, expected);
         }

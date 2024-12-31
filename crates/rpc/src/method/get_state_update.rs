@@ -28,11 +28,8 @@ pub enum Output {
     Pending(Arc<StateUpdate>),
 }
 
-impl dto::serialize::SerializeForVersion for Output {
-    fn serialize(
-        &self,
-        serializer: dto::serialize::Serializer,
-    ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
+impl dto::SerializeForVersion for Output {
+    fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
             Output::Full(full) => dto::StateUpdate(full).serialize(serializer),
             Output::Pending(pending) => dto::PendingStateUpdate(pending).serialize(serializer),
@@ -106,11 +103,11 @@ pub(crate) mod types {
         pub state_diff: StateDiff,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for StateUpdate {
+    impl crate::dto::SerializeForVersion for StateUpdate {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             if let Some(block_hash) = self.block_hash {
                 serializer.serialize_field("block_hash", &RpcFelt(block_hash.0))?;
@@ -265,11 +262,11 @@ pub(crate) mod types {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for StateDiff {
+    impl crate::dto::SerializeForVersion for StateDiff {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_iter(
@@ -322,11 +319,11 @@ pub(crate) mod types {
         pub storage_entries: Vec<StorageEntry>,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for StorageDiff {
+    impl crate::dto::SerializeForVersion for StorageDiff {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("address", &RpcFelt251(RpcFelt(self.address.0)))?;
@@ -369,11 +366,11 @@ pub(crate) mod types {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for StorageEntry {
+    impl crate::dto::SerializeForVersion for StorageEntry {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("key", &RpcFelt(self.key.0))?;
@@ -403,11 +400,11 @@ pub(crate) mod types {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for DeclaredSierraClass {
+    impl crate::dto::SerializeForVersion for DeclaredSierraClass {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("class_hash", &RpcFelt(self.class_hash.0))?;
@@ -437,11 +434,11 @@ pub(crate) mod types {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for DeployedContract {
+    impl crate::dto::SerializeForVersion for DeployedContract {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("address", &RpcFelt(self.address.0))?;
@@ -471,11 +468,11 @@ pub(crate) mod types {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for ReplacedClass {
+    impl crate::dto::SerializeForVersion for ReplacedClass {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("contract_address", &RpcFelt(self.contract_address.0))?;
@@ -496,11 +493,11 @@ pub(crate) mod types {
         pub nonce: ContractNonce,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for Nonce {
+    impl crate::dto::SerializeForVersion for Nonce {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
 
             serializer.serialize_field("contract_address", &RpcFelt(self.contract_address.0))?;
@@ -566,7 +563,7 @@ pub(crate) mod types {
             )
             .unwrap();
 
-            let serializer = crate::dto::serialize::Serializer::new(RpcVersion::V07);
+            let serializer = crate::dto::Serializer::new(RpcVersion::V07);
             let serialized = serde_json::to_string_pretty(
                 &serializer
                     .serialize_iter(data.len(), &mut data.clone().into_iter())

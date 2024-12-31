@@ -97,11 +97,11 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
     .context("Joining blocking task")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Output::Pending {
                 header,
