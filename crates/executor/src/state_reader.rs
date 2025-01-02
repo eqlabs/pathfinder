@@ -3,6 +3,7 @@ use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
+use starknet_api::contract_class::SierraVersion;
 use starknet_api::StarknetApiError;
 use starknet_types_core::felt::Felt as CoreFelt;
 
@@ -59,6 +60,7 @@ impl<'tx> PathfinderStateReader<'tx> {
         if let Some((definition_block_number, casm_definition)) =
             casm_definition.map_err(map_anyhow_to_state_err)?
         {
+            let sierra_version = SierraVersion::extract_from_program(&casm_definition)?;
             let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
                 StateError::StateReadError(format!(
                     "Class definition is not valid UTF-8: {}",
@@ -69,6 +71,7 @@ impl<'tx> PathfinderStateReader<'tx> {
             let casm_class =
                 blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
                     &casm_definition,
+                    sierra_version,
                 )
                 .map_err(StateError::ProgramError)?;
 
