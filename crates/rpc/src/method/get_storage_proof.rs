@@ -360,7 +360,7 @@ fn get_class_proofs(
     };
 
     let class_root_hash = tx
-        .class_trie_node_hash(class_root_idx)
+        .class_trie_node_hash(class_root_idx.get())
         .context("Querying class root hash")?
         .context("Class root hash missing")?;
 
@@ -369,7 +369,7 @@ fn get_class_proofs(
     };
 
     let nodes: Vec<NodeHashToNodeMapping> =
-        ClassCommitmentTree::get_proofs(tx, block_number, class_hashes, class_root_idx)?
+        ClassCommitmentTree::get_proofs(tx, block_number, class_hashes, class_root_idx.get())?
             .into_iter()
             .flatten()
             .map(|(node, node_hash)| NodeHashToNodeMapping {
@@ -405,7 +405,7 @@ fn get_contract_proofs(
     };
 
     let storage_root_hash = tx
-        .storage_trie_node_hash(storage_root_idx)
+        .storage_trie_node_hash(storage_root_idx.get())
         .context("Querying storage root hash")?
         .context("Storage root hash missing")?;
 
@@ -413,17 +413,21 @@ fn get_contract_proofs(
         return Ok((storage_root_hash, NodeHashToNodeMappings(vec![]), vec![]));
     };
 
-    let nodes =
-        StorageCommitmentTree::get_proofs(tx, block_number, contract_addresses, storage_root_idx)?
-            .into_iter()
-            .flatten()
-            .map(|(node, node_hash)| NodeHashToNodeMapping {
-                node_hash,
-                node: ProofNode(node),
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
+    let nodes = StorageCommitmentTree::get_proofs(
+        tx,
+        block_number,
+        contract_addresses,
+        storage_root_idx,
+    )?
+    .into_iter()
+    .flatten()
+    .map(|(node, node_hash)| NodeHashToNodeMapping {
+        node_hash,
+        node: ProofNode(node),
+    })
+    .collect::<HashSet<_>>()
+    .into_iter()
+    .collect();
 
     let contract_proof_nodes = NodeHashToNodeMappings(nodes);
 
@@ -470,7 +474,7 @@ fn get_contract_storage_proofs(
                         csk.contract_address,
                         block_number,
                         &csk.storage_keys,
-                        root,
+                        root.get(),
                     )?
                     .into_iter()
                     .flatten()
