@@ -1003,4 +1003,86 @@ mod tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn deployed_contract_without_storage_or_nonce_updates() {
+        use pathfinder_storage::fake::{fill, generate};
+        use pathfinder_storage::{StorageBuilder, TriePruneMode};
+
+        let storage = StorageBuilder::in_tempdir_with_trie_pruning_and_pool_size(
+            TriePruneMode::Archive,
+            NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
+        let blocks = generate::with_config(
+            2,
+            Config {
+                update_tries: Box::new(update_starknet_state),
+                // 2 classes will be declared in both blocks [0, 1], totalling 4 classes, and one of
+                // those classes will be deployed in block 1
+                occurrence: OccurrencePerBlock {
+                    cairo: 1..=1,
+                    sierra: 1..=1,
+                    deploy: 1..=1,
+                    storage: 0..=0,
+                    nonce: 0..=0,
+                    system_storage: 0..=0,
+                },
+                ..Default::default()
+            },
+        );
+
+        fill(&storage, &blocks, Some(Box::new(update_starknet_state)));
+
+        let block_hash = blocks.get(1).unwrap().header.header.hash;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let (contract_address, ContractUpdate { class, .. }) = blocks
+            .get(1)
+            .unwrap()
+            .state_update
+            .as_ref()
+            .unwrap()
+            .contract_updates
+            .iter()
+            .next()
+            .unwrap();
+        let input = Input {
+            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+            class_hashes: None,
+            contract_addresses: Some(vec![*contract_address]),
+            contracts_storage_keys: None,
+        };
+
+        let output = get_storage_proof(context, input).await.unwrap();
+
+        // A contract proof should be present:
+        // - a single edge node whose path is the contract address, while
+        // - the leaf data should be the class hash, and
+        // - the root of the contracts trie should be the hash of that node
+        assert_eq!(output.contracts_proof.nodes.0.len(), 1);
+        let proof_node = output.contracts_proof.nodes.0.get(0).unwrap();
+        assert_matches::assert_matches!(
+            &proof_node.node.0,
+            TrieNode::Edge { path, .. } => {
+                assert_eq!(Felt::from_bits(path).unwrap(), contract_address.0);
+            }
+        );
+        assert_eq!(
+            output.contracts_proof.contract_leaves_data,
+            vec![ContractLeafData {
+                nonce: ContractNonce::ZERO,
+                class_hash: class.unwrap().class_hash(),
+            }]
+        );
+        assert_eq!(
+            output.global_roots.contracts_tree_root,
+            proof_node.node_hash
+        );
+        assert_eq!(output.global_roots.block_hash, block_hash);
+
+        // The rest should be empty, because we didn't query for class or storage proofs
+        assert!(output.classes_proof.0.is_empty());
+        assert!(output.contracts_storage_proofs.is_empty());
+    }
 }
