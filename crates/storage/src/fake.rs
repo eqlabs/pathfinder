@@ -84,9 +84,16 @@ pub struct Config {
 }
 
 pub struct OccurrencePerBlock {
+    /// Max declared cairo classes in this block
     pub cairo: RangeInclusive<usize>,
+    /// Max declared sierra classes in this block
     pub sierra: RangeInclusive<usize>,
+    /// Max deployed classes in this block, at least one sierra class
+    /// needs to be declared in any of the previous blocks
+    pub deploy: RangeInclusive<usize>,
+    /// Max number of contracts in this block, whose storage was updated
     pub storage: RangeInclusive<usize>,
+    /// Max number of contracts in this block, whose nonce was updated
     pub nonce: RangeInclusive<usize>,
     /// Ranges longer than `0..=1` will be truncated to `0..=1`
     pub system_storage: RangeInclusive<usize>,
@@ -111,6 +118,7 @@ impl Default for OccurrencePerBlock {
         Self {
             cairo: 0..=10,
             sierra: 0..=10,
+            deploy: 0..=10,
             storage: 0..=10,
             nonce: 0..=10,
             system_storage: 0..=1,
@@ -276,6 +284,7 @@ pub mod generate {
     ) -> Vec<Block> {
         let mut init = Vec::with_capacity(n);
         let mut declared_classes_accum = HashSet::new();
+        let mut deployed_contracts_accum = HashSet::new();
 
         for i in 0..n {
             let mut header: BlockHeader = Faker.fake_with_rng(rng);
@@ -379,11 +388,17 @@ pub mod generate {
                 .chain(declared_sierra_classes.keys().map(|x| ClassHash(x.0)))
                 .collect::<HashSet<_>>();
 
+            let deploys = rng.gen_range(occurrence.deploy.clone());
             let storage_updates = rng.gen_range(occurrence.storage.clone());
             let nonce_updates = rng.gen_range(occurrence.nonce.clone());
 
-            let num_contract_updates = storage_updates.max(nonce_updates);
+            let num_contract_updates = deploys.max(storage_updates.max(nonce_updates));
 
+            let mut do_deploy = vec![false; num_contract_updates];
+            (0..num_contract_updates)
+                .choose_multiple(rng, deploys)
+                .into_iter()
+                .for_each(|i| do_deploy[i] = true);
             let mut do_storage_update = vec![false; num_contract_updates];
             (0..num_contract_updates)
                 .choose_multiple(rng, storage_updates)
@@ -429,19 +444,33 @@ pub mod generate {
                         } else {
                             (0..num_contract_updates)
                                 .map(|i| {
-                                    (
-                                        Faker.fake_with_rng::<ContractAddress, _>(rng),
-                                        ContractUpdate {
-                                            class: Some(ContractClassUpdate::Deploy(
+                                    let (contract_address, class) = if do_deploy[i] {
+                                        let x = Faker.fake_with_rng::<ContractAddress, _>(rng);
+                                        deployed_contracts_accum.insert(x);
+                                        (
+                                            x,
+                                            Some(ContractClassUpdate::Deploy(
                                                 *declared_classes_accum.iter().choose(rng).unwrap(),
                                             )),
+                                        )
+                                    } else {
+                                        (
+                                            *deployed_contracts_accum.iter().choose(rng).unwrap(),
+                                            None,
+                                        )
+                                    };
+
+                                    (
+                                        contract_address,
+                                        ContractUpdate {
+                                            class,
                                             storage: if do_storage_update[i] {
                                                 fake_non_empty_with_rng(rng)
                                             } else {
                                                 Default::default()
                                             },
                                             nonce: if do_nonce_update[i] {
-                                                Faker.fake()
+                                                Faker.fake_with_rng(rng)
                                             } else {
                                                 Default::default()
                                             },

@@ -501,6 +501,7 @@ mod tests {
     use pathfinder_common::*;
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
     use pathfinder_storage::fake::{Block, Config, OccurrencePerBlock};
+    use state_update::ContractUpdate;
 
     use super::*;
     use crate::dto::serialize::SerializeForVersion;
@@ -815,6 +816,7 @@ mod tests {
                 occurrence: OccurrencePerBlock {
                     cairo: 0..=0,
                     sierra: 0..=0,
+                    deploy: 0..=0,
                     storage: 0..=0,
                     nonce: 0..=0,
                     system_storage: 0..=0,
@@ -947,6 +949,7 @@ mod tests {
                 occurrence: OccurrencePerBlock {
                     cairo: 1..=10,
                     sierra: 1..=10,
+                    deploy: 1..=10,
                     storage: 1..=10,
                     nonce: 1..=10,
                     system_storage: 0..=0,
@@ -957,6 +960,7 @@ mod tests {
 
         fill(&storage, &blocks, Some(Box::new(update_starknet_state)));
 
+        let block_hash = blocks.get(1).unwrap().header.header.hash;
         let context = RpcContext::for_tests().with_storage(storage);
         let input = req.into_input(&blocks);
 
@@ -970,6 +974,9 @@ mod tests {
                 assert!(output.contracts_proof.nodes.0.is_empty());
                 assert!(output.contracts_proof.contract_leaves_data.is_empty());
                 assert!(output.contracts_storage_proofs.is_empty());
+
+                assert!(!output.global_roots.classes_tree_root.is_zero());
+                assert_eq!(output.global_roots.block_hash, block_hash);
             }
             PartialRequest::ContractNonce => {
                 // Some contract proof should be present
@@ -979,6 +986,9 @@ mod tests {
                 // The rest should be empty
                 assert!(output.classes_proof.0.is_empty());
                 assert!(output.contracts_storage_proofs.is_empty());
+
+                assert!(!output.global_roots.contracts_tree_root.is_zero());
+                assert_eq!(output.global_roots.block_hash, block_hash);
             }
             PartialRequest::ContractStorage => {
                 // Some contract storage proof should be present
@@ -987,6 +997,9 @@ mod tests {
                 assert!(output.classes_proof.0.is_empty());
                 assert!(output.contracts_proof.nodes.0.is_empty());
                 assert!(output.contracts_proof.contract_leaves_data.is_empty());
+
+                assert!(!output.global_roots.contracts_tree_root.is_zero());
+                assert_eq!(output.global_roots.block_hash, block_hash);
             }
         }
     }
