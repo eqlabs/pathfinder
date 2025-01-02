@@ -60,7 +60,6 @@ impl<'tx> PathfinderStateReader<'tx> {
         if let Some((definition_block_number, casm_definition)) =
             casm_definition.map_err(map_anyhow_to_state_err)?
         {
-            let sierra_version = SierraVersion::extract_from_program(&casm_definition)?;
             let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
                 StateError::StateReadError(format!(
                     "Class definition is not valid UTF-8: {}",
@@ -71,7 +70,9 @@ impl<'tx> PathfinderStateReader<'tx> {
             let casm_class =
                 blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
                     &casm_definition,
-                    sierra_version,
+                    // TODO: There should be a way to extract the version from the program.
+                    // See `pathfinder_rpc::ContractClass::from_definition_bytes`.
+                    SierraVersion::DEPRECATED,
                 )
                 .map_err(StateError::ProgramError)?;
 

@@ -37,7 +37,6 @@ pub fn call(
         entry_point_type: EntryPointType::External,
         entry_point_selector,
         calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
-        // TODO: Is this the right thing to do?
         initial_gas: VersionedConstants::latest_constants()
             .initial_gas_no_user_l2_bound()
             .0,

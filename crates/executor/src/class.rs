@@ -1,4 +1,5 @@
 use cairo_lang_starknet_classes::casm_contract_class::CasmContractClass;
+use pathfinder_crypto::Felt;
 use starknet_api::contract_class::SierraVersion;
 
 pub fn parse_deprecated_class_definition(
@@ -12,11 +13,11 @@ pub fn parse_deprecated_class_definition(
     Ok(starknet_api::contract_class::ContractClass::V0(class))
 }
 
-pub fn parse_casm_definition(
+pub fn parse_versioned_casm_definition(
     casm_definition: Vec<u8>,
+    sierra_program: &[Felt],
 ) -> anyhow::Result<starknet_api::contract_class::ContractClass> {
-    // TODO: Is this the right way to extract the sierra version?
-    let sierra_version = SierraVersion::extract_from_program(&casm_definition)?;
+    let sierra_version = SierraVersion::extract_from_program(sierra_program)?;
     let casm_definition = String::from_utf8(casm_definition)?;
 
     let class: CasmContractClass = serde_json::from_str(&casm_definition)?;

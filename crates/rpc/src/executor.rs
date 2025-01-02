@@ -87,9 +87,11 @@ pub(crate) fn map_broadcasted_transaction(
             )
             .context("Compiling Sierra class definition to CASM")?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_versioned_casm_definition(
+                casm_contract_definition,
+                &tx.contract_class.sierra_program,
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
@@ -105,9 +107,11 @@ pub(crate) fn map_broadcasted_transaction(
             )
             .context("Compiling Sierra class definition to CASM")?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_versioned_casm_definition(
+                casm_contract_definition,
+                &tx.contract_class.sierra_program,
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
@@ -524,7 +528,10 @@ pub fn compose_executor_transaction(
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class = pathfinder_executor::parse_versioned_casm_definition(
+                casm_definition,
+                &class_definition.sierra_program,
+            )?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),
@@ -543,7 +550,10 @@ pub fn compose_executor_transaction(
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class = pathfinder_executor::parse_versioned_casm_definition(
+                casm_definition,
+                &class_definition.sierra_program,
+            )?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),

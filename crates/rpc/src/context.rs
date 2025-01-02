@@ -170,6 +170,18 @@ impl RpcContext {
         context.with_pending_data(rx)
     }
 
+    #[cfg(test)]
+    pub fn with_versioned_constants(self, versioned_constants_path: &std::path::Path) -> Self {
+        let versioned_constants = VersionedConstants::from_path(versioned_constants_path).unwrap();
+        Self {
+            config: RpcConfig {
+                custom_versioned_constants: Some(versioned_constants),
+                ..self.config
+            },
+            ..self
+        }
+    }
+
     pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
         Self {
             websocket: Some(websockets),

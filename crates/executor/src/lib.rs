@@ -20,7 +20,7 @@ pub use blockifier::transaction::account_transaction::{
 pub use blockifier::transaction::transaction_execution::Transaction;
 pub use blockifier::versioned_constants::VersionedConstants;
 pub use call::call;
-pub use class::{parse_casm_definition, parse_deprecated_class_definition};
+pub use class::{parse_deprecated_class_definition, parse_versioned_casm_definition};
 pub use error::{CallError, TransactionExecutionError};
 pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;

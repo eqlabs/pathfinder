@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Context;
 use blockifier::state::cached_state::CachedState;
 use blockifier::state::errors::StateError;
+use blockifier::state::stateful_compression::state_diff_with_alias_allocation;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use cached::{Cached, SizedCache};
@@ -106,7 +107,11 @@ pub fn simulate(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = transaction.execute(&mut tx_state, &block_context);
-        let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
+        let state_diff = to_state_diff(
+            &mut tx_state,
+            &block_context,
+            transaction_declared_deprecated_class_hash,
+        )?;
         tx_state.commit();
 
         match tx_info {
@@ -176,7 +181,7 @@ pub fn trace(
     let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
         let hash = transaction_hash(&tx);
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
+        let _span = tracing::debug_span!("trace", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
 
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
@@ -195,12 +200,16 @@ pub fn trace(
             cache.cache_set(block_hash, CacheItem::CachedErr(err.clone()));
             err
         })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)
-            .inspect_err(|_| {
-                // Remove the cache entry so it's no longer inflight.
-                let mut cache = cache.0.lock().unwrap();
-                cache.cache_remove(&block_hash);
-            })?;
+        let state_diff = to_state_diff(
+            &mut tx_state,
+            &block_context,
+            tx_declared_deprecated_class_hash,
+        )
+        .inspect_err(|_| {
+            // Remove the cache entry so it's no longer inflight.
+            let mut cache = cache.0.lock().unwrap();
+            cache.cache_remove(&block_hash);
+        })?;
         tx_state.commit();
 
         let trace = to_trace(tx_type, tx_info, state_diff);
@@ -260,16 +269,31 @@ fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<Cl
 
 fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     state: &mut blockifier::state::cached_state::CachedState<S>,
+    block_context: &blockifier::context::BlockContext,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
-    let state_diff = state.to_state_diff()?;
+    let state_diff = if block_context
+        .versioned_constants()
+        .enable_stateful_compression
+    {
+        state_diff_with_alias_allocation(
+            state,
+            block_context
+                .versioned_constants()
+                .os_constants
+                .os_contract_addresses
+                .alias_contract_address(),
+        )?
+    } else {
+        state.to_state_diff()?.state_maps
+    };
 
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
     // We need to check the previous class hash for a contract to decide if it's a
     // deployed contract or a replaced class.
-    for (address, class_hash) in state_diff.state_maps.class_hashes {
+    for (address, class_hash) in state_diff.class_hashes {
         let previous_class_hash = state.state.get_class_hash_at(address)?;
 
         if previous_class_hash.0.into_felt().is_zero() {
@@ -286,7 +310,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     }
 
     let mut storage_diffs: BTreeMap<_, _> = Default::default();
-    for ((address, key), value) in state_diff.state_maps.storage {
+    for ((address, key), value) in state_diff.storage {
         storage_diffs
             .entry(ContractAddress::new_or_panic(address.0.key().into_felt()))
             .and_modify(|map: &mut BTreeMap<StorageAddress, StorageValue>| {
@@ -323,7 +347,6 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
         // This info is not present in the state diff, so we need to pass it separately.
         deprecated_declared_classes: old_declared_contract.into_iter().collect(),
         declared_classes: state_diff
-            .state_maps
             .compiled_class_hashes
             .into_iter()
             .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
@@ -332,7 +355,6 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
             })
             .collect(),
         nonces: state_diff
-            .state_maps
             .nonces
             .into_iter()
             .map(|(address, nonce)| {

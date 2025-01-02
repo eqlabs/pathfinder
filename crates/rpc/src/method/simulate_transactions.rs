@@ -1947,6 +1947,191 @@ pub(crate) mod tests {
                 }]
             }
         }
+
+        pub mod expected_output_0_13_4_0 {
+
+            use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
+
+            use super::*;
+            use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
+
+            const DECLARE_OVERALL_FEE: u64 = 1264;
+            const DECLARE_GAS_CONSUMED: u64 = 880;
+            const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
+
+            pub fn declare_without_validate(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+            ) -> pathfinder_executor::types::TransactionSimulation {
+                pathfinder_executor::types::TransactionSimulation {
+                    fee_estimation: pathfinder_executor::types::FeeEstimate {
+                        l1_gas_consumed: DECLARE_GAS_CONSUMED.into(),
+                        l1_gas_price: 1.into(),
+                        l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
+                        l1_data_gas_price: 2.into(),
+                        l2_gas_consumed: 0.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: DECLARE_OVERALL_FEE.into(),
+                        unit: pathfinder_executor::types::PriceUnit::Wei,
+                    },
+                    trace: pathfinder_executor::types::TransactionTrace::Declare(
+                        pathfinder_executor::types::DeclareTransactionTrace {
+                            fee_transfer_invocation: Some(declare_fee_transfer(
+                                account_contract_address,
+                                last_block_header,
+                            )),
+                            validate_invocation: None,
+                            state_diff: declare_state_diff(
+                                account_contract_address,
+                                declare_fee_transfer_storage_diffs(),
+                            ),
+                            execution_resources: pathfinder_executor::types::ExecutionResources {
+                                computation_resources: declare_validate_computation_resources()
+                                    + declare_fee_transfer_computation_resources(),
+                                data_availability:
+                                    pathfinder_executor::types::DataAvailabilityResources {
+                                        l1_gas: 0,
+                                        l1_data_gas: 192,
+                                    },
+                                l1_gas: 880,
+                                l1_data_gas: 192,
+                                l2_gas: 0,
+                            },
+                        },
+                    ),
+                }
+            }
+
+            fn declare_validate_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 12,
+                    ..Default::default()
+                }
+            }
+
+            fn declare_fee_transfer_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 1354,
+                    memory_holes: 59,
+                    range_check_builtin_applications: 31,
+                    pedersen_builtin_applications: 4,
+                    ..Default::default()
+                }
+            }
+
+            fn declare_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> pathfinder_executor::types::StateDiff {
+                pathfinder_executor::types::StateDiff {
+                    storage_diffs: BTreeMap::from_iter(
+                        storage_diffs
+                            .into_iter()
+                            .map(|diff| {
+                                (
+                                    diff.address,
+                                    diff.storage_entries
+                                        .into_iter()
+                                        .map(|entry| pathfinder_executor::types::StorageDiff {
+                                            key: entry.key,
+                                            value: entry.value,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    deprecated_declared_classes: HashSet::new(),
+                    declared_classes: vec![pathfinder_executor::types::DeclaredSierraClass {
+                        class_hash: SierraHash(SIERRA_HASH.0),
+                        compiled_class_hash: CASM_HASH,
+                    }],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x1"))]),
+                }
+            }
+
+            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: contract_address!("0x2"),
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x0"),
+                            value: storage_value!("0x84")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0xc01"),
+                            value: storage_value!("0x80")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x32a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x81")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"),
+                            value: storage_value!("0x83")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x5496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: storage_value!("0x82")
+                        },
+                    ]
+                },
+                    StorageDiff {
+                        address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                        storage_entries: vec![
+                            StorageEntry {
+                                key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                                value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffb10")
+                            },
+                            StorageEntry {
+                                key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                                value: StorageValue(DECLARE_OVERALL_FEE.into()),
+                            },
+                        ],
+                    }]
+            }
+
+            fn declare_fee_transfer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: pathfinder_executor::types::CallType::Call,
+                    caller_address: *account_contract_address.get(),
+                    class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    events: vec![pathfinder_executor::types::Event {
+                        order: 0,
+                        data: vec![
+                            *account_contract_address.get(),
+                            last_block_header.sequencer_address.0,
+                            Felt::from_u64(DECLARE_OVERALL_FEE),
+                            felt!("0x0"),
+                        ],
+                        keys: vec![felt!(
+                            "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                        )],
+                    }],
+                    calldata: vec![
+                        last_block_header.sequencer_address.0,
+                        Felt::from_u64(DECLARE_OVERALL_FEE),
+                        felt!("0x0"),
+                    ],
+                    contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    selector: EntryPoint::hashed(b"transfer").0,
+                    internal_calls: vec![],
+                    messages: vec![],
+                    result: vec![felt!("0x1")],
+                    computation_resources: declare_fee_transfer_computation_resources(),
+                    execution_resources:
+                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                }
+            }
+        }
     }
 
     #[test_log::test(tokio::test)]
@@ -2147,6 +2332,47 @@ pub(crate) mod tests {
             expected
                 .serialize(Serializer {
                     version: RpcVersion::V07
+                })
+                .unwrap(),
+        );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn declare_no_validate_with_state_diff_compression() {
+        let (storage, last_block_header, account_contract_address, _, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 4, 0)).await;
+        let context = RpcContext::for_tests()
+            .with_storage(storage)
+            .with_versioned_constants(std::path::Path::new(
+                "fixtures/versioned_constants_0_13_4.json",
+            ));
+
+        let input = SimulateTransactionInput {
+            transactions: vec![fixtures::input::declare(account_contract_address)],
+            block_id: BlockId::Number(last_block_header.number),
+            simulation_flags: crate::dto::SimulationFlags(vec![
+                crate::dto::SimulationFlag::SkipValidate,
+            ]),
+        };
+
+        let expected = super::Output(vec![
+            fixtures::expected_output_0_13_4_0::declare_without_validate(
+                account_contract_address,
+                &last_block_header,
+            ),
+        ]);
+
+        let result = simulate_transactions(context, input).await.unwrap();
+
+        pretty_assertions_sorted::assert_eq!(
+            result
+                .serialize(Serializer {
+                    version: RpcVersion::V08
+                })
+                .unwrap(),
+            expected
+                .serialize(Serializer {
+                    version: RpcVersion::V08
                 })
                 .unwrap(),
         );
