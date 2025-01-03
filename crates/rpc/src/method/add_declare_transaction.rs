@@ -41,9 +41,7 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
             AddDeclareTransactionError::ValidationFailure(message) => {
                 Self::ValidationFailureV06(message)
             }
-            AddDeclareTransactionError::CompilationFailed(data) => {
-                Self::CompilationFailed { data }
-            }
+            AddDeclareTransactionError::CompilationFailed(data) => Self::CompilationFailed { data },
             AddDeclareTransactionError::ContractClassSizeIsTooLarge => {
                 Self::ContractClassSizeIsTooLarge
             }
