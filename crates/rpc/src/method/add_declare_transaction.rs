@@ -17,7 +17,7 @@ pub enum AddDeclareTransactionError {
     InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
-    CompilationFailed,
+    CompilationFailed(String),
     ContractClassSizeIsTooLarge,
     DuplicateTransaction,
     CompiledClassHashMismatch,
@@ -41,7 +41,7 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
             AddDeclareTransactionError::ValidationFailure(message) => {
                 Self::ValidationFailureV06(message)
             }
-            AddDeclareTransactionError::CompilationFailed => Self::CompilationFailed,
+            AddDeclareTransactionError::CompilationFailed(data) => Self::CompilationFailed { data },
             AddDeclareTransactionError::ContractClassSizeIsTooLarge => {
                 Self::ContractClassSizeIsTooLarge
             }
@@ -87,7 +87,7 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::ClassAlreadyDeclared
             }
             SequencerError::StarknetError(e) if e.code == CompilationFailed.into() => {
-                AddDeclareTransactionError::CompilationFailed
+                AddDeclareTransactionError::CompilationFailed(e.message)
             }
             SequencerError::StarknetError(e)
                 if e.code == ContractBytecodeSizeTooLarge.into()

@@ -63,7 +63,7 @@ pub enum ApplicationError {
     #[error("Account validation failed")]
     ValidationFailureV06(String),
     #[error("Compilation failed")]
-    CompilationFailed,
+    CompilationFailed { data: String },
     #[error("Contract class size it too large")]
     ContractClassSizeIsTooLarge,
     #[error("Sender address in not an account contract")]
@@ -144,7 +144,7 @@ impl ApplicationError {
             ApplicationError::InsufficientResourcesForValidate => 53,
             ApplicationError::InsufficientAccountBalance => 54,
             ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
-            ApplicationError::CompilationFailed => 56,
+            ApplicationError::CompilationFailed { .. } => 56,
             ApplicationError::ContractClassSizeIsTooLarge => 57,
             ApplicationError::NonAccount => 58,
             ApplicationError::DuplicateTransaction => 59,
@@ -202,7 +202,9 @@ impl ApplicationError {
             ApplicationError::InsufficientResourcesForValidate => None,
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
-            ApplicationError::CompilationFailed => None,
+            ApplicationError::CompilationFailed { data } => Some(json!({
+                "data": data,
+            })),
             ApplicationError::ContractClassSizeIsTooLarge => None,
             ApplicationError::NonAccount => None,
             ApplicationError::DuplicateTransaction => None,
