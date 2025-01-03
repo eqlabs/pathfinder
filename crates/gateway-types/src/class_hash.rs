@@ -44,7 +44,7 @@ pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ComputedCla
 ///
 /// Due to an issue in serde_json we can't use an untagged enum and simply
 /// derive a Deserialize implementation: <https://github.com/serde-rs/json/issues/559>
-fn parse_contract_definition(
+pub fn parse_contract_definition(
     contract_definition_dump: &[u8],
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
     serde_json::from_slice::<json::SierraContractDefinition<'_>>(contract_definition_dump)
@@ -112,35 +112,49 @@ pub mod from_parts {
     }
 }
 
-/// Computes the class hash for given Cairo class definition.
+
+pub fn compute_cairo_hinted_class_hash(contract_definition: &json::CairoContractDefinition) -> Result<Felt> {
+    use std::io::Write;
+
+    // It's less efficient than tweaking the formatter to emit the encoding but I
+    // don't know how and this is an emergency issue (mainnt nodes stuck).
+    let mut string_buffer = vec![];
+
+    let mut ser =
+        serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
+    contract_definition
+        .serialize(&mut ser)
+        .context("Serializing contract_definition for Keccak256")?;
+
+    let raw_json_output = unsafe {
+        // We never emit invalid UTF-8.
+        String::from_utf8_unchecked(string_buffer)
+    };
+
+    let mut keccak_writer = KeccakWriter::default();
+    keccak_writer
+        .write_all(raw_json_output.as_bytes())
+        .expect("writing to KeccakWriter never fails");
+
+    let KeccakWriter(hash) = keccak_writer;
+    Ok(truncated_keccak(<[u8; 32]>::from(hash.finalize())))
+}
+
+/// Prepares the JSON contract definition for hash calculation by removing unnecessary fields and
+/// ensuring consistency in formatting.
 ///
-/// The structure of the blob is not strictly defined, so it lives in privacy
-/// under `json` module of this module. The class hash has [official
-/// documentation][starknet-doc] and [cairo-lang
-/// has an implementation][cairo-compute] which is half-python and
-/// half-[cairo][cairo-contract].
+/// This function modifies the input `contract_definition` to ensure it is in a suitable state for
+/// calculating the class hash. It removes the `debug_info` field, checks and removes "accessible_scopes"
+/// and "flow_tracking_data" fields if they are empty or null, and applies a backwards compatibility
+/// hack for missing `compiler_version` by adding extra space to named tuple type definitions.
 ///
-/// Outline of the hashing is:
+/// # Errors
 ///
-/// 1. class definition is serialized with python's [`sort_keys=True`
-///    option][py-sortkeys], then a truncated Keccak256 hash is calculated of
-///    the serialized json
-/// 2. a [hash chain][`HashChain`] construction is used to process in order the
-///    contract entry points, builtins, the truncated keccak hash and bytecodes
-/// 3. each of the hashchains is hash chained together to produce a final class
-///    hash
-///
-/// Hash chain construction is explained at the [official
-/// documentation][starknet-doc], but it's text explanations are much more
-/// complex than the actual implementation in `HashChain`.
-///
-/// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
-/// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
-/// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
-/// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-fn compute_cairo_class_hash(
-    mut contract_definition: json::CairoContractDefinition<'_>,
-) -> Result<ClassHash> {
+/// This function returns an error if it fails to modify the contract definition, such as when an
+/// attribute is not an object or when "accessible_scopes" is not an array type.
+pub fn prepare_json_contract_definition(
+    contract_definition: &mut json::CairoContractDefinition<'_>,
+) -> Result<(), anyhow::Error> {
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
 
@@ -234,32 +248,42 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    let truncated_keccak = {
-        use std::io::Write;
+    Ok(())
+}
 
-        // It's less efficient than tweaking the formatter to emit the encoding but I
-        // don't know how and this is an emergency issue (mainnt nodes stuck).
-        let mut string_buffer = vec![];
+/// Computes the class hash for given Cairo class definition.
+///
+/// The structure of the blob is not strictly defined, so it lives in privacy
+/// under `json` module of this module. The class hash has [official
+/// documentation][starknet-doc] and [cairo-lang
+/// has an implementation][cairo-compute] which is half-python and
+/// half-[cairo][cairo-contract].
+///
+/// Outline of the hashing is:
+///
+/// 1. class definition is serialized with python's [`sort_keys=True`
+///    option][py-sortkeys], then a truncated Keccak256 hash is calculated of
+///    the serialized json
+/// 2. a [hash chain][`HashChain`] construction is used to process in order the
+///    contract entry points, builtins, the truncated keccak hash and bytecodes
+/// 3. each of the hashchains is hash chained together to produce a final class
+///    hash
+///
+/// Hash chain construction is explained at the [official
+/// documentation][starknet-doc], but it's text explanations are much more
+/// complex than the actual implementation in `HashChain`.
+///
+/// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
+/// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
+/// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
+/// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
+fn compute_cairo_class_hash(
+    mut contract_definition: json::CairoContractDefinition<'_>,
+) -> Result<ClassHash> {
+    // Ensures backward compatibility with old contracts
+    prepare_json_contract_definition(&mut contract_definition)?;
 
-        let mut ser =
-            serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
-        contract_definition
-            .serialize(&mut ser)
-            .context("Serializing contract_definition for Keccak256")?;
-
-        let raw_json_output = unsafe {
-            // We never emit invalid UTF-8.
-            String::from_utf8_unchecked(string_buffer)
-        };
-
-        let mut keccak_writer = KeccakWriter::default();
-        keccak_writer
-            .write_all(raw_json_output.as_bytes())
-            .expect("writing to KeccakWriter never fails");
-
-        let KeccakWriter(hash) = keccak_writer;
-        truncated_keccak(<[u8; 32]>::from(hash.finalize()))
-    };
+    let truncated_keccak = compute_cairo_hinted_class_hash(&contract_definition)?;
 
     // what follows is defined over at the contract.cairo
 
@@ -496,7 +520,7 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
     }
 }
 
-mod json {
+pub mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 
