@@ -31,6 +31,9 @@ pub struct Block {
 
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    // Introduced in v0.13.4
+    #[serde(default)]
+    pub l2_gas_price: Option<GasPrices>,
 
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
@@ -314,21 +317,23 @@ pub mod transaction {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: Option<L1Gas>,
+        #[serde(default)]
+        pub data_availability: Option<Gas>,
         // Added in Starknet 0.13.2
-        pub total_gas_consumed: Option<L1Gas>,
+        #[serde(default)]
+        pub total_gas_consumed: Option<Gas>,
     }
 
     impl From<ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
         fn from(value: ExecutionResources) -> Self {
+            let (total_gas_consumed, l2_gas) = value.total_gas_consumed.unwrap_or_default().into();
             Self {
                 builtins: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability.unwrap_or_default().into(),
-                total_gas_consumed: value.total_gas_consumed.unwrap_or_default().into(),
-                // TODO: Fix this when we have a way to get L2 gas from the gateway
-                l2_gas: Default::default(),
+                total_gas_consumed,
+                l2_gas,
             }
         }
     }
@@ -347,13 +352,18 @@ pub mod transaction {
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct L1Gas {
+    pub struct Gas {
         pub l1_gas: u128,
         pub l1_data_gas: u128,
+        /// Introduced in v0.13.4, ignored in
+        /// [`ExecutionResources::data_availability`], where it
+        /// was probably added by mistake on the fgw side.
+        #[serde(default)]
+        pub l2_gas: Option<u128>,
     }
 
-    impl From<L1Gas> for pathfinder_common::receipt::L1Gas {
-        fn from(value: L1Gas) -> Self {
+    impl From<Gas> for pathfinder_common::receipt::L1Gas {
+        fn from(value: Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
@@ -361,11 +371,29 @@ pub mod transaction {
         }
     }
 
-    impl From<pathfinder_common::receipt::L1Gas> for L1Gas {
+    impl From<Gas>
+        for (
+            pathfinder_common::receipt::L1Gas,
+            pathfinder_common::receipt::L2Gas,
+        )
+    {
+        fn from(value: Gas) -> Self {
+            (
+                pathfinder_common::receipt::L1Gas {
+                    l1_gas: value.l1_gas,
+                    l1_data_gas: value.l1_data_gas,
+                },
+                pathfinder_common::receipt::L2Gas(value.l2_gas.unwrap_or_default()),
+            )
+        }
+    }
+
+    impl From<pathfinder_common::receipt::L1Gas> for Gas {
         fn from(value: pathfinder_common::receipt::L1Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
+                l2_gas: None,
             }
         }
     }
@@ -376,13 +404,15 @@ pub mod transaction {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: Some(L1Gas {
+                data_availability: Some(Gas {
                     l1_gas: rng.next_u32() as u128,
                     l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: None,
                 }),
-                total_gas_consumed: Some(L1Gas {
+                total_gas_consumed: Some(Gas {
                     l1_gas: rng.next_u32() as u128,
                     l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: Some(rng.next_u32() as u128),
                 }),
             }
         }
