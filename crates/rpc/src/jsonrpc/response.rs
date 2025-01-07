@@ -72,7 +72,7 @@ impl crate::dto::SerializeForVersion for RpcResponse {
         };
 
         match &self.id {
-            RequestId::Number(x) => obj.serialize_field("id", &x)?,
+            RequestId::Number(x) => obj.serialize_field("id", x)?,
             RequestId::String(x) => obj.serialize_field("id", &x)?,
             RequestId::Null => obj.serialize_field("id", &Value::Null)?,
             RequestId::Notification => {}
@@ -96,7 +96,7 @@ impl crate::dto::SerializeForVersion for &RpcResponse {
         };
 
         match &self.id {
-            RequestId::Number(x) => obj.serialize_field("id", &x)?,
+            RequestId::Number(x) => obj.serialize_field("id", x)?,
             RequestId::String(x) => obj.serialize_field("id", &x)?,
             RequestId::Null => obj.serialize_field("id", &Value::Null)?,
             RequestId::Notification => {}

@@ -9,40 +9,11 @@ impl SerializeForVersion for types::CairoContractClass {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        impl SerializeForVersion for types::ContractEntryPoints {
-            fn serialize(
-                &self,
-                serializer: crate::dto::Serializer,
-            ) -> Result<crate::dto::Ok, crate::dto::Error> {
-                let mut serializer = serializer.serialize_struct()?;
-
-                serializer.serialize_iter(
-                    "CONSTRUCTOR",
-                    self.constructor.len(),
-                    &mut self.constructor.iter(),
-                )?;
-
-                serializer.serialize_iter(
-                    "EXTERNAL",
-                    self.external.len(),
-                    &mut self.external.iter(),
-                )?;
-
-                serializer.serialize_iter(
-                    "L1_HANDLER",
-                    self.l1_handler.len(),
-                    &mut self.l1_handler.iter(),
-                )?;
-
-                serializer.end()
-            }
-        }
-
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("program", &self.program)?;
         serializer.serialize_field("entry_points_by_type", &self.entry_points_by_type)?;
-        serializer.serialize_optional("abi", self.abi)?;
+        serializer.serialize_optional_with_null("abi", self.abi.clone())?;
 
         serializer.end()
     }
@@ -53,35 +24,6 @@ impl SerializeForVersion for types::SierraContractClass {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        impl SerializeForVersion for types::SierraEntryPoints {
-            fn serialize(
-                &self,
-                serializer: crate::dto::Serializer,
-            ) -> Result<crate::dto::Ok, crate::dto::Error> {
-                let mut serializer = serializer.serialize_struct()?;
-
-                serializer.serialize_iter(
-                    "CONSTRUCTOR",
-                    self.constructor.len(),
-                    &mut self.constructor.iter(),
-                )?;
-
-                serializer.serialize_iter(
-                    "EXTERNAL",
-                    self.external.len(),
-                    &mut self.external.iter(),
-                )?;
-
-                serializer.serialize_iter(
-                    "L1_HANDLER",
-                    self.l1_handler.len(),
-                    &mut self.l1_handler.iter(),
-                )?;
-
-                serializer.end()
-            }
-        }
-
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter(
@@ -95,13 +37,63 @@ impl SerializeForVersion for types::SierraContractClass {
 
         // ABI is optional, so skip if its empty.
         let abi = (!self.abi.is_empty()).then_some(&self.abi);
-        serializer.serialize_optional("abi", abi)?;
+        serializer.serialize_optional_with_null("abi", abi)?;
 
         serializer.end()
     }
 }
 
-impl SerializeForVersion for types::ContractEntryPoint {
+impl SerializeForVersion for types::SierraEntryPoints {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter(
+            "CONSTRUCTOR",
+            self.constructor.len(),
+            &mut self.constructor.iter(),
+        )?;
+
+        serializer.serialize_iter("EXTERNAL", self.external.len(), &mut self.external.iter())?;
+
+        serializer.serialize_iter(
+            "L1_HANDLER",
+            self.l1_handler.len(),
+            &mut self.l1_handler.iter(),
+        )?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for types::ContractEntryPoints {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter(
+            "CONSTRUCTOR",
+            self.constructor.len(),
+            &mut self.constructor.iter(),
+        )?;
+
+        serializer.serialize_iter("EXTERNAL", self.external.len(), &mut self.external.iter())?;
+
+        serializer.serialize_iter(
+            "L1_HANDLER",
+            self.l1_handler.len(),
+            &mut self.l1_handler.iter(),
+        )?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for &types::ContractEntryPoint {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -115,7 +107,7 @@ impl SerializeForVersion for types::ContractEntryPoint {
     }
 }
 
-impl SerializeForVersion for types::SierraEntryPoint {
+impl SerializeForVersion for &types::SierraEntryPoint {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -138,7 +130,16 @@ impl SerializeForVersion for [types::ContractAbiEntry] {
     }
 }
 
-impl SerializeForVersion for types::ContractAbiEntry {
+impl SerializeForVersion for Vec<types::ContractAbiEntry> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl SerializeForVersion for &types::ContractAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -151,7 +152,7 @@ impl SerializeForVersion for types::ContractAbiEntry {
     }
 }
 
-impl SerializeForVersion for types::FunctionAbiEntry {
+impl SerializeForVersion for &types::FunctionAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -178,7 +179,7 @@ impl SerializeForVersion for types::FunctionAbiEntry {
     }
 }
 
-impl SerializeForVersion for types::EventAbiEntry {
+impl SerializeForVersion for &types::EventAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -198,7 +199,7 @@ impl SerializeForVersion for types::EventAbiEntry {
     }
 }
 
-impl SerializeForVersion for types::StructAbiEntry {
+impl SerializeForVersion for &types::StructAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -263,21 +264,7 @@ impl SerializeForVersion for FunctionStateMutability {
     }
 }
 
-impl SerializeForVersion for types::TypedParameter {
-    fn serialize(
-        &self,
-        serializer: crate::dto::Serializer,
-    ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        let mut serializer = serializer.serialize_struct()?;
-
-        serializer.serialize_field("name", &self.name)?;
-        serializer.serialize_field("type", &self.r#type)?;
-
-        serializer.end()
-    }
-}
-
-impl SerializeForVersion for types::StructMember {
+impl SerializeForVersion for &types::StructMember {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -286,12 +273,26 @@ impl SerializeForVersion for types::StructMember {
 
         // FIXME: these clones could be removed if the types::* definitions were
         // smarter.
-        let parameter = types::TypedParameter {
+        let parameter = &types::TypedParameter {
             name: self.typed_parameter_name.clone(),
             r#type: self.typed_parameter_type.clone(),
         };
         serializer.flatten(&parameter)?;
         serializer.serialize_field("offset", &self.offset)?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for &types::TypedParameter {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_field("name", &self.name)?;
+        serializer.serialize_field("type", &self.r#type)?;
 
         serializer.end()
     }

@@ -176,10 +176,7 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(crate::dto::FeeEstimate),
-        )
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter().cloned())
     }
 }
 

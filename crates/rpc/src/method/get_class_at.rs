@@ -43,16 +43,14 @@ impl From<ContractClass> for Output {
 impl SerializeForVersion for Output {
     fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
-            Output::DeprecatedClass(cairo) => {
-                dto::DeprecatedContractClass(cairo).serialize(serializer)
-            }
-            Output::Class(sierra) => dto::ContractClass(sierra).serialize(serializer),
+            Output::DeprecatedClass(cairo) => cairo.serialize(serializer),
+            Output::Class(sierra) => sierra.serialize(serializer),
         }
     }
 }
 
 /// Get a contract class.
-pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractClass, Error> {
+pub async fn get_class_at(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -103,7 +101,8 @@ pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractC
         Ok(class)
     });
 
-    jh.await.context("Reading class from database")?
+    let class = jh.await.context("Reading class from database")??;
+    Ok(Output::from(class))
 }
 
 #[cfg(test)]

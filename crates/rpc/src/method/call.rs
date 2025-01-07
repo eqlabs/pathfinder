@@ -167,10 +167,7 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(|v| crate::dto::Felt(&v.0)),
-        )
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
 

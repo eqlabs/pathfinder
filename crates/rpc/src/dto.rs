@@ -43,14 +43,15 @@ pub trait SerializeForVersion {
     fn serialize(&self, serializer: Serializer) -> Result<Ok, Error>;
 }
 
-// This blanket implementation should be removed once all existing DTOs have
-// been migrated.
-impl<T> SerializeForVersion for T
-where
-    T: serde::Serialize,
-{
+impl SerializeForVersion for serde_json::Value {
     fn serialize(&self, _serializer: Serializer) -> Result<Ok, Error> {
-        self.serialize(BaseSerializer {})
+        Ok(self.clone())
+    }
+}
+
+impl SerializeForVersion for &serde_json::Value {
+    fn serialize(&self, _serializer: Serializer) -> Result<Ok, Error> {
+        Ok((*self).clone())
     }
 }
 
@@ -63,14 +64,39 @@ impl Serializer {
         value.serialize(self)
     }
 
+    pub fn serialize_unit(self) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_unit()
+    }
+
     pub fn serialize_str(self, value: &str) -> Result<Ok, Error> {
         use serde::Serializer;
         BaseSerializer {}.serialize_str(value)
     }
 
+    pub fn serialize_i32(self, value: i32) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_i32(value)
+    }
+
+    pub fn serialize_i64(self, value: i64) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_i64(value)
+    }
+
+    pub fn serialize_u32(self, value: u32) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_u32(value)
+    }
+
     pub fn serialize_u64(self, value: u64) -> Result<Ok, Error> {
         use serde::Serializer;
         BaseSerializer {}.serialize_u64(value)
+    }
+
+    pub fn serialize_u128(self, value: u128) -> Result<Ok, Error> {
+        use serde::Serializer;
+        BaseSerializer {}.serialize_u128(value)
     }
 
     pub fn serialize_bool(self, value: bool) -> Result<Ok, Error> {
@@ -123,7 +149,7 @@ impl SerializeStruct {
         self.serialize_field(key, &seq)
     }
 
-    /// Skips serialization if its [`None`].
+    /// Skips serialization if it's [`None`].
     pub fn serialize_optional(
         &mut self,
         key: &'static str,
@@ -131,6 +157,21 @@ impl SerializeStruct {
     ) -> Result<(), Error> {
         if let Some(value) = value {
             self.serialize_field(key, &value)?;
+        }
+
+        Ok(())
+    }
+
+    /// Serializes optional value as null if it's [`None`].
+    pub fn serialize_optional_with_null(
+        &mut self,
+        key: &'static str,
+        value: Option<impl SerializeForVersion>,
+    ) -> Result<(), Error> {
+        if let Some(value) = value {
+            self.serialize_field(key, &value)?;
+        } else {
+            self.serialize_field(key, &serde_json::Value::Null)?;
         }
 
         Ok(())

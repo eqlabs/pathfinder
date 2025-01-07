@@ -557,10 +557,7 @@ impl crate::dto::SerializeForVersion for Trace<'_> {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::TxnHash(self.transaction_hash),
-        )?;
+        serializer.serialize_field("transaction_hash", self.transaction_hash)?;
         serializer.serialize_field(
             "trace_root",
             &crate::dto::TransactionTrace {

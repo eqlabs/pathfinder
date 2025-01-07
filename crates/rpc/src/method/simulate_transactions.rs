@@ -116,10 +116,7 @@ impl crate::dto::SerializeForVersion for TransactionSimulation<'_> {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "fee_estimation",
-            &crate::dto::FeeEstimate(&self.0.fee_estimation),
-        )?;
+        serializer.serialize_field("fee_estimation", &self.0.fee_estimation)?;
         serializer.serialize_field(
             "transaction_trace",
             &crate::dto::TransactionTrace {
@@ -1972,11 +1969,7 @@ pub(crate) mod tests {
             version: RpcVersion::V07,
         };
 
-        let result_serializable = result
-            .0
-            .into_iter()
-            .map(crate::dto::SimulatedTransaction)
-            .collect::<Vec<_>>();
+        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
 
         let result_serialized = serializer
             .serialize_iter(
@@ -2007,7 +2000,6 @@ pub(crate) mod tests {
             ),
         ]
         .into_iter()
-        .map(crate::dto::SimulatedTransaction)
         .collect::<Vec<_>>();
 
         let expected_serialized = serializer

@@ -29,7 +29,7 @@ impl crate::dto::SerializeForVersion for Output {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             Syncing::False => serializer.serialize_bool(false),
-            Syncing::Status(status) => serializer.serialize(&crate::dto::SyncStatus(&status)),
+            Syncing::Status(status) => serializer.serialize(&status),
         }
     }
 }

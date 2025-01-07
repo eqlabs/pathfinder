@@ -43,7 +43,7 @@ impl crate::dto::SerializeForVersion for Notification {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            Self::BlockHeader(header) => crate::dto::BlockHeader(header).serialize(serializer),
+            Self::BlockHeader(header) => header.serialize(serializer),
             Self::Reorg(reorg) => reorg.serialize(serializer),
         }
     }

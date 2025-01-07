@@ -254,7 +254,7 @@ impl crate::dto::SerializeForVersion for RpcResponses {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            Self::Empty => serializer.serialize(&()),
+            Self::Empty => serializer.serialize_unit(),
             Self::Single(response) => serializer.serialize(response),
             Self::Multiple(responses) => {
                 serializer.serialize_iter(responses.len(), &mut responses.iter())
@@ -485,6 +485,16 @@ mod tests {
                     Value::String("hello".to_owned()),
                     Value::Number(5.into()),
                 ]))
+            }
+
+            impl crate::dto::SerializeForVersion for GetDataOutput {
+                fn serialize(
+                    &self,
+                    serializer: crate::dto::Serializer,
+                ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                    let value = serde_json::to_value(&self.0).unwrap();
+                    serializer.serialize(&value)
+                }
             }
 
             RpcRouter::builder(RpcVersion::default())

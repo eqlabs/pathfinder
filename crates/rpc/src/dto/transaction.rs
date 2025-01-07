@@ -8,13 +8,7 @@ use crate::dto::{SerializeForVersion, Serializer};
 
 pub struct TransactionWithHash<'a>(pub &'a pathfinder_common::transaction::Transaction);
 
-impl SerializeForVersion for pathfinder_common::TransactionHash {
-    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
-        self.0.serialize(serializer)
-    }
-}
-
-impl SerializeForVersion for pathfinder_common::transaction::Transaction {
+impl SerializeForVersion for &pathfinder_common::transaction::Transaction {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         match &self.variant {
@@ -192,7 +186,7 @@ impl SerializeForVersion for TransactionWithHash<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("transaction_hash", &self.0.hash)?;
-        s.flatten(self.0)?;
+        s.flatten(&self.0)?;
         s.end()
     }
 }

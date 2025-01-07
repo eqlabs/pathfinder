@@ -98,11 +98,11 @@ impl crate::dto::SerializeForVersion for Output {
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::PendingBlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TxnHash),
+                    &mut transactions.iter(),
                 )?;
                 serializer.end()
             }
@@ -112,11 +112,11 @@ impl crate::dto::SerializeForVersion for Output {
                 l1_accepted,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TxnHash),
+                    &mut transactions.iter(),
                 )?;
                 serializer.serialize_field(
                     "status",

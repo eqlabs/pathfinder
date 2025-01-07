@@ -202,10 +202,7 @@ impl crate::dto::SerializeForVersion for Output {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::Felt(&self.transaction_hash.0),
-        )?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.end()
     }
 }

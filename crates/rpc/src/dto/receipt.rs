@@ -157,7 +157,7 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
             finality: *finality,
         })?;
 
-        serializer.serialize_optional("block_hash", *block_hash)?;
+        serializer.serialize_optional("block_hash", block_hash.cloned())?;
         serializer.serialize_optional("block_number", *block_number)?;
 
         serializer.end()
@@ -211,7 +211,7 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY")?;
-        serializer.serialize_field("contract_address", &contract_address)?;
+        serializer.serialize_field("contract_address", contract_address)?;
 
         serializer.end()
     }
@@ -241,7 +241,7 @@ impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
-        serializer.serialize_field("contract_address", &contract_address)?;
+        serializer.serialize_field("contract_address", contract_address)?;
 
         serializer.end()
     }
@@ -336,7 +336,7 @@ impl SerializeForVersion for FeePayment<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("amount", &self.amount)?;
+        serializer.serialize_field("amount", self.amount)?;
         serializer.serialize_field("unit", &PriceUnit(self.transaction_version))?;
 
         serializer.end()

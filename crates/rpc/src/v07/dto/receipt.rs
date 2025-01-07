@@ -185,7 +185,7 @@ impl crate::dto::SerializeForVersion for TxnReceipt {
                 common,
             } => {
                 serializer.serialize_field("type", &"DEPLOY")?;
-                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.serialize_field("contract_address", &contract_address)?;
                 serializer.flatten(common)?;
             }
             Self::DeployAccount {
@@ -193,7 +193,7 @@ impl crate::dto::SerializeForVersion for TxnReceipt {
                 common,
             } => {
                 serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
-                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.serialize_field("contract_address", &contract_address)?;
                 serializer.flatten(common)?;
             }
         }
@@ -253,7 +253,7 @@ impl crate::dto::SerializeForVersion for PendingTxnReceipt {
                 common,
             } => {
                 serializer.serialize_field("type", &"DEPLOY")?;
-                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.serialize_field("contract_address", &contract_address)?;
                 serializer.flatten(common)?;
             }
             Self::DeployAccount {
@@ -261,7 +261,7 @@ impl crate::dto::SerializeForVersion for PendingTxnReceipt {
                 common,
             } => {
                 serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
-                serializer.serialize_field("contract_address", contract_address)?;
+                serializer.serialize_field("contract_address", &contract_address)?;
                 serializer.flatten(common)?;
             }
         }

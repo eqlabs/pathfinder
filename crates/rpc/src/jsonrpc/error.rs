@@ -81,7 +81,7 @@ impl crate::dto::SerializeForVersion for RpcError {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut obj = serializer.serialize_struct()?;
         obj.serialize_field("code", &self.code())?;
-        obj.serialize_field("message", &self.message(serializer.version))?;
+        obj.serialize_field("message", &self.message(serializer.version).as_ref())?;
 
         if let Some(data) = self.data(serializer.version) {
             obj.serialize_field("data", &data)?;

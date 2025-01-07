@@ -7,7 +7,6 @@ pub(crate) mod transaction;
 
 pub use class::*;
 use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
-use pathfinder_serde::bytes_to_hex_str;
 use serde::de::Error;
 
 use crate::dto::{U128Hex, U64Hex};
@@ -75,10 +74,8 @@ impl crate::dto::SerializeForVersion for ResourceBound {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        let max_amount_hex = bytes_to_hex_str(&self.max_amount.0.to_be_bytes());
-        serializer.serialize_field("max_amount", &max_amount_hex)?;
-        let max_price_hex = bytes_to_hex_str(&self.max_price_per_unit.0.to_be_bytes());
-        serializer.serialize_field("max_price_per_unit", &max_price_hex)?;
+        serializer.serialize_field("max_amount", &self.max_amount)?;
+        serializer.serialize_field("max_price_per_unit", &self.max_price_per_unit)?;
         serializer.end()
     }
 }
@@ -158,11 +155,11 @@ pub mod request {
         Fee,
         PaymasterDataElem,
         Tip,
+        TipHex,
         TransactionNonce,
         TransactionSignatureElem,
         TransactionVersion,
     };
-    use pathfinder_serde::bytes_to_hex_str;
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -605,8 +602,7 @@ pub mod request {
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field("account_deployment_data", &self.account_deployment_data)?;
             serializer.serialize_field(
@@ -879,8 +875,7 @@ pub mod request {
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field(
                 "nonce_data_availability_mode",
@@ -1203,8 +1198,7 @@ pub mod request {
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field("account_deployment_data", &self.account_deployment_data)?;
             serializer.serialize_field(
@@ -1619,26 +1613,47 @@ pub mod request {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
-    use serde::Serialize;
+    use serde::de::Error;
 
     /// L2 Block status as returned by the RPC API.
-    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum BlockStatus {
-        #[serde(rename = "PENDING")]
         Pending,
-        #[serde(rename = "ACCEPTED_ON_L2")]
         AcceptedOnL2,
-        #[serde(rename = "ACCEPTED_ON_L1")]
         AcceptedOnL1,
-        #[serde(rename = "REJECTED")]
         Rejected,
     }
 
     impl BlockStatus {
         pub fn is_pending(&self) -> bool {
             self == &Self::Pending
+        }
+    }
+
+    impl crate::dto::SerializeForVersion for BlockStatus {
+        fn serialize(
+            &self,
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
+            serializer.serialize_str(match self {
+                Self::Pending => "PENDING",
+                Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
+                Self::AcceptedOnL1 => "ACCEPTED_ON_L1",
+                Self::Rejected => "REJECTED",
+            })
+        }
+    }
+
+    impl crate::dto::DeserializeForVersion for BlockStatus {
+        fn deserialize(value: crate::dto::Value) -> Result<Self, crate::dto::Error> {
+            let status: String = value.deserialize()?;
+            match status.as_str() {
+                "PENDING" => Ok(Self::Pending),
+                "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
+                "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
+                "REJECTED" => Ok(Self::Rejected),
+                _ => Err(serde_json::Error::custom("Invalid block status")),
+            }
         }
     }
 

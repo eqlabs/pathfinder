@@ -237,6 +237,23 @@ impl crate::dto::SerializeForVersion for InnerCallExecutionResources<'_> {
     }
 }
 
+impl crate::dto::SerializeForVersion
+    for (
+        &pathfinder_common::ContractAddress,
+        &pathfinder_common::ContractNonce,
+    )
+{
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("contract_address", &self.0)?;
+        serializer.serialize_field("nonce", self.1)?;
+        serializer.end()
+    }
+}
+
 impl crate::dto::SerializeForVersion for pathfinder_executor::types::StateDiff {
     fn serialize(
         &self,
@@ -349,7 +366,7 @@ impl crate::dto::SerializeForVersion for Nonce<'_> {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("contract_address", &self.0 .0)?;
-        serializer.serialize_field("nonce", &self.0 .1)?;
+        serializer.serialize_field("nonce", self.0 .1)?;
         serializer.end()
     }
 }

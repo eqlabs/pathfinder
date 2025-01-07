@@ -28,7 +28,13 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        self.0.serialize(serializer)
+        use serde::de::Error;
+        let mut s = serializer.serialize_struct()?;
+        // Convert CasmContractClass to a serde_json::Value first
+        let json_value = serde_json::to_value(&self.0).map_err(serde_json::Error::custom)?;
+        // Serialize it as a field
+        s.serialize_field("casm", &json_value)?;
+        s.end()
     }
 }
 

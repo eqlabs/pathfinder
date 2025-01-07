@@ -187,7 +187,7 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        crate::dto::FeeEstimate(&self.0).serialize(serializer)
+        self.0.serialize(serializer)
     }
 }
 

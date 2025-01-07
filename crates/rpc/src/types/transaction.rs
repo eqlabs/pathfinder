@@ -102,6 +102,51 @@ struct ResourcePricePerUnitHelper<'a>(&'a ResourcePricePerUnit);
 struct DataAvailabilityModeHelper<'a>(&'a DataAvailabilityMode);
 struct TipHelper<'a>(&'a Tip);
 
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::CallParam> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::AccountDeploymentDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::TransactionSignatureElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ConstructorParam> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::PaymasterDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
 impl crate::dto::SerializeForVersion for DeclareV0Helper<'_> {
     fn serialize(
         &self,

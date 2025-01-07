@@ -32,6 +32,6 @@ impl crate::dto::SerializeForVersion for Output {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize(&crate::dto::BlockNumber(self.0))
+        serializer.serialize(&self.0)
     }
 }

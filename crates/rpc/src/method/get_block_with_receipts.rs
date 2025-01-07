@@ -107,7 +107,7 @@ impl crate::dto::SerializeForVersion for Output {
                         "ACCEPTED_ON_L2"
                     },
                 )?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     body.len(),
@@ -122,7 +122,7 @@ impl crate::dto::SerializeForVersion for Output {
                 )?;
             }
             Output::Pending(block) => {
-                serializer.flatten(&crate::dto::PendingBlockHeader(block))?;
+                serializer.flatten(block.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     block.transactions.len(),
@@ -164,8 +164,7 @@ impl crate::dto::SerializeForVersion for TransactionWithReceipt<'_> {
                 )?;
             }
             _ => {
-                serializer
-                    .serialize_field("transaction", &crate::dto::Transaction(self.transaction))?;
+                serializer.serialize_field("transaction", &self.transaction)?;
             }
         }
         serializer.serialize_field(

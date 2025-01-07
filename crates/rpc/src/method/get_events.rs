@@ -577,11 +577,10 @@ impl SerializeForVersion for EmittedEvent {
 
         serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|d| d.0))?;
         serializer.serialize_iter("keys", self.keys.len(), &mut self.keys.iter().map(|d| d.0))?;
-        serializer.serialize_field("from_address", &dto::Address(&self.from_address))?;
-        serializer
-            .serialize_optional("block_hash", self.block_hash.as_ref().map(dto::BlockHash))?;
-        serializer.serialize_optional("block_number", self.block_number.map(dto::BlockNumber))?;
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction_hash))?;
+        serializer.serialize_field("from_address", &self.from_address)?;
+        serializer.serialize_optional("block_hash", self.block_hash)?;
+        serializer.serialize_optional("block_number", self.block_number)?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
 
         serializer.end()
     }
@@ -598,7 +597,7 @@ impl SerializeForVersion for GetEventsResult {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;
-        serializer.serialize_optional("continuation_token", self.continuation_token.as_ref())?;
+        serializer.serialize_optional("continuation_token", self.continuation_token.clone())?;
 
         serializer.end()
     }

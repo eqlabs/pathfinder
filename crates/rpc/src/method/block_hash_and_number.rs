@@ -36,8 +36,8 @@ impl crate::dto::SerializeForVersion for Output {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("block_hash", &crate::dto::BlockHash(&self.hash))?;
-        serializer.serialize_field("block_number", &crate::dto::BlockNumber(self.number))?;
+        serializer.serialize_field("block_hash", &self.hash)?;
+        serializer.serialize_field("block_number", &self.number)?;
         serializer.end()
     }
 }

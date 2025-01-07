@@ -100,10 +100,8 @@ pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Erro
 impl SerializeForVersion for Output {
     fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
-            Output::DeprecatedClass(cairo) => {
-                dto::DeprecatedContractClass(cairo).serialize(serializer)
-            }
-            Output::Class(sierra) => dto::ContractClass(sierra).serialize(serializer),
+            Output::DeprecatedClass(cairo) => cairo.serialize(serializer),
+            Output::Class(sierra) => sierra.serialize(serializer),
         }
     }
 }
