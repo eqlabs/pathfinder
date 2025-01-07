@@ -100,10 +100,6 @@
         "syscall_base_gas_cost": {
             "step_gas_cost": 100
         },
-        "fee_transfer_gas_cost": {
-            "entry_point_initial_budget": 1,
-            "step_gas_cost": 600
-        },
         "error_block_number_out_of_range": "Block number out of range",
         "error_out_of_gas": "Out of gas",
         "error_entry_point_failed": "ENTRYPOINT_FAILED",
@@ -122,13 +118,11 @@
         "syscall_gas_costs": {
             "call_contract": {
                 "syscall_base_gas_cost": 1,
-                "step_gas_cost": 510,
-                "entry_point_initial_budget": 1
+                "step_gas_cost": 510
             },
             "deploy": {
                 "syscall_base_gas_cost": 1,
-                "step_gas_cost": 700,
-                "entry_point_initial_budget": 1
+                "step_gas_cost": 700
             },
             "get_block_hash": {
                 "syscall_base_gas_cost": 1,
@@ -140,8 +134,7 @@
             },
             "library_call": {
                 "syscall_base_gas_cost": 1,
-                "step_gas_cost": 510,
-                "entry_point_initial_budget": 1
+                "step_gas_cost": 510
             },
             "replace_class": {
                 "syscall_base_gas_cost": 1,
@@ -319,13 +312,18 @@
                 "builtin_instance_counter": {},
                 "n_memory_holes": 0
             },
-            "Keccak": {
+            "KeccakRound": {
                 "n_steps": 381,
                 "builtin_instance_counter": {
                     "bitwise_builtin": 6,
                     "keccak_builtin": 1,
                     "range_check_builtin": 56
                 },
+                "n_memory_holes": 0
+            },
+            "Keccak": {
+                "n_steps": 0,
+                "builtin_instance_counter": {},
                 "n_memory_holes": 0
             },
             "LibraryCall": {
