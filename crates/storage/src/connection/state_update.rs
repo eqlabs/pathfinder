@@ -364,7 +364,7 @@ impl Transaction<'_> {
             .transpose()
             .context("Iterating over storage query rows")?
         {
-            state_update = if address == ContractAddress::ONE {
+            state_update = if address.is_system_contract() {
                 state_update.with_system_storage_update(address, key, value)
             } else {
                 state_update.with_storage_update(address, key, value)
@@ -1214,8 +1214,13 @@ mod tests {
                 )
                 .with_system_storage_update(
                     ContractAddress::ONE,
-                    storage_address_bytes!(b"key"),
-                    storage_value_bytes!(b"value"),
+                    storage_address_bytes!(b"key 1"),
+                    storage_value_bytes!(b"value 1"),
+                )
+                .with_system_storage_update(
+                    ContractAddress::TWO,
+                    storage_address_bytes!(b"key 2"),
+                    storage_value_bytes!(b"value 2"),
                 )
                 .with_deployed_contract(
                     contract_address_bytes!(b"contract addr 2"),
@@ -1308,7 +1313,18 @@ mod tests {
                         ContractAddress::ONE,
                         ReverseContractUpdate::Updated(ContractUpdate {
                             storage: HashMap::from([(
-                                storage_address_bytes!(b"key"),
+                                storage_address_bytes!(b"key 1"),
+                                StorageValue::ZERO
+                            )]),
+                            nonce: None,
+                            class: None
+                        })
+                    ),
+                    (
+                        ContractAddress::TWO,
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"key 2"),
                                 StorageValue::ZERO
                             )]),
                             nonce: None,

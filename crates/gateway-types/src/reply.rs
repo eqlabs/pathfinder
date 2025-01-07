@@ -2056,17 +2056,19 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
         // This must occur before we map the contract updates, since we want to first
         // remove the system contract updates.
         //
-        // Currently this is only the contract at address 0x1.
+        // Currently there are two such contracts, at addresses 0x1 and 0x2.
         //
-        // As of starknet v0.12.0 these are embedded in this way, but in the future will
+        // As of starknet v0.13.4 these are embedded in this way, but in the future will
         // be a separate property in the state diff.
-        if let Some((address, storage_updates)) = gateway
-            .state_diff
-            .storage_diffs
-            .remove_entry(&ContractAddress::ONE)
-        {
-            for state_update::StorageDiff { key, value } in storage_updates {
-                state_update = state_update.with_system_storage_update(address, key, value);
+        for system_contract in ContractAddress::SYSTEM.iter() {
+            if let Some((address, storage_updates)) = gateway
+                .state_diff
+                .storage_diffs
+                .remove_entry(system_contract)
+            {
+                for state_update::StorageDiff { key, value } in storage_updates {
+                    state_update = state_update.with_system_storage_update(address, key, value);
+                }
             }
         }
 

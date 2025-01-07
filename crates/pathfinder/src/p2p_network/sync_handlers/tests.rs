@@ -137,7 +137,6 @@ mod prop {
         TransactionHash,
         TransactionIndex,
     };
-    use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
@@ -274,10 +273,11 @@ mod prop {
             // Check the rest
             responses.into_iter().for_each(|response| match response {
                 StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, values, domain: _ }) => {
-                    if address.0 == Felt::from_u64(1) {
+                    let contract_address = ContractAddress(address.0);
+                    if contract_address.is_system_contract() {
                         actual_system_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 SystemContractUpdate {
                                     storage: values.into_iter().map(
                                         |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
@@ -285,7 +285,7 @@ mod prop {
                     } else {
                         actual_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),

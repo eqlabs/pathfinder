@@ -411,12 +411,20 @@ pub mod generate {
                     declared_cairo_classes,
                     declared_sierra_classes,
                     system_contract_updates: if occurrence.system_storage.contains(&1) {
-                        Some((
-                            ContractAddress::ONE,
-                            SystemContractUpdate {
-                                storage: fake_non_empty_with_rng(rng),
-                            },
-                        ))
+                        [
+                            (
+                                ContractAddress::ONE,
+                                SystemContractUpdate {
+                                    storage: fake_non_empty_with_rng(rng),
+                                },
+                            ),
+                            (
+                                ContractAddress::TWO,
+                                SystemContractUpdate {
+                                    storage: fake_non_empty_with_rng(rng),
+                                },
+                            ),
+                        ]
                         .into_iter()
                         .collect()
                     } else {
