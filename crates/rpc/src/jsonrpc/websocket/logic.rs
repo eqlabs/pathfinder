@@ -1555,9 +1555,13 @@ mod tests {
                 price_in_fri: GasPrice(0),
             },
             l1_data_gas_price: GasPrices {
-                price_in_wei: GasPrice(0),
-                price_in_fri: GasPrice(0),
+                price_in_wei: GasPrice(1),
+                price_in_fri: GasPrice(1),
             },
+            l2_gas_price: Some(GasPrices {
+                price_in_wei: GasPrice(2),
+                price_in_fri: GasPrice(2),
+            }),
             parent_block_hash: block_hash!("0x2"),
             sequencer_address: None,
             state_commitment: state_commitment!("0x3"),
