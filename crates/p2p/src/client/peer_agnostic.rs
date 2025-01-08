@@ -395,7 +395,7 @@ impl BlockClient for Client {
                             }
                         }
                         let address = ContractAddress(address.0);
-                        if address == ContractAddress::ONE {
+                        if address.is_system_contract() {
                             let storage = &mut state_diff
                                 .system_contract_updates
                                 .entry(address)
@@ -1046,7 +1046,7 @@ mod state_diff_stream {
 
                 progress.checked_sub_assign(values.len())?;
 
-                if address == ContractAddress::ONE {
+                if address.is_system_contract() {
                     let storage = &mut state_diff
                         .system_contract_updates
                         .entry(address)

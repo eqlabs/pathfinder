@@ -32,6 +32,7 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
+use rand::seq::SliceRandom;
 use tagged::Tagged;
 use tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
@@ -249,6 +250,7 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
         Some(x) => ([].into(), [(SierraHash(Faker.fake()), x)].into()),
         None => ([ClassHash(Faker.fake())].into(), [].into()),
     };
+
     let (contract_updates, system_contract_updates) = if Faker.fake() {
         (
             [(
@@ -263,8 +265,18 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
             [].into(),
         )
     } else {
-        ([].into(), [(ContractAddress::ONE, Faker.fake())].into())
+        (
+            [].into(),
+            [(
+                *ContractAddress::SYSTEM
+                    .choose(&mut rand::thread_rng())
+                    .unwrap(),
+                Faker.fake(),
+            )]
+            .into(),
+        )
     };
+
     Tagged::get(format!("state diff {tag}"), || StateUpdateData {
         contract_updates,
         system_contract_updates,
