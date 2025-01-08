@@ -355,7 +355,7 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             events,
             messages,
             result,
-            computation_resources: call_info.charged_resources.vm_resources.into(),
+            computation_resources: call_info.resources.into(),
             execution_resources: InnerCallExecutionResources {
                 l1_gas: call_info.execution.gas_consumed.into(),
                 // TODO: Use proper l2_gas value for Starknet 0.13.3

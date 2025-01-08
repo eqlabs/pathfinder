@@ -86,15 +86,19 @@ pub(crate) fn map_broadcasted_transaction(
                     .context("Serializing Sierra class definition")?,
             )
             .context("Compiling Sierra class definition to CASM")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_casm_definition(
+                casm_contract_definition,
+                sierra_version.clone(),
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
                 tx.contract_class.abi.len(),
-                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?,
+                sierra_version,
             )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
@@ -104,15 +108,19 @@ pub(crate) fn map_broadcasted_transaction(
                     .context("Serializing Sierra class definition")?,
             )
             .context("Compiling Sierra class definition to CASM")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_casm_definition(
+                casm_contract_definition,
+                sierra_version.clone(),
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
                 tx.contract_class.abi.len(),
-                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?,
+                sierra_version,
             )?)
         }
         BroadcastedTransaction::Invoke(_) | BroadcastedTransaction::DeployAccount(_) => None,
@@ -523,8 +531,11 @@ pub fn compose_executor_transaction(
             let class_definition: SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class =
+                pathfinder_executor::parse_casm_definition(casm_definition, sierra_version)?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),
@@ -542,8 +553,11 @@ pub fn compose_executor_transaction(
             let class_definition: SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class =
+                pathfinder_executor::parse_casm_definition(casm_definition, sierra_version)?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),

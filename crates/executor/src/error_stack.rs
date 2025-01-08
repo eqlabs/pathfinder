@@ -4,6 +4,7 @@ use blockifier::execution::stack_trace::{
     ErrorStackSegment,
 };
 use blockifier::transaction::errors::TransactionExecutionError;
+use blockifier::transaction::objects::RevertError;
 use pathfinder_common::{ClassHash, ContractAddress, EntryPoint};
 
 use crate::IntoFelt;
@@ -21,6 +22,17 @@ impl From<TransactionExecutionError> for ErrorStack {
     fn from(value: TransactionExecutionError) -> Self {
         let error_stack = gen_tx_execution_error_trace(&value);
         error_stack.into()
+    }
+}
+
+impl From<RevertError> for ErrorStack {
+    fn from(value: RevertError) -> Self {
+        match value {
+            RevertError::Execution(error_stack) => error_stack.into(),
+            RevertError::PostExecution(fee_check_error) => {
+                Self(vec![Frame::StringFrame(fee_check_error.to_string())])
+            }
+        }
     }
 }
 

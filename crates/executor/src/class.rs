@@ -13,10 +13,14 @@ pub fn parse_deprecated_class_definition(
 
 pub fn parse_casm_definition(
     casm_definition: Vec<u8>,
+    sierra_version: starknet_api::contract_class::SierraVersion,
 ) -> anyhow::Result<starknet_api::contract_class::ContractClass> {
     let casm_definition = String::from_utf8(casm_definition)?;
 
     let class: CasmContractClass = serde_json::from_str(&casm_definition)?;
 
-    Ok(starknet_api::contract_class::ContractClass::V1(class))
+    Ok(starknet_api::contract_class::ContractClass::V1((
+        class,
+        sierra_version,
+    )))
 }

@@ -42,8 +42,7 @@ pub fn estimate(
                     return Err(TransactionExecutionError::ExecutionError {
                         transaction_index: transaction_idx,
                         error: revert_string,
-                        // TODO: is ErrorStack available?
-                        error_stack: Default::default(),
+                        error_stack: revert_error.into(),
                     });
                 }
 

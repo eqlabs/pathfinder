@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use blockifier::context::TransactionContext;
-use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionContext};
+use blockifier::execution::entry_point::{
+    CallEntryPoint,
+    EntryPointExecutionContext,
+    SierraGasRevertTracker,
+};
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
@@ -32,12 +36,18 @@ pub fn call(
         .collect();
     let class_hash = state.get_class_hash_at(contract_address)?;
 
+    let initial_gas = VersionedConstants::latest_constants()
+        .os_constants
+        .gas_costs
+        .base
+        .default_initial_gas_cost;
+
     let call_entry_point = CallEntryPoint {
         storage_address: contract_address,
         entry_point_type: EntryPointType::External,
         entry_point_selector,
         calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
-        initial_gas: VersionedConstants::latest_constants().default_initial_gas_cost(),
+        initial_gas,
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
@@ -48,6 +58,7 @@ pub fn call(
             tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
         }),
         false,
+        SierraGasRevertTracker::new(starknet_api::execution_resources::GasAmount(initial_gas)),
     );
 
     let mut remaining_gas = call_entry_point.initial_gas;
