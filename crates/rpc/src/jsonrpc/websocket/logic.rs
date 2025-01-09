@@ -990,8 +990,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1043,8 +1042,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1097,8 +1095,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1147,8 +1144,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
