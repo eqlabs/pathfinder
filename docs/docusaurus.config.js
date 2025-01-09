@@ -86,7 +86,7 @@ const config = {
               },
 							{
 								label: 'Configuring Pathfinder',
-								to: '/getting-started/configuring-pathfinder',
+								to: '/getting-started/configuration',
 							},
 							{
 								label: 'Interfacing with Pathfinder',
