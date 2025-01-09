@@ -10,6 +10,8 @@ use serde_with::serde_as;
 
 use crate::{ByteCodeOffset, EntryPoint};
 
+pub const CLASS_DEFINITION_MAX_ALLOWED_SIZE: u64 = 4 * 1024 * 1024;
+
 #[derive(Debug, Deserialize, Dummy)]
 pub enum ClassDefinition<'a> {
     Sierra(Sierra<'a>),
