@@ -84,14 +84,14 @@ const config = {
                 label: 'Running Pathfinder',
                 to: '/getting-started/running-pathfinder',
               },
-              {
-                label: 'Configuring Pathfinder',
-                to: '/getting-started/configuration',
-              },
-              {
-                label: 'Interfacing with Pathfinder',
-                to: '/interacting-with-pathfinder/json-rpc-api',
-              },
+							{
+								label: 'Configuring Pathfinder',
+								to: '/getting-started/configuration',
+							},
+							{
+								label: 'Interfacing with Pathfinder',
+								to: '/interacting-with-pathfinder/json-rpc-api',
+							},
             ],
           },
           {
