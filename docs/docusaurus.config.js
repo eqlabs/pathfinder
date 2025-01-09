@@ -4,7 +4,7 @@
 // There are various equivalent ways to declare your Docusaurus config.
 // See: https://docusaurus.io/docs/api/docusaurus-config
 
-import { themes as prismThemes } from "prism-react-renderer";
+import { themes as prismThemes } from 'prism-react-renderer';
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
@@ -84,14 +84,14 @@ const config = {
                 label: 'Running Pathfinder',
                 to: '/getting-started/running-pathfinder',
               },
-							{
-								label: 'Configuring Pathfinder',
-								to: '/getting-started/configuring-pathfinder',
-							},
-							{
-								label: 'Interfacing with Pathfinder',
-								to: '/interacting-with-pathfinder/json-rpc-api',
-							},
+              {
+                label: 'Configuring Pathfinder',
+                to: '/getting-started/configuration',
+              },
+              {
+                label: 'Interfacing with Pathfinder',
+                to: '/interacting-with-pathfinder/json-rpc-api',
+              },
             ],
           },
           {
