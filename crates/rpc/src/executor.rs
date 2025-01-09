@@ -8,6 +8,7 @@ use starknet_api::core::PatriciaKey;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::{
     AccountDeploymentData,
+    AllResourceBounds,
     Calldata,
     ContractAddressSalt,
     Fee,
@@ -630,9 +631,26 @@ fn map_resource_bounds(
 ) -> Result<ValidResourceBounds, starknet_api::StarknetApiError> {
     use starknet_api::transaction::fields::ResourceBounds;
 
-    // TODO: cannot be AllResources b/c we don't have L1 data gas here...
-    Ok(ValidResourceBounds::L1Gas(ResourceBounds {
-        max_amount: GasAmount(r.l1_gas.max_amount.0),
-        max_price_per_unit: GasPrice(r.l1_gas.max_price_per_unit.0),
-    }))
+    let valid_resource_bounds = match r.l1_data_gas {
+        Some(l1_data_gas) => ValidResourceBounds::AllResources(AllResourceBounds {
+            l1_gas: ResourceBounds {
+                max_amount: GasAmount(r.l1_gas.max_amount.0),
+                max_price_per_unit: GasPrice(r.l1_gas.max_price_per_unit.0),
+            },
+            l2_gas: ResourceBounds {
+                max_amount: GasAmount(r.l2_gas.max_amount.0),
+                max_price_per_unit: GasPrice(r.l2_gas.max_price_per_unit.0),
+            },
+            l1_data_gas: ResourceBounds {
+                max_amount: GasAmount(l1_data_gas.max_amount.0),
+                max_price_per_unit: GasPrice(l1_data_gas.max_price_per_unit.0),
+            },
+        }),
+        None => ValidResourceBounds::L1Gas(ResourceBounds {
+            max_amount: GasAmount(r.l1_gas.max_amount.0),
+            max_price_per_unit: GasPrice(r.l1_gas.max_price_per_unit.0),
+        }),
+    };
+
+    Ok(valid_resource_bounds)
 }
