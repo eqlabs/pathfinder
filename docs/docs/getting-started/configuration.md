@@ -2,65 +2,91 @@
 sidebar_position: 3
 ---
 
-# Configuring your Setup
+# Configuring Pathfinder
 
-The `pathfinder` node options can be configured via the command line as well as environment variables.
+Pathfinder can be configured using the following methods in order of priority:
 
-The command line options are passed in after the `docker run` options, as follows:
+1. [Command line options](#command-line-options)
+2. [Environment variables](#environment-variables)
+
+## Command Line Options
+
+Command-line options take the highest precedence. If an option is set both via environment variable and on the command line, the command-line value overrides.
+
+When running Pathfinder via Docker, command-line arguments come after the Docker run options:
 
 ```bash
-sudo docker run --name pathfinder [...] eqlabs/pathfinder:latest <pathfinder options>
+docker run \
+  --name pathfinder \
+  --detach \
+  --restart unless-stopped \
+  -p 9545:9545 \
+  --user "$(id -u):$(id -g)" \
+  -e RUST_LOG=info \
+  -e PATHFINDER_ETHEREUM_API_URL="https://mainnet.infura.io/v3/<project-id>" \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
+  eqlabs/pathfinder:latest \
+  --network mainnet \
+  --monitor-address=0.0.0.0:9000
 ```
 
-Using `--help` will display the `pathfinder` options, including their environment variable names:
+If you built Pathfinder from source, pass options after `--` so cargo doesn’t parse them:
 
 ```bash
-sudo docker run --rm eqlabs/pathfinder:latest --help
+cargo run --release --bin pathfinder -- \
+    --network mainnet \
+    --monitor-address=0.0.0.0:9000
 ```
 
-## Pending Support
+:::tip
+Use `--help` to view all available options, including their corresponding environment variable names.
+:::
 
-Block times on `mainnet` can be prohibitively long for certain applications. As a workaround, Starknet added the concept of a `pending` block which is the block currently under construction. This is supported by pathfinder, and usage is documented in the [JSON-RPC API](#json-rpc-api) with various methods accepting `"block_id"="pending"`.
+### Network Selection
 
-## State trie pruning
+By default, Pathfinder detects your Starknet network based on the Ethereum endpoint you provide. If the endpoint is on Ethereum mainnet, it uses the mainnet network; if the endpoint is on Sepolia, it uses the Sepolia testnet. 
 
-Pathfinder allows you to control the number of blocks of state trie history to preserve. You can choose between archive:
+However, you can explicitly override this detection using the `--network` option:
 
-```
---storage.state-tries = archive
-```
-
-which stores all of history, or to keep only the last `k+1` blocks:
-
-```
---storage.state-tries = k
+```bash
+--network <mainnet|sepolia-testnet|sepolia-integration|custom>
 ```
 
-The latest block is always stored, though in the future we plan an option to disable this entirely. Currently at least
-one block is required to trustlessly verify Starknet's state update.
+For example, to force mainnet even if your Ethereum endpoint is ambiguous:
 
-State trie data consumes a massive amount of storage space. You can expect an overall storage reduction of ~75% when going
-from archive to pruned mode.
+```bash
+--network mainnet
+```
 
-The downside to pruning this data is that storage proofs are only available for blocks that are not pruned i.e. with
-`--storage.state-tries = k` you can only serve storage proofs for the latest `k+1` blocks.
+### Custom Networks and Gateway Proxies
 
-Note that this only impacts storage proofs - for all other considerations pathfinder is still an archive mode and no
-data is dropped.
+Pathfinder can be configured to use custom networks and gateway proxies by specifying:
 
-Also note that you cannot switch between archive and pruned modes. You may however change `k` between different runs of
-pathfinder.
+* `--network custom`: Indicates a custom network configuration.
+    
+* `--gateway-url` and `--feeder-gateway-url`: Specify the URLs of the gateway and feeder gateway.
+    
+* `--chain-id`: The chain ID to use, specified as text (e.g., `SN_SEPOLIA`).
+    
 
-If you don't care about storage proofs, you can maximise storage savings by setting `--storage.state-tries = 0`, which
-will only store the latest block's state trie.
+These options can be used to connect to a custom Starknet gateway or to use a proxy for the Starknet network:
 
-## Logging
+```bash title="Sample source build with a custom network"
+cargo run --release --bin pathfinder -- \
+    --network custom \
+    --gateway-url https://my-custom-network/gateway \
+    --feeder-gateway-url https://my-custom-network/feeder \
+    --chain-id SN_MYNETWORK
+```
+
+
+### Logging Configuration
 
 Logging can be configured using the `RUST_LOG` environment variable.
 We recommend setting it when you start the container:
 
 ```bash
-sudo docker run --name pathfinder [...] -e RUST_LOG=<log level> eqlabs/pathfinder:latest
+docker run --name pathfinder [...] -e RUST_LOG=<log level> eqlabs/pathfinder:latest
 ```
 
 The following log levels are supported, from most to least verbose:
@@ -73,18 +99,82 @@ warn
 error
 ```
 
-## Network Selection
+### State Trie Pruning
 
-The Starknet network can be selected with the `--network` configuration option.
+Pathfinder allows you to control the number of blocks of state trie history to preserve using either archive or pruned mode. 
 
-If `--network` is not specified, network selection will default to match your Ethereum endpoint:
+Archive mode keeps the entire history of state tries, which can be storage-intensive:
 
-- Starknet mainnet for Ethereum mainnet,
-- Starknet testnet for Ethereum Sepolia
+```bash
+--storage.state-tries=archive
+```
 
-### Custom networks & gateway proxies
+If you don’t require storage proofs for older blocks, you can prune the trie to preserve only recent states using the following option:
 
-You can specify a custom network with `--network custom` and specifying the `--gateway-url`, `feeder-gateway-url` and `chain-id` options.
-Note that `chain-id` should be specified as text e.g. `SN_SEPOLIA`.
+```bash
+--storage.state-tries=<k>
+```
 
-This can be used to interact with a custom Starknet gateway, or to use a gateway proxy.
+Where `k` keeps only the last `k+1` blocks tries.
+
+For example, if you’re using Docker and want to prune older state tries:
+
+```bash
+sudo docker run \
+  --name pathfinder \
+  --detach \
+  -p 9545:9545 \
+  -e RUST_LOG=info \
+  eqlabs/pathfinder:latest \
+  --network mainnet \
+  --storage.state-tries=100
+```
+Here, Pathfinder keeps state tries for the latest 101 blocks.
+
+Similarly, if you built Pathfinder from source and want to a prune state trie:
+
+```bash
+cargo run --release --bin pathfinder -- \
+    --network testnet \
+    --storage.state-tries=0
+```
+
+Setting `--storage.state-tries=0` keeps only the most recent block’s trie. This option maximizes space at the cost of older proofs.
+
+:::note  
+  - Pruning affects only storage proofs for older blocks. All transactions and blocks are still available.  
+  - You cannot switch between archive and pruned mode mid-run. To switch from archive to pruned, you’ll need to either re-sync or use a pruned [Database Snapshot](database-snapshots).  
+:::
+
+## Environment Variables
+
+Pathfinder can also be configured via environment variables, which take second place in configuration precedence.
+
+By convention, environment variables for Pathfinder begin with `PATHFINDER_` and are in SCREAMING_SNAKE_CASE. 
+
+For instance, the `--ethereum-api-url` command-line option corresponds to `PATHFINDER_ETHEREUM_API_URL`, and `--network` to `PATHFINDER_NETWORK`, etc.
+
+When using Docker, pass environment variables via the `-e` option:
+
+```bash
+sudo docker run \
+  --name pathfinder \
+  --restart unless-stopped \
+  --detach \
+  -p 9545:9545 \
+  -v $HOME/pathfinder:/usr/share/pathfinder/data \
+  -e "PATHFINDER_ETHEREUM_API_URL=https://sepolia.infura.io/v3/<project-id>" \
+  -e "PATHFINDER_NETWORK=sepolia-testnet" \
+  -e "RUST_LOG=debug" \
+  eqlabs/pathfinder:latest
+```
+
+When running Pathfinder directly from source, set environment variables in this format:
+
+```bash
+RUST_LOG=debug PATHFINDER_NETWORK=sepolia-testnet cargo run --release --bin pathfinder
+```
+
+:::note
+Command-line parameters will override environment variables if both are set.
+:::

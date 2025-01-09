@@ -4,53 +4,80 @@ sidebar_position: 4
 
 # Database Snapshots
 
-Re-syncing the whole history for either the mainnet or testnet networks might take a long time. To speed up the process you can use database snapshot files that contain the full state and history of the network up to a specific block.
+Database snapshots let you quickly start your node without having to download all blocks from the very beginning. Instead, you use a pre-made version of the database that’s already in sync up to a certain block. This saves you a lot of time, especially if the network has many blocks.
 
-The database files are hosted on Cloudflare R2. There are two ways to download the files:
+There are two main ways to download and use a snapshot with Pathfinder:
 
-* Using the [Rclone](https://rclone.org/) tool
-* Via the HTTPS URL: we've found this to be less reliable in general
+* [Using Rclone](#using-rclone-for-snapshots)
+* [Using a direct HTTPS link](#downloading-via-https)
 
-## Rclone setup
+## Using Rclone for Snapshots
 
-We recommend using RClone. Add the following to your RClone configuration file (`$HOME/.config/rclone/rclone.conf`):
+[**Rclone**](https://rclone.org/) is a command-line program to manage files on cloud storage. It is highly recommended for Pathfinder snapshots due to its reliability and support for resumable downloads.
 
-```ini
-[pathfinder-snapshots]
-type = s3
-provider = Cloudflare
-env_auth = false
-access_key_id = 7635ce5752c94f802d97a28186e0c96d
-secret_access_key = 529f8db483aae4df4e2a781b9db0c8a3a7c75c82ff70787ba2620310791c7821
-endpoint = https://cbf011119e7864a873158d83f3304e27.r2.cloudflarestorage.com
-acl = private
+### Rclone Configuration
+
+1. Follow the [official installation guide](https://rclone.org/install/) for your operating system.
+2. Open or create your Rclone configuration file (`$HOME/.config/rclone/rclone.conf`) and add:
+   ```ini
+   [pathfinder-snapshots]
+   type = s3
+   provider = Cloudflare
+   env_auth = false
+   access_key_id = 7635ce5752c94f802d97a28186e0c96d
+   secret_access_key = 529f8db483aae4df4e2a781b9db0c8a3a7c75c82ff70787ba2620310791c7821
+   endpoint = https://cbf011119e7864a873158d83f3304e27.r2.cloudflarestorage.com
+   acl = private
+   ```
+3. Use `rclone` to copy the compressed SQLite file to your local directory:
+   ```bash
+   rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst .
+   ```
+
+:::tip 
+Add `-P` to get a progress display that helps you track the download status.
+:::
+
+## Downloading via HTTPS
+
+While HTTPS URLs are also provided, direct HTTPS downloads can sometimes be less reliable for very large files. If you must use HTTPS, verify you can resume downloads or maintain a stable connection. For example:
+
+```bash
+wget --continue https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751397_pruned.sqlite.zst
 ```
 
-You can then download a compressed database using the command:
+## Extracting Snapshots and Checksums
 
-```shell
-rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.11.0_47191.sqlite.zst .
-```
+Snapshots come as zstd-compressed SQLite files. Once the download completes, follow these steps:
 
-## Uncompressing database snapshots
+1. Compare the file’s checksum against the published value to ensure data integrity:
+   ```bash
+   sha256sum sepolia-testnet_0.14.0_209745_pruned.sqlite.zst
+   # Compare with the listed hash in the documentation
+   ```
+2. Use `zstd` (version 1.5 or later) to extract:
+   ```bash
+   zstd -T0 -d sepolia-testnet_0.14.0_209745_pruned.sqlite.zst -o testnet-sepolia.sqlite
+   ```
+   This produces an uncompressed file, e.g., `testnet-sepolia.sqlite`.
 
-**To avoid issues please check that the SHA2-256 checksum of the compressed file you've downloaded matches the value we've published.**
+3. If you intend to replace your existing database, **stop** the Pathfinder process, rename or remove your old database, and move the new file into place. For example:
+   ```bash
+   mv testnet-sepolia.sqlite /path/to/your/pathfinder/data/mainnet.sqlite
+   ```
+   Ensure your file names and paths match the network you’re running.
 
-We're storing database snapshots as SQLite database files compressed with [zstd](https://github.com/facebook/zstd). You can uncompress the files you've downloaded using the following command:
+## Available Snapshots
 
-```shell
-zstd -T0 -d sepolia-testnet_0.11.0_47191.sqlite.zst -o testnet-sepolia.sqlite
-```
+The table below lists currently available snapshots, their block heights, and corresponding checksums. Refer to the [official release page](https://github.com/eqlabs/pathfinder/releases) or the snapshot hosting platform for the latest files.
 
-This produces uncompressed database file `testnet-sepolia.sqlite` that can then be used by pathfinder.
+| **Network**     | **Block** | **Pathfinder Version** | **Mode** | **Filename**                                       | **Download URL**                                                                                                 | **Size**  | **Checksum (SHA2-256)**                                            |
+| --------------- | --------- | ---------------------- | -------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------- | ------------------------------------------------------------------ |
+| Mainnet         | 751397    | >= 0.14.0              | pruned   | `mainnet_0.14.0_751397_pruned.sqlite.zst`          | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751397_pruned.sqlite.zst)          | 71.03 GB  | `2f9aa8b98086c12a1ce14e89ddfe02ebf320a7ba47e63829056a405866568113` |
+| Mainnet         | 751250    | >= 0.14.0              | archive  | `mainnet_0.14.0_751250_archive.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751250_archive.sqlite.zst)         | 433.13 GB | `3540087b326b58437fd12bcf427eaeb6323f3efc3def56816b7e5fc06d2633ae` |
+| Sepolia testnet | 209745    | >= 0.14.0              | pruned   | `sepolia-testnet_0.14.0_209745_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst)  | 5.71 GB   | `5cc9a13079a36ee09c04824f6b30b5ce16cd2d26039b23c7c7937f57a76ba19b` |
+| Sepolia testnet | 209758    | >= 0.14.0              | archive  | `sepolia-testnet_0.14.0_209758_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.14.0_209758_archive.sqlite.zst) | 18.93 GB  | `3c24a6e9e5294d738f5976e2c949ebac42ed3fc4865a21893df44897fe803686` |
 
-## Available database snapshots
-
-| Network         | Block  | Pathfinder version required | Mode    | Filename                                          | Download URL                                                                                                    | Compressed size | SHA2-256 checksum of compressed file                               |
-| --------------- | ------ | --------------------------- | ------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Sepolia testnet | 47191  | >= 0.11.0                   | archive | `sepolia-testnet_0.11.0_47191.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.11.0_47191.sqlite.zst)         | 1.91 GB         | `82704d8382bac460550c3d31dd3c1f4397c4c43a90fb0e38110b0cd07cd94831` |
-| Sepolia testnet | 61322  | >= 0.12.0                   | archive | `sepolia-testnet_0.12.0_61322_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_archive.sqlite.zst) | 3.56 GB         | `d25aa259ce62bb4b2e3ff49d243217799c99cd8b7e594a7bb24d4c091d980828` |
-| Sepolia testnet | 61322  | >= 0.12.0                   | pruned  | `sepolia-testnet_0.12.0_61322_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.12.0_61322_pruned.sqlite.zst)  | 1.26 GB         | `f2da766a8f8be93170997b3e5f268c0146aec1147c8ec569d0d6fdd5cd9bc3f1` |
-| Mainnet         | 595424 | >= 0.11.0                   | archive | `mainnet_0.11.0_595424.sqlite.zst`                | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.11.0_595424.sqlite.zst)                | 469.63 GB       | `e42bae71c97c1a403116a7362f15f5180b19e8cc647efb1357f1ae8924dce654` |
-| Mainnet         | 635054 | >= 0.12.0                   | archive | `mainnet_0.12.0_635054_archive.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_archive.sqlite.zst)        | 383.86 GB       | `d401902684cecaae4a88d6c0219498a0da1bbdb3334ea5b91e3a16212db9ee43` |
-| Mainnet         | 635054 | >= 0.12.0                   | pruned  | `mainnet_0.12.0_635054_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.12.0_635054_pruned.sqlite.zst)         | 59.89 GB        | `1d854423278611b414130ac05f486c66ef475f47a1c930c2af5296c9906f9ae0` |
+:::info
+**Pruned** mode retains limited historical state tries, reducing storage size but limiting storage-proof queries. **Archive** mode is fully historic, storing all state tries since genesis.
+:::
