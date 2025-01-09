@@ -909,10 +909,10 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
         let abi = dto.abi;
 
         let compressed_program = base64::decode(dto.program)?;
-        let mut gzip_decoder =
-            flate2::read::GzDecoder::new(std::io::Cursor::new(compressed_program));
+        let gzip_decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed_program));
         let mut program = Vec::new();
         gzip_decoder
+            .take(pathfinder_common::class_definition::CLASS_DEFINITION_MAX_ALLOWED_SIZE)
             .read_to_end(&mut program)
             .context("Decompressing program JSON")?;
 

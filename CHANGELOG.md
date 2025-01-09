@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
+- Cairo 0 class definition size is now capped at 4 MiB.
 
 ## [0.15.2] - 2024-12-04
 

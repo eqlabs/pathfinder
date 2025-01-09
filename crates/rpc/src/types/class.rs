@@ -223,10 +223,11 @@ impl CairoContractClass {
 
     pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
         // decode program
-        let mut decompressor =
+        let decompressor =
             flate2::read::GzDecoder::new(Cursor::new(base64::decode(&self.program).unwrap()));
         let mut program = Vec::new();
         decompressor
+            .take(pathfinder_common::class_definition::CLASS_DEFINITION_MAX_ALLOWED_SIZE)
             .read_to_end(&mut program)
             .context("Decompressing program")?;
 
