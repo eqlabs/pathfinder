@@ -143,7 +143,7 @@ Setting `--storage.state-tries=0` keeps only the most recent block’s trie. Thi
 
 :::note  
   - Pruning affects only storage proofs for older blocks. All transactions and blocks are still available.  
-  - You cannot switch between archive and pruned mode mid-run. To switch from archive to pruned, you’ll need to either re-sync or use a pruned [Database Snapshot](database-snapshots).  
+  - You cannot switch between archive and pruned mode mid-run. To switch from archive to pruned, you’ll need to either re-sync or use a pruned [Database Snapshot](/database-snapshots).  
 :::
 
 ## Environment Variables
