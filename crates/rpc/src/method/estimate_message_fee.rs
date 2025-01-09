@@ -103,6 +103,8 @@ pub async fn estimate_message_fee(
             pending,
             L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;

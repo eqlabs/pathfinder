@@ -79,7 +79,10 @@ pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Ou
     let ethereum = context.ethereum.clone();
 
     let l1_handler_txs = ethereum
-        .get_l1_handler_txs(&context.core_contract_address, &input.transaction_hash)
+        .get_l1_handler_txs(
+            &context.contract_addresses.l1_contract_address,
+            &input.transaction_hash,
+        )
         .await
         .context("Fetching L1 handler tx hashes")
         .map_err(|_| Error::TxnHashNotFound)?;

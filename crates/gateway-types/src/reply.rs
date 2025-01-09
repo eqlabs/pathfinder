@@ -16,7 +16,8 @@ use pathfinder_common::{
     StateDiffCommitment,
     TransactionCommitment,
 };
-use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
+use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr, H256AsNoLeadingZerosHexStr};
+use primitive_types::H256;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 pub use transaction::DataAvailabilityMode;
@@ -2184,6 +2185,12 @@ pub struct EthContractAddresses {
     #[serde(rename = "Starknet")]
     #[serde_as(as = "EthereumAddressAsHexStr")]
     pub starknet: EthereumAddress,
+
+    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+    pub strk_l2_token_address: H256,
+
+    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+    pub eth_l2_token_address: H256,
 }
 
 pub mod add_transaction {
@@ -2401,12 +2408,16 @@ mod tests {
 
     #[test]
     fn eth_contract_addresses_ignores_extra_fields() {
-        // Some gateway mocks include extra addresses, check that we can still parse
-        // these.
+        // Sepolia integration gateway includes extra fields, check
+        // that we can still parse these.
         let json = serde_json::json!({
-            "Starknet": "0x12345abcd",
-            "GpsStatementVerifier": "0xaabdde",
-            "MemoryPageFactRegistry": "0xdeadbeef"
+            "FriStatementContract": "0x55d049b4C82807808E76e61a08C6764bbf2ffB55",
+            "GpsStatementVerifier": "0x2046B966994Adcb88D83f467a41b75d64C2a619F",
+            "MemoryPageFactRegistry": "0x5628E75245Cc69eCA0994F0449F4dDA9FbB5Ec6a",
+            "MerkleStatementContract": "0xd414f8f535D4a96cB00fFC8E85160b353cb7809c",
+            "Starknet": "0x4737c0c1B4D5b1A687B42610DdabEE781152359c",
+            "strk_l2_token_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+            "eth_l2_token_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
         });
 
         serde_json::from_value::<crate::reply::EthContractAddresses>(json).unwrap();
