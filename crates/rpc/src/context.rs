@@ -2,10 +2,13 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use pathfinder_common::ChainId;
-use pathfinder_executor::TraceCache;
+use pathfinder_ethereum::EthereumClient;
+use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
+use primitive_types::H160;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
+use crate::jsonrpc::Notifications;
 use crate::pending::{PendingData, PendingWatcher};
 use crate::SyncState;
 
@@ -16,7 +19,8 @@ use tokio::sync::watch as tokio_watch;
 pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
+    pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
 #[derive(Clone)]
@@ -27,19 +31,26 @@ pub struct RpcContext {
     pub pending_data: PendingWatcher,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
+    pub core_contract_address: H160,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
+    pub notifications: Notifications,
+    pub ethereum: EthereumClient,
     pub config: RpcConfig,
 }
 
 impl RpcContext {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         storage: Storage,
         execution_storage: Storage,
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
+        core_contract_address: H160,
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<PendingData>,
+        notifications: Notifications,
+        ethereum: EthereumClient,
         config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
@@ -49,9 +60,12 @@ impl RpcContext {
             execution_storage,
             sync_status,
             chain_id,
+            core_contract_address,
             pending_data,
             sequencer,
             websocket: None,
+            notifications,
+            ethereum,
             config,
         }
     }
@@ -78,15 +92,22 @@ impl RpcContext {
     ) -> Self {
         use gateway_test_utils::GATEWAY_TIMEOUT;
         use pathfinder_common::Chain;
+        use pathfinder_ethereum::core_addr;
 
-        let (chain_id, sequencer) = match chain {
-            Chain::Mainnet => (ChainId::MAINNET, SequencerClient::mainnet(GATEWAY_TIMEOUT)),
+        let (chain_id, core_contract_address, sequencer) = match chain {
+            Chain::Mainnet => (
+                ChainId::MAINNET,
+                H160::from(core_addr::MAINNET),
+                SequencerClient::mainnet(GATEWAY_TIMEOUT),
+            ),
             Chain::SepoliaTestnet => (
                 ChainId::SEPOLIA_TESTNET,
+                H160::from(core_addr::SEPOLIA_TESTNET),
                 SequencerClient::sepolia_testnet(GATEWAY_TIMEOUT),
             ),
             Chain::SepoliaIntegration => (
                 ChainId::SEPOLIA_INTEGRATION,
+                H160::from(core_addr::SEPOLIA_INTEGRATION),
                 SequencerClient::sepolia_integration(GATEWAY_TIMEOUT),
             ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
@@ -99,16 +120,23 @@ impl RpcContext {
         let config = RpcConfig {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
-            get_events_max_uncached_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            get_events_max_uncached_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            custom_versioned_constants: None,
         };
+
+        let ethereum =
+            EthereumClient::new("wss://eth-sepolia.g.alchemy.com/v2/just-for-tests").unwrap();
 
         Self::new(
             storage.clone(),
             storage,
             sync_state,
             chain_id,
+            core_contract_address,
             sequencer.disable_retry_for_tests(),
             rx,
+            Notifications::default(),
+            ethereum,
             config,
         )
     }

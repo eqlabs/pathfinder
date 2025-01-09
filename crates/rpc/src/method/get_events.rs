@@ -1,14 +1,25 @@
 use std::str::FromStr;
 
 use anyhow::Context;
-use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::EventFilterError;
-use serde::Deserialize;
+use pathfinder_common::{
+    BlockHash,
+    BlockId,
+    BlockNumber,
+    ContractAddress,
+    EventData,
+    EventKey,
+    TransactionHash,
+};
+use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
+use crate::dto::serialize::{self, SerializeForVersion, Serializer};
+use crate::dto::{self};
 use crate::pending::PendingData;
+
+pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
 
 #[derive(Debug)]
 pub enum GetEventsError {
@@ -41,40 +52,57 @@ impl From<GetEventsError> for crate::error::ApplicationError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(Clone))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetEventsInput {
     filter: EventFilter,
 }
 
-/// Contains event filter parameters passed to `starknet_getEvents`.
-#[serde_with::skip_serializing_none]
-#[derive(Default, Clone, Debug, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EventFilter {
-    #[serde(default)]
-    pub from_block: Option<BlockId>,
-    #[serde(default)]
-    pub to_block: Option<BlockId>,
-    #[serde(default)]
-    pub address: Option<ContractAddress>,
-    #[serde(default)]
-    pub keys: Vec<Vec<EventKey>>,
+impl crate::dto::DeserializeForVersion for GetEventsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                filter: value.deserialize("filter")?,
+            })
+        })
+    }
+}
 
-    // These are inlined here because serde flatten and deny_unknown_fields
-    // don't work together.
+/// Contains event filter parameters passed to `starknet_getEvents`.
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
+pub struct EventFilter {
+    pub from_block: Option<BlockId>,
+    pub to_block: Option<BlockId>,
+    pub address: Option<ContractAddress>,
+    pub keys: Vec<Vec<EventKey>>,
     pub chunk_size: usize,
     /// Offset, measured in events, which points to the requested chunk
-    #[serde(default)]
     pub continuation_token: Option<String>,
+}
+
+impl crate::dto::DeserializeForVersion for EventFilter {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                from_block: value.deserialize_optional("from_block")?,
+                to_block: value.deserialize_optional("to_block")?,
+                address: value.deserialize_optional("address")?.map(ContractAddress),
+                keys: value
+                    .deserialize_optional_array("keys", |value| {
+                        value.deserialize_array(|value| value.deserialize().map(EventKey))
+                    })?
+                    .unwrap_or_default(),
+                chunk_size: value.deserialize("chunk_size")?,
+                continuation_token: value.deserialize_optional_serde("continuation_token")?,
+            })
+        })
+    }
 }
 
 /// Returns events matching the specified filter
 pub async fn get_events(
     context: RpcContext,
     input: GetEventsInput,
-) -> Result<types::GetEventsResult, GetEventsError> {
+) -> Result<GetEventsResult, GetEventsError> {
     // The [Block::Pending] in ranges makes things quite complicated. This
     // implementation splits the ranges into the following buckets:
     //
@@ -87,11 +115,12 @@ pub async fn get_events(
     // The database query for 3 and 4 is combined into one step.
     //
     // 4 requires some additional logic to handle some edge cases:
-    //  a) Query database
-    //  b) if full page -> return page
+    //  a) if from_block_number > pending_block_number -> return empty result
+    //  b) Query database
+    //  c) if full page -> return page
     //      check if there are matching events in the pending block
     //      and return a continuation token for the pending block
-    //  c) else if empty / partially full -> append events from start of pending
+    //  d) else if empty / partially full -> append events from start of pending
     //      if there are more pending events return a continuation token
     //      with the appropriate offset within the pending block
 
@@ -107,11 +136,14 @@ pub async fn get_events(
         None => None,
     };
 
-    if request.keys.len() > pathfinder_storage::EVENT_KEY_FILTER_LIMIT {
+    if request.keys.len() > EVENT_KEY_FILTER_LIMIT {
         return Err(GetEventsError::TooManyKeysInFilter {
-            limit: pathfinder_storage::EVENT_KEY_FILTER_LIMIT,
+            limit: EVENT_KEY_FILTER_LIMIT,
             requested: request.keys.len(),
         });
+    }
+    if request.chunk_size > EVENT_PAGE_SIZE_LIMIT {
+        return Err(GetEventsError::PageSizeTooBig);
     }
 
     let storage = context.storage.clone();
@@ -124,7 +156,7 @@ pub async fn get_events(
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
-    let db_events: JoinHandle<Result<_, GetEventsError>> = tokio::task::spawn_blocking(move || {
+    let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()
@@ -134,20 +166,34 @@ pub async fn get_events(
             .transaction()
             .context("Creating database transaction")?;
 
-        // Handle the trivial (1) and (2) cases.
+        // Handle the trivial (1), (2) and (4a) cases.
         match (&request.from_block, &request.to_block) {
-            (Some(Pending), non_pending) if *non_pending != Some(Pending) => {
-                return Ok(types::GetEventsResult {
+            (Some(Pending), id) if !matches!(id, Some(Pending) | None) => {
+                return Ok(GetEventsResult {
                     events: Vec::new(),
                     continuation_token: None,
                 });
             }
-            (Some(Pending), Some(Pending)) => {
+            (Some(Pending), Some(Pending) | None) => {
                 let pending = context
                     .pending_data
                     .get(&transaction)
                     .context("Querying pending data")?;
                 return get_pending_events(&request, &pending, continuation_token);
+            }
+            (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) => {
+                let pending = context
+                    .pending_data
+                    .get(&transaction)
+                    .context("Querying pending data")?;
+
+                // `from_block` is larger than or equal to pending block's number
+                if from_block >= &pending.number {
+                    return Ok(GetEventsResult {
+                        events: Vec::new(),
+                        continuation_token: None,
+                    });
+                }
             }
             _ => {}
         }
@@ -155,12 +201,14 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
+        // Handle cases (3) and (4) where `from_block` is non-pending.
+
         let (from_block, requested_offset) = match continuation_token {
             Some(token) => token.start_block_and_offset(from_block)?,
             None => (from_block, 0),
         };
 
-        let filter = pathfinder_storage::EventFilter {
+        let constraints = pathfinder_storage::EventConstraints {
             from_block,
             to_block,
             contract_address: request.address,
@@ -171,18 +219,16 @@ pub async fn get_events(
 
         let page = transaction
             .events(
-                &filter,
+                &constraints,
                 context.config.get_events_max_blocks_to_scan,
-                context.config.get_events_max_uncached_bloom_filters_to_load,
+                context.config.get_events_max_uncached_event_filters_to_load,
             )
             .map_err(|e| match e {
-                EventFilterError::PageSizeTooBig(_) => GetEventsError::PageSizeTooBig,
-                EventFilterError::TooManyMatches => GetEventsError::Custom(e.into()),
                 EventFilterError::Internal(e) => GetEventsError::Internal(e),
                 EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
             })?;
 
-        let mut events = types::GetEventsResult {
+        let mut events = GetEventsResult {
             events: page.events.into_iter().map(|e| e.into()).collect(),
             continuation_token: page.continuation_token.map(|token| {
                 ContinuationToken {
@@ -261,7 +307,7 @@ fn get_pending_events(
     request: &EventFilter,
     pending: &PendingData,
     continuation_token: Option<ContinuationToken>,
-) -> Result<types::GetEventsResult, GetEventsError> {
+) -> Result<GetEventsResult, GetEventsError> {
     let current_offset = match continuation_token {
         Some(continuation_token) => continuation_token.offset_in_block(pending.number)?,
         None => 0,
@@ -296,7 +342,7 @@ fn get_pending_events(
         )
     };
 
-    Ok(types::GetEventsResult {
+    Ok(GetEventsResult {
         events,
         continuation_token,
     })
@@ -366,7 +412,7 @@ fn map_from_block_to_number(
 /// returns true if this was the last pending data i.e. `is_last_page`.
 fn append_pending_events(
     pending_block: &PendingBlock,
-    dst: &mut Vec<types::EmittedEvent>,
+    dst: &mut Vec<EmittedEvent>,
     skip: usize,
     amount: usize,
     address: Option<ContractAddress>,
@@ -406,7 +452,7 @@ fn append_pending_events(
         .skip(skip)
         // We need to take an extra event to determine is_last_page.
         .take(amount + 1)
-        .map(|(event, tx_hash)| types::EmittedEvent {
+        .map(|(event, tx_hash)| EmittedEvent {
             data: event.data.clone(),
             keys: event.keys.clone(),
             from_address: event.from_address,
@@ -460,10 +506,11 @@ impl std::fmt::Display for ContinuationToken {
 
 impl ContinuationToken {
     fn offset_in_block(&self, block_number: BlockNumber) -> Result<usize, GetEventsError> {
-        if self.block_number == block_number {
-            Ok(self.offset)
-        } else {
-            Err(GetEventsError::InvalidContinuationToken)
+        use std::cmp::Ordering;
+        match Ord::cmp(&self.block_number, &block_number) {
+            Ordering::Equal => Ok(self.offset),
+            Ordering::Less => Ok(0),
+            Ordering::Greater => Err(GetEventsError::InvalidContinuationToken),
         }
     }
 
@@ -490,53 +537,71 @@ impl ContinuationToken {
 #[derive(Debug, Eq, PartialEq)]
 struct ParseContinuationTokenError;
 
-pub mod types {
-    use pathfinder_common::{
-        BlockHash,
-        BlockNumber,
-        ContractAddress,
-        EventData,
-        EventKey,
-        TransactionHash,
-    };
-    use serde::Serialize;
+/// Describes an emitted event returned by starknet_getEvents
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmittedEvent {
+    pub data: Vec<EventData>,
+    pub keys: Vec<EventKey>,
+    pub from_address: ContractAddress,
+    /// [`None`] for pending events.
+    pub block_hash: Option<BlockHash>,
+    /// [`None`] for pending events.
+    pub block_number: Option<BlockNumber>,
+    pub transaction_hash: TransactionHash,
+}
 
-    /// Describes an emitted event returned by starknet_getEvents
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct EmittedEvent {
-        pub data: Vec<EventData>,
-        pub keys: Vec<EventKey>,
-        pub from_address: ContractAddress,
-        /// [None] for pending events.
-        pub block_hash: Option<BlockHash>,
-        /// [None] for pending events.
-        pub block_number: Option<BlockNumber>,
-        pub transaction_hash: TransactionHash,
-    }
-
-    impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
-        fn from(event: pathfinder_storage::EmittedEvent) -> Self {
-            Self {
-                data: event.data,
-                keys: event.keys,
-                from_address: event.from_address,
-                block_hash: Some(event.block_hash),
-                block_number: Some(event.block_number),
-                transaction_hash: event.transaction_hash,
-            }
+impl From<pathfinder_storage::EmittedEvent> for EmittedEvent {
+    fn from(event: pathfinder_storage::EmittedEvent) -> Self {
+        Self {
+            data: event.data,
+            keys: event.keys,
+            from_address: event.from_address,
+            block_hash: Some(event.block_hash),
+            block_number: Some(event.block_number),
+            transaction_hash: event.transaction_hash,
         }
     }
+}
 
-    // Result type for starknet_getEvents
-    #[serde_with::skip_serializing_none]
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[serde(deny_unknown_fields)]
-    pub struct GetEventsResult {
-        pub events: Vec<EmittedEvent>,
-        /// Offset, measured in events, which points to the chunk that follows
-        /// currently requested chunk (`events`)
-        pub continuation_token: Option<String>,
+// Result type for starknet_getEvents
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GetEventsResult {
+    pub events: Vec<EmittedEvent>,
+    /// Offset, measured in events, which points to the chunk that follows
+    /// currently requested chunk (`events`)
+    pub continuation_token: Option<String>,
+}
+
+impl SerializeForVersion for EmittedEvent {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|d| d.0))?;
+        serializer.serialize_iter("keys", self.keys.len(), &mut self.keys.iter().map(|d| d.0))?;
+        serializer.serialize_field("from_address", &dto::Address(&self.from_address))?;
+        serializer
+            .serialize_optional("block_hash", self.block_hash.as_ref().map(dto::BlockHash))?;
+        serializer.serialize_optional("block_number", self.block_number.map(dto::BlockNumber))?;
+        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction_hash))?;
+
+        serializer.end()
+    }
+}
+
+impl SerializeForVersion for &'_ EmittedEvent {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        (*self).serialize(serializer)
+    }
+}
+
+impl SerializeForVersion for GetEventsResult {
+    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;
+        serializer.serialize_optional("continuation_token", self.continuation_token.as_ref())?;
+
+        serializer.end()
     }
 }
 
@@ -547,8 +612,9 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
 
-    use super::types::{EmittedEvent, GetEventsResult};
-    use super::*;
+    use super::{EmittedEvent, GetEventsResult, *};
+    use crate::dto::DeserializeForVersion;
+    use crate::RpcVersion;
 
     #[rstest::rstest]
     #[case::positional_with_optionals(json!([{
@@ -586,7 +652,8 @@ mod tests {
         };
         let expected = GetEventsInput { filter };
 
-        let input = serde_json::from_value::<GetEventsInput>(input).unwrap();
+        let input =
+            GetEventsInput::deserialize(crate::dto::Value::new(input, RpcVersion::V07)).unwrap();
         assert_eq!(input, expected);
     }
 
@@ -759,7 +826,7 @@ mod tests {
     async fn get_events_with_too_many_keys_in_filter() {
         let (context, _) = setup();
 
-        let limit = pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
+        let limit = EVENT_KEY_FILTER_LIMIT;
 
         let keys = [vec![event_key!("01")]]
             .iter()
@@ -959,6 +1026,14 @@ mod tests {
             assert_eq!(result.events, &all[3..4]);
             assert_eq!(result.continuation_token, None);
 
+            // continuing from a page that does exist, should return all events (even from
+            // pending)
+            input.filter.chunk_size = 123;
+            input.filter.continuation_token = Some("0-0".to_string());
+            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            assert_eq!(result.events, all);
+            assert_eq!(result.continuation_token, None);
+
             // nonexistent page: offset too large
             input.filter.chunk_size = 123; // Does not matter
             input.filter.continuation_token = Some("3-3".to_string()); // Points to after the last event
@@ -1038,6 +1113,38 @@ mod tests {
                 .unwrap()
                 .events;
             assert_eq!(events, &all[1..2]);
+        }
+
+        #[tokio::test]
+        async fn from_block_past_pending() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Number(BlockNumber::new_or_panic(4))),
+                    to_block: Some(BlockId::Pending),
+                    chunk_size: 100,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(result.events.is_empty());
+        }
+
+        #[tokio::test]
+        async fn from_block_pending_to_block_none() {
+            let context = RpcContext::for_tests_with_pending().await;
+
+            let input = GetEventsInput {
+                filter: EventFilter {
+                    from_block: Some(BlockId::Pending),
+                    to_block: None,
+                    chunk_size: 100,
+                    ..Default::default()
+                },
+            };
+            let result = get_events(context, input).await.unwrap();
+            assert!(!result.events.is_empty());
         }
     }
 }

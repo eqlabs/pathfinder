@@ -265,7 +265,7 @@ mod v2 {
             serde_json::from_slice(casm_definition).context("Deserializing CASM class")?;
 
         let casm_hash = CasmHash(
-            pathfinder_crypto::Felt::from_be_bytes(ccc.compiled_class_hash().to_be_bytes())
+            pathfinder_crypto::Felt::from_be_bytes(ccc.compiled_class_hash().to_bytes_be())
                 .context("Computing CASM class hash")?,
         );
 

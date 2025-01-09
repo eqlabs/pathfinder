@@ -18,7 +18,8 @@
 //! ```
 //!
 //! Subscriptions may lag behind because of a slow network or slow client and
-//! result in an error: ```
+//! result in an error:
+//! ```
 //! > pierre:~/pathfinder$ wscat -c ws://localhost:9545/ws
 //! Connected (press CTRL+C to quit)
 //! > {"jsonrpc":"2.0", "id": 1, "method": "pathfinder_subscribe", "params":
@@ -26,7 +27,8 @@
 //! < {"jsonrpc":"2.0","result":0,"id":1}
 //! < {"jsonrpc":"2.0","error":{"code":-32099,"message":"Websocket subscription
 //! closed","data":{"id":0,"reason":"Lagging stream, some headers were skipped.
-//! Closing subscription."}},"id":null} ```
+//! Closing subscription."}},"id":null}
+//! ```
 
 mod data;
 mod logic;

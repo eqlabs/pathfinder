@@ -2,96 +2,58 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::Context;
-use p2p::client::peer_agnostic::{BlockHeader as P2PBlockHeader, EventsForBlockByTransaction};
+use p2p::client::types::EventsForBlockByTransaction;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHeader, BlockNumber, EventCommitment, TransactionHash};
+use pathfinder_common::{
+    BlockHeader,
+    BlockNumber,
+    EventCommitment,
+    StarknetVersion,
+    TransactionHash,
+};
 use pathfinder_storage::Storage;
-use tokio::task::spawn_blocking;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
 use super::error::SyncError;
+use super::storage_adapters;
 use crate::state::block_hash::calculate_event_commitment;
-use crate::sync::error::SyncError2;
 use crate::sync::stream::ProcessStage;
 
 /// Returns the first block number whose events are missing in storage, counting
 /// from genesis
-pub(super) async fn next_missing(
+pub(super) fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    spawn_blocking(move || {
-        let mut db = storage
-            .connection()
-            .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
+    let next = storage
+        .connection()?
+        .transaction()?
+        .next_block_without_events();
 
-        if let Some(highest) = db
-            .highest_block_with_all_events_downloaded()
-            .context("Querying highest block with events")?
-        {
-            Ok((highest < head).then_some(highest + 1))
-        } else {
-            Ok(Some(BlockNumber::GENESIS))
-        }
-    })
-    .await
-    .context("Joining blocking task")?
+    Ok((next < head).then_some(next))
+}
+
+pub(super) fn get_counts(
+    db: pathfinder_storage::Transaction<'_>,
+    start: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> anyhow::Result<VecDeque<usize>> {
+    db.event_counts(start, batch_size)
+        .context("Querying event counts")
 }
 
 pub(super) fn counts_stream(
     storage: Storage,
     mut start: BlockNumber,
-    stop_inclusive: BlockNumber,
+    stop: BlockNumber,
+    batch_size: NonZeroUsize,
 ) -> impl futures::Stream<Item = anyhow::Result<usize>> {
-    const BATCH_SIZE: usize = 1000;
-
-    async_stream::try_stream! {
-        let mut batch = VecDeque::new();
-
-        while start <= stop_inclusive {
-            if let Some(counts) = batch.pop_front() {
-                yield counts;
-                continue;
-            }
-
-            let batch_size = NonZeroUsize::new(
-                BATCH_SIZE.min(
-                    (stop_inclusive.get() - start.get() + 1)
-                        .try_into()
-                        .expect("ptr size is 64bits"),
-                ),
-            )
-            .expect(">0");
-            let storage = storage.clone();
-
-            batch = tokio::task::spawn_blocking(move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                db.event_counts(start.into(), batch_size)
-                    .context("Querying event counts")
-            })
-            .await
-            .context("Joining blocking task")??;
-
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No event counts found for range: start {start}, batch_size {batch_size}"
-                ))?;
-                break;
-            }
-
-            start += batch.len().try_into().expect("ptr size is 64bits");
-        }
-
-        while let Some(counts) = batch.pop_front() {
-            yield counts;
-        }
-    }
+    storage_adapters::counts_stream(storage, start, stop, batch_size, get_counts)
 }
 
 pub(super) async fn verify_commitment(
@@ -102,21 +64,28 @@ pub(super) async fn verify_commitment(
         peer,
         data: (block_number, events),
     } = events;
-    let events = tokio::task::spawn_blocking(move || {
-        let computed = calculate_event_commitment(&events.iter().flatten().collect::<Vec<_>>())
-            .context("Calculating commitment")?;
+
+    let events = util::task::spawn_blocking(move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
         let transaction = connection
             .transaction()
             .context("Creating database transaction")?;
-        let expected = transaction
+        let header = transaction
             .block_header(block_number.into())
             .context("Querying block header")?
-            .context("Block header not found")?
-            .event_commitment;
-        if computed != expected {
+            .context("Block header not found")?;
+        let computed = calculate_event_commitment(
+            &events
+                .iter()
+                .map(|(tx_hash, events)| (*tx_hash, events.as_slice()))
+                .collect::<Vec<_>>(),
+            header.starknet_version.max(StarknetVersion::V_0_13_2),
+        )
+        .context("Calculating commitment")?;
+        if computed != header.event_commitment {
+            tracing::debug!(%peer, %block_number, expected_commitment=%header.event_commitment, actual_commitment=%computed, "Event commitment mismatch");
             return Err(SyncError::EventCommitmentMismatch(peer));
         }
         Ok(events)
@@ -131,7 +100,7 @@ pub(super) async fn persist(
     storage: Storage,
     events: Vec<PeerData<EventsForBlockByTransaction>>,
 ) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut connection = storage
             .connection()
             .context("Creating database connection")?;
@@ -145,7 +114,13 @@ pub(super) async fn persist(
 
         for (block_number, events_for_block) in events.into_iter().map(|x| x.data) {
             transaction
-                .update_events(block_number, events_for_block)
+                .update_events(
+                    block_number,
+                    events_for_block
+                        .into_iter()
+                        .map(|(_, events)| events)
+                        .collect(),
+                )
                 .context("Updating events")?;
         }
         transaction.commit().context("Committing db transaction")?;
@@ -165,27 +140,31 @@ impl ProcessStage for VerifyCommitment {
         EventCommitment,
         Vec<TransactionHash>,
         HashMap<TransactionHash, Vec<Event>>,
+        StarknetVersion,
     );
     type Output = HashMap<TransactionHash, Vec<Event>>;
 
     fn map(
         &mut self,
-        (event_commitment, transactions, mut events): Self::Input,
-    ) -> Result<Self::Output, super::error::SyncError2> {
+        peer: &PeerId,
+        (event_commitment, transactions, mut events, version): Self::Input,
+    ) -> Result<Self::Output, super::error::SyncError> {
         let mut ordered_events = Vec::new();
         for tx_hash in &transactions {
-            ordered_events.extend(
-                events
-                    .get(tx_hash)
-                    .ok_or(SyncError2::EventsTransactionsMismatch)?,
-            );
+            // Some transactions may not have events
+            if let Some(events_for_tx) = events.get(tx_hash) {
+                ordered_events.push((*tx_hash, events_for_tx.as_slice()));
+            }
         }
         if ordered_events.len() != events.len() {
-            return Err(SyncError2::EventsTransactionsMismatch);
+            tracing::debug!(%peer, expected=%ordered_events.len(), actual=%events.len(), "Number of events received does not match expected number of events");
+            return Err(SyncError::EventsTransactionsMismatch(*peer));
         }
-        let actual = calculate_event_commitment(&ordered_events)?;
+        let actual =
+            calculate_event_commitment(&ordered_events, version.max(StarknetVersion::V_0_13_2))?;
         if actual != event_commitment {
-            return Err(SyncError2::EventCommitmentMismatch);
+            tracing::debug!(%peer, expected=%event_commitment, actual=%actual, "Event commitment mismatch");
+            return Err(SyncError::EventCommitmentMismatch(*peer));
         }
         Ok(events)
     }

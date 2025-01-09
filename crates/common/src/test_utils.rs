@@ -158,9 +158,9 @@ pub mod metrics {
         /// - `counter_name` was not registered via
         ///   [`metrics::register_counter`]
         /// - `method_name` does not match any [value](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.value)
-        /// for the `method` [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)
-        /// [key](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.key)
-        /// registered via [`metrics::register_counter`]
+        ///   for the `method` [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)
+        ///   [key](https://docs.rs/metrics/latest/metrics/struct.Label.html#method.key)
+        ///   registered via [`metrics::register_counter`]
         pub fn get_counter_value(
             &self,
             counter_name: &'static str,
@@ -181,7 +181,7 @@ pub mod metrics {
         /// - `counter_name` was not registered via
         ///   [`metrics::register_counter`]
         /// - `labels` don't match the [label](https://docs.rs/metrics/latest/metrics/struct.Label.html#)-s
-        /// registered via [`metrics::register_counter`]
+        ///   registered via [`metrics::register_counter`]
         pub fn get_counter_value_by_label<const N: usize>(
             &self,
             counter_name: &'static str,

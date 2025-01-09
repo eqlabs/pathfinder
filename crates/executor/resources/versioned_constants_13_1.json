@@ -10,11 +10,21 @@
     },
     "invoke_tx_max_n_steps": 4000000,
     "l2_resource_gas_costs": {
-        "milligas_per_data_felt": 128,
-        "event_key_factor": 2,
-        "milligas_per_code_byte": 875
+        "gas_per_data_felt": [
+            128,
+            1000
+        ],
+        "event_key_factor": [
+            2,
+            1
+        ],
+        "gas_per_code_byte": [
+            875,
+            1000
+        ]
     },
     "max_recursion_depth": 50,
+    "segment_arena_cells": true,
     "os_constants": {
         "nop_entry_point_offset": -1,
         "entry_point_type_external": 0,
@@ -149,6 +159,11 @@
             "syscall_base_gas_cost": 1
         },
         "keccak_round_cost_gas_cost": 180000,
+        "sha256_process_block_gas_cost": {
+            "step_gas_cost": 0,
+            "range_check_gas_cost": 0,
+            "syscall_base_gas_cost": 0
+        },
         "error_block_number_out_of_range": "Block number out of range",
         "error_out_of_gas": "Out of gas",
         "error_invalid_input_len": "Invalid input length",
@@ -363,6 +378,11 @@
                 },
                 "n_memory_holes": 0
             },
+            "Sha256ProcessBlock": {
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0,
+                "n_steps": 0
+            },
             "StorageRead": {
                 "n_steps": 87,
                 "builtin_instance_counter": {
@@ -380,83 +400,201 @@
         },
         "execute_txs_inner": {
             "Declare": {
-                "constant": {
-                    "n_steps": 2839,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 16,
-                        "range_check_builtin": 63
+                "resources": {
+                    "constant": {
+                        "n_steps": 2839,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 16,
+                            "range_check_builtin": 63
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 0,
+                        "builtin_instance_counter": {},
+                        "n_memory_holes": 0
+                    }
                 },
-                "calldata_factor": {
-                    "n_steps": 0,
-                    "builtin_instance_counter": {},
-                    "n_memory_holes": 0
+                "deprecated_resources": {
+                    "constant": {
+                        "n_steps": 2839,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 16,
+                            "range_check_builtin": 63
+                        },
+                        "n_memory_holes": 0
+                    },
+                    "calldata_factor": {
+                        "n_steps": 0,
+                        "builtin_instance_counter": {},
+                        "n_memory_holes": 0
+                    }
                 }
             },
             "DeployAccount": {
-                "constant": {
-                    "n_steps": 3792,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 23,
-                        "range_check_builtin": 83
+                "resources": {
+                    "constant": {
+                        "n_steps": 3792,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 23,
+                            "range_check_builtin": 83
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 21,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 2
+                        },
+                        "n_memory_holes": 0
+                    }
                 },
-                "calldata_factor": {
-                    "n_steps": 21,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 2
+                "deprecated_resources": {
+                    "constant": {
+                        "n_steps": 3792,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 23,
+                            "range_check_builtin": 83
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 21,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 2
+                        },
+                        "n_memory_holes": 0
+                    }
                 }
             },
             "InvokeFunction": {
-                "constant": {
-                    "n_steps": 3546,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 14,
-                        "range_check_builtin": 80
+                "resources": {
+                    "constant": {
+                        "n_steps": 3546,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 14,
+                            "range_check_builtin": 80
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 8,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 1
+                        },
+                        "n_memory_holes": 0
+                    }
                 },
-                "calldata_factor": {
-                    "n_steps": 8,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 1
+                "deprecated_resources": {
+                    "constant": {
+                        "n_steps": 3546,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 14,
+                            "range_check_builtin": 80
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 8,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 1
+                        },
+                        "n_memory_holes": 0
+                    }
                 }
             },
             "L1Handler": {
-                "constant": {
-                    "n_steps": 1146,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 11,
-                        "range_check_builtin": 17
+                "resources": {
+                    "constant": {
+                        "n_steps": 1146,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 11,
+                            "range_check_builtin": 17
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 13,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 1
+                        },
+                        "n_memory_holes": 0
+                    }
                 },
-                "calldata_factor": {
-                    "n_steps": 13,
-                    "builtin_instance_counter": {
-                        "pedersen_builtin": 1
+                "deprecated_resources": {
+                    "constant": {
+                        "n_steps": 1146,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 11,
+                            "range_check_builtin": 17
+                        },
+                        "n_memory_holes": 0
                     },
-                    "n_memory_holes": 0
+                    "calldata_factor": {
+                        "n_steps": 13,
+                        "builtin_instance_counter": {
+                            "pedersen_builtin": 1
+                        },
+                        "n_memory_holes": 0
+                    }
                 }
             }
+        },
+        "compute_os_kzg_commitment_info": {
+            "n_steps": 0,
+            "builtin_instance_counter": {},
+            "n_memory_holes": 0
         }
     },
     "validate_max_n_steps": 1000000,
     "vm_resource_fee_cost": {
-        "bitwise_builtin": 0.16,
-        "ec_op_builtin": 2.56,
-        "ecdsa_builtin": 5.12,
-        "keccak_builtin": 5.12,
-        "n_steps": 0.0025,
-        "output_builtin": 0,
-        "pedersen_builtin": 0.08,
-        "poseidon_builtin": 0.08,
-        "range_check_builtin": 0.04
+        "add_mod_builtin": [
+            0,
+            1
+        ],
+        "bitwise_builtin": [
+            16,
+            100
+        ],
+        "ec_op_builtin": [
+            256,
+            100
+        ],
+        "ecdsa_builtin": [
+            512,
+            100
+        ],
+        "keccak_builtin": [
+            512,
+            100
+        ],
+        "mul_mod_builtin": [
+            0,
+            1
+        ],
+        "n_steps": [
+            25,
+            10000
+        ],
+        "output_builtin": [
+            0,
+            1
+        ],
+        "pedersen_builtin": [
+            8,
+            100
+        ],
+        "poseidon_builtin": [
+            8,
+            100
+        ],
+        "range_check_builtin": [
+            4,
+            100
+        ],
+        "range_check96_builtin": [
+            0,
+            1
+        ]
     }
 }

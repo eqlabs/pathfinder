@@ -9,6 +9,7 @@ use pathfinder_common::{
     EthereumAddress,
     EventCommitment,
     GasPrice,
+    ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
@@ -22,7 +23,7 @@ pub use transaction::DataAvailabilityMode;
 
 /// Used to deserialize replies to Starknet block requests.
 #[serde_as]
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, serde::Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Block {
     pub block_hash: BlockHash,
@@ -30,6 +31,9 @@ pub struct Block {
 
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    // Introduced in v0.13.4
+    #[serde(default)]
+    pub l2_gas_price: Option<GasPrices>,
 
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
@@ -56,6 +60,14 @@ pub struct Block {
     pub transaction_commitment: TransactionCommitment,
     pub event_commitment: EventCommitment,
     pub l1_da_mode: L1DataAvailabilityMode,
+
+    // Introduced in v0.13.2, older blocks don't have these fields.
+    #[serde(default)]
+    pub receipt_commitment: Option<ReceiptCommitment>,
+    #[serde(default)]
+    pub state_diff_commitment: Option<StateDiffCommitment>,
+    #[serde(default)]
+    pub state_diff_length: Option<u64>,
 }
 
 #[serde_as]
@@ -64,6 +76,8 @@ pub struct Block {
 pub struct PendingBlock {
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    #[serde(default)] // TODO: Needed until the gateway provides the l2 gas price
+    pub l2_gas_price: GasPrices,
 
     #[serde(rename = "parent_block_hash")]
     pub parent_hash: BlockHash,
@@ -81,6 +95,7 @@ pub struct PendingBlock {
     #[serde(default)]
     #[serde_as(as = "DisplayFromStr")]
     pub starknet_version: StarknetVersion,
+    // Introduced in v0.13.1
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
@@ -175,19 +190,20 @@ pub mod call {
     }
 }
 
-/// Used to deserialize replies to Starknet transaction requests.
+/// Used to deserialize replies to Starknet transaction status requests.
 ///
-/// We only care about the statuses so we ignore other fields.
 /// Please note that this does not have to be backwards compatible:
 /// since we only ever use it to deserialize replies from the Starknet
 /// feeder gateway.
-#[serde_as]
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct TransactionStatus {
-    pub status: Status,
+    pub tx_status: Status,
     pub finality_status: transaction_status::FinalityStatus,
-    #[serde(default)]
-    pub execution_status: transaction_status::ExecutionStatus,
+    // For transactions that were not received, `"execution_status": null`
+    // in the gateway response.
+    pub execution_status: Option<transaction_status::ExecutionStatus>,
+    pub tx_failure_reason: Option<transaction_status::TxFailureReason>,
+    pub tx_revert_reason: Option<String>,
 }
 
 /// Types used when deserializing get_transaction replies.
@@ -214,10 +230,16 @@ pub mod transaction_status {
         Reverted,
         Rejected,
     }
+
+    #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+    pub struct TxFailureReason {
+        pub code: String,
+        pub error_message: String,
+    }
 }
 
 /// Types used when deserializing L2 transaction related data.
-pub(crate) mod transaction {
+pub mod transaction {
     use fake::{Dummy, Fake, Faker};
     use pathfinder_common::{
         AccountDeploymentDataElem,
@@ -295,16 +317,23 @@ pub(crate) mod transaction {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: Option<ExecutionDataAvailability>,
+        #[serde(default)]
+        pub data_availability: Option<Gas>,
+        // Added in Starknet 0.13.2
+        #[serde(default)]
+        pub total_gas_consumed: Option<Gas>,
     }
 
     impl From<ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
         fn from(value: ExecutionResources) -> Self {
+            let (total_gas_consumed, l2_gas) = value.total_gas_consumed.unwrap_or_default().into();
             Self {
                 builtins: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability.unwrap_or_default().into(),
+                total_gas_consumed,
+                l2_gas,
             }
         }
     }
@@ -316,19 +345,25 @@ pub(crate) mod transaction {
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: Some(value.data_availability.into()),
+                total_gas_consumed: Some(value.total_gas_consumed.into()),
             }
         }
     }
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct ExecutionDataAvailability {
+    pub struct Gas {
         pub l1_gas: u128,
         pub l1_data_gas: u128,
+        /// Introduced in v0.13.4, ignored in
+        /// [`ExecutionResources::data_availability`], where it
+        /// was probably added by mistake on the fgw side.
+        #[serde(default)]
+        pub l2_gas: Option<u128>,
     }
 
-    impl From<ExecutionDataAvailability> for pathfinder_common::receipt::ExecutionDataAvailability {
-        fn from(value: ExecutionDataAvailability) -> Self {
+    impl From<Gas> for pathfinder_common::receipt::L1Gas {
+        fn from(value: Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
@@ -336,11 +371,29 @@ pub(crate) mod transaction {
         }
     }
 
-    impl From<pathfinder_common::receipt::ExecutionDataAvailability> for ExecutionDataAvailability {
-        fn from(value: pathfinder_common::receipt::ExecutionDataAvailability) -> Self {
+    impl From<Gas>
+        for (
+            pathfinder_common::receipt::L1Gas,
+            pathfinder_common::receipt::L2Gas,
+        )
+    {
+        fn from(value: Gas) -> Self {
+            (
+                pathfinder_common::receipt::L1Gas {
+                    l1_gas: value.l1_gas,
+                    l1_data_gas: value.l1_data_gas,
+                },
+                pathfinder_common::receipt::L2Gas(value.l2_gas.unwrap_or_default()),
+            )
+        }
+    }
+
+    impl From<pathfinder_common::receipt::L1Gas> for Gas {
+        fn from(value: pathfinder_common::receipt::L1Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
+                l2_gas: None,
             }
         }
     }
@@ -351,9 +404,15 @@ pub(crate) mod transaction {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: Some(ExecutionDataAvailability {
+                data_availability: Some(Gas {
                     l1_gas: rng.next_u32() as u128,
                     l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: None,
+                }),
+                total_gas_consumed: Some(Gas {
+                    l1_gas: rng.next_u32() as u128,
+                    l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: Some(rng.next_u32() as u128),
                 }),
             }
         }
@@ -374,6 +433,9 @@ pub(crate) mod transaction {
         pub keccak_builtin: u64,
         pub poseidon_builtin: u64,
         pub segment_arena_builtin: u64, // TODO REMOVE (?)
+        pub add_mod_builtin: u64,
+        pub mul_mod_builtin: u64,
+        pub range_check96_builtin: u64,
     }
 
     impl From<BuiltinCounters> for pathfinder_common::receipt::BuiltinCounters {
@@ -389,6 +451,9 @@ pub(crate) mod transaction {
                 keccak_builtin,
                 poseidon_builtin,
                 segment_arena_builtin,
+                add_mod_builtin,
+                mul_mod_builtin,
+                range_check96_builtin,
             } = value;
             Self {
                 output: output_builtin,
@@ -400,6 +465,9 @@ pub(crate) mod transaction {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                add_mod: add_mod_builtin,
+                mul_mod: mul_mod_builtin,
+                range_check96: range_check96_builtin,
             }
         }
     }
@@ -417,6 +485,9 @@ pub(crate) mod transaction {
                 keccak: keccak_builtin,
                 poseidon: poseidon_builtin,
                 segment_arena: segment_arena_builtin,
+                add_mod: add_mod_builtin,
+                mul_mod: mul_mod_builtin,
+                range_check96: range_check96_builtin,
             } = value;
             Self {
                 output_builtin,
@@ -428,6 +499,9 @@ pub(crate) mod transaction {
                 keccak_builtin,
                 poseidon_builtin,
                 segment_arena_builtin,
+                add_mod_builtin,
+                mul_mod_builtin,
+                range_check96_builtin,
             }
         }
     }
@@ -444,6 +518,9 @@ pub(crate) mod transaction {
                 keccak_builtin: rng.next_u32() as u64,
                 poseidon_builtin: rng.next_u32() as u64,
                 segment_arena_builtin: 0, // Not used in p2p
+                add_mod_builtin: rng.next_u32() as u64,
+                mul_mod_builtin: rng.next_u32() as u64,
+                range_check96_builtin: rng.next_u32() as u64,
             }
         }
     }
@@ -753,6 +830,14 @@ pub(crate) mod transaction {
         pub l1_gas: ResourceBound,
         #[serde(rename = "L2_GAS")]
         pub l2_gas: ResourceBound,
+        // Introduced in Starknet v0.13.4. This has to be optional because not sending it to the
+        // gateway is not equivalent to sending an explicit zero bound.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            rename = "L1_DATA_GAS"
+        )]
+        pub l1_data_gas: Option<ResourceBound>,
     }
 
     impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
@@ -760,6 +845,7 @@ pub(crate) mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: value.l1_data_gas.map(|g| g.into()),
             }
         }
     }
@@ -769,6 +855,8 @@ pub(crate) mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                // TODO: add this when adding support for Starknet 0.13.4
+                l1_data_gas: None,
             }
         }
     }
@@ -1968,17 +2056,19 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
         // This must occur before we map the contract updates, since we want to first
         // remove the system contract updates.
         //
-        // Currently this is only the contract at address 0x1.
+        // Currently there are two such contracts, at addresses 0x1 and 0x2.
         //
-        // As of starknet v0.12.0 these are embedded in this way, but in the future will
+        // As of starknet v0.13.4 these are embedded in this way, but in the future will
         // be a separate property in the state diff.
-        if let Some((address, storage_updates)) = gateway
-            .state_diff
-            .storage_diffs
-            .remove_entry(&ContractAddress::ONE)
-        {
-            for state_update::StorageDiff { key, value } in storage_updates {
-                state_update = state_update.with_system_storage_update(address, key, value);
+        for system_contract in ContractAddress::SYSTEM.iter() {
+            if let Some((address, storage_updates)) = gateway
+                .state_diff
+                .storage_diffs
+                .remove_entry(system_contract)
+            {
+                for state_update::StorageDiff { key, value } in storage_updates {
+                    state_update = state_update.with_system_storage_update(address, key, value);
+                }
             }
         }
 
@@ -2169,31 +2259,16 @@ pub mod add_transaction {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
 pub struct BlockSignature {
-    pub block_number: BlockNumber,
-    pub signature: [BlockCommitmentSignatureElem; 2],
-    pub signature_input: BlockSignatureInput,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, serde::Serialize)]
-pub struct BlockSignatureInput {
     pub block_hash: BlockHash,
-    pub state_diff_commitment: StateDiffCommitment,
+    pub signature: [BlockCommitmentSignatureElem; 2],
 }
 
-impl From<BlockSignature>
-    for (
-        pathfinder_common::BlockCommitmentSignature,
-        StateDiffCommitment,
-    )
-{
-    fn from(value: BlockSignature) -> Self {
-        (
-            pathfinder_common::BlockCommitmentSignature {
-                r: value.signature[0],
-                s: value.signature[1],
-            },
-            value.signature_input.state_diff_commitment,
-        )
+impl BlockSignature {
+    pub fn signature(&self) -> pathfinder_common::BlockCommitmentSignature {
+        pathfinder_common::BlockCommitmentSignature {
+            r: self.signature[0],
+            s: self.signature[1],
+        }
     }
 }
 
@@ -2367,59 +2442,32 @@ mod tests {
     }
 
     mod block_signature {
-        use pathfinder_common::{
-            block_commitment_signature_elem,
-            block_hash,
-            state_diff_commitment,
-            BlockNumber,
-        };
+        use pathfinder_common::{block_commitment_signature_elem, block_hash};
 
-        use super::super::{BlockSignature, BlockSignatureInput, StateUpdate};
+        use super::super::BlockSignature;
 
         #[test]
-        fn parse() {
-            let json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
+        fn parse_starknet_0_13_2() {
+            let json =
+                starknet_gateway_test_fixtures::v0_13_2::signature::SEPOLIA_INTEGRATION_35748;
 
             let expected = BlockSignature {
-                block_number: BlockNumber::new_or_panic(350000),
+                block_hash: block_hash!(
+                    "0x1ea2a9cfa3df5297d58c0a04d09d276bc68d40fe64701305bbe2ed8f417e869"
+                ),
                 signature: [
                     block_commitment_signature_elem!(
-                        "0x95e98f5b91d39ae2b1bf77447a4fc01725352ae8b0b2c0a3fe09d43d1d9e57"
+                        "0x45161746eecbeae297f45a1f407ab702310f4e52c5e9350ed6f542fa8e98413"
                     ),
                     block_commitment_signature_elem!(
-                        "0x541b2db8dae6d5ae24b34e427d251edc2e94dcffddd85f207e1b51f2f4bb1ef"
+                        "0x3e67cfbc5b179ba55a3b687228d8fe40626233f6691b4aabe308fcd6d71dcdb"
                     ),
                 ],
-                signature_input: BlockSignatureInput {
-                    block_hash: block_hash!(
-                        "0x6f7342a680d7f99bdfdd859f587c75299e7ffabe62c071ded3a6d8a34cb132c"
-                    ),
-                    state_diff_commitment: state_diff_commitment!(
-                        "0x432e8e2ad833548e1c1077fc298991b055ba1e6f7a17dd332db98f4f428c56c"
-                    ),
-                },
             };
 
             let signature: BlockSignature = serde_json::from_str(json).unwrap();
 
             assert_eq!(signature, expected);
-        }
-
-        #[test]
-        fn state_diff_commitment() {
-            let signature_json = starknet_gateway_test_fixtures::v0_12_2::signature::BLOCK_350000;
-            let signature: BlockSignature = serde_json::from_str(signature_json).unwrap();
-
-            let state_update_json =
-                starknet_gateway_test_fixtures::v0_12_2::state_update::BLOCK_350000;
-            let state_update: StateUpdate = serde_json::from_str(state_update_json).unwrap();
-
-            let state_update = pathfinder_common::StateUpdate::from(state_update);
-
-            assert_eq!(
-                state_update.compute_state_diff_commitment(),
-                signature.signature_input.state_diff_commitment
-            )
         }
     }
 }

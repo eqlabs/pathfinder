@@ -1,18 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
-use libp2p::kad::{
-    self,
-    BootstrapError,
-    BootstrapOk,
-    ProgressStep,
-    QueryId,
-    QueryInfo,
-    QueryResult,
-};
+use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
@@ -24,16 +17,14 @@ use p2p_proto::state::StateDiffsResponse;
 use p2p_proto::transaction::TransactionsResponse;
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
-use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
 
 #[cfg(test)]
 use crate::test_utils;
-use crate::{behaviour, Command, Config, EmptyResultSender, Event, TestCommand, TestEvent};
+use crate::{behaviour, Command, EmptyResultSender, Event, TestCommand, TestEvent};
 
 pub struct MainLoop {
-    cfg: crate::Config,
     swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
     command_receiver: mpsc::Receiver<Command>,
     event_sender: mpsc::Sender<Event>,
@@ -47,9 +38,6 @@ pub struct MainLoop {
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
-    chain_id: ChainId,
-    /// Ongoing Kademlia bootstrap query.
-    ongoing_bootstrap: Option<QueryId>,
     _pending_test_queries: TestQueries,
 }
 
@@ -57,29 +45,30 @@ pub struct MainLoop {
 struct PendingRequests {
     pub headers: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<BlockHeadersResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>>,
     >,
     pub classes: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<ClassesResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
     >,
     pub state_diffs: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<StateDiffsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
     >,
     pub transactions: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<TransactionsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>>,
     >,
     pub events: HashMap<
         OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<EventsResponse>>>,
+        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
     >,
 }
 
 #[derive(Debug, Default)]
 struct PendingQueries {
     pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
+    pub get_closest_peers: HashMap<QueryId, mpsc::Sender<anyhow::Result<Vec<PeerId>>>>,
 }
 
 impl MainLoop {
@@ -87,38 +76,24 @@ impl MainLoop {
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
         command_receiver: mpsc::Receiver<Command>,
         event_sender: mpsc::Sender<Event>,
-        cfg: Config,
-        chain_id: ChainId,
     ) -> Self {
         Self {
-            cfg,
             swarm,
             command_receiver,
             event_sender,
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
-            chain_id,
-            ongoing_bootstrap: None,
             _pending_test_queries: Default::default(),
         }
     }
 
     pub async fn run(mut self) {
-        // Delay bootstrap so that by the time we attempt it we've connected to the
-        // bootstrap node
-        let bootstrap_start = tokio::time::Instant::now() + self.cfg.bootstrap.start_offset;
-        let mut bootstrap_interval =
-            tokio::time::interval_at(bootstrap_start, self.cfg.bootstrap.period);
-
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
         let me = *self.swarm.local_peer_id();
 
         loop {
-            let bootstrap_interval_tick = bootstrap_interval.tick();
-            tokio::pin!(bootstrap_interval_tick);
-
             let network_status_interval_tick = network_status_interval.tick();
             tokio::pin!(network_status_interval_tick);
 
@@ -165,31 +140,6 @@ impl MainLoop {
                         dht,
                     );
                 }
-                _ = bootstrap_interval_tick => {
-                    tracing::debug!("Checking low watermark");
-                    if let Some(query_id) = self.ongoing_bootstrap {
-                        match self.swarm.behaviour_mut().kademlia_mut().query_mut(&query_id) {
-                            Some(mut query) if matches!(query.info(), QueryInfo::Bootstrap {
-                                step: ProgressStep { last: false, .. }, .. }
-                            ) => {
-                                tracing::debug!("Previous bootstrap still in progress, aborting it");
-                                query.finish();
-                                continue;
-                            }
-                            _ => self.ongoing_bootstrap = None,
-                        }
-                    }
-                    if self.swarm.behaviour_mut().outbound_peers().count() < self.cfg.low_watermark {
-                        if let Ok(query_id) = self.swarm.behaviour_mut().kademlia_mut().bootstrap() {
-                            self.ongoing_bootstrap = Some(query_id);
-                            send_test_event(
-                                &self.event_sender,
-                                TestEvent::KademliaBootstrapStarted,
-                            )
-                            .await;
-                        }
-                    }
-                }
                 command = self.command_receiver.recv() => {
                     match command {
                         Some(c) => self.handle_command(c).await,
@@ -202,6 +152,8 @@ impl MainLoop {
     }
 
     async fn handle_event(&mut self, event: SwarmEvent<behaviour::Event>) {
+        tracing::trace!(?event, "Handling swarm event");
+
         match event {
             // ===========================
             // Connection management
@@ -286,6 +238,7 @@ impl MainLoop {
                             observed_addr,
                             ..
                         },
+                    ..
                 } = *e
                 {
                     // Important change in libp2p-v0.52 compared to v0.51:
@@ -309,10 +262,9 @@ impl MainLoop {
 
                     self.swarm.add_external_address(observed_addr);
 
-                    if protocols
-                        .iter()
-                        .any(|p| p.as_ref() == behaviour::kademlia_protocol_name(self.chain_id))
-                    {
+                    let my_kad_names = self.swarm.behaviour().kademlia().protocol_names();
+
+                    if protocols.iter().any(|p| my_kad_names.contains(p)) {
                         for addr in &listen_addrs {
                             self.swarm
                                 .behaviour_mut()
@@ -398,7 +350,6 @@ impl MainLoop {
                                         Err(peer)
                                     }
                                 };
-                                self.ongoing_bootstrap = None;
                                 send_test_event(
                                     &self.event_sender,
                                     TestEvent::KademliaBootstrapCompleted(result),
@@ -429,33 +380,75 @@ impl MainLoop {
                                     .await
                                     .expect("Receiver not to be dropped");
                             }
+                            QueryResult::GetClosestPeers(result) => {
+                                use libp2p::kad::GetClosestPeersOk;
+
+                                let result = match result {
+                                    Ok(GetClosestPeersOk { peers, .. }) => {
+                                        Ok(peers.into_iter().map(|p| p.peer_id).collect())
+                                    }
+                                    Err(e) => Err(e.into()),
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_closest_peers
+                                    .remove(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
                             _ => self.test_query_completed(id, result).await,
                         }
-                    } else if let QueryResult::GetProviders(result) = result {
-                        use libp2p::kad::GetProvidersOk;
-
-                        let result = match result {
-                            Ok(GetProvidersOk::FoundProviders { providers, .. }) => Ok(providers),
-                            Ok(_) => Ok(Default::default()),
-                            Err(_) => {
-                                unreachable!(
-                                    "when a query times out libp2p makes it the last stage"
-                                )
-                            }
-                        };
-
-                        let sender = self
-                            .pending_queries
-                            .get_providers
-                            .get(&id)
-                            .expect("Query to be pending");
-
-                        sender
-                            .send(result)
-                            .await
-                            .expect("Receiver not to be dropped");
                     } else {
-                        self.test_query_progressed(id, result).await;
+                        match result {
+                            QueryResult::GetProviders(result) => {
+                                use libp2p::kad::GetProvidersOk;
+
+                                let result = match result {
+                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
+                                        Ok(providers)
+                                    }
+                                    Ok(_) => Ok(Default::default()),
+                                    Err(_) => {
+                                        unreachable!(
+                                            "when a query times out libp2p makes it the last stage"
+                                        )
+                                    }
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_providers
+                                    .get(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                            QueryResult::Bootstrap(_) => {
+                                tracing::debug!("Checking low watermark");
+                                // Starting from libp2p-v0.54.1 bootstrap queries are started
+                                // automatically in the kad behaviour:
+                                // 1. periodically,
+                                // 2. after a peer is added to the routing table, if the number of
+                                //    peers in the DHT is lower than 20. See `bootstrap_on_low_peers` for more details:
+                                //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+                                if step.count == NonZeroUsize::new(1).expect("1>0") {
+                                    send_test_event(
+                                        &self.event_sender,
+                                        TestEvent::KademliaBootstrapStarted,
+                                    )
+                                    .await;
+                                }
+                            }
+                            _ => self.test_query_progressed(id, result).await,
+                        }
                     }
                 }
                 kad::Event::RoutingUpdated {
@@ -500,13 +493,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Header sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .headers
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Header sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
@@ -535,13 +528,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Classes sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .classes
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Classes sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
@@ -570,13 +563,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "State diff sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .state_diffs
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("State diff sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
@@ -605,13 +598,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Transaction sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .transactions
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Transaction sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
@@ -640,13 +633,13 @@ impl MainLoop {
                     channel,
                 },
             )) => {
-                tracing::debug!(%peer, %request_id, "Sync request sent");
+                tracing::debug!(%peer, %request_id, "Event sync request sent");
 
                 let _ = self
                     .pending_sync_requests
                     .events
                     .remove(&request_id)
-                    .expect("Block sync request still to be pending")
+                    .expect("Event sync request still to be pending")
                     .send(Ok(channel));
             }
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
@@ -654,65 +647,66 @@ impl MainLoop {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .headers
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
+                // If the remote hangs up we get an outbound stream error even if earlier the
+                // request was sent successfully and we got
+                // `OutboundRequestSentAwaitingResponses`. The same applies to the other sync
+                // protocols below.
+                //
+                // In that case there's no pending sync request in the map.
+                //
+                // TODO (p2p-stream) Shouldn't this stream be closed earlier anyway?
+                if let Some(sender) = self.pending_sync_requests.headers.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .classes
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
+                if let Some(sender) = self.pending_sync_requests.classes.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .state_diffs
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                tracing::warn!(
+                    ?request_id,
+                    ?error,
+                    "Outbound state diff sync request failed"
+                );
+                if let Some(sender) = self.pending_sync_requests.state_diffs.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .transactions
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                tracing::warn!(
+                    ?request_id,
+                    ?error,
+                    "Outbound transaction sync request failed"
+                );
+                if let Some(sender) = self.pending_sync_requests.transactions.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             SwarmEvent::Behaviour(behaviour::Event::EventsSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
             )) => {
-                tracing::warn!(?request_id, ?error, "Outbound request failed");
-                let _ = self
-                    .pending_sync_requests
-                    .events
-                    .remove(&request_id)
-                    .expect("Block sync request still to be pending")
-                    .send(Err(error.into()));
+                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
+                if let Some(sender) = self.pending_sync_requests.events.remove(&request_id) {
+                    let _ = sender.send(Err(error.into()));
+                }
             }
             // ===========================
             // NAT hole punching
@@ -758,10 +752,6 @@ impl MainLoop {
                 if let std::collections::hash_map::Entry::Vacant(e) =
                     self.pending_dials.entry(peer_id)
                 {
-                    self.swarm
-                        .behaviour_mut()
-                        .kademlia_mut()
-                        .add_address(&peer_id, addr.clone());
                     match self.swarm.dial(
                         // Dial a known peer with a given address only if it's not connected yet
                         // and we haven't started dialing yet.
@@ -799,6 +789,12 @@ impl MainLoop {
                     .behaviour_mut()
                     .get_capability_providers(&capability);
                 self.pending_queries.get_providers.insert(query_id, sender);
+            }
+            Command::GetClosestPeers { peer, sender } => {
+                let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
+                self.pending_queries
+                    .get_closest_peers
+                    .insert(query_id, sender);
             }
             Command::SubscribeTopic { topic, sender } => {
                 let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
@@ -930,13 +926,13 @@ impl MainLoop {
     /// No-op outside tests
     async fn handle_event_for_test(&mut self, _event: SwarmEvent<behaviour::Event>) {
         #[cfg(test)]
-        test_utils::handle_event(&self.event_sender, _event).await
+        test_utils::main_loop::handle_event(&self.event_sender, _event).await
     }
 
     /// No-op outside tests
     async fn handle_test_command(&mut self, _command: TestCommand) {
         #[cfg(test)]
-        test_utils::handle_command(
+        test_utils::main_loop::handle_command(
             self.swarm.behaviour_mut(),
             _command,
             &mut self._pending_test_queries.inner,
@@ -947,7 +943,7 @@ impl MainLoop {
     /// Handle the final stage of the query, no-op outside tests
     async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        test_utils::query_completed(
+        test_utils::main_loop::query_completed(
             &mut self._pending_test_queries.inner,
             &self.event_sender,
             _id,
@@ -959,18 +955,19 @@ impl MainLoop {
     /// Handle all stages except the final one, no-op outside tests
     async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
         #[cfg(test)]
-        test_utils::query_progressed(&self._pending_test_queries.inner, _id, _result).await
+        test_utils::main_loop::query_progressed(&self._pending_test_queries.inner, _id, _result)
+            .await
     }
 }
 
 /// No-op outside tests
 async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
     #[cfg(test)]
-    test_utils::send_event(_event_sender, _event).await
+    test_utils::main_loop::send_event(_event_sender, _event).await
 }
 
 #[derive(Debug, Default)]
 struct TestQueries {
     #[cfg(test)]
-    inner: test_utils::PendingQueries,
+    inner: test_utils::main_loop::PendingQueries,
 }

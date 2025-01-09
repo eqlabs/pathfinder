@@ -22,7 +22,7 @@ impl<'de> Deserialize<'de> for Felt {
     {
         struct StarkHashVisitor;
 
-        impl<'de> Visitor<'de> for StarkHashVisitor {
+        impl Visitor<'_> for StarkHashVisitor {
             type Value = Felt;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

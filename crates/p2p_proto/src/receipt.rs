@@ -2,7 +2,7 @@ use fake::Dummy;
 use pathfinder_crypto::Felt;
 use primitive_types::H160;
 
-use crate::common::Hash;
+use crate::common::Hash256;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -29,8 +29,16 @@ pub struct ExecutionResources {
     pub builtins: execution_resources::BuiltinCounter,
     pub steps: u32,
     pub memory_holes: u32,
-    pub l1_gas: Felt,
-    pub l1_data_gas: Felt,
+    #[optional]
+    pub l1_gas: Option<Felt>,
+    #[optional]
+    pub l1_data_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_gas: Option<Felt>,
+    #[optional]
+    pub total_l1_data_gas: Option<Felt>,
+    #[optional]
+    pub l2_gas: Option<Felt>,
 }
 
 pub mod execution_resources {
@@ -47,6 +55,9 @@ pub mod execution_resources {
         pub poseidon: u32,
         pub keccak: u32,
         pub output: u32,
+        pub add_mod: u32,
+        pub mul_mod: u32,
+        pub range_check96: u32,
     }
 }
 
@@ -71,7 +82,7 @@ pub struct InvokeTransactionReceipt {
 #[protobuf(name = "crate::proto::receipt::receipt::L1Handler")]
 pub struct L1HandlerTransactionReceipt {
     pub common: ReceiptCommon,
-    pub msg_hash: Hash,
+    pub msg_hash: Hash256,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
@@ -114,11 +125,18 @@ impl ToProtobuf<proto::receipt::PriceUnit> for PriceUnit {
 }
 
 impl TryFromProtobuf<i32> for PriceUnit {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
-        Ok(match TryFrom::try_from(input)? {
-            proto::receipt::PriceUnit::Wei => Self::Wei,
-            proto::receipt::PriceUnit::Fri => Self::Fri,
-        })
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid price unit field element {field_name} enum value: {e}"),
+                )
+            })? {
+                proto::receipt::PriceUnit::Wei => Self::Wei,
+                proto::receipt::PriceUnit::Fri => Self::Fri,
+            },
+        )
     }
 }
 

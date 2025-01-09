@@ -18,10 +18,8 @@ use pathfinder_common::{
     ContractNonce,
     SierraHash,
     StateCommitment,
-    StateDiffCommitment,
     StateUpdate,
     StorageAddress,
-    StorageCommitment,
     StorageValue,
 };
 
@@ -121,10 +119,18 @@ impl Transaction<'_> {
             .prepare_cached(
                 r"INSERT INTO class_definitions (block_number, hash) VALUES (?1, ?2)
                 ON CONFLICT(hash)
-                    DO UPDATE SET block_number=excluded.block_number
-                    WHERE block_number IS NULL",
+                    DO UPDATE SET block_number=IFNULL(block_number,excluded.block_number)
+                RETURNING block_number",
             )
             .context("Preparing class hash and block number upsert statement")?;
+
+        let mut insert_redeclared_class = self
+            .inner()
+            .prepare_cached(
+                r"INSERT INTO redeclared_classes (class_hash, block_number) VALUES (?, ?)",
+            )
+            .context("Preparing redeclared class insert statement")?;
+
         // OR IGNORE is required to handle legacy syncing logic, where the casm
         // definition is inserted before the state update
         let mut insert_casm_hash = self
@@ -213,6 +219,20 @@ impl Transaction<'_> {
             .keys()
             .map(|sierra| ClassHash(sierra.0));
         let cairo = declared_cairo_classes.iter().copied();
+
+        let declared_classes = sierra.chain(cairo);
+
+        for class in declared_classes {
+            let declared_at = upsert_declared_at
+                .query_row(params![&block_number, &class], |row| {
+                    row.get_block_number(0)
+                })?;
+            if declared_at != block_number {
+                tracing::debug!(%declared_at, %block_number, class_hash=%class, "Re-declared class");
+                insert_redeclared_class.execute(params![&class, &block_number])?;
+            }
+        }
+
         // Older cairo 0 classes were never declared, but instead got implicitly
         // declared on first deployment. Until such classes disappear we need to
         // cater for them here. This works because the sql only updates the row
@@ -224,10 +244,10 @@ impl Transaction<'_> {
                 _ => None,
             });
 
-        let declared_classes = sierra.chain(cairo).chain(deployed);
-
-        for class in declared_classes {
-            upsert_declared_at.execute(params![&block_number, &class])?;
+        for class in deployed {
+            let _ = upsert_declared_at.query_row(params![&block_number, &class], |row| {
+                row.get_block_number(0)
+            })?;
         }
 
         for (sierra_hash, casm_hash) in declared_sierra_classes {
@@ -239,34 +259,18 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    /// `state_diff_length` is defined as
-    /// `num_storage_diffs + num_nonce_updates + num_deployed_contracts +
-    /// num_declared_classes`
-    pub fn update_state_diff_commitment_and_length(
-        &self,
-        block_number: BlockNumber,
-        commitment: StateDiffCommitment,
-        len: u64,
-    ) -> anyhow::Result<()> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached(r"UPDATE block_headers SET state_diff_commitment=?, state_diff_length=? WHERE number=?")
-            .context("Preparing update statement")?;
-
-        stmt.execute(params![&commitment, &len, &block_number,])
-            .context("Updating state diff commitment and length")?;
-
-        Ok(())
-    }
-
     fn block_details(
         &self,
         block: BlockId,
     ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
         use const_format::formatcp;
 
-        const PREFIX: &str = r"SELECT b1.number, b1.hash, b1.storage_commitment, b1.class_commitment, b2.storage_commitment, b2.class_commitment FROM block_headers b1 
-            LEFT OUTER JOIN block_headers b2 ON b2.number = b1.number - 1";
+        const PREFIX: &str = r"
+            SELECT b1.number, b1.hash, b1.state_commitment, b2.state_commitment
+            FROM block_headers b1
+            LEFT OUTER JOIN block_headers b2 
+            ON b2.number = b1.number - 1
+        ";
 
         const LATEST: &str = formatcp!("{PREFIX} ORDER BY b1.number DESC LIMIT 1");
         const NUMBER: &str = formatcp!("{PREFIX} WHERE b1.number = ?");
@@ -275,19 +279,9 @@ impl Transaction<'_> {
         let handle_row = |row: &rusqlite::Row<'_>| {
             let number = row.get_block_number(0)?;
             let hash = row.get_block_hash(1)?;
-            let storage_commitment = row.get_storage_commitment(2)?;
-            let class_commitment = row.get_class_commitment(3)?;
+            let state_commitment = row.get_state_commitment(2)?;
             // The genesis block would not have a value.
-            let parent_storage_commitment =
-                row.get_optional_storage_commitment(4)?.unwrap_or_default();
-            let parent_class_commitment = row.get_optional_class_commitment(5)?.unwrap_or_default();
-
-            let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-            let parent_state_commitment = if parent_storage_commitment == StorageCommitment::ZERO {
-                StateCommitment::ZERO
-            } else {
-                StateCommitment::calculate(parent_storage_commitment, parent_class_commitment)
-            };
+            let parent_state_commitment = row.get_optional_state_commitment(3)?.unwrap_or_default();
 
             Ok((number, hash, state_commitment, parent_state_commitment))
         };
@@ -370,7 +364,7 @@ impl Transaction<'_> {
             .transpose()
             .context("Iterating over storage query rows")?
         {
-            state_update = if address == ContractAddress::ONE {
+            state_update = if address.is_system_contract() {
                 state_update.with_system_storage_update(address, key, value)
             } else {
                 state_update.with_storage_update(address, key, value)
@@ -412,6 +406,22 @@ impl Transaction<'_> {
                 }
                 None => state_update.with_declared_cairo_class(class_hash),
             };
+        }
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT class_hash FROM redeclared_classes WHERE block_number = ?")
+            .context("Preparing re-declared class query statement")?;
+
+        let mut redeclared_classes = stmt
+            .query_map(params![&block_number], |row| row.get_class_hash(0))
+            .context("Querying re-declared classes")?;
+        while let Some(class_hash) = redeclared_classes
+            .next()
+            .transpose()
+            .context("Iterating over re-declared classes")?
+        {
+            state_update = state_update.with_declared_cairo_class(class_hash);
         }
 
         let mut stmt = self
@@ -467,25 +477,21 @@ impl Transaction<'_> {
             .context("Querying highest storage update")
     }
 
-    pub fn state_diff_lengths_and_commitments(
+    pub fn state_diff_lengths(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<VecDeque<(usize, StateDiffCommitment)>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                r"SELECT state_diff_length, state_diff_commitment FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
+                r"SELECT state_diff_length FROM block_headers WHERE number >= ? ORDER BY number ASC LIMIT ?",
             )
             .context("Preparing statement")?;
 
         let max_len = u64::try_from(max_num_blocks.get()).expect("ptr size is 64 bits");
         let mut counts = stmt
-            .query_map(params![&start, &max_len], |row| {
-                let length = row.get(0)?;
-                let commitment = row.get_state_diff_commitment(1)?;
-                Ok((length, commitment))
-            })
+            .query_map(params![&start, &max_len], |row| row.get(0))
             .context("Querying state diff lengths")?;
 
         let mut ret = VecDeque::new();
@@ -497,38 +503,20 @@ impl Transaction<'_> {
         Ok(ret)
     }
 
-    pub fn state_diff_commitment_and_length(
-        &self,
-        block_number: BlockNumber,
-    ) -> anyhow::Result<Option<(StateDiffCommitment, usize)>> {
-        let mut stmt = self
-            .inner()
-            .prepare_cached(r"SELECT state_diff_commitment, state_diff_length FROM block_headers WHERE number = ?")
-            .context("Preparing statement")?;
-
-        stmt.query_row(params![&block_number], |row| {
-            Ok((row.get_state_diff_commitment(0)?, row.get(1)?))
-        })
-        .optional()
-        .context("Querying state diff commitment")
-    }
-
-    /// Items are sorted in descending order.
     pub fn declared_classes_counts(
         &self,
         start: BlockNumber,
         max_num_blocks: NonZeroUsize,
-    ) -> anyhow::Result<Vec<usize>> {
+    ) -> anyhow::Result<VecDeque<usize>> {
         let mut stmt = self
             .inner()
             .prepare_cached(
-                r"
-                SELECT COUNT(block_number)
-                FROM canonical_blocks
-                LEFT JOIN class_definitions ON canonical_blocks.number = class_definitions.block_number
-                WHERE number >= ?
-                GROUP BY canonical_blocks.number
-                ORDER BY canonical_blocks.number ASC
+                r"SELECT
+                  (SELECT COUNT(block_number) FROM class_definitions WHERE block_number=block_headers.number) +
+                  (SELECT COUNT(block_number) FROM redeclared_classes WHERE block_number=block_headers.number)
+                FROM block_headers
+                WHERE block_headers.number >= ?
+                ORDER BY block_headers.number ASC
                 LIMIT ?",
             )
             .context("Preparing get number of declared classes statement")?;
@@ -538,13 +526,11 @@ impl Transaction<'_> {
             .query_map(params![&start, &max_len], |row| row.get(0))
             .context("Querying declared classes counts")?;
 
-        let mut ret = Vec::new();
+        let mut ret = VecDeque::new();
 
         while let Some(stat) = counts.next().transpose().context("Iterating over rows")? {
-            ret.push(stat);
+            ret.push_back(stat);
         }
-
-        ret.reverse();
 
         Ok(ret)
     }
@@ -575,6 +561,23 @@ impl Transaction<'_> {
             .context("Iterating over class declaration query rows")?
         {
             result.push(class_hash);
+        }
+
+        let mut stmt = self
+            .inner()
+            .prepare_cached(r"SELECT class_hash FROM redeclared_classes WHERE block_number = ?")
+            .context("Preparing re-declared class query")?;
+
+        let mut redeclared_classes = stmt
+            .query_map(params![&block_number], |row| row.get_class_hash(0))
+            .context("Querying re-declared classes")?;
+
+        while let Some(class_hash) = redeclared_classes
+            .next()
+            .transpose()
+            .context("Iterating over re-declared classes")?
+        {
+            result.push(class_hash)
         }
 
         Ok(Some(result))
@@ -1211,8 +1214,13 @@ mod tests {
                 )
                 .with_system_storage_update(
                     ContractAddress::ONE,
-                    storage_address_bytes!(b"key"),
-                    storage_value_bytes!(b"value"),
+                    storage_address_bytes!(b"key 1"),
+                    storage_value_bytes!(b"value 1"),
+                )
+                .with_system_storage_update(
+                    ContractAddress::TWO,
+                    storage_address_bytes!(b"key 2"),
+                    storage_value_bytes!(b"value 2"),
                 )
                 .with_deployed_contract(
                     contract_address_bytes!(b"contract addr 2"),
@@ -1259,6 +1267,34 @@ mod tests {
         }
 
         #[test]
+        fn redeclared_classes() {
+            let (mut db, _state_update, header) = setup();
+
+            let tx = db.transaction().unwrap();
+            let new_header = header
+                .child_builder()
+                .finalize_with_hash(block_hash!("0xabcdee"));
+            let new_state_update = StateUpdate::default()
+                .with_block_hash(new_header.hash)
+                .with_declared_cairo_class(CAIRO_HASH);
+            tx.insert_block_header(&new_header).unwrap();
+            tx.insert_state_update(new_header.number, &new_state_update)
+                .unwrap();
+
+            tx.commit().unwrap();
+
+            let tx = db.transaction().unwrap();
+
+            let result = tx.state_update(new_header.number.into()).unwrap().unwrap();
+            assert_eq!(result, new_state_update);
+
+            let result = tx
+                .declared_classes_counts(new_header.number, NonZeroUsize::new(1).unwrap())
+                .unwrap();
+            assert_eq!(result[0], 1);
+        }
+
+        #[test]
         fn reverse_state_update() {
             let (mut db, _state_update, header) = setup();
             let tx = db.transaction().unwrap();
@@ -1277,7 +1313,18 @@ mod tests {
                         ContractAddress::ONE,
                         ReverseContractUpdate::Updated(ContractUpdate {
                             storage: HashMap::from([(
-                                storage_address_bytes!(b"key"),
+                                storage_address_bytes!(b"key 1"),
+                                StorageValue::ZERO
+                            )]),
+                            nonce: None,
+                            class: None
+                        })
+                    ),
+                    (
+                        ContractAddress::TWO,
+                        ReverseContractUpdate::Updated(ContractUpdate {
+                            storage: HashMap::from([(
+                                storage_address_bytes!(b"key 2"),
                                 StorageValue::ZERO
                             )]),
                             nonce: None,

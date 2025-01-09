@@ -2,6 +2,8 @@ use std::fmt::Debug;
 
 use fake::Dummy;
 use pathfinder_crypto::Felt;
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::common::{Address, Hash, Iteration, VolitionDomain};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
@@ -13,7 +15,7 @@ pub struct ContractStoredValue {
     pub value: Felt,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, TaggedDebug)]
 #[protobuf(name = "crate::proto::state::ContractDiff")]
 pub struct ContractDiff {
     pub address: Address,
@@ -25,7 +27,7 @@ pub struct ContractDiff {
     pub domain: VolitionDomain,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, TaggedDebug)]
 #[protobuf(name = "crate::proto::state::DeclaredClass")]
 pub struct DeclaredClass {
     pub class_hash: Hash,

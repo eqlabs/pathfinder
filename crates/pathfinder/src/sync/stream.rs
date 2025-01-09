@@ -6,7 +6,7 @@ use p2p::PeerData;
 use tokio::sync::mpsc::Receiver;
 use tokio_stream::wrappers::ReceiverStream;
 
-use crate::sync::error::SyncError2;
+use crate::sync::error::SyncError;
 
 pub struct SyncReceiver<T> {
     inner: Receiver<SyncResult<T>>,
@@ -15,7 +15,7 @@ pub struct SyncReceiver<T> {
 /// [SyncReceiver::try_chunks].
 pub struct ChunkSyncReceiver<T>(SyncReceiver<Vec<T>>);
 
-pub type SyncResult<T> = Result<PeerData<T>, PeerData<SyncError2>>;
+pub type SyncResult<T> = Result<PeerData<T>, SyncError>;
 
 pub trait ProcessStage {
     type Input;
@@ -24,7 +24,7 @@ pub trait ProcessStage {
     /// Used to identify this stage in metrics and traces.
     const NAME: &'static str;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2>;
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError>;
 }
 
 impl<T: Send + 'static> ChunkSyncReceiver<T> {
@@ -45,7 +45,12 @@ struct Fullness(usize, usize);
 
 impl std::fmt::Display for Fullness {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}% ({}/{})", self.0 / self.1, self.0, self.1))
+        f.write_fmt(format_args!(
+            "{:.0}% ({}/{})",
+            self.0 as f32 / self.1 as f32 * 100.0,
+            self.0,
+            self.1
+        ))
     }
 }
 
@@ -77,10 +82,14 @@ impl<T: Send + 'static> SyncReceiver<T> {
     {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let queue_capacity = self.inner.max_capacity();
 
             while let Some(input) = self.inner.blocking_recv() {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+
                 let result = match input {
                     Ok(PeerData { peer, data }) => {
                         // Stats for tracing and metrics.
@@ -89,18 +98,19 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
                         // Process the data.
                         let output = stage
-                            .map(data)
+                            .map(&peer, data)
                             .map(|x| PeerData::new(peer, x))
-                            .map_err(|e| {
-                                tracing::debug!(error=%e, "Processing item failed");
-                                PeerData::new(peer, e)
+                            .inspect_err(|error| {
+                                tracing::debug!(%error, "Processing item failed");
                             });
 
                         // Log trace and metrics.
                         let elements_per_sec = count as f32 / t.elapsed().as_secs_f32();
                         let queue_fullness = queue_capacity - self.inner.capacity();
                         let input_queue = Fullness(queue_fullness, queue_capacity);
-                        tracing::debug!(stage=S::NAME, %input_queue, %elements_per_sec, "Item processed");
+                        tracing::trace!(stage=%S::NAME, %input_queue, %elements_per_sec,
+                            "Stage metrics"
+                        );
 
                         output
                     }
@@ -125,12 +135,16 @@ impl<T: Send + 'static> SyncReceiver<T> {
     pub fn try_chunks(mut self, capacity: usize, buffer: usize) -> ChunkSyncReceiver<T> {
         let (tx, rx) = tokio::sync::mpsc::channel(buffer);
 
-        std::thread::spawn(move || {
+        util::task::spawn_std(move |cancellation_token| {
             let mut chunk = Vec::with_capacity(capacity);
-            let mut peer = PeerId::random();
+            let mut peer = None;
             let mut err = None;
 
             while let Some(input) = self.inner.blocking_recv() {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+
                 let input = match input {
                     Ok(x) => x,
                     Err(e) => {
@@ -141,14 +155,17 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
                 // 1st element, assign peer ID.
                 if chunk.is_empty() {
-                    peer = input.peer;
+                    peer = Some(input.peer);
                 }
 
                 chunk.push(input.data);
 
                 if chunk.len() == capacity {
                     let data = std::mem::replace(&mut chunk, Vec::with_capacity(capacity));
-                    if tx.blocking_send(Ok(PeerData::new(peer, data))).is_err() {
+                    if tx
+                        .blocking_send(Ok(PeerData::new(peer.expect("to be set"), data)))
+                        .is_err()
+                    {
                         break;
                     };
                 }
@@ -156,7 +173,7 @@ impl<T: Send + 'static> SyncReceiver<T> {
 
             // Send any remaining elements.
             if !chunk.is_empty() {
-                _ = tx.blocking_send(Ok(PeerData::new(peer, chunk)));
+                _ = tx.blocking_send(Ok(PeerData::new(peer.expect("to be set"), chunk)));
             }
 
             if let Some(err) = err {
@@ -222,7 +239,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
@@ -255,7 +272,7 @@ where
     pub fn spawn(self) -> SyncReceiver<I> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut inner_stream = Box::pin(self.0);
 
             while let Some(item) = inner_stream.next().await {
@@ -272,7 +289,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use super::*;
+
+    pub fn peer_id() -> PeerId {
+        static PEER_ID: LazyLock<PeerId> = LazyLock::new(PeerId::random);
+        *PEER_ID
+    }
 
     #[rstest::rstest]
     #[case::all_ok(
@@ -280,13 +304,13 @@ mod tests {
             vec![Ok(0), Ok(1), Ok(2)]
         )]
     #[case::short_circuit_on_error(
-            vec![Ok(0), Ok(1), Err(SyncError2::BadBlockHash), Ok(2)],
-            vec![Ok(0), Ok(1), Err(SyncError2::BadBlockHash)],
+            vec![Ok(0), Ok(1), Err(SyncError::BadBlockHash(peer_id())), Ok(2)],
+            vec![Ok(0), Ok(1), Err(SyncError::BadBlockHash(peer_id()))],
         )]
     #[tokio::test]
     async fn input_stream(
-        #[case] input: Vec<Result<u8, SyncError2>>,
-        #[case] expected: Vec<Result<u8, SyncError2>>,
+        #[case] input: Vec<Result<u8, SyncError>>,
+        #[case] expected: Vec<Result<u8, SyncError>>,
     ) {
         struct NoOp;
         impl ProcessStage for NoOp {
@@ -294,7 +318,7 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
                 Ok(input)
             }
         }
@@ -304,11 +328,11 @@ mod tests {
         let input = SyncReceiver::iter(
             input
                 .into_iter()
-                .map(move |x| PeerData::from_result(peer, x)),
+                .map(move |x| x.map(|y| PeerData::new(peer, y))),
         );
         let expected = expected
             .into_iter()
-            .map(|x| PeerData::from_result(peer, x))
+            .map(|x| x.map(|y| PeerData::new(peer, y)))
             .collect::<Vec<_>>();
 
         let stage = NoOp {};
@@ -327,21 +351,25 @@ mod tests {
             type Input = u8;
             type Output = u8;
 
-            fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+            fn map(
+                &mut self,
+                peer: &PeerId,
+                input: Self::Input,
+            ) -> Result<Self::Output, SyncError> {
                 if self.0 == 0 {
                     self.0 = 1;
                     Ok(input)
                 } else {
-                    Err(SyncError2::BadBlockHash)
+                    Err(SyncError::BadBlockHash(*peer))
                 }
             }
         }
 
         let peer = PeerId::random();
-        let input = (0..10).map(move |x| PeerData::from_result(peer, Ok(x)));
+        let input = (0..10).map(move |x| Ok(PeerData::new(peer, x)));
         let expected = vec![
-            Ok(PeerData::new(peer, 0)),
-            Err(PeerData::new(peer, SyncError2::BadBlockHash)),
+            Ok(PeerData::new(peer, 0u8)),
+            Err(SyncError::BadBlockHash(peer)),
         ];
 
         let stage = OnlyOnce(0);
@@ -357,7 +385,7 @@ mod tests {
     #[tokio::test]
     async fn short_circuit_on_source_error() {
         let ok = Ok(PeerData::for_tests(0));
-        let err = Err(PeerData::for_tests(SyncError2::BadBlockHash));
+        let err = Err(SyncError::BadBlockHash(PeerId::random()));
         let ok_unprocessed = Ok(PeerData::for_tests(1));
 
         let input = vec![ok.clone(), err.clone(), ok_unprocessed];

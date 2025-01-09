@@ -1,6 +1,8 @@
 use std::time::SystemTime;
 
 use fake::{Dummy, Fake, Faker};
+use tagged::Tagged;
+use tagged_debug_derive::TaggedDebug;
 
 use crate::common::{
     Address,
@@ -14,7 +16,7 @@ use crate::common::{
 };
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
-#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf)]
+#[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, TaggedDebug)]
 #[protobuf(name = "crate::proto::header::SignedBlockHeader")]
 pub struct SignedBlockHeader {
     pub block_hash: Hash,
@@ -32,6 +34,10 @@ pub struct SignedBlockHeader {
     pub gas_price_wei: u128,
     pub data_gas_price_fri: u128,
     pub data_gas_price_wei: u128,
+    #[optional]
+    pub l2_gas_price_fri: Option<u128>,
+    #[optional]
+    pub l2_gas_price_wei: Option<u128>,
     pub l1_data_availability_mode: L1DataAvailabilityMode,
     pub signatures: Vec<ConsensusSignature>,
 }
@@ -76,6 +82,8 @@ impl<T> Dummy<T> for SignedBlockHeader {
             gas_price_wei: Faker.fake_with_rng(rng),
             data_gas_price_fri: Faker.fake_with_rng(rng),
             data_gas_price_wei: Faker.fake_with_rng(rng),
+            l2_gas_price_fri: Faker.fake_with_rng(rng),
+            l2_gas_price_wei: Faker.fake_with_rng(rng),
             l1_data_availability_mode: Faker.fake_with_rng(rng),
             signatures: Faker.fake_with_rng(rng),
         }

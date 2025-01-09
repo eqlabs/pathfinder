@@ -1,11 +1,10 @@
 use anyhow::{Context, Error, Result};
+use pathfinder_common::class_definition::EntryPointType::*;
 use pathfinder_common::{felt_bytes, ClassHash};
 use pathfinder_crypto::hash::{HashChain, PoseidonHasher};
 use pathfinder_crypto::Felt;
 use serde::Serialize;
 use sha3::Digest;
-
-use crate::request::contract::EntryPointType;
 
 #[derive(Debug, PartialEq)]
 pub enum ComputedClassHash {
@@ -56,55 +55,19 @@ fn parse_contract_definition(
         })
 }
 
-/// Sibling functionality to only [`compute_class_hash`], returning also the
-/// ABI, and bytecode parts as json bytes.
-///
-/// NOTE: This function is deprecated. We no longer store ABI and bytecode in
-/// the database, and this function is only used by _old_ database migration
-/// steps.
-pub fn extract_abi_code_hash(
-    contract_definition_dump: &[u8],
-) -> Result<(Vec<u8>, Vec<u8>, ClassHash)> {
-    let contract_definition = parse_contract_definition(contract_definition_dump)
-        .context("Failed to parse contract definition")?;
-
-    match contract_definition {
-        json::ContractDefinition::Sierra(contract_definition) => {
-            let abi = serde_json::to_vec(&contract_definition.abi)
-                .context("Serialize contract_definition.abi")?;
-            let code = serde_json::to_vec(&contract_definition.sierra_program)
-                .context("Serialize contract_definition.sierra_program")?;
-
-            let hash =
-                compute_sierra_class_hash(contract_definition).context("Compute class hash")?;
-
-            Ok((abi, code, hash))
-        }
-        json::ContractDefinition::Cairo(contract_definition) => {
-            // just in case we'd accidentally modify these in the compute_class_hash0
-            let abi = serde_json::to_vec(&contract_definition.abi)
-                .context("Serialize contract_definition.abi")?;
-            let code = serde_json::to_vec(&contract_definition.program.data)
-                .context("Serialize contract_definition.program.data")?;
-
-            let hash =
-                compute_cairo_class_hash(contract_definition).context("Compute class hash")?;
-
-            Ok((abi, code, hash))
-        }
-    }
-}
-
 pub mod from_parts {
     use std::collections::HashMap;
 
     use anyhow::Result;
+    use pathfinder_common::class_definition::{
+        EntryPointType,
+        SelectorAndOffset,
+        SierraEntryPoints,
+    };
     use pathfinder_common::ClassHash;
     use pathfinder_crypto::Felt;
 
     use super::json;
-    use crate::class_definition::SierraEntryPoints;
-    use crate::request::contract::{EntryPointType, SelectorAndOffset};
 
     pub fn compute_cairo_class_hash(
         abi: &[u8],
@@ -178,8 +141,6 @@ pub mod from_parts {
 fn compute_cairo_class_hash(
     mut contract_definition: json::CairoContractDefinition<'_>,
 ) -> Result<ClassHash> {
-    use EntryPointType::*;
-
     // the other modification is handled by skipping if the attributes vec is empty
     contract_definition.program.debug_info = None;
 
@@ -390,8 +351,6 @@ fn compute_cairo_class_hash(
 fn compute_sierra_class_hash(
     contract_definition: json::SierraContractDefinition<'_>,
 ) -> Result<ClassHash> {
-    use EntryPointType::*;
-
     if contract_definition.contract_class_version != "0.1.0" {
         anyhow::bail!("Unsupported Sierra class version");
     }
@@ -541,7 +500,11 @@ mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 
-    use crate::request::contract::{EntryPointType, SelectorAndFunctionIndex, SelectorAndOffset};
+    use pathfinder_common::class_definition::{
+        EntryPointType,
+        SelectorAndFunctionIndex,
+        SelectorAndOffset,
+    };
 
     pub enum ContractDefinition<'a> {
         Cairo(CairoContractDefinition<'a>),

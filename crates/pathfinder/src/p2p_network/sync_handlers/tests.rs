@@ -104,7 +104,7 @@ mod prop {
     use futures::channel::mpsc;
     use futures::StreamExt;
     use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::peer_agnostic::{Receipt, SignedBlockHeader as P2PSignedBlockHeader};
+    use p2p::client::types::Receipt;
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -131,12 +131,12 @@ mod prop {
         ContractAddress,
         ContractNonce,
         SierraHash,
+        SignedBlockHeader,
         StorageAddress,
         StorageValue,
         TransactionHash,
         TransactionIndex,
     };
-    use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
@@ -182,7 +182,12 @@ mod prop {
             // Compute the overlapping set between the db and the request
             // These are the headers that we expect to be read from the db
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
-                .into_iter().map(|Block { header, .. }| P2PSignedBlockHeader::from(header)).collect::<Vec<_>>();
+                .into_iter().map(|Block { header, .. }| pathfinder_common::SignedBlockHeader {
+                    header: pathfinder_common::BlockHeader {
+                        ..header.header
+                    },
+                    signature: header.signature,
+                }).collect::<Vec<_>>();
             // Run the handler
             let request = BlockHeadersRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -201,7 +206,7 @@ mod prop {
 
             // Check the rest
             let actual = responses.into_iter().map(|response| match response {
-                BlockHeadersResponse::Header(hdr) => P2PSignedBlockHeader::try_from(*hdr).unwrap(),
+                BlockHeadersResponse::Header(hdr) => SignedBlockHeader::try_from_dto(*hdr).unwrap(),
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
 
@@ -238,14 +243,15 @@ mod prop {
             // These are the items that we expect to be read from the db
             // Grouped by block number
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction).into_iter()
-                .map(|Block { header, state_update, .. }|
+                .map(|Block { header, state_update, .. }| {
+                    let state_update = state_update.unwrap();
                     (
                         header.header.number, // Block number
                         state_update.contract_updates.into_iter().map(|(k, v)| (k, v.into())).collect::<HashMap<_,_>>(),
                         state_update.system_contract_updates,
                         state_update.declared_sierra_classes,
                         state_update.declared_cairo_classes,
-                    )
+                    )}
             ).collect::<Vec<_>>();
             // Run the handler
             let request = StateDiffsRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
@@ -267,10 +273,11 @@ mod prop {
             // Check the rest
             responses.into_iter().for_each(|response| match response {
                 StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, values, domain: _ }) => {
-                    if address.0 == Felt::from_u64(1) {
+                    let contract_address = ContractAddress(address.0);
+                    if contract_address.is_system_contract() {
                         actual_system_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 SystemContractUpdate {
                                     storage: values.into_iter().map(
                                         |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
@@ -278,7 +285,7 @@ mod prop {
                     } else {
                         actual_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),
@@ -321,6 +328,7 @@ mod prop {
         fn get_classes((num_blocks, seed, start_block, limit, step, direction) in strategy::composite()) {
             // Fake storage with a given number of blocks
             let (storage, in_db) = fixtures::storage_with_seed(seed, num_blocks);
+
             // Compute the overlapping set between the db and the request
             // These are the items that we expect to be read from the db
             // Grouped by block number
@@ -335,6 +343,7 @@ mod prop {
                         sierra_defs.into_iter().map(|(_, sierra_def, _)| sierra_def).collect::<Vec<_>>()
                     )
             ).collect::<Vec<_>>();
+
             // Run the handler
             let request = ClassesRequest { iteration: Iteration { start: BlockNumberOrHash::Number(start_block), limit, step, direction, } };
             let mut responses = Runtime::new().unwrap().block_on(async {
@@ -352,10 +361,10 @@ mod prop {
             let mut actual_sierra = Vec::new();
 
             responses.into_iter().for_each(|response| match response {
-                ClassesResponse::Class(Class::Cairo0 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo0 { class, domain: _, class_hash: _ }) => {
                     actual_cairo.push(CairoDefinition::try_from_dto(class).unwrap().0);
                 },
-                ClassesResponse::Class(Class::Cairo1 { class, domain: _ }) => {
+                ClassesResponse::Class(Class::Cairo1 { class, domain: _, class_hash: _ }) => {
                     let SierraDefinition(sierra) = SierraDefinition::try_from_dto(class).unwrap();
                     actual_sierra.push(sierra);
                 },
@@ -363,11 +372,14 @@ mod prop {
             });
 
             for expected_for_block in expected {
-                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<Vec<_>>();
-                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<Vec<_>>();
+                let actual_cairo_for_block = actual_cairo.drain(..expected_for_block.1.len()).collect::<HashSet<_>>();
+                let actual_sierra_for_block = actual_sierra.drain(..expected_for_block.2.len()).collect::<HashSet<_>>();
 
-                prop_assert_eq!(expected_for_block.1, actual_cairo_for_block, "block number: {}", expected_for_block.0);
-                prop_assert_eq!(expected_for_block.2, actual_sierra_for_block, "block number: {}", expected_for_block.0);
+                let expected_cairo_for_block = expected_for_block.1.into_iter().collect::<HashSet<_>>();
+                let expected_sierra_for_block = expected_for_block.2.into_iter().collect::<HashSet<_>>();
+
+                prop_assert_eq!(expected_cairo_for_block, actual_cairo_for_block, "block number: {}", expected_for_block.0);
+                prop_assert_eq!(expected_sierra_for_block, actual_sierra_for_block, "block number: {}", expected_for_block.0);
             }
         }
     }
@@ -440,7 +452,9 @@ mod prop {
             // Check the rest
             let mut actual = responses.into_iter().map(|response| match response {
                 TransactionsResponse::TransactionWithReceipt(TransactionWithReceipt { transaction, receipt }) => {
-                    (TransactionVariant::try_from_dto(transaction).unwrap(), Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
+                    let mut txn_variant = TransactionVariant::try_from_dto(transaction.txn).unwrap();
+                    txn_variant.calculate_contract_address();
+                    (txn_variant, Receipt::try_from((receipt, TransactionIndex::new_or_panic(0))).unwrap())
                 }
                 _ => panic!("unexpected response"),
             }).collect::<Vec<_>>();
@@ -498,10 +512,11 @@ mod prop {
 
     /// Fixtures for prop tests
     mod fixtures {
-        use pathfinder_storage::fake::{with_n_blocks_and_rng, Block};
+        use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
         use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::state::block_hash::calculate_receipt_commitment;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
 
@@ -510,9 +525,17 @@ mod prop {
             let storage = StorageBuilder::in_memory().unwrap();
             // Explicitly choose RNG to make sure seeded storage is always reproducible
             let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(seed);
-            let initializer =
-                with_n_blocks_and_rng(&storage, num_blocks.try_into().unwrap(), &mut rng);
-            (storage, initializer)
+            let blocks = generate::with_rng_and_config(
+                num_blocks.try_into().unwrap(),
+                &mut rng,
+                Config {
+                    calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
+                    ..Default::default()
+                },
+            );
+            fill(&storage, &blocks, None);
+
+            (storage, blocks)
         }
     }
 

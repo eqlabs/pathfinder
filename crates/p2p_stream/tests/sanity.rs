@@ -5,7 +5,6 @@ use futures::prelude::*;
 use libp2p::PeerId;
 use libp2p_swarm_test::SwarmExt;
 use rstest::rstest;
-use tracing_subscriber::EnvFilter;
 
 pub mod utils;
 
@@ -78,25 +77,17 @@ async fn server_request_to_client() -> Scenario {
 #[rstest]
 #[case::client_request_to_server(client_request_to_server())]
 #[case::server_request_to_client(server_request_to_client())]
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn sanity(
     #[values(0, 1, (2..10000).fake())] num_responses: usize,
     #[case]
     #[future]
     scenario: Scenario,
 ) {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let Scenario {
         mut requester,
         mut responder,
     } = scenario.await;
-
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
 
     let responder_task = async move {
         let (peer, req_id, action, mut resp_tx) =
@@ -139,7 +130,7 @@ async fn sanity(
 
         for i in 0..num_responses {
             assert_eq!(
-                resp_rx.next().await.unwrap(),
+                resp_rx.next().await.unwrap().unwrap(),
                 Action::SanityResponse(i as u32)
             );
         }

@@ -9,13 +9,13 @@ use starknet_gateway_types::request::add_transaction::{
 
 use crate::context::RpcContext;
 use crate::felt::RpcFelt;
-use crate::v02::types::request::BroadcastedDeclareTransaction;
+use crate::types::request::BroadcastedDeclareTransaction;
 
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
     ClassAlreadyDeclared,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     CompilationFailed,
@@ -33,7 +33,9 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
         match value {
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,
             AddDeclareTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            AddDeclareTransactionError::InsufficientMaxFee => Self::InsufficientMaxFee,
+            AddDeclareTransactionError::InsufficientResourcesForValidate => {
+                Self::InsufficientResourcesForValidate
+            }
             AddDeclareTransactionError::InsufficientAccountBalance => {
                 Self::InsufficientAccountBalance
             }
@@ -101,7 +103,7 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeclareTransactionError::InsufficientMaxFee
+                AddDeclareTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeclareTransactionError::InvalidTransactionNonce
@@ -141,6 +143,12 @@ pub struct AddDeclareTransactionInput {
     // A deploy token is required to deploy contracts on Starknet mainnet only.
     #[serde(default)]
     token: Option<String>,
+}
+
+impl crate::dto::DeserializeForVersion for AddDeclareTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
 }
 
 #[serde_with::serde_as]
@@ -263,6 +271,8 @@ pub async fn add_declare_transaction(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{
         CasmHash,
@@ -281,13 +291,13 @@ mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::{
+    use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
     };
-    use crate::v02::types::{
+    use crate::types::{
         CairoContractClass,
         ContractClass,
         DataAvailabilityMode,
@@ -296,44 +306,55 @@ mod tests {
         SierraContractClass,
     };
 
-    lazy_static::lazy_static! {
-        pub static ref CONTRACT_CLASS: CairoContractClass = {
-            ContractClass::from_definition_bytes(CONTRACT_DEFINITION).unwrap().as_cairo().unwrap()
-        };
+    pub static CONTRACT_CLASS: LazyLock<CairoContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(CONTRACT_DEFINITION)
+            .unwrap()
+            .as_cairo()
+            .unwrap()
+    });
 
-        pub static ref CONTRACT_CLASS_WITH_INVALID_PRIME: CairoContractClass = {
-            let mut definition: serde_json::Value = serde_json::from_slice(CONTRACT_DEFINITION).unwrap();
+    pub static CONTRACT_CLASS_WITH_INVALID_PRIME: LazyLock<CairoContractClass> =
+        LazyLock::new(|| {
+            let mut definition: serde_json::Value =
+                serde_json::from_slice(CONTRACT_DEFINITION).unwrap();
             // change program.prime to an invalid one
-            *definition.get_mut("program").unwrap().get_mut("prime").unwrap() = serde_json::json!("0x1");
+            *definition
+                .get_mut("program")
+                .unwrap()
+                .get_mut("prime")
+                .unwrap() = serde_json::json!("0x1");
             let definition = serde_json::to_vec(&definition).unwrap();
-            ContractClass::from_definition_bytes(&definition).unwrap().as_cairo().unwrap()
-        };
+            ContractClass::from_definition_bytes(&definition)
+                .unwrap()
+                .as_cairo()
+                .unwrap()
+        });
 
-        pub static ref CONTRACT_CLASS_JSON: String = {
-            serde_json::to_string(&*CONTRACT_CLASS).unwrap()
-        };
+    pub static SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(CAIRO_2_0_0_STACK_OVERFLOW)
+            .unwrap()
+            .as_sierra()
+            .unwrap()
+    });
 
-        pub static ref SIERRA_CLASS_JSON: String = {
-            serde_json::to_string(&*SIERRA_CLASS).unwrap()
-        };
-
-        pub static ref SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(CAIRO_2_0_0_STACK_OVERFLOW).unwrap().as_sierra().unwrap()
-        };
-
-        pub static ref INTEGRATION_SIERRA_CLASS: SierraContractClass = {
-            ContractClass::from_definition_bytes(
-                include_bytes!("../../../fixtures/contracts/integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.json")
-            ).unwrap().as_sierra().unwrap()
-        };
-    }
+    pub static INTEGRATION_SIERRA_CLASS: LazyLock<SierraContractClass> = LazyLock::new(|| {
+        ContractClass::from_definition_bytes(include_bytes!(
+            "../../../fixtures/contracts/\
+             integration_class_0x5ae9d09292a50ed48c5930904c880dab56e85b825022a7d689cfc9e65e01ee7.\
+             json"
+        ))
+        .unwrap()
+        .as_sierra()
+        .unwrap()
+    });
 
     mod parsing {
         mod v1 {
             use serde_json::json;
 
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV1;
+            use crate::dto::serialize::{self, SerializeForVersion};
+            use crate::types::request::BroadcastedDeclareTransactionV1;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V1(
@@ -409,7 +430,9 @@ mod tests {
                 let error = AddDeclareTransactionError::from(starknet_error);
                 let error = crate::error::ApplicationError::from(error);
                 let error = crate::jsonrpc::RpcError::from(error);
-                let error = serde_json::to_value(error).unwrap();
+                let error = error
+                    .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+                    .unwrap();
 
                 let expected = json!({
                     "code": 63,
@@ -425,7 +448,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::v02::types::request::BroadcastedDeclareTransactionV2;
+            use crate::types::request::BroadcastedDeclareTransactionV2;
 
             fn test_declare_txn() -> Transaction {
                 Transaction::Declare(BroadcastedDeclareTransaction::V2(
@@ -686,6 +709,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],

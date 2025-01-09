@@ -1,8 +1,9 @@
 use serde_with::ser::SerializeAsWrap;
 
+use super::U64Hex;
 use crate::dto::serialize::SerializeForVersion;
-use crate::dto::{serialize, Felt, NumAsHex};
-use crate::v02::types;
+use crate::dto::{serialize, Felt};
+use crate::types;
 
 pub struct DeprecatedContractClass<'a>(pub &'a types::CairoContractClass);
 pub struct ContractClass<'a>(pub &'a types::SierraContractClass);
@@ -138,7 +139,7 @@ impl SerializeForVersion for DeprecatedCairoEntryPoint<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("offset", &NumAsHex::U64(self.0.offset))?;
+        serializer.serialize_field("offset", &self.0.offset)?;
         serializer.serialize_field("selector", &Felt(&self.0.selector))?;
 
         serializer.end()
@@ -244,7 +245,7 @@ impl SerializeForVersion for StructAbiEntry<'_> {
     ) -> Result<serialize::Ok, serialize::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("type", &EventAbiType)?;
+        serializer.serialize_field("type", &StructAbiType)?;
         serializer.serialize_field("name", &self.0.name)?;
         // FIXME: this should be a NonZero according to the RPC spec.
         serializer.serialize_field("size", &self.0.size)?;

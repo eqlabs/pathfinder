@@ -9,6 +9,12 @@ pub struct GetTransactionReceiptInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for GetTransactionReceiptInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
+}
+
 crate::error::generate_rpc_error_subset!(GetTransactionReceiptError: TxnHashNotFound);
 
 pub async fn get_transaction_receipt(
@@ -26,8 +32,7 @@ pub async fn get_transaction_receipt_impl(
 ) -> Result<types::MaybePendingTransactionReceipt, GetTransactionReceiptError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -99,107 +104,27 @@ pub mod types {
         TransactionHash,
         TransactionVersion,
     };
-    use pathfinder_serde::{u64_as_hex_str, H256AsNoLeadingZerosHexStr};
+    use pathfinder_serde::H256AsNoLeadingZerosHexStr;
     use primitive_types::H256;
     use serde::Serialize;
     use serde_with::serde_as;
 
     use crate::felt::{RpcFelt, RpcFelt251};
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
     use crate::v06::types::PriceUnit;
 
     /// L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum MaybePendingTransactionReceipt {
         Normal(TransactionReceipt),
         Pending(PendingTransactionReceipt),
     }
 
-    impl MaybePendingTransactionReceipt {
-        fn actual_fee(&mut self) -> &mut FeePayment {
-            match self {
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Declare(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::L1Handler(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Deploy(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::DeployAccount(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Invoke(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Declare(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Deploy(x)) => {
-                    &mut x.common.actual_fee
-                }
-                MaybePendingTransactionReceipt::Pending(
-                    PendingTransactionReceipt::DeployAccount(x),
-                ) => &mut x.common.actual_fee,
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::L1Handler(
-                    x,
-                )) => &mut x.common.actual_fee,
-            }
-        }
-
-        fn execution_resources(&mut self) -> &mut ExecutionResourcesProperties {
-            match self {
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Invoke(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Declare(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::L1Handler(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::Deploy(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Normal(TransactionReceipt::DeployAccount(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Invoke(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Declare(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::Deploy(x)) => {
-                    &mut x.common.execution_resources
-                }
-                MaybePendingTransactionReceipt::Pending(
-                    PendingTransactionReceipt::DeployAccount(x),
-                ) => &mut x.common.execution_resources,
-
-                MaybePendingTransactionReceipt::Pending(PendingTransactionReceipt::L1Handler(
-                    x,
-                )) => &mut x.common.execution_resources,
-            }
-        }
-
-        pub fn into_v5_form(mut self) -> Self {
-            self.actual_fee().format_as_v05();
-            self.execution_resources().format_as_v05();
-
-            self
-        }
-    }
-
     /// Non-pending L2 transaction receipt as returned by the RPC API.
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(tag = "type")]
     pub enum TransactionReceipt {
         #[serde(rename = "INVOKE")]
@@ -218,7 +143,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct InvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -226,7 +151,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct CommonTransactionReceiptProperties {
         #[serde_as(as = "RpcFelt")]
         pub transaction_hash: TransactionHash,
@@ -245,7 +170,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct CommonPendingTransactionReceiptProperties {
         pub transaction_hash: TransactionHash,
         pub actual_fee: FeePayment,
@@ -259,66 +184,15 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(untagged)]
     pub enum FeePayment {
-        // TODO: remove once RPC v0.5 is removed.
-        V05(Fee),
         V06 { amount: Fee, unit: PriceUnit },
     }
 
-    impl FeePayment {
-        fn format_as_v05(&mut self) {
-            if let FeePayment::V06 { amount, .. } = self {
-                *self = FeePayment::V05(*amount);
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    #[serde(untagged)]
-    pub enum ExecutionResourcesProperties {
-        V05(ExecutionResourcesPropertiesV05),
-        V06(ExecutionResourcesPropertiesV06),
-    }
-
-    impl ExecutionResourcesProperties {
-        pub fn format_as_v05(&mut self) {
-            if let ExecutionResourcesProperties::V06(properties) = self {
-                *self = ExecutionResourcesProperties::V05(properties.into());
-            }
-        }
-    }
-
-    #[serde_as]
     #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct ExecutionResourcesPropertiesV05 {
-        // All these properties are actually strings in the spec, hence the serde attributes.
-        #[serde(with = "u64_as_hex_str")]
-        pub steps: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub memory_holes: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub range_check_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub pedersen_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub poseidon_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub ec_op_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub ecdsa_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub bitwise_builtin_applications: u64,
-        #[serde(with = "u64_as_hex_str")]
-        pub keccak_builtin_applications: u64,
-    }
-
-    #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
-    pub struct ExecutionResourcesPropertiesV06 {
+    #[cfg_attr(test, derive(serde::Deserialize))]
+    pub struct ExecutionResourcesProperties {
         pub steps: u64,
         #[serde(skip_serializing_if = "is_zero")]
         pub memory_holes: u64,
@@ -344,22 +218,6 @@ pub mod types {
         *value == 0
     }
 
-    impl From<&mut ExecutionResourcesPropertiesV06> for ExecutionResourcesPropertiesV05 {
-        fn from(value: &mut ExecutionResourcesPropertiesV06) -> Self {
-            Self {
-                steps: value.steps,
-                memory_holes: value.memory_holes,
-                range_check_builtin_applications: value.range_check_builtin_applications,
-                pedersen_builtin_applications: value.pedersen_builtin_applications,
-                poseidon_builtin_applications: value.poseidon_builtin_applications,
-                ec_op_builtin_applications: value.ec_op_builtin_applications,
-                ecdsa_builtin_applications: value.ecdsa_builtin_applications,
-                bitwise_builtin_applications: value.bitwise_builtin_applications,
-                keccak_builtin_applications: value.keccak_builtin_applications,
-            }
-        }
-    }
-
     impl From<pathfinder_common::receipt::ExecutionResources> for ExecutionResourcesProperties {
         fn from(value: pathfinder_common::receipt::ExecutionResources) -> Self {
             let pathfinder_common::receipt::ExecutionResources {
@@ -375,13 +233,14 @@ pub mod types {
                         keccak: keccak_builtin,
                         poseidon: poseidon_builtin,
                         segment_arena: segment_arena_builtin,
+                        ..
                     },
                 n_steps,
                 n_memory_holes,
                 ..
             } = value;
 
-            Self::V06(ExecutionResourcesPropertiesV06 {
+            Self {
                 steps: n_steps,
                 memory_holes: n_memory_holes,
                 range_check_builtin_applications: range_check_builtin,
@@ -392,13 +251,13 @@ pub mod types {
                 bitwise_builtin_applications: bitwise_builtin,
                 keccak_builtin_applications: keccak_builtin,
                 segment_arena_builtin,
-            })
+            }
         }
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub enum ExecutionStatus {
         Succeeded,
         Reverted,
@@ -415,7 +274,7 @@ pub mod types {
 
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub enum FinalityStatus {
         AcceptedOnL2,
         AcceptedOnL1,
@@ -423,7 +282,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct L1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -433,7 +292,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -443,7 +302,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -452,7 +311,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct DeclareTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonTransactionReceiptProperties,
@@ -556,7 +415,7 @@ pub mod types {
     /// block_number fields
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(tag = "type")]
     pub enum PendingTransactionReceipt {
         #[serde(rename = "INVOKE")]
@@ -572,21 +431,21 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingInvokeTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeclareTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeployTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -595,7 +454,7 @@ pub mod types {
     }
 
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingDeployAccountTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -605,7 +464,7 @@ pub mod types {
 
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     pub struct PendingL1HandlerTransactionReceipt {
         #[serde(flatten)]
         pub common: CommonPendingTransactionReceiptProperties,
@@ -700,7 +559,7 @@ pub mod types {
     /// Message sent from L2 to L1.
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct MessageToL1 {
         pub from_address: ContractAddress,
@@ -722,7 +581,7 @@ pub mod types {
     /// Event emitted as a part of a transaction.
     #[serde_as]
     #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub struct Event {
         #[serde_as(as = "RpcFelt251")]
@@ -745,7 +604,7 @@ pub mod types {
 
     /// Represents transaction status.
     #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(any(test, feature = "rpc-full-serde"), derive(serde::Deserialize))]
+    #[cfg_attr(test, derive(serde::Deserialize))]
     #[serde(deny_unknown_fields)]
     pub enum TransactionStatus {
         #[serde(rename = "ACCEPTED_ON_L2")]
@@ -872,7 +731,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -923,7 +782,7 @@ mod tests {
                             },
                             n_memory_holes: 5,
                             n_steps: 10,
-                            data_availability: Default::default(),
+                            ..Default::default()
                         }
                         .into(),
                     }
@@ -945,17 +804,14 @@ mod tests {
                 keccak: 6,
                 poseidon: 7,
                 segment_arena: 8,
+                ..Default::default()
             },
             n_steps: 9,
             n_memory_holes: 10,
-            data_availability: Default::default(),
+            ..Default::default()
         };
 
         let into = ExecutionResourcesProperties::from(original.clone());
-        let into = match into {
-            ExecutionResourcesProperties::V06(x) => x,
-            ExecutionResourcesProperties::V05(_) => panic!("Expected V06"),
-        };
 
         assert_eq!(into.steps, original.n_steps);
         assert_eq!(into.memory_holes, original.n_memory_holes);

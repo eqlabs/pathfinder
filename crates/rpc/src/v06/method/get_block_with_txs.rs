@@ -3,7 +3,7 @@ use pathfinder_common::{BlockId, BlockNumber};
 use serde::Deserialize;
 
 use crate::context::RpcContext;
-use crate::v02::types::reply::BlockStatus;
+use crate::types::reply::BlockStatus;
 use crate::v06::types::TransactionWithHash;
 
 #[derive(Deserialize, Debug, PartialEq, Eq)]
@@ -11,6 +11,12 @@ use crate::v06::types::TransactionWithHash;
 #[serde(deny_unknown_fields)]
 pub struct GetBlockInput {
     block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for GetBlockInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
 }
 
 crate::error::generate_rpc_error_subset!(GetBlockError: BlockNotFound);
@@ -22,8 +28,7 @@ pub async fn get_block_with_txs(
 ) -> Result<types::Block, GetBlockError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()
@@ -89,7 +94,7 @@ mod types {
     use serde::Serialize;
     use serde_with::{serde_as, skip_serializing_none};
 
-    use crate::v02::types::reply::BlockStatus;
+    use crate::types::reply::BlockStatus;
     use crate::v06::types::TransactionWithHash;
 
     /// L2 Block as returned by the RPC API.

@@ -4,12 +4,22 @@ use std::num::NonZeroU64;
 use fake::Dummy;
 use libp2p_identity::PeerId;
 use pathfinder_crypto::Felt;
+use primitive_types::H256;
 use rand::Rng;
 
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]
 pub struct Hash(pub Felt);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, std::hash::Hash, Default)]
+pub struct Hash256(pub primitive_types::H256);
+
+impl<T> Dummy<T> for Hash256 {
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
+        Self(H256::random_using(rng))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::Hashes")]
@@ -135,6 +145,33 @@ impl TryFromProtobuf<proto::common::Hash> for Hash {
     }
 }
 
+impl ToProtobuf<proto::common::Hash256> for Hash256 {
+    fn to_protobuf(self) -> proto::common::Hash256 {
+        proto::common::Hash256 {
+            elements: self.0.as_fixed_bytes().into(),
+        }
+    }
+}
+
+impl TryFromProtobuf<proto::common::Hash256> for Hash256 {
+    fn try_from_protobuf(
+        input: proto::common::Hash256,
+        field_name: &'static str,
+    ) -> Result<Self, std::io::Error> {
+        if input.elements.len() != H256::len_bytes() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "Invalid field element {field_name}: expected to be {} bytes long",
+                    H256::len_bytes()
+                ),
+            ));
+        }
+        let hash = H256::from_slice(&input.elements);
+        Ok(Hash256(hash))
+    }
+}
+
 impl ToProtobuf<proto::common::Address> for Address {
     fn to_protobuf(self) -> proto::common::Address {
         proto::common::Address {
@@ -181,12 +218,22 @@ impl ToProtobuf<i32> for L1DataAvailabilityMode {
 }
 
 impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
-        Ok(match TryFrom::try_from(input)? {
-            Calldata => L1DataAvailabilityMode::Calldata,
-            Blob => L1DataAvailabilityMode::Blob,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid L1 data availability mode field element {field_name} enum value: \
+                         {e}"
+                    ),
+                )
+            })? {
+                Calldata => L1DataAvailabilityMode::Calldata,
+                Blob => L1DataAvailabilityMode::Blob,
+            },
+        )
     }
 }
 
@@ -201,12 +248,19 @@ impl ToProtobuf<i32> for VolitionDomain {
 }
 
 impl TryFromProtobuf<i32> for VolitionDomain {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::VolitionDomain::{L1, L2};
-        Ok(match TryFrom::try_from(input)? {
-            L1 => VolitionDomain::L1,
-            L2 => VolitionDomain::L2,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid volition domain field element {field_name} enum value: {e}"),
+                )
+            })? {
+                L1 => VolitionDomain::L1,
+                L2 => VolitionDomain::L2,
+            },
+        )
     }
 }
 
@@ -339,11 +393,18 @@ impl ToProtobuf<i32> for Direction {
 }
 
 impl TryFromProtobuf<i32> for Direction {
-    fn try_from_protobuf(input: i32, _: &'static str) -> Result<Self, std::io::Error> {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
         use proto::common::iteration::Direction::{Backward, Forward};
-        Ok(match TryFrom::try_from(input)? {
-            Backward => Direction::Backward,
-            Forward => Direction::Forward,
-        })
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!("Invalid direction field element {field_name} enum value: {e}"),
+                )
+            })? {
+                Backward => Direction::Backward,
+                Forward => Direction::Forward,
+            },
+        )
     }
 }

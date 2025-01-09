@@ -4,7 +4,6 @@ use std::time::Duration;
 use futures::prelude::*;
 use libp2p_swarm_test::SwarmExt;
 use p2p_stream::{InboundFailure, OutboundFailure};
-use tracing_subscriber::EnvFilter;
 
 pub mod utils;
 
@@ -20,12 +19,8 @@ use utils::{
     Action,
 };
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_outbound_failure_on_read_response_failure() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let (peer1_id, mut swarm1) = new_swarm();
     let (peer2_id, mut swarm2) = new_swarm();
 
@@ -60,7 +55,9 @@ async fn report_outbound_failure_on_read_response_failure() {
         assert_eq!(peer, peer1_id);
         assert_eq!(req_id_done, req_id);
 
-        assert!(resp_channel.next().await.is_none());
+        assert!(
+            matches!(resp_channel.next().await, Some(Err(x)) if x.kind() == io::ErrorKind::Other && x.to_string() == "FailOnReadResponse")
+        );
 
         let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
         assert_eq!(peer, peer1_id);
@@ -82,12 +79,8 @@ async fn report_outbound_failure_on_read_response_failure() {
     tokio::join!(server_task, client_task);
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_outbound_failure_on_write_request_failure() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let (peer1_id, mut swarm1) = new_swarm();
     let (_peer2_id, mut swarm2) = new_swarm();
 
@@ -129,12 +122,8 @@ async fn report_outbound_failure_on_write_request_failure() {
     client_task.await;
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_read_response_timeout() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     // `swarm1` needs to have a bigger timeout to avoid racing
     let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
     let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
@@ -179,12 +168,8 @@ async fn report_outbound_timeout_on_read_response_timeout() {
     tokio::join!(server_task, client_task);
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_inbound_closure_on_read_request_failure() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let (peer1_id, mut swarm1) = new_swarm();
     let (_peer2_id, mut swarm2) = new_swarm();
 
@@ -226,12 +211,8 @@ async fn report_inbound_closure_on_read_request_failure() {
     client_task.await;
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_inbound_failure_on_write_response_failure() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     let (peer1_id, mut swarm1) = new_swarm();
     let (peer2_id, mut swarm2) = new_swarm();
 
@@ -286,12 +267,8 @@ async fn report_inbound_failure_on_write_response_failure() {
     tokio::join!(client_task, server_task);
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_inbound_timeout_on_write_response_timeout() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     // `swarm2` needs to have a bigger timeout to avoid racing
     let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(100));
     let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(200));
@@ -342,12 +319,8 @@ async fn report_inbound_timeout_on_write_response_timeout() {
     tokio::join!(client_task, server_task);
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_write_request_timeout() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     // `swarm1` needs to have a bigger timeout to avoid racing
     let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
     let (_peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
@@ -381,12 +354,8 @@ async fn report_outbound_timeout_on_write_request_timeout() {
     client_task.await;
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_read_request_timeout() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .try_init();
-
     // `swarm2` needs to have a bigger timeout to avoid racing
     let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
     let (_peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));

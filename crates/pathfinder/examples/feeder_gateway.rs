@@ -31,7 +31,6 @@ use anyhow::Context;
 use clap::{Args, Parser};
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{
-    state_diff_commitment_bytes,
     BlockCommitmentSignature,
     BlockCommitmentSignatureElem,
     BlockHash,
@@ -39,6 +38,7 @@ use pathfinder_common::{
     Chain,
     ClassHash,
 };
+use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
 use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
@@ -294,6 +294,12 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
             }
         });
 
+    let get_public_key = warp::path("get_public_key").then(|| async {
+        warp::reply::json(&serde_json::json!(
+            "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
+        ))
+    });
+
     #[derive(Debug, Deserialize)]
     struct ClassHashParam {
         #[serde(rename = "classHash")]
@@ -336,7 +342,8 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                 .or(get_state_update)
                 .or(get_contract_addresses)
                 .or(get_class_by_hash)
-                .or(get_signature),
+                .or(get_signature)
+                .or(get_public_key),
         )
         .with(warp::filters::trace::request());
 
@@ -417,6 +424,13 @@ fn resolve_block(
         .context("Reading transactions from database")?
         .context("Transaction data missing")?;
 
+    let receipts = transactions_receipts
+        .iter()
+        .map(|(_, r, _)| r.clone())
+        .collect::<Vec<_>>();
+
+    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+
     let (transactions, transaction_receipts): (Vec<_>, Vec<_>) = transactions_receipts
         .into_iter()
         .map(|(tx, rx, ev)| (tx, (rx, ev)))
@@ -442,6 +456,10 @@ fn resolve_block(
             price_in_wei: header.eth_l1_data_gas_price,
             price_in_fri: header.strk_l1_data_gas_price,
         },
+        l2_gas_price: Some(GasPrices {
+            price_in_wei: header.eth_l2_gas_price,
+            price_in_fri: header.strk_l2_gas_price,
+        }),
         parent_block_hash: header.parent_hash,
         sequencer_address: Some(header.sequencer_address),
         state_commitment: header.state_commitment,
@@ -453,6 +471,9 @@ fn resolve_block(
         l1_da_mode: header.l1_da_mode.into(),
         transaction_commitment: header.transaction_commitment,
         event_commitment: header.event_commitment,
+        receipt_commitment: Some(receipt_commitment),
+        state_diff_commitment: Some(header.state_diff_commitment),
+        state_diff_length: Some(header.state_diff_length),
     })
 }
 
@@ -476,12 +497,8 @@ fn resolve_signature(
         });
 
     Ok(starknet_gateway_types::reply::BlockSignature {
-        block_number: header.number,
+        block_hash: header.hash,
         signature: [signature.r, signature.s],
-        signature_input: starknet_gateway_types::reply::BlockSignatureInput {
-            block_hash: header.hash,
-            state_diff_commitment: state_diff_commitment_bytes!(b"fake commitment"),
-        },
     })
 }
 

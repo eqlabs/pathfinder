@@ -4,20 +4,29 @@ use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
     transaction_hash: TransactionHash,
 }
 
 crate::error::generate_rpc_error_subset!(GetGatewayTransactionError:);
 
+impl crate::dto::DeserializeForVersion for GetGatewayTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: TransactionHash(value.deserialize("transaction_hash")?),
+            })
+        })
+    }
+}
+
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
     let span = tracing::Span::current();
-
-    let db_status = tokio::task::spawn_blocking(move || {
+    let db_status = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context
@@ -67,10 +76,10 @@ pub async fn get_transaction_status(
     use starknet_gateway_client::GatewayApi;
     context
         .sequencer
-        .transaction(input.transaction_hash)
+        .transaction_status(input.transaction_hash)
         .await
-        .context("Fetching transaction from gateway")
-        .map(|tx| tx.status.into())
+        .context("Fetching transaction status from gateway")
+        .map(|tx| tx.tx_status.into())
         .map_err(GetGatewayTransactionError::Internal)
 }
 
@@ -88,24 +97,34 @@ fn pending_status(pending: &PendingBlock, tx_hash: &TransactionHash) -> Option<T
     })
 }
 
-#[derive(Copy, Clone, Debug, serde::Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TransactionStatus {
-    #[serde(rename = "NOT_RECEIVED")]
     NotReceived,
-    #[serde(rename = "RECEIVED")]
     Received,
-    #[serde(rename = "PENDING")]
     Pending,
-    #[serde(rename = "REJECTED")]
     Rejected,
-    #[serde(rename = "ACCEPTED_ON_L1")]
     AcceptedOnL1,
-    #[serde(rename = "ACCEPTED_ON_L2")]
     AcceptedOnL2,
-    #[serde(rename = "REVERTED")]
     Reverted,
-    #[serde(rename = "ABORTED")]
     Aborted,
+}
+
+impl crate::dto::serialize::SerializeForVersion for TransactionStatus {
+    fn serialize(
+        &self,
+        serializer: crate::dto::serialize::Serializer,
+    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        match self {
+            TransactionStatus::NotReceived => serializer.serialize_str("NOT_RECEIVED"),
+            TransactionStatus::Received => serializer.serialize_str("RECEIVED"),
+            TransactionStatus::Pending => serializer.serialize_str("PENDING"),
+            TransactionStatus::Rejected => serializer.serialize_str("REJECTED"),
+            TransactionStatus::AcceptedOnL1 => serializer.serialize_str("ACCEPTED_ON_L1"),
+            TransactionStatus::AcceptedOnL2 => serializer.serialize_str("ACCEPTED_ON_L2"),
+            TransactionStatus::Reverted => serializer.serialize_str("REVERTED"),
+            TransactionStatus::Aborted => serializer.serialize_str("ABORTED"),
+        }
+    }
 }
 
 impl From<starknet_gateway_types::reply::Status> for TransactionStatus {

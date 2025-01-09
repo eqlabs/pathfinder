@@ -237,6 +237,12 @@ impl From<u128> for Felt {
     }
 }
 
+impl From<[u8; 32]> for Felt {
+    fn from(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+}
+
 impl TryInto<u128> for Felt {
     type Error = OverflowError;
 

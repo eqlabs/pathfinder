@@ -420,14 +420,13 @@ pub(crate) mod dto {
                     value.data_availability.l1_gas,
                     value.data_availability.l1_data_gas,
                 ) {
-                    (Some(l1_gas), Some(l1_data_gas)) => {
-                        pathfinder_common::receipt::ExecutionDataAvailability {
-                            l1_gas,
-                            l1_data_gas,
-                        }
-                    }
+                    (Some(l1_gas), Some(l1_data_gas)) => pathfinder_common::receipt::L1Gas {
+                        l1_gas,
+                        l1_data_gas,
+                    },
                     _ => Default::default(),
                 },
+                ..Default::default()
             }
         }
     }
@@ -506,6 +505,7 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..Default::default()
             }
         }
     }
@@ -523,6 +523,7 @@ pub(crate) mod dto {
                 keccak,
                 poseidon,
                 segment_arena,
+                ..
             } = value.clone();
             Self {
                 output,
@@ -720,6 +721,7 @@ pub(crate) mod dto {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
+                l1_data_gas: None,
             }
         }
     }

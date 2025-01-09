@@ -7,10 +7,18 @@ use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 use crate::context::RpcContext;
 use crate::dto::{self, serialize};
 
-#[derive(serde::Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Input {
     pub transaction_hash: TransactionHash,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: value.deserialize("transaction_hash").map(TransactionHash)?,
+            })
+        })
+    }
 }
 
 pub enum Output {
@@ -71,8 +79,7 @@ crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 
 pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage

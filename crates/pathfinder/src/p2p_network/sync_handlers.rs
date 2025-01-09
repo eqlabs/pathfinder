@@ -1,20 +1,18 @@
 use anyhow::Context;
 use futures::SinkExt;
+use p2p::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address,
     BlockNumberOrHash,
-    ConsensusSignature,
     Direction,
     Hash,
     Iteration,
-    Patricia,
-    StateDiffCommitment,
     Step,
     VolitionDomain,
 };
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, SignedBlockHeader};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{
     ContractDiff,
     ContractStoredValue,
@@ -23,19 +21,12 @@ use p2p_proto::state::{
     StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{BlockHash, BlockNumber};
-use pathfinder_crypto::Felt;
+use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
-use starknet_gateway_types::class_definition;
 use tokio::sync::mpsc;
 
-pub mod conv;
 #[cfg(test)]
 mod tests;
-
-use conv::ToDto;
-
-use self::conv::{cairo_def_into_dto, sierra_def_into_dto};
 
 #[cfg(not(test))]
 const MAX_BLOCKS_COUNT: u64 = 100;
@@ -141,53 +132,14 @@ fn get_header(
 ) -> anyhow::Result<bool> {
     if let Some(header) = db_tx.block_header(block_number.into())? {
         if let Some(signature) = db_tx.signature(block_number.into())? {
-            let state_diff_cl = db_tx.state_diff_commitment_and_length(block_number)?;
-            if let Some((state_diff_commitment, state_diff_len)) = state_diff_cl {
-                tracing::trace!(?header, "Sending block header");
+            tracing::trace!(?header, "Sending block header");
 
-                let txn_count = header
-                    .transaction_count
-                    .try_into()
-                    .context("invalid transaction count")?;
+            let sbh = SignedBlockHeader { header, signature };
 
-                tx.blocking_send(BlockHeadersResponse::Header(Box::new(SignedBlockHeader {
-                    block_hash: Hash(header.hash.0),
-                    parent_hash: Hash(header.parent_hash.0),
-                    number: header.number.get(),
-                    time: header.timestamp.get(),
-                    sequencer_address: Address(header.sequencer_address.0),
-                    state_root: Hash(header.state_commitment.0),
-                    state_diff_commitment: StateDiffCommitment {
-                        state_diff_length: state_diff_len.try_into().expect("ptr size is 64 bits"),
-                        root: Hash(state_diff_commitment.0),
-                    },
-                    transactions: Patricia {
-                        n_leaves: txn_count,
-                        root: Hash(header.transaction_commitment.0),
-                    },
-                    events: Patricia {
-                        n_leaves: header
-                            .event_count
-                            .try_into()
-                            .context("invalid event count")?,
-                        root: Hash(header.event_commitment.0),
-                    },
-                    receipts: Hash(Felt::ZERO), // TODO
-                    protocol_version: header.starknet_version.to_string(),
-                    gas_price_wei: header.eth_l1_gas_price.0,
-                    gas_price_fri: header.strk_l1_gas_price.0,
-                    data_gas_price_wei: header.eth_l1_data_gas_price.0,
-                    data_gas_price_fri: header.strk_l1_data_gas_price.0,
-                    l1_data_availability_mode: header.l1_da_mode.to_dto(),
-                    signatures: vec![ConsensusSignature {
-                        r: signature.r.0,
-                        s: signature.s.0,
-                    }],
-                })))
+            tx.blocking_send(BlockHeadersResponse::Header(Box::new(sbh.to_dto())))
                 .map_err(|_| anyhow::anyhow!("Sending header"))?;
 
-                return Ok(true);
-            }
+            return Ok(true);
         }
     }
 
@@ -240,8 +192,9 @@ fn get_classes_for_block(
                 let cairo_class =
                     serde_json::from_slice::<class_definition::Cairo<'_>>(&definition)?;
                 Class::Cairo0 {
-                    class: cairo_def_into_dto(cairo_class),
+                    class: cairo_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
             ClassDefinition::Sierra {
@@ -251,8 +204,9 @@ fn get_classes_for_block(
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 
                 Class::Cairo1 {
-                    class: sierra_def_into_dto(sierra_class),
+                    class: sierra_class.to_dto(),
                     domain: 0, // TODO
+                    class_hash: Hash(class_hash.0),
                 }
             }
         };
@@ -340,10 +294,14 @@ fn get_transactions_for_block(
     for (txn, receipt, _) in txn_data {
         tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
 
-        let receipt = (&txn, receipt).to_dto();
+        let receipt = (&txn.variant, receipt).to_dto();
+        let transaction = p2p_proto::transaction::Transaction {
+            txn: txn.variant.to_dto(),
+            transaction_hash: Hash(txn.hash.0),
+        };
         tx.blocking_send(TransactionsResponse::TransactionWithReceipt(
             TransactionWithReceipt {
-                transaction: txn.to_dto(),
+                transaction,
                 receipt,
             },
         ))
@@ -462,7 +420,7 @@ where
     let (sync_tx, mut rx) = mpsc::channel(1); // For backpressure
 
     let db_fut = async {
-        tokio::task::spawn_blocking(move || {
+        util::task::spawn_blocking(move |_| {
             let _g = span.enter();
             let mut connection = storage
                 .connection()

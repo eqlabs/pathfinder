@@ -38,20 +38,22 @@ pub mod stage {
     /// - [add_transaction](super::Request::add_transaction)
     /// - [get_block](super::Request::get_block)
     /// - [get_class_by_hash](super::Request::get_class_by_hash)
-    /// - [get_transaction](super::Request::get_transaction)
+    /// - [get_transaction_status](super::Request::get_transaction_status)
     /// - [get_state_update](super::Request::get_state_update)
     /// - [get_contract_addresses](super::Request::get_contract_addresses)
     pub struct Method;
 
     /// Specify the request parameters:
-    /// - [at_block](super::Request::with_block)
-    /// - [with_class_hash](super::Request::with_class_hash)
-    /// - [with_optional_token](super::Request::with_optional_token)
-    /// - [with_transaction_hash](super::Request::with_transaction_hash)
-    /// - [add_param](super::Request::add_param) (allows adding custom (name,
-    ///   value) parameter)
+    /// - [block](super::Request::block)
+    /// - [class_hash](super::Request::class_hash)
+    /// - [optional_token](super::Request::optional_token)
+    /// - [transaction_hash](super::Request::transaction_hash)
+    /// - [param](super::Request::param) (allows adding custom (name, value)
+    ///   parameter)
+    /// - [block_tag](super::Request::block_tag) (allows specifying the block
+    ///   tag, either `latest` or `pending`)
     ///
-    /// and then specify the [retry behavior](super::Request::with_retry).
+    /// and then specify the [retry behavior](super::Request::retry).
     pub struct Params {
         pub meta: RequestMetadata,
     }
@@ -101,7 +103,7 @@ mod request_macros {
 
     /// Generates methods with names from the list.
     ///
-    /// Each generated method delegates the call to `with_method`.
+    /// Each generated method delegates the call to `method`.
     macro_rules! method_defs {
         ($($x:ident),+ $(,)?) => {
             $(request_macros::method!($x);)+
@@ -110,11 +112,11 @@ mod request_macros {
 
     /// Generates one method with `name`.
     ///
-    /// The generated method delegates the call to `with_method`.
+    /// The generated method delegates the call to `method`.
     macro_rules! method {
         ($name:ident) => {
             pub fn $name(self) -> Request<'a, stage::Params> {
-                self.with_method(stringify!($name))
+                self.method(stringify!($name))
             }
         };
     }
@@ -140,7 +142,7 @@ impl<'a> Request<'a, stage::Method> {
         get_block,
         get_class_by_hash,
         get_compiled_class_by_class_hash,
-        get_transaction,
+        get_transaction_status,
         get_state_update,
         get_contract_addresses,
         get_block_traces,
@@ -150,7 +152,7 @@ impl<'a> Request<'a, stage::Method> {
     );
 
     /// Appends the given method to the request url.
-    fn with_method(mut self, method: &'static str) -> Request<'a, stage::Params> {
+    fn method(mut self, method: &'static str) -> Request<'a, stage::Params> {
         self.url
             .path_segments_mut()
             .expect("Base URL is valid")
@@ -168,7 +170,7 @@ impl<'a> Request<'a, stage::Method> {
 }
 
 impl<'a> Request<'a, stage::Params> {
-    pub fn with_block<B: Into<BlockId>>(self, block: B) -> Self {
+    pub fn block<B: Into<BlockId>>(self, block: B) -> Self {
         use std::borrow::Cow;
 
         let block: BlockId = block.into();
@@ -184,36 +186,36 @@ impl<'a> Request<'a, stage::Params> {
             BlockId::Pending => ("blockNumber", Cow::from("pending"), BlockTag::Pending),
         };
 
-        self.update_tag(tag).add_param(name, &value)
+        self.block_tag(tag).param(name, &value)
     }
 
-    pub fn with_class_hash(self, class_hash: ClassHash) -> Self {
-        self.add_param("classHash", &class_hash.0.to_hex_str())
+    pub fn class_hash(self, class_hash: ClassHash) -> Self {
+        self.param("classHash", &class_hash.0.to_hex_str())
     }
 
-    pub fn with_optional_token(self, token: Option<&str>) -> Self {
+    pub fn optional_token(self, token: Option<&str>) -> Self {
         match token {
-            Some(token) => self.add_param("token", token),
+            Some(token) => self.param("token", token),
             None => self,
         }
     }
 
-    pub fn with_transaction_hash(self, hash: TransactionHash) -> Self {
-        self.add_param("transactionHash", &hash.0.to_hex_str())
+    pub fn transaction_hash(self, hash: TransactionHash) -> Self {
+        self.param("transactionHash", &hash.0.to_hex_str())
     }
 
-    pub fn add_param(mut self, name: &str, value: &str) -> Self {
+    pub fn param(mut self, name: &str, value: &str) -> Self {
         self.url.query_pairs_mut().append_pair(name, value);
         self
     }
 
-    pub fn update_tag(mut self, tag: BlockTag) -> Self {
+    pub fn block_tag(mut self, tag: BlockTag) -> Self {
         self.state.meta.tag = tag;
         self
     }
 
     /// Sets the request retry behavior.
-    pub fn with_retry(self, retry: bool) -> Request<'a, stage::Final> {
+    pub fn retry(self, retry: bool) -> Request<'a, stage::Final> {
         Request {
             url: self.url,
             client: self.client,
@@ -449,24 +451,26 @@ fn retry_condition(e: &SequencerError) -> bool {
 
     match e {
         SequencerError::ReqwestError(e) => {
-            if e.is_body() || e.is_connect() || e.is_timeout() {
+            if e.is_timeout() {
+                info!(reason=%e, "Request failed, retrying. Fetching the response or parts of it timed out. Try increasing request timeout by using the `--gateway.request-timeout` CLI option.");
+                return true;
+            }
+
+            if e.is_body() || e.is_connect() {
                 info!(reason=%e, "Request failed, retrying");
             } else if e.is_status() {
-                match e.status() {
-                    Some(
-                        StatusCode::NOT_FOUND
-                        | StatusCode::TOO_MANY_REQUESTS
-                        | StatusCode::BAD_GATEWAY
-                        | StatusCode::SERVICE_UNAVAILABLE
-                        | StatusCode::GATEWAY_TIMEOUT,
-                    ) => {
+                match e.status().expect("status related error") {
+                    StatusCode::NOT_FOUND
+                    | StatusCode::TOO_MANY_REQUESTS
+                    | StatusCode::BAD_GATEWAY
+                    | StatusCode::SERVICE_UNAVAILABLE
+                    | StatusCode::GATEWAY_TIMEOUT => {
                         debug!(reason=%e, "Request failed, retrying");
                     }
-                    Some(StatusCode::INTERNAL_SERVER_ERROR) => {
+                    StatusCode::INTERNAL_SERVER_ERROR => {
                         error!(reason=%e, "Request failed, retrying");
                     }
-                    Some(_) => warn!(reason=%e, "Request failed, retrying"),
-                    None => unreachable!(),
+                    _ => warn!(reason=%e, "Request failed, retrying"),
                 }
             } else if e.is_decode() {
                 error!(reason=%e, "Request failed, retrying");
@@ -494,11 +498,11 @@ mod tests {
         use std::time::Duration;
 
         use assert_matches::assert_matches;
-        use http::response::Builder;
-        use http::StatusCode;
         use pretty_assertions_sorted::assert_eq;
         use tokio::sync::Mutex;
         use tokio::task::JoinHandle;
+        use warp::http::response::Builder;
+        use warp::http::StatusCode;
         use warp::Filter;
 
         use crate::builder::{retry0, retry_condition};
@@ -652,7 +656,7 @@ mod tests {
 
     mod invalid_starknet_error_variant {
         use gateway_test_utils::GATEWAY_TIMEOUT;
-        use http::response::Builder;
+        use warp::http::response::Builder;
         use warp::Filter;
 
         use crate::{Client, GatewayApi};
@@ -715,16 +719,16 @@ mod tests {
             let _: serde_json::Value = client
                 .clone()
                 .gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .get()
                 .await?;
 
             let _: serde_json::Value = client
                 .clone()
                 .feeder_gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .get()
                 .await?;
 
@@ -741,16 +745,16 @@ mod tests {
             let _: bytes::Bytes = client
                 .clone()
                 .gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .get_as_bytes()
                 .await?;
 
             let _: bytes::Bytes = client
                 .clone()
                 .feeder_gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .get_as_bytes()
                 .await?;
 
@@ -767,16 +771,16 @@ mod tests {
             let _: serde_json::Value = client
                 .clone()
                 .gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .post_with_json(&json!({}), None)
                 .await?;
 
             let _: serde_json::Value = client
                 .clone()
                 .feeder_gateway_request()
-                .with_method("")
-                .with_retry(false)
+                .method("")
+                .retry(false)
                 .post_with_json(&json!({}), None)
                 .await?;
 

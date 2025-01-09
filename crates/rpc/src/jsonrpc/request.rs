@@ -3,7 +3,9 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
+use crate::dto::{DeserializeForVersion, Value};
 use crate::jsonrpc::{RequestId, RpcError};
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub struct RpcRequest<'a> {
@@ -49,6 +51,17 @@ impl<'a> RawParams<'a> {
         let s = self.0.map(|x| x.get()).unwrap_or_default();
 
         serde_json::from_str::<T>(s).map_err(|e| RpcError::InvalidParams(e.to_string()))
+    }
+
+    pub fn deserialize_for_version<T: DeserializeForVersion>(
+        &self,
+        version: RpcVersion,
+    ) -> Result<T, RpcError> {
+        let s = self.0.map(|x| x.get()).unwrap_or_default();
+        let value: serde_json::Value =
+            serde_json::from_str(s).map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+        T::deserialize(Value::new(value, version))
+            .map_err(|e| RpcError::InvalidParams(e.to_string()))
     }
 }
 

@@ -57,6 +57,7 @@ use pathfinder_crypto::Felt;
 ///
 /// This can be easily accomplished by marking a field with `#[serde_as(as =
 /// "RpcFelt")]`.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RpcFelt(pub Felt);
 
 impl From<Felt> for RpcFelt {
@@ -80,7 +81,7 @@ impl From<RpcFelt> for Felt {
 /// This can be easily accomplished by marking a field with `#[serde_as(as =
 /// "RpcFelt251")]`.
 #[derive(serde::Serialize)]
-pub struct RpcFelt251(RpcFelt);
+pub struct RpcFelt251(pub RpcFelt);
 
 mod serialization {
     //! Blanket [serde::Serialize] and [serde_with::SerializeAs] implementations
@@ -145,7 +146,7 @@ macro_rules! rpc_felt_serde {
             }
         }
 
-        #[cfg(any(test, feature = "rpc-full-serde"))]
+        #[cfg(test)]
         impl From<RpcFelt> for $target {
             fn from(value: RpcFelt) -> Self {
                 $target(value.0)
@@ -245,7 +246,7 @@ mod deserialization {
         {
             struct FeltVisitor;
 
-            impl<'de> serde::de::Visitor<'de> for FeltVisitor {
+            impl serde::de::Visitor<'_> for FeltVisitor {
                 type Value = RpcFelt;
 
                 fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

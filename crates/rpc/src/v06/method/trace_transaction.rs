@@ -21,6 +21,12 @@ pub struct TraceTransactionInput {
     pub transaction_hash: TransactionHash,
 }
 
+impl crate::dto::DeserializeForVersion for TraceTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq)]
 pub struct TraceTransactionOutput(pub TransactionTrace);
 
@@ -30,7 +36,6 @@ pub enum TraceTransactionError {
     Custom(anyhow::Error),
     TxnHashNotFound,
     NoTraceAvailable(TraceError),
-    ContractErrorV05 { revert_error: String },
 }
 
 impl From<ExecutionStateError> for TraceTransactionError {
@@ -49,6 +54,7 @@ impl From<TransactionExecutionError> for TraceTransactionError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
                 "Transaction execution failed at index {}: {}",
                 transaction_index,
@@ -90,9 +96,6 @@ impl From<TraceTransactionError> for ApplicationError {
             TraceTransactionError::NoTraceAvailable(status) => {
                 ApplicationError::NoTraceAvailable(status)
             }
-            TraceTransactionError::ContractErrorV05 { revert_error } => {
-                ApplicationError::ContractErrorV05 { revert_error }
-            }
             TraceTransactionError::Internal(e) => ApplicationError::Internal(e),
             TraceTransactionError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -121,11 +124,11 @@ pub async fn trace_transaction_impl(
 
     let span = tracing::Span::current();
     let local =
-        tokio::task::spawn_blocking(move || -> Result<LocalExecution, TraceTransactionError> {
+        util::task::spawn_blocking(move |_| -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
 
             let mut db = context
-                .storage
+                .execution_storage
                 .connection()
                 .context("Creating database connection")?;
             let db = db.transaction().context("Creating database transaction")?;
@@ -189,15 +192,20 @@ pub async fn trace_transaction_impl(
             };
 
             let hash = header.hash;
-            let state = ExecutionState::trace(&db, context.chain_id, header, None);
+            let state = ExecutionState::trace(
+                &db,
+                context.chain_id,
+                header,
+                None,
+                context.config.custom_versioned_constants,
+            );
 
             let executor_transactions = transactions
                 .iter()
                 .map(|transaction| compose_executor_transaction(transaction, &db))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            match pathfinder_executor::trace(state, cache, hash, executor_transactions, true, true)
-            {
+            match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
                 Ok(txs) => {
                     let trace = txs
                         .into_iter()
@@ -249,7 +257,14 @@ pub async fn trace_transaction_impl(
 
 #[cfg(test)]
 pub mod tests {
-    use pathfinder_common::{block_hash, transaction_hash, BlockHeader, Chain, SequencerAddress};
+    use pathfinder_common::{
+        block_hash,
+        transaction_hash,
+        BlockHeader,
+        BlockNumber,
+        Chain,
+        SequencerAddress,
+    };
     use pathfinder_crypto::Felt;
 
     use super::super::trace_block_transactions::tests::{
@@ -297,6 +312,17 @@ pub mod tests {
         let context = RpcContext::for_tests_on(Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`.
+        (0..619596)
+            .step_by(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize)
+            .for_each(|block: u64| {
+                let block = BlockNumber::new_or_panic(block.saturating_sub(1));
+                transaction
+                    .insert_transaction_data(block, &[], Some(&[]))
+                    .unwrap();
+            });
+
         let block: starknet_gateway_types::reply::Block =
             serde_json::from_str(include_str!("../../../fixtures/mainnet-619596.json")).unwrap();
         let transaction_count = block.transactions.len();
@@ -314,18 +340,21 @@ pub mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             starknet_version: block.starknet_version,
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count,
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: 0,
         };
         transaction
             .insert_block_header(&BlockHeader {
@@ -352,6 +381,7 @@ pub mod tests {
             .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
+        drop(connection);
 
         // The tracing succeeds.
         trace_transaction(

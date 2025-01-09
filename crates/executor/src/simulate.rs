@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use blockifier::state::cached_state::CachedState;
+use blockifier::state::cached_state::{CachedState, CommitmentStateDiff};
 use blockifier::state::errors::StateError;
-use blockifier::state::state_api::State;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use cached::{Cached, SizedCache};
@@ -23,6 +22,7 @@ use pathfinder_common::{
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
+use crate::error_stack::ErrorStack;
 use crate::transaction::transaction_hash;
 use crate::types::{
     DataAvailabilityResources,
@@ -35,7 +35,6 @@ use crate::types::{
     FunctionInvocation,
     InvokeTransactionTrace,
     L1HandlerTransactionTrace,
-    PriceUnit,
     ReplacedClass,
     StateDiff,
     StorageDiff,
@@ -53,6 +52,7 @@ enum CacheItem {
 struct ExecutionError {
     transaction_index: usize,
     error: String,
+    error_stack: ErrorStack,
 }
 
 impl From<ExecutionError> for TransactionExecutionError {
@@ -60,6 +60,7 @@ impl From<ExecutionError> for TransactionExecutionError {
         Self::ExecutionError {
             transaction_index: value.transaction_index,
             error: value.error,
+            error_stack: value.error_stack,
         }
     }
 }
@@ -76,7 +77,7 @@ impl Default for TraceCache {
 }
 
 pub fn simulate(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
     skip_validate: bool,
     skip_fee_charge: bool,
@@ -92,23 +93,7 @@ pub fn simulate(
         let transaction_type = transaction_type(&transaction);
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
-        let fee_type = &super::transaction::fee_type(&transaction);
-
-        let gas_price = block_context
-            .block_info()
-            .gas_prices
-            .get_gas_price_by_fee_type(fee_type)
-            .get();
-        let data_gas_price = block_context
-            .block_info()
-            .gas_prices
-            .get_data_gas_price_by_fee_type(fee_type)
-            .get();
-        let unit = match fee_type {
-            blockifier::transaction::objects::FeeType::Strk => PriceUnit::Fri,
-            blockifier::transaction::objects::FeeType::Eth => PriceUnit::Wei,
-        };
-
+        let fee_type = super::transaction::fee_type(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
             Transaction::AccountTransaction(account_transaction) => Some(
                 blockifier::fee::gas_usage::estimate_minimal_gas_vector(
@@ -121,44 +106,30 @@ pub fn simulate(
         };
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = transaction
-            .execute(
-                &mut tx_state,
-                &block_context,
-                !skip_fee_charge,
-                !skip_validate,
-            )
-            .and_then(|mut tx_info| {
-                // skipping fee charge in .execute() means that the fee isn't calculated, do
-                // that explicitly some other cases, like having max_fee=0 also
-                // lead to not calculating fees
-                if tx_info.actual_fee.0 == 0 {
-                    tx_info.actual_fee = blockifier::fee::fee_utils::calculate_tx_fee(
-                        &tx_info.actual_resources,
-                        &block_context,
-                        fee_type,
-                    )?
-                };
-                Ok(tx_info)
-            });
+        let tx_info = transaction.execute(
+            &mut tx_state,
+            &block_context,
+            !skip_fee_charge,
+            !skip_validate,
+        );
         let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
         tx_state.commit();
 
         match tx_info {
             Ok(tx_info) => {
                 if let Some(revert_error) = &tx_info.revert_error {
-                    tracing::trace!(%revert_error, "Transaction reverted");
+                    let revert_string = revert_error.to_string();
+                    tracing::trace!(revert_error=%revert_string, "Transaction reverted");
                 }
 
-                tracing::trace!(actual_fee=%tx_info.actual_fee.0, actual_resources=?tx_info.actual_resources, "Transaction simulation finished");
+                tracing::trace!(actual_fee=%tx_info.transaction_receipt.fee.0, actual_resources=?tx_info.transaction_receipt.resources, "Transaction simulation finished");
 
                 simulations.push(TransactionSimulation {
                     fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
                         &tx_info,
-                        gas_price,
-                        data_gas_price,
-                        unit,
-                        minimal_l1_gas_amount_vector,
+                        block_context.block_info(),
+                        fee_type,
+                        &minimal_l1_gas_amount_vector,
                     ),
                     trace: to_trace(transaction_type, tx_info, state_diff),
                 });
@@ -173,12 +144,10 @@ pub fn simulate(
 }
 
 pub fn trace(
-    mut execution_state: ExecutionState<'_>,
+    execution_state: ExecutionState<'_>,
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
-    charge_fee: bool,
-    validate: bool,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
@@ -220,25 +189,25 @@ pub fn trace(
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx
-            .execute(&mut tx_state, &block_context, charge_fee, validate)
+            .execute(&mut tx_state, &block_context, true, true)
             .map_err(|e| {
                 // Update the cache with the error. Lock the cache before sending to avoid
                 // race conditions between senders and receivers.
                 let err = ExecutionError {
                     transaction_index: transaction_idx,
                     error: e.to_string(),
+                    error_stack: e.into(),
                 };
                 let mut cache = cache.0.lock().unwrap();
                 let _ = sender.send(Err(err.clone()));
                 cache.cache_set(block_hash, CacheItem::CachedErr(err.clone()));
                 err
             })?;
-        let state_diff =
-            to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash).map_err(|e| {
+        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)
+            .inspect_err(|_| {
                 // Remove the cache entry so it's no longer inflight.
                 let mut cache = cache.0.lock().unwrap();
                 cache.cache_remove(&block_hash);
-                e
             })?;
         tx_state.commit();
 
@@ -298,7 +267,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     state: &mut blockifier::state::cached_state::CachedState<S>,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
-    let state_diff = state.to_state_diff();
+    let state_diff = CommitmentStateDiff::from(state.to_state_diff()?);
 
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
@@ -392,12 +361,15 @@ fn to_trace(
             .map(|i: &FunctionInvocation| i.computation_resources.clone())
             .unwrap_or_default();
     let data_availability = DataAvailabilityResources {
-        l1_gas: execution_info.da_gas.l1_gas,
-        l1_data_gas: execution_info.da_gas.l1_data_gas,
+        l1_gas: execution_info.transaction_receipt.da_gas.l1_gas,
+        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
     };
     let execution_resources = ExecutionResources {
         computation_resources,
         data_availability,
+        l1_gas: execution_info.transaction_receipt.gas.l1_gas,
+        l1_data_gas: execution_info.transaction_receipt.da_gas.l1_data_gas,
+        l2_gas: 0,
     };
 
     match transaction_type {
@@ -419,7 +391,7 @@ fn to_trace(
         TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
             validate_invocation,
             execute_invocation: if let Some(reason) = execution_info.revert_error {
-                ExecuteInvocation::RevertedReason(reason)
+                ExecuteInvocation::RevertedReason(reason.to_string())
             } else {
                 ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
             },

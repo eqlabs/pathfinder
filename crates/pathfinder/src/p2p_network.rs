@@ -13,7 +13,11 @@ mod sync_handlers;
 use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_transactions};
 
 // Silence clippy
-pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
+pub type P2PNetworkHandle = (
+    peer_agnostic::Client,
+    HeadRx,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+);
 
 pub struct P2PContext {
     pub cfg: p2p::Config,
@@ -21,7 +25,7 @@ pub struct P2PContext {
     pub storage: Storage,
     pub proxy: bool,
     pub keypair: Keypair,
-    pub listen_on: Multiaddr,
+    pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
 }
@@ -46,13 +50,15 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");
-        tokio::task::spawn(p2p_main_loop.run().instrument(span))
+        util::task::spawn(p2p_main_loop.run().instrument(span))
     };
 
-    p2p_client
-        .start_listening(listen_on)
-        .await
-        .context("Starting P2P listener")?;
+    for addr in listen_on {
+        p2p_client
+            .start_listening(addr.clone())
+            .await
+            .with_context(|| format!("Starting P2P listener: {addr}"))?;
+    }
 
     let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
         addr.iter()
@@ -91,20 +97,16 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         tracing::info!(topic=%block_propagation_topic, "Subscribed to");
     }
 
-    for capability in p2p::PROTOCOLS {
-        p2p_client.provide_capability(capability).await?
-    }
-
     let (mut tx, rx) = tokio::sync::watch::channel(None);
 
     let join_handle = {
-        tokio::task::spawn(
+        util::task::spawn(
             async move {
                 loop {
                     tokio::select! {
                         _ = &mut main_loop_handle => {
                             tracing::error!("p2p task ended unexpectedly");
-                            break;
+                            anyhow::bail!("p2p task ended unexpectedly");
                         }
                         Some(event) = p2p_events.recv() => {
                             match handle_p2p_event(event, storage.clone(), &mut tx).await {

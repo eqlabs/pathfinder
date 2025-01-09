@@ -17,6 +17,7 @@ pub enum DownloadedClass {
 pub async fn download_class<SequencerClient: GatewayApi>(
     sequencer: &SequencerClient,
     class_hash: ClassHash,
+    fetch_casm_from_fgw: bool,
 ) -> Result<DownloadedClass, anyhow::Error> {
     use starknet_gateway_types::class_hash::compute_class_hash;
 
@@ -26,13 +27,12 @@ pub async fn download_class<SequencerClient: GatewayApi>(
         .with_context(|| format!("Downloading class {}", class_hash.0))?
         .to_vec();
 
-    let (hash, definition) = tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-        (
-            compute_class_hash(&definition).context("Computing class hash"),
-            definition,
-        )
-    })
-    .await?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let computed_hash = compute_class_hash(&definition).context("Computing class hash");
+        let _ = tx.send((computed_hash, definition));
+    });
+    let (hash, definition) = rx.await.context("Panic on rayon thread")?;
     let hash = hash?;
 
     use starknet_gateway_types::class_hash::ComputedClassHash;
@@ -59,26 +59,41 @@ pub async fn download_class<SequencerClient: GatewayApi>(
             //
             // The work-around ignores compilation errors on integration, and instead
             // replaces the casm definition with empty bytes.
-            let (casm_definition, sierra_definition) =
-                tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-                    (
-                        pathfinder_compiler::compile_to_casm(&definition)
-                            .context("Compiling Sierra class"),
-                        definition,
-                    )
-                })
-                .await?;
+            let span = tracing::Span::current();
 
-            let casm_definition = match casm_definition {
-                Ok(casm_definition) => casm_definition,
-                Err(error) => {
-                    tracing::info!(class_hash=%hash, ?error, "CASM compilation failed, falling back to fetching from gateway");
+            let (sierra_definition, casm_definition) = if fetch_casm_from_fgw {
+                (
+                    definition,
                     sequencer
                         .pending_casm_by_hash(class_hash)
                         .await
                         .with_context(|| format!("Downloading CASM {}", class_hash.0))?
-                        .to_vec()
-                }
+                        .to_vec(),
+                )
+            } else {
+                let (send, recv) = tokio::sync::oneshot::channel();
+                rayon::spawn(move || {
+                    let _span = span.entered();
+                    let compile_result = pathfinder_compiler::compile_to_casm(&definition)
+                        .context("Compiling Sierra class");
+
+                    let _ = send.send((compile_result, definition));
+                });
+                let (casm_definition, sierra_definition) =
+                    recv.await.expect("Panic on rayon thread");
+
+                let casm_definition = match casm_definition {
+                    Ok(casm_definition) => casm_definition,
+                    Err(error) => {
+                        tracing::info!(class_hash=%hash, ?error, "CASM compilation failed, falling back to fetching from gateway");
+                        sequencer
+                            .pending_casm_by_hash(class_hash)
+                            .await
+                            .with_context(|| format!("Downloading CASM {}", class_hash.0))?
+                            .to_vec()
+                    }
+                };
+                (sierra_definition, casm_definition)
             };
 
             Ok(DownloadedClass::Sierra {

@@ -17,6 +17,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     storage: Storage,
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
+    fetch_casm_from_fgw: bool,
 ) {
     let mut prev_tx_count = 0;
     let mut prev_hash = BlockHash::default();
@@ -56,23 +57,39 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         // fail when querying a desync'd feeder gateway which isn't aware of the
         // new pending classes. In this case, ignore the new pending data as it
         // is incomplete.
-        if let Err(e) =
-            super::l2::download_new_classes(&state_update, &sequencer, &tx_event, storage.clone())
-                .await
+        match super::l2::download_new_classes(
+            &state_update,
+            &sequencer,
+            storage.clone(),
+            fetch_casm_from_fgw,
+        )
+        .await
         {
-            tracing::debug!(reason=?e, "Failed to download pending classes");
-        } else {
-            prev_tx_count = block.transactions.len();
-            prev_hash = block.parent_hash;
-            tracing::trace!("Emitting a pending update");
-            let block = Arc::new(block);
-            let state_update = Arc::new(state_update);
-            if let Err(e) = tx_event
-                .send(SyncEvent::Pending((block, state_update)))
+            Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
+            Ok(downloaded_classes) => {
+                if let Err(e) = super::l2::emit_events_for_downloaded_classes(
+                    &tx_event,
+                    downloaded_classes,
+                    &state_update.declared_sierra_classes,
+                )
                 .await
-            {
-                tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
-                break;
+                {
+                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
+                    break;
+                }
+
+                prev_tx_count = block.transactions.len();
+                prev_hash = block.parent_hash;
+                tracing::trace!("Emitting a pending update");
+                let block = Arc::new(block);
+                let state_update = Arc::new(state_update);
+                if let Err(e) = tx_event
+                    .send(SyncEvent::Pending((block, state_update)))
+                    .await
+                {
+                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
+                    break;
+                }
             }
         }
 
@@ -82,7 +99,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, LazyLock};
 
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
@@ -113,56 +130,57 @@ mod tests {
     const PARENT_HASH: BlockHash = block_hash!("0x1234");
     const PARENT_ROOT: StateCommitment = state_commitment_bytes!(b"parent root");
 
-    lazy_static::lazy_static!(
-        pub static ref NEXT_BLOCK: Block = Block {
-            block_hash: block_hash!("0xabcd"),
-            block_number: BlockNumber::new_or_panic(1),
-            l1_gas_price: Default::default(),
-            l1_data_gas_price: Default::default(),
-            parent_block_hash: PARENT_HASH,
-            sequencer_address: None,
-            state_commitment: PARENT_ROOT,
-            status: Status::AcceptedOnL2,
-            timestamp: BlockTimestamp::new_or_panic(10),
-            transaction_receipts: Vec::new(),
-            transactions: Vec::new(),
-            starknet_version: StarknetVersion::default(),
-            l1_da_mode: Default::default(),
-            transaction_commitment: Default::default(),
-            event_commitment: Default::default(),
-        };
+    pub static NEXT_BLOCK: LazyLock<Block> = LazyLock::new(|| Block {
+        block_hash: block_hash!("0xabcd"),
+        block_number: BlockNumber::new_or_panic(1),
+        l1_gas_price: Default::default(),
+        l1_data_gas_price: Default::default(),
+        l2_gas_price: Default::default(),
+        parent_block_hash: PARENT_HASH,
+        sequencer_address: None,
+        state_commitment: PARENT_ROOT,
+        status: Status::AcceptedOnL2,
+        timestamp: BlockTimestamp::new_or_panic(10),
+        transaction_receipts: Vec::new(),
+        transactions: Vec::new(),
+        starknet_version: StarknetVersion::default(),
+        l1_da_mode: Default::default(),
+        transaction_commitment: Default::default(),
+        event_commitment: Default::default(),
+        receipt_commitment: Default::default(),
+        state_diff_commitment: Default::default(),
+        state_diff_length: Default::default(),
+    });
 
-        pub static ref PENDING_UPDATE: StateUpdate = {
-            StateUpdate::default().with_parent_state_commitment(PARENT_ROOT)
-        };
+    pub static PENDING_UPDATE: LazyLock<StateUpdate> =
+        LazyLock::new(|| StateUpdate::default().with_parent_state_commitment(PARENT_ROOT));
 
-        pub static ref PENDING_BLOCK: PendingBlock = PendingBlock {
-            l1_gas_price: GasPrices {
-                price_in_wei: GasPrice(11),
-                ..Default::default()
-            },
-            l1_data_gas_price: Default::default(),
-            parent_hash: NEXT_BLOCK.parent_block_hash,
-            sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
-            status: Status::Pending,
-            timestamp: BlockTimestamp::new_or_panic(20),
-            transaction_receipts: Vec::new(),
-            transactions: vec![
-                pathfinder_common::transaction::Transaction{
-                    hash: transaction_hash!("0x22"),
-                    variant: pathfinder_common::transaction::TransactionVariant::L1Handler(
-                    L1HandlerTransaction {
-                        contract_address: contract_address!("0x1"),
-                        entry_point_selector: entry_point!("0x55"),
-                        nonce: transaction_nonce!("0x2"),
-                        calldata: Vec::new(),
-                    },
-                )}
-            ],
-            starknet_version: StarknetVersion::default(),
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-        };
-    );
+    pub static PENDING_BLOCK: LazyLock<PendingBlock> = LazyLock::new(|| PendingBlock {
+        l1_gas_price: GasPrices {
+            price_in_wei: GasPrice(11),
+            ..Default::default()
+        },
+        l1_data_gas_price: Default::default(),
+        l2_gas_price: Default::default(),
+        parent_hash: NEXT_BLOCK.parent_block_hash,
+        sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
+        status: Status::Pending,
+        timestamp: BlockTimestamp::new_or_panic(20),
+        transaction_receipts: Vec::new(),
+        transactions: vec![pathfinder_common::transaction::Transaction {
+            hash: transaction_hash!("0x22"),
+            variant: pathfinder_common::transaction::TransactionVariant::L1Handler(
+                L1HandlerTransaction {
+                    contract_address: contract_address!("0x1"),
+                    entry_point_selector: entry_point!("0x55"),
+                    nonce: transaction_nonce!("0x2"),
+                    calldata: Vec::new(),
+                },
+            ),
+        }],
+        starknet_version: StarknetVersion::default(),
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    });
 
     /// Arbitrary timeout for receiving emits on the tokio channel. Otherwise
     /// failing tests will need to timeout naturally which may be forever.
@@ -189,6 +207,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 latest,
                 current,
+                false,
             )
             .await
         });
@@ -235,9 +254,7 @@ mod tests {
         });
         let b1_copy = b1.clone();
 
-        lazy_static::lazy_static!(
-            static ref COUNT: std::sync::Mutex<usize>  = Default::default();
-        );
+        static COUNT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
 
         sequencer.expect_pending_block().returning(move || {
             let mut count = COUNT.lock().unwrap();
@@ -263,6 +280,7 @@ mod tests {
                 StorageBuilder::in_memory().unwrap(),
                 rx_latest,
                 rx_current,
+                false,
             )
             .await
         });

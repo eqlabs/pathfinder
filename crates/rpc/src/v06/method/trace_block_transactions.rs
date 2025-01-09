@@ -29,6 +29,12 @@ pub struct TraceBlockTransactionsInput {
     pub block_id: BlockId,
 }
 
+impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
+}
+
 #[derive(Debug, Serialize, Eq, PartialEq, Clone)]
 pub struct Trace {
     pub transaction_hash: TransactionHash,
@@ -77,6 +83,7 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::Custom(anyhow::anyhow!(
                 "Transaction execution failed at index {}: {}",
                 transaction_index,
@@ -197,8 +204,8 @@ pub async fn trace_block_transactions_impl(
 
     let span = tracing::Span::current();
 
-    let storage = context.storage.clone();
-    let traces = tokio::task::spawn_blocking(move || {
+    let storage = context.execution_storage.clone();
+    let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = storage.connection()?;
@@ -261,16 +268,20 @@ pub async fn trace_block_transactions_impl(
             .collect::<Result<Vec<_>, _>>()?;
 
         let hash = header.hash;
-        let state = ExecutionState::trace(&db, context.chain_id, header, None);
-        let traces =
-            match pathfinder_executor::trace(state, cache, hash, executor_transactions, true, true)
-            {
-                Ok(traces) => traces,
-                Err(TransactionExecutionError::ExecutionError { .. }) => {
-                    return Ok(LocalExecution::Unsupported(transactions))
-                }
-                Err(e) => return Err(e.into()),
-            };
+        let state = ExecutionState::trace(
+            &db,
+            context.chain_id,
+            header,
+            None,
+            context.config.custom_versioned_constants,
+        );
+        let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
+            Ok(traces) => traces,
+            Err(TransactionExecutionError::ExecutionError { .. }) => {
+                return Ok(LocalExecution::Unsupported(transactions))
+            }
+            Err(e) => return Err(e.into()),
+        };
 
         let result = traces
             .into_iter()
@@ -325,10 +336,12 @@ pub(crate) mod tests {
         block_hash,
         felt,
         BlockHeader,
+        BlockNumber,
         Chain,
         GasPrice,
         SequencerAddress,
         SierraHash,
+        StarknetVersion,
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
@@ -339,7 +352,10 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -347,7 +363,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -361,15 +377,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_0::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_0::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
@@ -389,13 +408,13 @@ pub(crate) mod tests {
             )?;
 
             let next_block_header = BlockHeader::builder()
-                .with_number(last_block_header.number + 1)
-                .with_eth_l1_gas_price(GasPrice(1))
-                .with_eth_l1_data_gas_price(GasPrice(2))
-                .with_parent_hash(last_block_header.hash)
-                .with_starknet_version(last_block_header.starknet_version)
-                .with_sequencer_address(last_block_header.sequencer_address)
-                .with_timestamp(last_block_header.timestamp)
+                .number(last_block_header.number + 1)
+                .eth_l1_gas_price(GasPrice(1))
+                .eth_l1_data_gas_price(GasPrice(2))
+                .parent_hash(last_block_header.hash)
+                .starknet_version(last_block_header.starknet_version)
+                .sequencer_address(last_block_header.sequencer_address)
+                .timestamp(last_block_header.timestamp)
                 .finalize_with_hash(block_hash!("0x1"));
             tx.insert_block_header(&next_block_header)?;
 
@@ -480,7 +499,10 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::{fixtures, setup_storage};
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -488,7 +510,7 @@ pub(crate) mod tests {
             account_contract_address,
             universal_deployer_address,
             test_storage_value,
-        ) = setup_storage().await;
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
@@ -502,15 +524,18 @@ pub(crate) mod tests {
         ];
 
         let traces = vec![
-            fixtures::expected_output_0_13_0::declare(account_contract_address, &last_block_header)
-                .transaction_trace,
-            fixtures::expected_output_0_13_0::universal_deployer(
+            fixtures::expected_output_0_13_1_1::declare(
+                account_contract_address,
+                &last_block_header,
+            )
+            .transaction_trace,
+            fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
             )
             .transaction_trace,
-            fixtures::expected_output_0_13_0::invoke(
+            fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
@@ -545,6 +570,10 @@ pub(crate) mod tests {
                 l1_data_gas_price: GasPrices {
                     price_in_wei: GasPrice(2),
                     price_in_fri: GasPrice(2),
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: GasPrice(3),
+                    price_in_fri: GasPrice(3),
                 },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
@@ -611,6 +640,18 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests_on(Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`
+        // so that there is no gap in event filters.
+        (0..619596)
+            .step_by(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize)
+            .for_each(|block: u64| {
+                let block = BlockNumber::new_or_panic(block.saturating_sub(1));
+                transaction
+                    .insert_transaction_data(block, &[], Some(&[]))
+                    .unwrap();
+            });
+
         let block: starknet_gateway_types::reply::Block =
             serde_json::from_str(include_str!("../../../fixtures/mainnet-619596.json")).unwrap();
         let transaction_count = block.transactions.len();
@@ -628,18 +669,21 @@ pub(crate) mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             starknet_version: block.starknet_version,
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count,
             event_count,
             l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: 0,
         };
         transaction
             .insert_block_header(&BlockHeader {
@@ -666,6 +710,7 @@ pub(crate) mod tests {
             .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
             .unwrap();
         transaction.commit().unwrap();
+        drop(connection);
 
         // The tracing succeeds.
         trace_block_transactions(

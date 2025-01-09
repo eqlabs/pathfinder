@@ -14,10 +14,13 @@ use pathfinder_crypto::Felt;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 
+pub mod casm_class;
+pub mod class_definition;
 pub mod consts;
 pub mod event;
 pub mod hash;
 mod header;
+mod l1;
 mod macros;
 pub mod prelude;
 pub mod receipt;
@@ -28,6 +31,7 @@ pub mod transaction;
 pub mod trie;
 
 pub use header::{BlockHeader, BlockHeaderBuilder, L1DataAvailabilityMode, SignedBlockHeader};
+pub use l1::{L1BlockNumber, L1TransactionHash};
 pub use signature::BlockCommitmentSignature;
 pub use state_update::StateUpdate;
 
@@ -38,6 +42,17 @@ impl ContractAddress {
     /// It is used by starknet to store values for smart contracts to access
     /// using syscalls. For example the block hash.
     pub const ONE: ContractAddress = contract_address!("0x1");
+    /// The contract at 0x2 was introduced in Starknet version 0.13.4. It is
+    /// used for stateful compression:
+    /// - storage key 0 points to the global counter, which is the base for
+    ///   index values in the next block,
+    /// - other storage k-v pairs store the mapping of key to index,
+    /// - the global counter starts at value 0x80 in the first block from
+    ///   0.13.4,
+    /// - keys of value lower than 0x80 are not indexed.
+    pub const TWO: ContractAddress = contract_address!("0x2");
+    /// Useful for iteration over the system contracts
+    pub const SYSTEM: [ContractAddress; 2] = [ContractAddress::ONE, ContractAddress::TWO];
 }
 
 // Bytecode and entry point list of a class
@@ -423,7 +438,7 @@ impl ChainId {
     pub fn as_str(&self) -> &str {
         std::str::from_utf8(self.0.as_be_bytes())
             .expect("valid utf8")
-            .trim_start_matches(|c| c == '\0')
+            .trim_start_matches('\0')
     }
 
     pub const MAINNET: Self = Self::from_slice_unwrap(b"SN_MAIN");
@@ -458,6 +473,12 @@ impl StarknetVersion {
         let [a, b, c, d] = version.to_le_bytes();
         StarknetVersion(a, b, c, d)
     }
+
+    pub const V_0_13_2: Self = Self::new(0, 13, 2, 0);
+
+    // TODO: version at which block hash definition changes taken from
+    // Starkware implementation but might yet change
+    pub const V_0_13_4: Self = Self::new(0, 13, 4, 0);
 }
 
 impl FromStr for StarknetVersion {
@@ -507,7 +528,6 @@ macros::felt_newtypes!(
         CallResultValue,
         ClassCommitment,
         ClassCommitmentLeafHash,
-        ClassHash,
         ConstructorParam,
         ContractAddressSalt,
         ContractNonce,
@@ -529,14 +549,16 @@ macros::felt_newtypes!(
         StorageCommitment,
         StorageValue,
         TransactionCommitment,
+        ReceiptCommitment,
         TransactionHash,
         TransactionNonce,
         TransactionSignatureElem,
     ];
     [
+        CasmHash,
+        ClassHash,
         ContractAddress,
         SierraHash,
-        CasmHash,
         StorageAddress,
     ]
 );
@@ -584,7 +606,7 @@ impl ContractAddress {
     }
 
     pub fn is_system_contract(&self) -> bool {
-        *self == ContractAddress::ONE
+        (*self == ContractAddress::ONE) || (*self == ContractAddress::TWO)
     }
 }
 

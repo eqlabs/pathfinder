@@ -9,7 +9,7 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 /// Provides the latest [PendingData] which is consistent with a given
 /// view of storage.
 #[derive(Clone)]
-pub struct PendingWatcher(WatchReceiver<PendingData>);
+pub struct PendingWatcher(pub WatchReceiver<PendingData>);
 
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct PendingData {
@@ -30,18 +30,21 @@ impl PendingData {
             strk_l1_gas_price: self.block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: self.block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: self.block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
+            strk_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version,
             // Pending block does not know what these are yet.
             hash: Default::default(),
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count: Default::default(),
             event_count: Default::default(),
             l1_da_mode: self.block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: Default::default(),
         }
     }
 }
@@ -76,6 +79,10 @@ impl PendingWatcher {
                     l1_data_gas_price: GasPrices {
                         price_in_wei: latest.eth_l1_data_gas_price,
                         price_in_fri: latest.strk_l1_data_gas_price,
+                    },
+                    l2_gas_price: GasPrices {
+                        price_in_wei: latest.eth_l2_gas_price,
+                        price_in_fri: latest.strk_l2_gas_price,
                     },
                     timestamp: latest.timestamp,
                     parent_hash: latest.hash,
@@ -122,9 +129,9 @@ mod tests {
             .unwrap();
 
         let latest = BlockHeader::builder()
-            .with_eth_l1_gas_price(GasPrice(1234))
-            .with_strk_l1_gas_price(GasPrice(3377))
-            .with_timestamp(BlockTimestamp::new_or_panic(6777))
+            .eth_l1_gas_price(GasPrice(1234))
+            .strk_l1_gas_price(GasPrice(3377))
+            .timestamp(BlockTimestamp::new_or_panic(6777))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
@@ -171,18 +178,18 @@ mod tests {
 
         // Required otherwise latest doesn't have a valid parent hash in storage.
         let parent = BlockHeader::builder()
-            .with_number(BlockNumber::GENESIS + 12)
+            .number(BlockNumber::GENESIS + 12)
             .finalize_with_hash(block_hash_bytes!(b"parent hash"));
 
         let latest = parent
             .child_builder()
-            .with_eth_l1_gas_price(GasPrice(1234))
-            .with_strk_l1_gas_price(GasPrice(3377))
-            .with_eth_l1_data_gas_price(GasPrice(9999))
-            .with_strk_l1_data_gas_price(GasPrice(8888))
-            .with_l1_da_mode(L1DataAvailabilityMode::Blob)
-            .with_timestamp(BlockTimestamp::new_or_panic(6777))
-            .with_sequencer_address(sequencer_address!("0xffff"))
+            .eth_l1_gas_price(GasPrice(1234))
+            .strk_l1_gas_price(GasPrice(3377))
+            .eth_l1_data_gas_price(GasPrice(9999))
+            .strk_l1_data_gas_price(GasPrice(8888))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .timestamp(BlockTimestamp::new_or_panic(6777))
+            .sequencer_address(sequencer_address!("0xffff"))
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();

@@ -79,7 +79,7 @@ impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
     {
         struct EthereumAddressVisitor;
 
-        impl<'de> Visitor<'de> for EthereumAddressVisitor {
+        impl Visitor<'_> for EthereumAddressVisitor {
             type Value = EthereumAddress;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -100,6 +100,7 @@ impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
     }
 }
 
+// TODO: This can be removed once we yank RPC V06
 pub struct H256AsNoLeadingZerosHexStr;
 
 impl SerializeAs<H256> for H256AsNoLeadingZerosHexStr {
@@ -121,7 +122,7 @@ impl<'de> DeserializeAs<'de, H256> for H256AsNoLeadingZerosHexStr {
     {
         struct H256Visitor;
 
-        impl<'de> Visitor<'de> for H256Visitor {
+        impl Visitor<'_> for H256Visitor {
             type Value = H256;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -164,7 +165,7 @@ impl<'de> DeserializeAs<'de, GasPrice> for GasPriceAsHexStr {
     {
         struct GasPriceVisitor;
 
-        impl<'de> Visitor<'de> for GasPriceVisitor {
+        impl Visitor<'_> for GasPriceVisitor {
             type Value = GasPrice;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -207,7 +208,7 @@ impl<'de> DeserializeAs<'de, BlockNumber> for StarknetBlockNumberAsHexStr {
     {
         struct StarknetBlockNumberVisitor;
 
-        impl<'de> Visitor<'de> for StarknetBlockNumberVisitor {
+        impl Visitor<'_> for StarknetBlockNumberVisitor {
             type Value = BlockNumber;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -256,6 +257,7 @@ serde_with::serde_conv!(
     |s: &str| bytes_from_hex_str::<8>(s).map(|b| Tip(u64::from_be_bytes(b)))
 );
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct U64AsHexStr(pub u64);
 
 impl serde::Serialize for U64AsHexStr {
@@ -274,7 +276,7 @@ impl<'de> serde::Deserialize<'de> for U64AsHexStr {
     {
         struct Visitor;
 
-        impl<'de> serde::de::Visitor<'de> for Visitor {
+        impl serde::de::Visitor<'_> for Visitor {
             type Value = U64AsHexStr;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -422,6 +424,15 @@ fn it_to_hex_str<'a>(
     &buf[..len]
 }
 
+/// Converts a [BlockNumber] to a RPC-compatible hex string.
+pub fn block_number_as_hex_str(block_number: &BlockNumber) -> String {
+    let bytes = block_number.get().to_be_bytes();
+    // BlockNumber is "0x" + 16 digits at most
+    let mut buf = [0u8; 2 + 16];
+    let s = bytes_as_hex_str(&bytes, &mut buf);
+    s.to_string()
+}
+
 /// A convenience function which produces a "0x" prefixed hex str slice in a
 /// given buffer `buf` from an array of bytes.
 /// Panics if `bytes.len() * 2 + 2 > buf.len()`
@@ -455,6 +466,14 @@ pub fn bytes_to_hex_str(bytes: &[u8]) -> Cow<'static, str> {
     it_to_hex_str(it, start, len, &mut buf);
     // Unwrap is safe as the buffer contains valid utf8
     String::from_utf8(buf).unwrap().into()
+}
+
+/// A convenience function which produces a "0x" prefixed hex string from a
+/// [H256].
+pub fn h256_as_no_leading_zeros_hex_str(h: &H256) -> String {
+    let mut buf = [0u8; 2 + 64];
+    let s = bytes_as_hex_str(h.as_bytes(), &mut buf);
+    s.to_string()
 }
 
 /// Extract JSON representation of program and entry points from the contract

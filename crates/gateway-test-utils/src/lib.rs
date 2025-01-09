@@ -57,7 +57,7 @@ where
                 .iter()
                 .find(|x| x.0.as_ref() == actual_full_path_and_query)
             {
-                Some((_, (body, status))) => http::response::Builder::new()
+                Some((_, (body, status))) => warp::http::response::Builder::new()
                     .status(*status)
                     .body(body.to_string()),
                 None => panic!(
@@ -131,7 +131,9 @@ pub fn setup_with_varied_responses<const M: usize, const N: usize>(
                 Some((_, responses)) => {
                     let (body, status) =
                         responses.pop_front().expect("more responses for this path");
-                    http::response::Builder::new().status(status).body(body)
+                    warp::http::response::Builder::new()
+                        .status(status)
+                        .body(body)
                 }
                 None => panic!(
                     "Actual url path and query {} not found in the expected {:?}",

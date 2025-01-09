@@ -1,9 +1,6 @@
 pub mod dto;
-pub mod method;
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
-use crate::v05::method as v05_method;
-use crate::v06::method as v06_method;
 
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
@@ -22,24 +19,20 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_syncing",                             crate::method::syncing)
         .register("starknet_getTransactionReceipt",               crate::method::get_transaction_receipt)
         .register("starknet_getTransactionStatus",                crate::method::get_transaction_status)
-
-        .register("starknet_call",                                v05_method::call)
-
-        .register("starknet_addDeclareTransaction",               v06_method::add_declare_transaction)
-        .register("starknet_addDeployAccountTransaction",         v06_method::add_deploy_account_transaction)
-        .register("starknet_addInvokeTransaction",                v06_method::add_invoke_transaction)
-        .register("starknet_getTransactionByBlockIdAndIndex",     v06_method::get_transaction_by_block_id_and_index)
-        .register("starknet_getTransactionByHash",                v06_method::get_transaction_by_hash)
-
-        .register("starknet_estimateFee",                         method::estimate_fee)
-        .register("starknet_estimateMessageFee",                  method::estimate_message_fee)
-        .register("starknet_getBlockWithTxHashes",                method::get_block_with_tx_hashes)
-        .register("starknet_getBlockWithTxs",                     method::get_block_with_txs)
-        .register("starknet_simulateTransactions",                method::simulate_transactions)
-        .register("starknet_specVersion",                         || "0.7.1")
-        .register("starknet_traceBlockTransactions",              method::trace_block_transactions)
-        .register("starknet_traceTransaction",                    method::trace_transaction)
-        .register("starknet_getBlockWithReceipts",                method::get_block_with_receipts)
-
+        .register("starknet_call",                                crate::method::call)
+        .register("starknet_addDeclareTransaction",               crate::method::add_declare_transaction)
+        .register("starknet_addDeployAccountTransaction",         crate::method::add_deploy_account_transaction)
+        .register("starknet_addInvokeTransaction",                crate::method::add_invoke_transaction)
+        .register("starknet_getTransactionByBlockIdAndIndex",     crate::method::get_transaction_by_block_id_and_index)
+        .register("starknet_getTransactionByHash",                crate::method::get_transaction_by_hash)
+        .register("starknet_estimateFee",                         crate::method::estimate_fee)
+        .register("starknet_estimateMessageFee",                  crate::method::estimate_message_fee)
+        .register("starknet_getBlockWithTxHashes",                crate::method::get_block_with_tx_hashes)
+        .register("starknet_getBlockWithTxs",                     crate::method::get_block_with_txs)
+        .register("starknet_simulateTransactions",                crate::method::simulate_transactions)
+        .register("starknet_traceBlockTransactions",              crate::method::trace_block_transactions)
+        .register("starknet_traceTransaction",                    crate::method::trace_transaction)
+        .register("starknet_getBlockWithReceipts",                crate::method::get_block_with_receipts)
         .register("pathfinder_getProof",                          crate::pathfinder::methods::get_proof)
+        .register("starknet_specVersion",                         || "0.7.1")
 }

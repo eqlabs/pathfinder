@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
+use blockifier::blockifier::block::BlockInfo;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::transaction::objects::{GasVector, TransactionExecutionInfo};
+use blockifier::transaction::objects::{FeeType, GasVector, TransactionExecutionInfo};
 use pathfinder_common::{
     CasmHash,
     ClassHash,
@@ -15,57 +16,71 @@ use pathfinder_crypto::Felt;
 
 use super::felt::IntoFelt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FeeEstimate {
-    pub gas_consumed: primitive_types::U256,
-    pub gas_price: primitive_types::U256,
-    pub data_gas_consumed: primitive_types::U256,
-    pub data_gas_price: primitive_types::U256,
+    pub l1_gas_consumed: primitive_types::U256,
+    pub l1_gas_price: primitive_types::U256,
+    pub l1_data_gas_consumed: primitive_types::U256,
+    pub l1_data_gas_price: primitive_types::U256,
+    pub l2_gas_consumed: primitive_types::U256,
+    pub l2_gas_price: primitive_types::U256,
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
 }
 
 impl FeeEstimate {
     /// Computes fee estimate from the transaction execution information.
-    ///
-    /// `TransactionExecutionInfo` contains two related fields:
-    /// - `TransactionExecutionInfo::actual_fee` is the overall cost of the
-    ///   transaction (in WEI/FRI)
-    /// - `TransactionExecutionInfo::da_gas` is the gas usage for _data
-    ///   availability_.
-    ///
-    /// The problem is that we have to return both `gas_usage` and
-    /// `data_gas_usage` but we don't directly have the value of `gas_usage`
-    /// from the execution info, so we have to calculate that from other
-    /// fields.
     pub(crate) fn from_tx_info_and_gas_price(
         tx_info: &TransactionExecutionInfo,
-        gas_price: u128,
-        data_gas_price: u128,
-        unit: PriceUnit,
-        minimal_l1_gas_amount_vector: Option<GasVector>,
+        block_info: &BlockInfo,
+        fee_type: FeeType,
+        minimal_l1_gas_amount_vector: &Option<GasVector>,
     ) -> FeeEstimate {
-        let data_gas_consumed = tx_info.da_gas.l1_data_gas;
-        let data_gas_fee = data_gas_consumed.saturating_mul(data_gas_price);
-        let gas_consumed = tx_info.actual_fee.0.saturating_sub(data_gas_fee) / gas_price.max(1);
+        tracing::trace!(resources=?tx_info.transaction_receipt.resources, "Transaction resources");
+        let l1_gas_price = block_info
+            .gas_prices
+            .get_gas_price_by_fee_type(&fee_type)
+            .get();
+        let l1_data_gas_price = block_info
+            .gas_prices
+            .get_data_gas_price_by_fee_type(&fee_type)
+            .get();
 
-        let (minimal_gas_consumed, minimal_data_gas_consumed) = minimal_l1_gas_amount_vector
-            .map(|v| (v.l1_gas, v.l1_data_gas))
-            .unwrap_or_default();
+        let minimal_l1_gas_amount_vector = minimal_l1_gas_amount_vector.unwrap_or_default();
 
-        let gas_consumed = gas_consumed.max(minimal_gas_consumed);
-        let data_gas_consumed = data_gas_consumed.max(minimal_data_gas_consumed);
-        let overall_fee = gas_consumed
-            .saturating_mul(gas_price)
-            .saturating_add(data_gas_consumed.saturating_mul(data_gas_price));
+        let l1_gas_consumed = tx_info
+            .transaction_receipt
+            .gas
+            .l1_gas
+            .max(minimal_l1_gas_amount_vector.l1_gas);
+        let l1_data_gas_consumed = tx_info
+            .transaction_receipt
+            .gas
+            .l1_data_gas
+            .max(minimal_l1_gas_amount_vector.l1_data_gas);
+
+        // Blockifier does not put the actual fee into the receipt if `max_fee` in the
+        // transaction was zero. In that case we have to compute the fee
+        // explicitly.
+        let overall_fee = blockifier::fee::fee_utils::get_fee_by_gas_vector(
+            block_info,
+            GasVector {
+                l1_gas: l1_gas_consumed,
+                l1_data_gas: l1_data_gas_consumed,
+            },
+            &fee_type,
+        )
+        .0;
 
         FeeEstimate {
-            gas_consumed: gas_consumed.into(),
-            gas_price: gas_price.into(),
-            data_gas_consumed: data_gas_consumed.into(),
-            data_gas_price: data_gas_price.into(),
+            l1_gas_consumed: l1_gas_consumed.into(),
+            l1_gas_price: l1_gas_price.into(),
+            l1_data_gas_consumed: l1_data_gas_consumed.into(),
+            l1_data_gas_price: l1_data_gas_price.into(),
+            l2_gas_consumed: 0.into(), // TODO: Fix when we have l2 gas price
+            l2_gas_price: 0.into(),    // TODO: Fix when we have l2 gas price
             overall_fee: overall_fee.into(),
-            unit,
+            unit: fee_type.into(),
         }
     }
 }
@@ -74,6 +89,15 @@ impl FeeEstimate {
 pub enum PriceUnit {
     Wei,
     Fri,
+}
+
+impl From<FeeType> for PriceUnit {
+    fn from(value: FeeType) -> Self {
+        match value {
+            FeeType::Strk => Self::Fri,
+            FeeType::Eth => Self::Wei,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -133,6 +157,7 @@ pub struct DeployAccountTransactionTrace {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExecuteInvocation {
     FunctionInvocation(Option<FunctionInvocation>),
     RevertedReason(String),
@@ -181,6 +206,7 @@ pub struct FunctionInvocation {
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
     pub computation_resources: ComputationResources,
+    pub execution_resources: InnerCallExecutionResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -191,7 +217,13 @@ pub struct MsgToL1 {
     pub from_address: Felt,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Default, Debug, Clone)]
+pub struct InnerCallExecutionResources {
+    pub l1_gas: u128,
+    pub l2_gas: u128,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct StateDiff {
     pub storage_diffs: BTreeMap<ContractAddress, Vec<StorageDiff>>,
     pub deployed_contracts: Vec<DeployedContract>,
@@ -229,6 +261,9 @@ pub struct ReplacedClass {
 pub struct ExecutionResources {
     pub computation_resources: ComputationResources,
     pub data_availability: DataAvailabilityResources,
+    pub l1_gas: u128,
+    pub l1_data_gas: u128,
+    pub l2_gas: u128,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
@@ -322,6 +357,11 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             messages,
             result,
             computation_resources: call_info.resources.into(),
+            execution_resources: InnerCallExecutionResources {
+                l1_gas: call_info.execution.gas_consumed.into(),
+                // TODO: Use proper l2_gas value for Starknet 0.13.3
+                l2_gas: 0,
+            },
         }
     }
 }
@@ -373,19 +413,17 @@ fn ordered_l2_to_l1_messages(
 ) -> Vec<MsgToL1> {
     let mut messages = BTreeMap::new();
 
-    for call in call_info.into_iter() {
-        for OrderedL2ToL1Message { order, message } in &call.execution.l2_to_l1_messages {
-            messages.insert(
-                order,
-                MsgToL1 {
-                    order: *order,
-                    payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
-                    to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
-                        .expect("Ethereum address should fit into felt"),
-                    from_address: call.call.storage_address.0.key().into_felt(),
-                },
-            );
-        }
+    for OrderedL2ToL1Message { order, message } in &call_info.execution.l2_to_l1_messages {
+        messages.insert(
+            order,
+            MsgToL1 {
+                order: *order,
+                payload: message.payload.0.iter().map(IntoFelt::into_felt).collect(),
+                to_address: Felt::from_be_slice(message.to_address.0.as_bytes())
+                    .expect("Ethereum address should fit into felt"),
+                from_address: call_info.call.storage_address.0.key().into_felt(),
+            },
+        );
     }
 
     messages.into_values().collect()
@@ -393,51 +431,42 @@ fn ordered_l2_to_l1_messages(
 
 impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for ComputationResources {
     fn from(value: cairo_vm::vm::runners::cairo_runner::ExecutionResources) -> Self {
-        use cairo_vm::vm::runners::builtin_runner::{
-            BITWISE_BUILTIN_NAME,
-            EC_OP_BUILTIN_NAME,
-            HASH_BUILTIN_NAME,
-            KECCAK_BUILTIN_NAME,
-            POSEIDON_BUILTIN_NAME,
-            RANGE_CHECK_BUILTIN_NAME,
-            SEGMENT_ARENA_BUILTIN_NAME,
-            SIGNATURE_BUILTIN_NAME,
-        };
+        use cairo_vm::types::builtin_name::BuiltinName;
 
         Self {
             steps: value.n_steps,
             memory_holes: value.n_memory_holes,
             range_check_builtin_applications: *value
                 .builtin_instance_counter
-                .get(RANGE_CHECK_BUILTIN_NAME)
+                .get(&BuiltinName::range_check)
                 .unwrap_or(&0),
             pedersen_builtin_applications: *value
                 .builtin_instance_counter
-                .get(HASH_BUILTIN_NAME)
+                .get(&BuiltinName::pedersen)
                 .unwrap_or(&0),
             poseidon_builtin_applications: *value
                 .builtin_instance_counter
-                .get(POSEIDON_BUILTIN_NAME)
+                .get(&BuiltinName::poseidon)
                 .unwrap_or(&0),
             ec_op_builtin_applications: *value
                 .builtin_instance_counter
-                .get(EC_OP_BUILTIN_NAME)
+                .get(&BuiltinName::ec_op)
                 .unwrap_or(&0),
             ecdsa_builtin_applications: *value
                 .builtin_instance_counter
-                .get(SIGNATURE_BUILTIN_NAME)
+                .get(&BuiltinName::ecdsa)
                 .unwrap_or(&0),
             bitwise_builtin_applications: *value
                 .builtin_instance_counter
-                .get(BITWISE_BUILTIN_NAME)
+                .get(&BuiltinName::bitwise)
                 .unwrap_or(&0),
             keccak_builtin_applications: *value
                 .builtin_instance_counter
-                .get(KECCAK_BUILTIN_NAME)
+                .get(&BuiltinName::keccak)
                 .unwrap_or(&0),
             segment_arena_builtin: *value
                 .builtin_instance_counter
-                .get(SEGMENT_ARENA_BUILTIN_NAME)
+                .get(&BuiltinName::segment_arena)
                 .unwrap_or(&0),
         }
     }

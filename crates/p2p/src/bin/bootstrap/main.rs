@@ -9,7 +9,6 @@ use libp2p::core::upgrade;
 use libp2p::identity::Keypair;
 use libp2p::swarm::{Config, SwarmEvent};
 use libp2p::{dns, identify, noise, Multiaddr, Swarm, Transport};
-use p2p::kademlia_protocol_name;
 use pathfinder_common::ChainId;
 use serde::Deserialize;
 use zeroize::Zeroizing;
@@ -141,6 +140,7 @@ async fn main() -> anyhow::Result<()> {
                                     observed_addr,
                                     ..
                                 },
+                                ..
                         } = *e
                         {
                             // Important change in libp2p-v0.52 compared to v0.51:
@@ -160,9 +160,11 @@ async fn main() -> anyhow::Result<()> {
 
                             swarm.add_external_address(observed_addr);
 
+                            let my_kad_names = swarm.behaviour().kademlia.protocol_names();
+
                             if protocols
                                 .iter()
-                                .any(|p| p.as_ref() == kademlia_protocol_name(chain_id))
+                                .any(|p| my_kad_names.contains(p))
                             {
                                 for addr in listen_addrs {
                                     swarm.behaviour_mut().kademlia.add_address(&peer_id, addr);

@@ -5,7 +5,7 @@ use serde_with::serde_as;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
-use crate::v02::types::request::BroadcastedTransaction;
+use crate::types::request::BroadcastedTransaction;
 use crate::v06::types::PriceUnit;
 
 #[derive(serde::Deserialize, Debug, PartialEq, Eq)]
@@ -14,6 +14,12 @@ pub struct EstimateFeeInput {
     pub request: Vec<BroadcastedTransaction>,
     pub simulation_flags: SimulationFlags,
     pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for EstimateFeeInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
 }
 
 #[derive(Debug, serde::Deserialize, Eq, PartialEq)]
@@ -49,6 +55,7 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateFeeError {
             ExecutionError {
                 transaction_index,
                 error,
+                error_stack: _,
             } => Self::TransactionExecutionError {
                 transaction_index,
                 error,
@@ -79,6 +86,7 @@ impl From<EstimateFeeError> for ApplicationError {
             } => ApplicationError::TransactionExecutionError {
                 transaction_index,
                 error,
+                error_stack: Default::default(),
             },
             EstimateFeeError::Internal(e) => ApplicationError::Internal(e),
             EstimateFeeError::Custom(e) => ApplicationError::Custom(e),
@@ -90,15 +98,19 @@ impl From<EstimateFeeError> for ApplicationError {
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 pub struct FeeEstimate {
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-    pub gas_consumed: primitive_types::U256,
+    pub l1_gas_consumed: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
-    pub gas_price: primitive_types::U256,
+    pub l1_gas_price: primitive_types::U256,
     #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_gas_consumed: Option<primitive_types::U256>,
+    pub l1_data_gas_consumed: Option<primitive_types::U256>,
     #[serde_as(as = "Option<pathfinder_serde::U256AsHexStr>")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_gas_price: Option<primitive_types::U256>,
+    pub l1_data_gas_price: Option<primitive_types::U256>,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub l2_gas_consumed: primitive_types::U256,
+    #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
+    pub l2_gas_price: primitive_types::U256,
     #[serde_as(as = "pathfinder_serde::U256AsHexStr")]
     pub overall_fee: primitive_types::U256,
     pub unit: PriceUnit,
@@ -107,20 +119,22 @@ pub struct FeeEstimate {
 impl From<pathfinder_executor::types::FeeEstimate> for FeeEstimate {
     fn from(value: pathfinder_executor::types::FeeEstimate) -> Self {
         Self {
-            gas_consumed: value.gas_consumed,
-            gas_price: value.gas_price,
+            l1_gas_consumed: value.l1_gas_consumed,
+            l1_gas_price: value.l1_gas_price,
+            l1_data_gas_consumed: Some(value.l1_data_gas_consumed),
+            l1_data_gas_price: Some(value.l1_data_gas_price),
+            l2_gas_consumed: value.l2_gas_consumed,
+            l2_gas_price: value.l2_gas_price,
             overall_fee: value.overall_fee,
             unit: value.unit.into(),
-            data_gas_consumed: Some(value.data_gas_consumed),
-            data_gas_price: Some(value.data_gas_price),
         }
     }
 }
 
 impl FeeEstimate {
     pub fn with_v06_format(&mut self) {
-        self.data_gas_consumed = None;
-        self.data_gas_price = None;
+        self.l1_data_gas_consumed = None;
+        self.l1_data_gas_price = None;
     }
 }
 
@@ -142,11 +156,10 @@ pub async fn estimate_fee_impl(
     l1_blob_data_availability: L1BlobDataAvailability,
 ) -> Result<Vec<FeeEstimate>, EstimateFeeError> {
     let span = tracing::Span::current();
-
-    let result = tokio::task::spawn_blocking(move || {
+    let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
-            .storage
+            .execution_storage
             .connection()
             .context("Creating database connection")?;
         let db = db.transaction().context("Creating database transaction")?;
@@ -177,6 +190,7 @@ pub async fn estimate_fee_impl(
             header,
             pending,
             l1_blob_data_availability,
+            context.config.custom_versioned_constants,
         );
 
         let skip_validate = input
@@ -215,7 +229,7 @@ pub(crate) mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::BroadcastedInvokeTransaction;
+    use crate::types::request::BroadcastedInvokeTransaction;
 
     mod parsing {
         use serde_json::json;
@@ -224,7 +238,7 @@ pub(crate) mod tests {
 
         fn test_invoke_txn() -> BroadcastedTransaction {
             BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V1(
-                crate::v02::types::request::BroadcastedInvokeTransactionV1 {
+                crate::types::request::BroadcastedInvokeTransactionV1 {
                     version: TransactionVersion::ONE_WITH_QUERY_VERSION,
                     max_fee: Fee(felt!("0x6")),
                     signature: vec![TransactionSignatureElem(felt!("0x7"))],
@@ -304,14 +318,14 @@ pub(crate) mod tests {
         use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode, PendingBlock};
 
         use super::*;
-        use crate::v02::types::request::{
+        use crate::types::request::{
             BroadcastedDeclareTransaction,
             BroadcastedDeclareTransactionV2,
             BroadcastedInvokeTransactionV0,
             BroadcastedInvokeTransactionV1,
             BroadcastedInvokeTransactionV3,
         };
-        use crate::v02::types::{
+        use crate::types::{
             ContractClass,
             DataAvailabilityMode,
             ResourceBounds,
@@ -353,7 +367,7 @@ pub(crate) mod tests {
                     compiled_class_hash: casm_hash,
                 }),
             );
-            // deploy with unversal deployer contract
+            // deploy with universal deployer contract
             let deploy_transaction = BroadcastedTransaction::Invoke(
                 BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
                     nonce: transaction_nonce!("0x1"),
@@ -458,45 +472,54 @@ pub(crate) mod tests {
             };
             let result = estimate_fee(context, input).await.unwrap();
             let declare_expected = FeeEstimate {
-                gas_consumed: 2768.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 2768.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 2768.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let deploy_expected = FeeEstimate {
-                gas_consumed: 3020.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 3020.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 3020.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 1674.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 1674.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_v0_expected = FeeEstimate {
-                gas_consumed: 1669.into(),
-                gas_price: 1.into(),
+                l1_gas_consumed: 1669.into(),
+                l1_gas_price: 1.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 1669.into(),
                 unit: PriceUnit::Wei,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             let invoke_v3_expected = FeeEstimate {
-                gas_consumed: 1674.into(),
-                // STRK gas price is 2
-                gas_price: 2.into(),
+                l1_gas_consumed: 1674.into(),
+                l1_gas_price: 2.into(),
+                l1_data_gas_consumed: None,
+                l1_data_gas_price: None,
+                l2_gas_consumed: 0.into(),
+                l2_gas_price: 0.into(),
                 overall_fee: 3348.into(),
                 unit: PriceUnit::Fri,
-                data_gas_consumed: None,
-                data_gas_price: None,
             };
             assert_eq!(
                 result,
@@ -521,6 +544,10 @@ pub(crate) mod tests {
                         price_in_fri: Default::default(),
                     },
                     l1_data_gas_price: Default::default(),
+                    l2_gas_price: GasPrices {
+                        price_in_wei: last_block_header.eth_l2_gas_price,
+                        price_in_fri: last_block_header.strk_l2_gas_price,
+                    },
                     parent_hash: last_block_header.hash,
                     sequencer_address: last_block_header.sequencer_address,
                     status: starknet_gateway_types::reply::Status::Pending,
@@ -535,6 +562,7 @@ pub(crate) mod tests {
                 number: last_block_header.number + 1,
             }
         }
+
         #[test_log::test(tokio::test)]
         async fn nonce_updated_in_pending() {
             let (context, last_block_header, account_contract_address, _universal_deployer_address) =

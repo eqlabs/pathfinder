@@ -5,7 +5,6 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
 full-serde = []
@@ -16,6 +15,7 @@ bitvec = { workspace = true }
 fake = { workspace = true, features = ["derive"] }
 metrics = { workspace = true }
 num-bigint = { workspace = true }
+num-traits = "0.2"
 paste = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
@@ -27,6 +27,8 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
+tagged = { path = "../tagged" }
+tagged-debug-derive = { path = "../tagged-debug-derive" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

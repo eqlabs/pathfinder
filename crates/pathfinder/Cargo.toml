@@ -5,7 +5,6 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 name = "pathfinder_lib"
@@ -14,11 +13,9 @@ path = "src/lib.rs"
 [features]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
-rpc-full-serde = []
 
 [dependencies]
 anyhow = { workspace = true }
-async-stream = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
@@ -28,19 +25,20 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
-futures = { workspace = true }
+futures = { workspace = true, features = ["alloc"] }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }
-lazy_static = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
+pathfinder-block-hashes = { path = "../block-hashes" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
+pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
@@ -56,13 +54,14 @@ serde_json = { workspace = true, features = [
     "arbitrary_precision",
     "raw_value",
 ] }
+sha3 = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
-tokio-stream = { workspace = true }
+tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = [
     "env-filter",
@@ -70,6 +69,7 @@ tracing-subscriber = { workspace = true, features = [
     "ansi",
 ] }
 url = { workspace = true }
+util = { path = "../util" }
 zeroize = { workspace = true }
 zstd = { workspace = true }
 
@@ -90,5 +90,6 @@ rstest = { workspace = true }
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 starknet_api = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 warp = { workspace = true }

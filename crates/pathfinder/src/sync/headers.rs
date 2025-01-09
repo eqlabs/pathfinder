@@ -1,8 +1,9 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
-use p2p::client::peer_agnostic::SignedBlockHeader;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
+use p2p_proto::header;
 use pathfinder_common::{
     BlockHash,
     BlockHeader,
@@ -11,13 +12,14 @@ use pathfinder_common::{
     ChainId,
     ClassCommitment,
     PublicKey,
+    SignedBlockHeader,
+    StarknetVersion,
     StorageCommitment,
 };
 use pathfinder_storage::Storage;
-use tokio::task::spawn_blocking;
 
-use crate::state::block_hash::{verify_block_hash, BlockHeaderData, VerifyResult};
-use crate::sync::error::{SyncError, SyncError2};
+use crate::state::block_hash::{BlockHeaderData, VerifyResult};
+use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
 type SignedHeaderResult = Result<PeerData<SignedBlockHeader>, SyncError>;
@@ -52,7 +54,7 @@ pub(super) async fn next_gap(
     head: BlockNumber,
     head_hash: BlockHash,
 ) -> anyhow::Result<Option<HeaderGap>> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -65,6 +67,7 @@ pub(super) async fn next_gap(
         let head_exists = db
             .block_exists(head.into())
             .context("Checking if search head exists locally")?;
+
         let (head, head_hash) = if head_exists {
             // Find the next header that exists, but whose parent does not.
             let Some(gap_head) = db
@@ -85,6 +88,7 @@ pub(super) async fn next_gap(
                 .parent()
                 .expect("next_ancestor_without_parent() cannot return genesis");
             let gap_head_parent_hash = gap_head_header.parent_hash;
+
             (gap_head_parent_number, gap_head_parent_hash)
         } else {
             // Start of search is already missing so it becomes the head of the gap.
@@ -115,24 +119,6 @@ pub(super) async fn next_gap(
     .context("Joining blocking task")?
 }
 
-pub(super) async fn query(
-    storage: Storage,
-    block_number: BlockNumber,
-) -> anyhow::Result<Option<BlockHeader>> {
-    spawn_blocking({
-        move || {
-            let mut db = storage
-                .connection()
-                .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
-            db.block_header(block_number.into())
-                .context("Querying first block without transactions")
-        }
-    })
-    .await
-    .context("Joining blocking task")?
-}
-
 /// Ensures that the hash chain is continuous i.e. that block numbers increment
 /// and hashes become parent hashes.
 pub struct ForwardContinuity {
@@ -154,9 +140,9 @@ pub struct BackwardContinuity {
 
 /// Ensures that the block hash and signature are correct.
 pub struct VerifyHashAndSignature {
-    chain: Chain,
     chain_id: ChainId,
     public_key: PublicKey,
+    block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
 }
 
 impl ForwardContinuity {
@@ -171,11 +157,12 @@ impl ProcessStage for ForwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         let header = &input.header;
 
         if header.number != self.next || header.parent_hash != self.parent_hash {
-            return Err(SyncError2::Discontinuity);
+            tracing::debug!(%peer, expected_block_number=%self.next, actual_block_number=%header.number, expected_parent_block_hash=%self.parent_hash, actual_parent_block_hash=%header.parent_hash, "Block chain discontinuity");
+            return Err(SyncError::Discontinuity(*peer));
         }
 
         self.next += 1;
@@ -202,11 +189,15 @@ impl ProcessStage for BackwardContinuity {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        let number = self.number.ok_or(SyncError2::Discontinuity)?;
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+        let number = self.number.ok_or_else(|| {
+            tracing::debug!(actual_block_number=%input.header.number, actual_block_hash=%input.header.hash, "Block chain discontinuity, no block expected before genesis");
+            SyncError::Discontinuity(*peer)
+        })?;
 
         if input.header.number != number || input.header.hash != self.hash {
-            return Err(SyncError2::Discontinuity);
+            tracing::debug!(expected_block_number=%number, actual_block_number=%input.header.number, expected_block_hash=%self.hash, actual_block_hash=%input.header.hash, "Block chain discontinuity");
+            return Err(SyncError::Discontinuity(*peer));
         }
 
         self.number = number.parent();
@@ -221,15 +212,13 @@ impl ProcessStage for VerifyHashAndSignature {
     type Input = SignedBlockHeader;
     type Output = SignedBlockHeader;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
-        if !self.verify_hash(&input) {
-            return Err(SyncError2::BadBlockHash);
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+        if !self.verify_hash(&input.header) {
+            return Err(SyncError::BadBlockHash(*peer));
         }
 
         if !self.verify_signature(&input) {
-            // TODO: make this an error once state diff commitments and signatures are fixed
-            // on the feeder gateway return Err(SyncError2::BadHeaderSignature);
-            tracing::debug!(header=?input.header, "Header signature verification failed");
+            return Err(SyncError::BadHeaderSignature(*peer));
         }
 
         Ok(input)
@@ -237,44 +226,67 @@ impl ProcessStage for VerifyHashAndSignature {
 }
 
 impl VerifyHashAndSignature {
-    pub fn new(chain: Chain, chain_id: ChainId, public_key: PublicKey) -> Self {
+    pub fn new(
+        chain_id: ChainId,
+        public_key: PublicKey,
+        block_hash_db: Option<pathfinder_block_hashes::BlockHashDb>,
+    ) -> Self {
         Self {
-            chain,
             chain_id,
             public_key,
+            block_hash_db,
         }
     }
 
-    fn verify_hash(&self, header: &SignedBlockHeader) -> bool {
-        let h = &header.header;
-        matches!(
-            verify_block_hash(
-                BlockHeaderData {
-                    hash: h.hash,
-                    parent_hash: h.parent_hash,
-                    number: h.number,
-                    timestamp: h.timestamp,
-                    sequencer_address: h.sequencer_address,
-                    state_commitment: h.state_commitment,
-                    transaction_commitment: h.transaction_commitment,
-                    transaction_count: h.transaction_count.try_into().expect("ptr size is 64 bits"),
-                    event_commitment: h.event_commitment,
-                    event_count: h.event_count.try_into().expect("ptr size is 64 bits"),
-                },
-                self.chain,
-                self.chain_id
-            ),
-            Ok(VerifyResult::Match(_))
-        )
+    fn verify_hash(&self, header: &BlockHeader) -> bool {
+        let expected_hash = self
+            .block_hash_db
+            .as_ref()
+            .and_then(|db| db.block_hash(header.number))
+            .unwrap_or(header.hash);
+        let computed_hash = crate::state::block_hash::compute_final_hash(&BlockHeaderData {
+            hash: header.hash,
+            parent_hash: header.parent_hash,
+            number: header.number,
+            timestamp: header.timestamp,
+            sequencer_address: header.sequencer_address,
+            state_commitment: header.state_commitment,
+            transaction_commitment: header.transaction_commitment,
+            transaction_count: header
+                .transaction_count
+                .try_into()
+                .expect("ptr size is 64 bits"),
+            event_commitment: header.event_commitment,
+            event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
+            state_diff_commitment: header.state_diff_commitment,
+            state_diff_length: header.state_diff_length,
+            starknet_version: header.starknet_version,
+            starknet_version_str: header.starknet_version.to_string(),
+            eth_l1_gas_price: header.eth_l1_gas_price,
+            strk_l1_gas_price: header.strk_l1_gas_price,
+            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
+            eth_l2_gas_price: header.eth_l2_gas_price,
+            strk_l2_gas_price: header.strk_l2_gas_price,
+            receipt_commitment: header.receipt_commitment,
+            l1_da_mode: header.l1_da_mode,
+        });
+        {
+            if computed_hash == expected_hash {
+                true
+            } else {
+                tracing::debug!(block_number=%header.number, expected_block_hash=%expected_hash, actual_block_hash=%computed_hash, "Block hash mismatch");
+                false
+            }
+        }
     }
 
     fn verify_signature(&self, header: &SignedBlockHeader) -> bool {
         header
             .signature
-            .verify(
-                self.public_key,
-                header.header.hash,
-                header.state_diff_commitment,
+            .verify(self.public_key, header.header.hash)
+            .inspect_err(
+                |error| tracing::debug!(%error, ?header, "Header signature verification failed"),
             )
             .is_ok()
     }
@@ -287,53 +299,23 @@ pub struct Persist {
 impl ProcessStage for Persist {
     const NAME: &'static str = "Headers::Persist";
     type Input = Vec<SignedBlockHeader>;
-    type Output = ();
+    type Output = BlockNumber;
 
-    fn map(&mut self, input: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, _: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
+        let tail = input.last().expect("not empty").header.number;
         let tx = self
             .connection
             .transaction()
             .context("Creating database transaction")?;
 
-        for SignedBlockHeader {
-            header,
-            signature,
-            state_diff_commitment,
-            state_diff_length,
-        } in input
-        {
-            tx.insert_block_header(&pathfinder_common::BlockHeader {
-                hash: header.hash,
-                parent_hash: header.parent_hash,
-                number: header.number,
-                timestamp: header.timestamp,
-                eth_l1_gas_price: header.eth_l1_gas_price,
-                strk_l1_gas_price: header.strk_l1_gas_price,
-                eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-                strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-                sequencer_address: header.sequencer_address,
-                starknet_version: header.starknet_version,
-                class_commitment: ClassCommitment::ZERO,
-                event_commitment: header.event_commitment,
-                state_commitment: header.state_commitment,
-                storage_commitment: StorageCommitment::ZERO,
-                transaction_commitment: header.transaction_commitment,
-                transaction_count: header.transaction_count,
-                event_count: header.event_count,
-                l1_da_mode: header.l1_da_mode,
-            })
-            .context("Persisting block header")?;
+        for SignedBlockHeader { header, signature } in input {
+            tx.insert_block_header(&header)
+                .context("Persisting block header")?;
             tx.insert_signature(header.number, &signature)
                 .context("Persisting block signature")?;
-            tx.update_state_diff_commitment_and_length(
-                header.number,
-                state_diff_commitment,
-                state_diff_length,
-            )
-            .context("Persisting state diff length")?;
         }
 
         tx.commit().context("Committing database transaction")?;
-        Ok(())
+        Ok(tail)
     }
 }

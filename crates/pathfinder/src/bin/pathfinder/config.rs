@@ -1,6 +1,7 @@
 use std::collections::HashSet;
+use std::fs::File;
 use std::net::SocketAddr;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -11,6 +12,7 @@ use ipnet::IpNet;
 use p2p::libp2p::Multiaddr;
 use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 use pathfinder_common::AllowedOrigins;
+use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 
@@ -42,11 +44,11 @@ struct Cli {
 
     #[arg(
         long = "ethereum.url",
-        long_help = r"This should point to the HTTP RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura or Cloudflare.
+        long_help = r"This should point to the WS RPC endpoint of your Ethereum entry-point, typically a local Ethereum client or a hosted gateway service such as Infura, Alchemy or Cloudflare.
 
 Examples:
-    infura: https://mainnet.infura.io/v3/<PROJECT_ID>
-    geth:   https://localhost:8545",
+    alchemy: wss://eth-mainnet.g.alchemy.com/v2/<PROJECT_ID>
+    geth:    wss://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
         env = "PATHFINDER_ETHEREUM_API_URL", 
@@ -81,10 +83,10 @@ Examples:
     #[arg(
         long = "rpc.root-version",
         long_help = "Version of the JSON-RPC API to serve on the / (root) path",
-        default_value = "v06",
+        default_value = "v07",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
-    rpc_root_version: RpcVersion,
+    rpc_root_version: RootRpcVersion,
 
     #[arg(
         long = "rpc.execution-concurrency",
@@ -92,7 +94,7 @@ Examples:
                      number of CPU cores available.",
         env = "PATHFINDER_RPC_EXECUTION_CONCURRENCY"
     )]
-    execution_concurrency: Option<std::num::NonZeroU32>,
+    execution_concurrency: Option<NonZeroU32>,
 
     #[arg(
         long = "monitor-address",
@@ -131,6 +133,14 @@ Examples:
     poll_interval: std::num::NonZeroU64,
 
     #[arg(
+        long = "sync.l1-poll-interval",
+        long_help = "L1 state poll interval in seconds",
+        default_value = "120",
+        env = "PATHFINDER_L1_POLL_INTERVAL_SECONDS"
+    )]
+    l1_poll_interval: std::num::NonZeroU64,
+
+    #[arg(
         long = "color",
         long_help = "This flag controls when to use colors in the output logs.",
         default_value = "auto",
@@ -138,6 +148,24 @@ Examples:
         value_name = "WHEN"
     )]
     color: Color,
+
+    #[arg(
+        long = "log-output-json",
+        long_help = "This flag controls when to use colors in the output logs.",
+        default_value = "false",
+        env = "PATHFINDER_LOG_OUTPUT_JSON",
+        value_name = "BOOL"
+    )]
+    log_output_json: bool,
+
+    #[arg(
+        long = "disable-version-update-check",
+        long_help = "Disable the periodic version update check.",
+        default_value = "false",
+        env = "PATHFINDER_DISABLE_VERSION_UPDATE_CHECK",
+        value_name = "BOOL"
+    )]
+    disable_version_update_check: bool,
 
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
@@ -219,32 +247,48 @@ This should only be enabled for debugging purposes as it adds substantial proces
     gateway_timeout: std::num::NonZeroU64,
 
     #[arg(
-        long = "storage.event-bloom-filter-cache-size",
-        long_help = "The number of blocks whose event bloom filters are cached in memory. This \
-                     cache speeds up event related RPC queries at the cost of using extra memory. \
-                     Each cached filter takes 2 KiB of memory.",
-        env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
-        default_value = "524288"
+        long = "gateway.fetch-concurrency",
+        long_help = "How many concurrent requests to send to the feeder gateway when fetching \
+                     block data",
+        env = "PATHFINDER_GATEWAY_FETCH_CONCURRENCY",
+        default_value = "8"
     )]
-    event_bloom_filter_cache_size: std::num::NonZeroUsize,
+    feeder_gateway_fetch_concurrency: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "storage.event-filter-cache-size",
+        long_help = format!(
+            "The number of aggregate event bloom filters to cache in memory. Each filter covers a {} block range.
+            This cache speeds up event related RPC queries at the cost of using extra memory.
+            Each cached filter takes 16 MiB of memory.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_STORAGE_EVENT_FILTER_CACHE_SIZE",
+        default_value = "64"
+    )]
+    event_filter_cache_size: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
-        long_help = "The number of blocks to scan for events when querying for events. This limit \
-                     is used to prevent queries from taking too long.",
+        long_help = "The number of blocks to scan when querying for events. This limit is used to \
+                     prevent queries from taking too long.",
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
         default_value = "500"
     )]
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-uncached-bloom-filters-to-load",
-        long_help = "The number of Bloom filters to load for events when querying for events. \
-                     This limit is used to prevent queries from taking too long.",
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
-        default_value = "100000"
+        long = "rpc.get-events-max-uncached-event-filters-to-load",
+        long_help = format!(
+            "The number of uncached aggregate Bloom filters to load when querying for events.
+            Each filter covers a {} block range.
+            This limit is used to prevent queries from taking too long.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_EVENT_FILTERS_TO_LOAD",
+        default_value = "12"
     )]
-    get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
+    get_events_max_uncached_event_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
         long = "storage.state-tries",
@@ -256,6 +300,31 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_parser = parse_state_tries
     )]
     state_tries: Option<StateTries>,
+
+    #[arg(
+        long = "rpc.custom-versioned-constants-json-path",
+        long_help = "Path to a JSON file containing the versioned constants to use for execution",
+        env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
+    )]
+    custom_versioned_constants_path: Option<PathBuf>,
+
+    #[arg(
+        long = "sync.fetch-casm-from-fgw",
+        long_help = "Do not compile classes locally, instead fetch them from the feeder gateway",
+        env = "PATHFINDER_SYNC_FETCH_CASM_FROM_FGW",
+        default_value = "false",
+        action=ArgAction::Set
+    )]
+    fetch_casm_from_fgw: bool,
+
+    #[arg(
+        long = "shutdown.grace-period",
+        value_name = "Seconds",
+        long_help = "Timeout duration for graceful shutdown after receiving a SIGINT or SIGTERM",
+        env = "PATHFINDER_SHUTDOWN_GRACE_PERIOD",
+        default_value = "10"
+    )]
+    shutdown_grace_period: std::num::NonZeroU64,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -280,10 +349,7 @@ impl Color {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
-pub enum RpcVersion {
-    V04,
-    V05,
-    V06,
+pub enum RootRpcVersion {
     V07,
 }
 
@@ -367,13 +433,14 @@ struct P2PCli {
     identity_config_file: Option<std::path::PathBuf>,
     #[arg(
         long = "p2p.listen-on",
-        long_help = "The multiaddress on which to listen for incoming p2p connections. If not \
-                     provided, default route on randomly assigned port will be used.",
-        value_name = "MULTIADDRESS",
+        long_help = "The list of multiaddresses on which to listen for incoming p2p connections. \
+                     If not provided, default route on randomly assigned port will be used.",
+        value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         default_value = "/ip4/0.0.0.0/tcp/0",
         env = "PATHFINDER_P2P_LISTEN_ON"
     )]
-    listen_on: Multiaddr,
+    listen_on: Vec<String>,
     #[arg(
         long = "p2p.bootstrap-addresses",
         long_help = r#"Comma separated list of multiaddresses to use as bootstrap nodes. Each multiaddress must contain a peer ID.
@@ -381,6 +448,7 @@ struct P2PCli {
 Example:
     '/ip4/127.0.0.1/9001/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN,/ip4/127.0.0.1/9002/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaN'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_BOOTSTRAP_ADDRESSES"
     )]
     bootstrap_addresses: Vec<String>,
@@ -392,6 +460,7 @@ Example:
 Example:
     '/ip4/127.0.0.1/9003/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaP,/ip4/127.0.0.1/9004/p2p/12D3KooWBEkKyufuqCMoZLRhVzq4xdHxVWhhYeBpjw92GSyZ6xaR'"#,
         value_name = "MULTIADDRESS_LIST",
+        value_delimiter = ',',
         env = "PATHFINDER_P2P_PREDEFINED_PEERS"
     )]
     predefined_peers: Vec<String>,
@@ -424,17 +493,6 @@ Example:
     max_outbound_connections: u32,
 
     #[arg(
-        long = "p2p.low-watermark",
-        long_help = "The minimum number of outbound peers to maintain. If the number of outbound \
-                     peers drops below this number, the node will attempt to connect to more \
-                     peers.",
-        value_name = "LOW_WATERMARK",
-        env = "PATHFINDER_LOW_WATERMARK",
-        default_value = "20"
-    )]
-    low_watermark: u32,
-
-    #[arg(
         long = "p2p.ip-whitelist",
         long_help = "Comma separated list of IP addresses or IP address ranges (in CIDR) to \
                      whitelist for incoming connections. If not provided, all incoming \
@@ -445,6 +503,63 @@ Example:
         env = "IP_WHITELIST"
     )]
     ip_whitelist: Vec<IpNet>,
+
+    #[arg(
+        long = "p2p.experimental.kad-name",
+        long_help = "Custom Kademlia protocol name.",
+        value_name = "PROTOCOL_NAME",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_KAD_NAME"
+    )]
+    kad_name: Option<String>,
+
+    #[arg(
+        long = "p2p.experimental.l1-checkpoint-override-json-path",
+        long_help = "Override L1 sync checkpoint retrieved from the Ethereum API. This option \
+                     points to a json encoded file containing an L1 checkpoint from which \
+                     pathfinder will sync backwards till genesis before switching to syncing \
+                     forward and following the head of the chain. Example contents: { \
+                     \"block_hash\": \"0x1\", \"block_number\": 2, \"state_root\": \"0x3\" }",
+        value_name = "JSON_FILE",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_L1_CHECKPOINT_OVERRIDE"
+    )]
+    l1_checkpoint_override: Option<String>,
+
+    #[arg(
+        long = "p2p.experimental.stream-timeout",
+        long_help = "Timeout of the request/response-stream protocol.",
+        value_name = "SECONDS",
+        default_value = "60",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
+    )]
+    stream_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.max-concurrent-streams",
+        long_help = "Maximum allowed number of concurrent streams per each \
+                     request/response-stream protocol per connection.",
+        value_name = "LIMIT",
+        default_value = "1",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
+    )]
+    max_concurrent_streams: usize,
+
+    #[arg(
+        long = "p2p.experimental.direct-connection-timeout",
+        long_help = "A direct (not relayed) peer can only connect once in this period.",
+        value_name = "SECONDS",
+        default_value = "30",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_DIRECT_CONNECTION_TIMEOUT"
+    )]
+    direct_connection_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.eviction-timeout",
+        long_help = "How long to prevent evicted peers from reconnecting.",
+        value_name = "SECONDS",
+        default_value = "900",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_EVICTION_TIMEOUT"
+    )]
+    eviction_timeout: u32,
 }
 
 #[cfg(feature = "p2p")]
@@ -557,20 +672,52 @@ enum RpcCorsDomainsParseError {
     WildcardAmongOtherValues,
 }
 
+fn parse_versioned_constants(
+    path: PathBuf,
+) -> Result<VersionedConstants, ParseVersionedConstantsError> {
+    let file = File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let versioned_constants = serde_json::from_reader(reader)?;
+
+    Ok(versioned_constants)
+}
+
+pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstants {
+    use clap::error::ErrorKind;
+
+    match parse_versioned_constants(path) {
+        Ok(versioned_constants) => versioned_constants,
+        Err(error) => Cli::command()
+            .error(ErrorKind::ValueValidation, error)
+            .exit(),
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ParseVersionedConstantsError {
+    #[error("IO error while reading versioned constants: {0}.")]
+    Io(#[from] std::io::Error),
+    #[error("Parse error while loading versioned constants: {0}.")]
+    Parse(#[from] serde_json::Error),
+}
+
 pub struct Config {
     pub data_directory: PathBuf,
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
-    pub rpc_root_version: RpcVersion,
+    pub rpc_root_version: RootRpcVersion,
     pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroUsize,
-    pub poll_interval: std::time::Duration,
+    pub poll_interval: Duration,
+    pub l1_poll_interval: Duration,
     pub color: Color,
+    pub log_output_json: bool,
+    pub disable_version_update_check: bool,
     pub p2p: P2PConfig,
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
@@ -579,10 +726,14 @@ pub struct Config {
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
     pub gateway_timeout: Duration,
-    pub event_bloom_filter_cache_size: NonZeroUsize,
+    pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
+    pub custom_versioned_constants: Option<VersionedConstants>,
+    pub feeder_gateway_fetch_concurrency: NonZeroUsize,
+    pub fetch_casm_from_fgw: bool,
+    pub shutdown_grace_period: Duration,
 }
 
 pub struct Ethereum {
@@ -607,14 +758,19 @@ pub enum NetworkConfig {
 pub struct P2PConfig {
     pub proxy: bool,
     pub identity_config_file: Option<std::path::PathBuf>,
-    pub listen_on: Multiaddr,
+    pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
     pub predefined_peers: Vec<Multiaddr>,
     pub max_inbound_direct_connections: usize,
     pub max_inbound_relayed_connections: usize,
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
-    pub low_watermark: usize,
+    pub kad_name: Option<String>,
+    pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
+    pub stream_timeout: Duration,
+    pub max_concurrent_streams: usize,
+    pub direct_connection_timeout: Duration,
+    pub eviction_timeout: Duration,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -623,7 +779,7 @@ pub struct P2PConfig;
 
 pub struct DebugConfig {
     pub pretty_log: bool,
-    pub restart_delay: std::time::Duration,
+    pub restart_delay: Duration,
 }
 
 impl NetworkConfig {
@@ -689,14 +845,14 @@ impl P2PConfig {
         use clap::error::ErrorKind;
         use p2p::libp2p::multiaddr::Result;
 
-        let parse_multiaddr_vec = |multiaddrs: Vec<String>| -> Vec<Multiaddr> {
+        let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
             multiaddrs
                 .into_iter()
                 .map(|addr| Multiaddr::from_str(&addr))
                 .collect::<Result<Vec<_>>>()
                 .unwrap_or_else(|error| {
                     Cli::command()
-                        .error(ErrorKind::ValueValidation, error)
+                        .error(ErrorKind::ValueValidation, format!("{field}: {error}"))
                         .exit()
                 })
         };
@@ -719,14 +875,29 @@ impl P2PConfig {
                 .exit()
         }
 
-        if args.low_watermark > args.max_outbound_connections {
+        // The low watermark is defined in `bootstrap_on_low_peers`
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+        // as the K value of 20
+        // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/lib.rs#L93
+        if args.max_outbound_connections <= 20 {
             Cli::command()
                 .error(
                     ErrorKind::ValueValidation,
-                    "p2p.low-watermark must be less than or equal to p2p.max_outbound_connections",
+                    "p2p.max-outbound-connections must be at least 21",
                 )
                 .exit()
         }
+
+        if args.kad_name.iter().any(|x| !x.starts_with('/')) {
+            Cli::command()
+                .error(
+                    ErrorKind::ValueValidation,
+                    "each item in p2p.experimental.kad-names must start with '/'",
+                )
+                .exit()
+        }
+
+        let l1_checkpoint_override = parse_l1_checkpoint_or_exit(args.l1_checkpoint_override);
 
         Self {
             max_inbound_direct_connections: args.max_inbound_direct_connections.try_into().unwrap(),
@@ -737,13 +908,56 @@ impl P2PConfig {
             max_outbound_connections: args.max_outbound_connections.try_into().unwrap(),
             proxy: args.proxy,
             identity_config_file: args.identity_config_file,
-            listen_on: args.listen_on,
-            bootstrap_addresses: parse_multiaddr_vec(args.bootstrap_addresses),
-            predefined_peers: parse_multiaddr_vec(args.predefined_peers),
+            listen_on: parse_multiaddr_vec("p2p.listen-on", args.listen_on),
+            bootstrap_addresses: parse_multiaddr_vec(
+                "p2p.bootstrap-addresses",
+                args.bootstrap_addresses,
+            ),
+            predefined_peers: parse_multiaddr_vec("p2p.predefined-peers", args.predefined_peers),
             ip_whitelist: args.ip_whitelist,
-            low_watermark: 0,
+            kad_name: args.kad_name,
+            l1_checkpoint_override,
+            stream_timeout: Duration::from_secs(args.stream_timeout.into()),
+            max_concurrent_streams: args.max_concurrent_streams,
+            direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
+            eviction_timeout: Duration::from_secs(args.eviction_timeout.into()),
         }
     }
+}
+
+#[cfg(feature = "p2p")]
+fn parse_l1_checkpoint_or_exit(
+    l1_checkpoint_override: Option<String>,
+) -> Option<pathfinder_ethereum::EthereumStateUpdate> {
+    use clap::error::ErrorKind;
+    use pathfinder_common::{BlockHash, BlockNumber, StateCommitment};
+
+    #[derive(serde::Deserialize)]
+    struct Dto {
+        state_root: StateCommitment,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+    }
+
+    fn exit_now(e: impl std::fmt::Display) {
+        Cli::command()
+            .error(
+                ErrorKind::ValueValidation,
+                format!("p2p.experimental.l1-checkpoint-override: {e}"),
+            )
+            .exit()
+    }
+
+    l1_checkpoint_override.map(|f| {
+        // SAFETY: unwraps are safe because we exit the process on error
+        let f = std::fs::File::open(f).map_err(exit_now).unwrap();
+        let dto: Dto = serde_json::from_reader(f).map_err(exit_now).unwrap();
+        pathfinder_ethereum::EthereumStateUpdate {
+            state_root: dto.state_root,
+            block_number: dto.block_number,
+            block_hash: dto.block_hash,
+        }
+    })
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -751,7 +965,7 @@ impl DebugConfig {
     fn parse(_: ()) -> Self {
         Self {
             pretty_log: false,
-            restart_delay: std::time::Duration::from_secs(60),
+            restart_delay: Duration::from_secs(60),
         }
     }
 }
@@ -761,7 +975,7 @@ impl DebugConfig {
     fn parse(args: DebugCli) -> Self {
         Self {
             pretty_log: args.pretty_log,
-            restart_delay: std::time::Duration::from_secs(args.restart_delay),
+            restart_delay: Duration::from_secs(args.restart_delay),
         }
     }
 }
@@ -792,7 +1006,10 @@ impl Config {
             },
             max_rpc_connections: cli.max_rpc_connections,
             poll_interval: Duration::from_secs(cli.poll_interval.get()),
+            l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
+            log_output_json: cli.log_output_json,
+            disable_version_update_check: cli.disable_version_update_check,
             p2p: P2PConfig::parse_or_exit(cli.p2p),
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
@@ -800,12 +1017,18 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
-            event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
+            event_filter_cache_size: cli.event_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_uncached_bloom_filters_to_load: cli
-                .get_events_max_uncached_bloom_filters_to_load,
+            get_events_max_uncached_event_filters_to_load: cli
+                .get_events_max_uncached_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
+            feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,
+            custom_versioned_constants: cli
+                .custom_versioned_constants_path
+                .map(parse_versioned_constants_or_exit),
+            fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
+            shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
         }
     }
 }
@@ -844,8 +1067,10 @@ pub struct WebsocketConfig {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
+
     use super::{AllowedOrigins, RpcCorsDomainsParseError};
-    use crate::config::parse_cors;
+    use crate::config::{parse_cors, ParseVersionedConstantsError};
 
     #[test]
     fn parse_cors_domains() {
@@ -920,5 +1145,30 @@ mod tests {
                 "input: {input:?}"
             )
         });
+    }
+
+    #[test]
+    fn parse_versioned_constants_fails_if_file_not_found() {
+        assert_matches!(
+            super::parse_versioned_constants("./nonexistent_versioned_constants.json".into()).unwrap_err(),
+            ParseVersionedConstantsError::Io(err) => assert_eq!(err.kind(), std::io::ErrorKind::NotFound)
+        );
+    }
+
+    #[test]
+    fn parse_versioned_constants_fails_on_parse_error() {
+        assert_matches!(
+            super::parse_versioned_constants("resources/invalid_versioned_constants.json".into())
+                .unwrap_err(),
+            ParseVersionedConstantsError::Parse(_)
+        )
+    }
+
+    #[test]
+    fn parse_versioned_constants_success() {
+        super::parse_versioned_constants(
+            "../executor/resources/versioned_constants_13_1_1.json".into(),
+        )
+        .unwrap();
     }
 }

@@ -9,15 +9,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
+
+### Removed
+
+- `storage_commitment` and `class_commitment` fields from the `pathfinder_subscribe_newHeads` method response.
+- `class_commitment` from the `pathfinder_getProof` and `pathfinder_getClassProof` method responses.
+
+### Fixed
+
+- `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.
+- `starknet_getStorageProof` returns `StorageProofNotSupported` (42) when Pathfinder is in `archive` mode and queried block's tries are empty.
+- `starknet_syncing` returns `u64::MAX` as the starting block number when starting from scratch.
+
+### Changed
+
+- Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
+
+## [0.15.2] - 2024-12-04
+
+### Fixed
+
+- Pathfinder fails to properly do a reorg due to a SQL statement referring a table that does not exist.
+- `--rpc.get-events-max-uncached-bloom-filters-to-load` setting is ineffective.
+
+## [0.15.1] - 2024-12-02
+
+### Fixed
+
+- `starknet_getBlockWithReceipts` returns `transaction_hash` within the `transaction` object making the response not strictly spec compliant. Fixed on the JSON-RPC 0.8 interface.
+- JSON-RPC 0.7 methods returning block headers are including the `l2_gas` property.
+
+### Changed
+
+- Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
+
+
+## [0.15.0] - 2024-11-21
+
+### Added
+
+- Pathfinder now fetches data concurrently from the feeder gateway when catching up. The `--gateway.fetch-concurrency` CLI option can be used to limit how many blocks are fetched concurrently (the default is 8).
+- `--disable-version-update-check` CLI option has been added to disable the periodic checking for a new version.
+- Add `pathfinder_getClassProof` endpoint to retrieve the Merkle proof of any class hash in the class trie.
+- add `process_start_time_seconds` metric showing the unix timestamp when the process started.
+- `--log-output-json` CLI option has been added to output the Pathfinder log in line-delimited JSON.
+- Preliminary support has been added for the new JSON-RPC 0.8.0-rc1 specification.
+
+### Changed
+
+- Ethereum RPC API now requires Websocket endpoints (prev. HTTP). If an HTTP url is provided instead, Pathfinder will attempt to connect vía Websocket protocol at that same url.
+- JSON-RPC 0.4.0 and 0.5.0 API support has been removed.
+- JSON-RPC API version 0.7 is now served by default on the `/` path.
+
+### Fixed
+
+- `starknet_getBlockWithTxs` works with empty blocks`
+
+## [0.14.5] - 2024-12-02
+
+### Fixed
+
+- Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
+
+## [0.14.4] - 2024-10-03
+
+### Fixed
+
+- Pathfinder stops syncing Sepolia testnet at block 218484 because of a block hash mismatch.
+
+## [0.14.3] - 2024-09-23
+
+### Fixed
+
+- Pathfinder occasionally corrupts its Merkle trie storage during reorgs and then stops later with a "Node X at height Y is missing" or "Stored node's hash is missing" error.
+
+## [0.14.2] - 2024-09-03
+
+### Fixed
+
+- Pathfinder sometimes returns an INVALID_CONTINUATION_TOKEN error when requesting events from the pending block and providing a continuation token.
+- `starknet_getEvents` incorrectly returns pending events if `from_block` is greater than latest_block_number + 1.
+- `starknet_getEvents` incorrectly does not return pending events if `from_block` is `pending` and `to_block` is missing.
+
+### Added
+
+- `--sync.l1-poll-interval` CLI option has been added to set the poll interval for L1 state. Defaults to 30s.
+- Support for Starknet 0.13.2.1.
+
+## [0.14.1] - 2024-07-29
+
+### Fixed
+
+- Pathfinder does not properly limit the number of concurrent executors when using the `--rpc.execution-concurrency` CLI option.
+- Pathfinder returns non-conforming `STRUCT_ABI_ENTRY` objects in response to `starknet_getClass` requests.
+- Pathfinder returns `starknet_getStateUpdate` responses that are non-conformant with the specification if there are replaced classes in the response.
+
+## [0.14.0] - 2024-07-22
+
+### Added
+
+- Support for Starknet v0.13.2.
+- Pathfinder now creates a new directory if the database path specified does not exist.
+- Pathfinder now has a CLI option (`--rpc.custom-versioned-constants-json-path`) to allow loading a custom versioned constants JSON file. When specified the contents of the file is then used instead of the _latest_ constants built into the blockifier crate during execution of Cairo code.
+
+### Fixed
+
+- Pathfinder exits with an error when detecting a one-block reorg if `--storage.state-tries` is set to `0`.
+- Pathfinder returns an internal error for `starknet_getTransactionReceipt` requests where `steps` would be zero in COMPUTATION_RESOURCES.
+
+## [0.13.2] - 2024-06-24
+
+### Fixed
+
+- `starknet_getTransactionReceipt` responses are missing the `payload` property in `MSG_TO_L1` objects on the JSON-RPC 0.7 interface.
+- `starknet_traceTransaction` and `starknet_traceBlockTransactions` returns L2 to L1 messages from inner calls duplicated.
+
+## [0.13.1] - 2024-06-19
+
+### Fixed
+
+- `starknet_getTransactionReceipt` responses are not compliant with the JSON-RPC specification:
+  - L1 handler receipts throw an internal error
+  - `execution_status` and `revert_reason` properties are missing
+
+## [0.13.0] - 2024-06-18
+
 ### Fixed
 
 - `starknet_getBlockWithTxHashes` and `starknet_getBlockWithTxs` returns the pending block with a `status` property that's not in the JSON-RPC specification. This has been fixed for the JSON-RPC 0.7 API endpoint.
+- `starknet_traceBlockTransactions` and `starknet_traceTransaction` now falls back to fetching the trace from the feeder gateway for all blocks before Starknet 0.13.1.1.
 
 ### Added
 
 - `/ready/synced` endpoint to check if the JSON RPC API is ready _and_ also check if the node is synced. Useful for Docker nodes which only want to be available after syncing.
 - Websocket endpoints now serve all JSON-RPC methods, not just `pathfinder_subscribe` and `pathfinder_unsubscribe`. Version-specific endpoints have been added for the 0.6 and 0.7 JSON-RPC API and the Pathfinder extension API.
-- Websocket endpoint for subscribing to events.
+- Websocket endpoint for subscribing to events and transaction status changes.
+
+### Changed
+
+- Improved compactness of transaction and nonce data, resulting in noticeable storage savings.
 
 ## [0.12.0] - 2024-04-23
 
@@ -76,18 +209,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_getTransactionStatus` reports gateway errors as `TxnNotFound`. These are now reported as internal errors.
 - Sync process leaves a zombie task behind each time it restarts, wasting resources.
+- `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
+- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for 
+  a gateway response. These instead now use a much longer timeout.
 
 ### Changed
 
 - Default sync poll reduced from 5s to 2s. This is more appropriate given the lower block times on mainnet.
-
-## [0.11.2] - 2024-03-07
-
-### Fixed
-
-- `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
-- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for 
-  a gateway response. These instead now use a much longer timeout.
 
 ## [0.11.1] - 2024-03-01
 

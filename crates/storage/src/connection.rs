@@ -1,9 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 mod block;
 mod class;
 mod ethereum;
-mod event;
+pub mod event;
 mod reference;
 mod reorg_counter;
 mod signature;
@@ -11,12 +11,12 @@ mod state_update;
 pub(crate) mod transaction;
 mod trie;
 
+use event::RunningEventFilter;
 pub use event::{
     EmittedEvent,
-    EventFilter,
+    EventConstraints,
     EventFilterError,
     PageOfEvents,
-    KEY_FILTER_LIMIT as EVENT_KEY_FILTER_LIMIT,
     PAGE_SIZE_LIMIT as EVENT_PAGE_SIZE_LIMIT,
 };
 use pathfinder_common::event::Event;
@@ -28,23 +28,28 @@ pub(crate) use reorg_counter::ReorgCounter;
 pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
 
+use crate::bloom::AggregateBloomCache;
+
 type PooledConnection = r2d2::PooledConnection<r2d2_sqlite::SqliteConnectionManager>;
 
 pub struct Connection {
     connection: PooledConnection,
-    bloom_filter_cache: Arc<crate::bloom::Cache>,
+    event_filter_cache: Arc<AggregateBloomCache>,
+    running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
 
 impl Connection {
     pub(crate) fn new(
         connection: PooledConnection,
-        bloom_filter_cache: Arc<crate::bloom::Cache>,
+        event_filter_cache: Arc<AggregateBloomCache>,
+        running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
     ) -> Self {
         Self {
             connection,
-            bloom_filter_cache,
+            event_filter_cache,
+            running_event_filter,
             trie_prune_mode,
         }
     }
@@ -53,7 +58,8 @@ impl Connection {
         let tx = self.connection.transaction()?;
         Ok(Transaction {
             transaction: tx,
-            bloom_filter_cache: self.bloom_filter_cache.clone(),
+            event_filter_cache: self.event_filter_cache.clone(),
+            running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
     }
@@ -65,7 +71,8 @@ impl Connection {
         let tx = self.connection.transaction_with_behavior(behavior)?;
         Ok(Transaction {
             transaction: tx,
-            bloom_filter_cache: self.bloom_filter_cache.clone(),
+            event_filter_cache: self.event_filter_cache.clone(),
+            running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
         })
     }
@@ -73,7 +80,8 @@ impl Connection {
 
 pub struct Transaction<'inner> {
     transaction: rusqlite::Transaction<'inner>,
-    bloom_filter_cache: Arc<crate::bloom::Cache>,
+    event_filter_cache: Arc<AggregateBloomCache>,
+    running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
 }
 
@@ -92,7 +100,7 @@ type TransactionDataForBlock = (StarknetTransaction, Receipt, Vec<Event>);
 
 type EventsForBlock = (TransactionHash, Vec<Event>);
 
-impl<'inner> Transaction<'inner> {
+impl Transaction<'_> {
     // The implementations here are intentionally kept as simple wrappers. This lets
     // the real implementations be kept in separate files with more reasonable
     // LOC counts and easier test oversight.
@@ -103,5 +111,17 @@ impl<'inner> Transaction<'inner> {
 
     pub fn commit(self) -> anyhow::Result<()> {
         Ok(self.transaction.commit()?)
+    }
+
+    pub fn trie_pruning_enabled(&self) -> bool {
+        matches!(self.trie_prune_mode, TriePruneMode::Prune { .. })
+    }
+
+    /// Resets the [`Storage`](crate::Storage) state. Required after each reorg.
+    pub fn reset(&self) -> anyhow::Result<()> {
+        self.rebuild_running_event_filter()?;
+        self.event_filter_cache.reset();
+
+        Ok(())
     }
 }

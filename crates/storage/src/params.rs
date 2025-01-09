@@ -23,10 +23,12 @@ use pathfinder_common::{
     EventKey,
     Fee,
     GasPrice,
+    L1BlockNumber,
     L1DataAvailabilityMode,
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
+    ReceiptCommitment,
     SequencerAddress,
     SierraHash,
     StarknetVersion,
@@ -108,6 +110,7 @@ to_sql_felt!(
     L1ToL2MessageNonce,
     L1ToL2MessagePayloadElem,
     L2ToL1MessagePayloadElem,
+    ReceiptCommitment,
     SequencerAddress,
     SierraHash,
     TransactionHash,
@@ -122,6 +125,7 @@ to_sql_felt!(
 to_sql_compressed_felt!(ContractNonce, StorageValue, TransactionNonce);
 
 to_sql_int!(BlockNumber, BlockTimestamp);
+to_sql_int!(L1BlockNumber);
 
 to_sql_builtin!(
     String,
@@ -129,6 +133,7 @@ to_sql_builtin!(
     Vec<u8>,
     &[u8],
     isize,
+    usize,
     i64,
     i32,
     i16,
@@ -192,18 +197,11 @@ pub trait RowExt {
         Ok(self.get_optional_felt(index)?.map(CasmHash))
     }
 
-    fn get_optional_storage_commitment<Index: RowIndex>(
+    fn get_optional_state_commitment<Index: RowIndex>(
         &self,
         index: Index,
-    ) -> rusqlite::Result<Option<StorageCommitment>> {
-        Ok(self.get_optional_felt(index)?.map(StorageCommitment))
-    }
-
-    fn get_optional_class_commitment<Index: RowIndex>(
-        &self,
-        index: Index,
-    ) -> rusqlite::Result<Option<ClassCommitment>> {
-        Ok(self.get_optional_felt(index)?.map(ClassCommitment))
+    ) -> rusqlite::Result<Option<StateCommitment>> {
+        Ok(self.get_optional_felt(index)?.map(StateCommitment))
     }
 
     fn get_block_number<Index: RowIndex>(&self, index: Index) -> rusqlite::Result<BlockNumber> {
@@ -261,16 +259,6 @@ pub trait RowExt {
         Ok(self
             .get_optional_felt(index)?
             .map(EventCommitment)
-            .unwrap_or_default())
-    }
-
-    fn get_class_commitment<Index: RowIndex>(
-        &self,
-        index: Index,
-    ) -> rusqlite::Result<ClassCommitment> {
-        Ok(self
-            .get_optional_felt(index)?
-            .map(ClassCommitment)
             .unwrap_or_default())
     }
 
@@ -352,7 +340,6 @@ pub trait RowExt {
     row_felt_wrapper!(get_class_hash, ClassHash);
     row_felt_wrapper!(get_state_commitment, StateCommitment);
     row_felt_wrapper!(get_state_diff_commitment, StateDiffCommitment);
-    row_felt_wrapper!(get_storage_commitment, StorageCommitment);
     row_felt_wrapper!(get_sequencer_address, SequencerAddress);
     row_felt_wrapper!(get_contract_root, ContractRoot);
     row_felt_wrapper!(get_contract_nonce, ContractNonce);
@@ -364,9 +351,10 @@ pub trait RowExt {
         get_block_commitment_signature_elem,
         BlockCommitmentSignatureElem
     );
+    row_felt_wrapper!(get_receipt_commitment, ReceiptCommitment);
 }
 
-impl<'a> RowExt for &rusqlite::Row<'a> {
+impl RowExt for &rusqlite::Row<'_> {
     fn get_blob<I: RowIndex>(&self, index: I) -> rusqlite::Result<&[u8]> {
         self.get_ref(index)?.as_blob().map_err(|e| e.into())
     }

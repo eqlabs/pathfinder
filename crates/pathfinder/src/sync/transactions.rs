@@ -2,38 +2,51 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p::client::peer_agnostic::{self, UnverifiedTransactionData};
+use p2p::client::types::TransactionData;
+use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::receipt::Receipt;
-use pathfinder_common::transaction::{Transaction, TransactionVariant};
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    DeployTransactionV0,
+    DeployTransactionV1,
+    Transaction,
+    TransactionVariant,
+};
 use pathfinder_common::{
     BlockHeader,
     BlockNumber,
+    CallParam,
     ChainId,
+    ContractAddress,
+    StarknetVersion,
     TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_storage::Storage;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 
-use super::error::{SyncError, SyncError2};
+use super::error::SyncError;
+use super::storage_adapters;
 use super::stream::ProcessStage;
-use crate::state::block_hash::{
-    calculate_transaction_commitment,
-    TransactionCommitmentFinalHashType,
-};
+use crate::state::block_hash::calculate_transaction_commitment;
 
 /// For a single block
 #[derive(Clone, Debug)]
 pub struct UnverifiedTransactions {
     pub expected_commitment: TransactionCommitment,
     pub transactions: Vec<(Transaction, Receipt)>,
+    pub version: StarknetVersion,
+    pub block_number: BlockNumber,
 }
 
 pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -51,95 +64,113 @@ pub(super) async fn next_missing(
     .context("Joining blocking task")?
 }
 
-pub(super) fn counts_and_commitments_stream(
+pub(super) fn get_counts(
+    db: pathfinder_storage::Transaction<'_>,
+    start: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> anyhow::Result<VecDeque<usize>> {
+    db.transaction_counts(start, batch_size)
+        .context("Querying transaction counts")
+}
+
+pub(super) fn counts_stream(
     storage: Storage,
     mut start: BlockNumber,
-    stop_inclusive: BlockNumber,
-) -> impl futures::Stream<Item = anyhow::Result<(usize, TransactionCommitment)>> {
-    const BATCH_SIZE: usize = 1000;
-
-    async_stream::try_stream! {
-        let mut batch = VecDeque::new();
-
-        while start <= stop_inclusive {
-            if let Some(counts) = batch.pop_front() {
-                yield counts;
-                continue;
-            }
-
-            let batch_size = NonZeroUsize::new(
-                BATCH_SIZE.min(
-                    (stop_inclusive.get() - start.get() + 1)
-                        .try_into()
-                        .expect("ptr size is 64bits"),
-                ),
-            )
-            .expect(">0");
-            let storage = storage.clone();
-
-            batch = tokio::task::spawn_blocking(move || {
-                let mut db = storage
-                    .connection()
-                    .context("Creating database connection")?;
-                let db = db.transaction().context("Creating database transaction")?;
-                db.transaction_counts_and_commitments(start.into(), batch_size)
-                    .context("Querying transaction counts")
-            })
-            .await
-            .context("Joining blocking task")??;
-
-            if batch.is_empty() {
-                Err(anyhow::anyhow!(
-                    "No transaction counts found for range: start {start}, batch_size: {batch_size}"
-                ))?;
-                break;
-            }
-
-            start += batch.len().try_into().expect("ptr size is 64bits");
-        }
-
-        while let Some(counts) = batch.pop_front() {
-            yield counts;
-        }
-    }
+    stop: BlockNumber,
+    batch_size: NonZeroUsize,
+) -> impl futures::Stream<Item = anyhow::Result<usize>> {
+    storage_adapters::counts_stream(storage, start, stop, batch_size, get_counts)
 }
 
 pub struct CalculateHashes(pub ChainId);
 
 impl ProcessStage for CalculateHashes {
     const NAME: &'static str = "Transactions::Hashes";
-    type Input = UnverifiedTransactionData;
+    type Input = (
+        TransactionData,
+        BlockNumber,
+        StarknetVersion,
+        TransactionCommitment,
+    );
     type Output = UnverifiedTransactions;
 
-    fn map(&mut self, td: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, input: Self::Input) -> Result<Self::Output, SyncError> {
         use rayon::prelude::*;
-        let UnverifiedTransactionData {
-            expected_commitment,
-            transactions,
-        } = td;
+
+        let (transactions, block_number, version, expected_commitment) = input;
+
         let transactions = transactions
             .into_par_iter()
-            .map(|(tv, r)| {
-                let transaction_hash = tv.calculate_hash(self.0, false);
-                let transaction = Transaction {
-                    hash: transaction_hash,
-                    variant: tv,
-                };
-                let receipt = Receipt {
-                    actual_fee: r.actual_fee,
-                    execution_resources: r.execution_resources,
-                    l2_to_l1_messages: r.l2_to_l1_messages,
-                    execution_status: r.execution_status,
-                    transaction_hash,
-                    transaction_index: r.transaction_index,
-                };
-                (transaction, receipt)
+            .map(|(mut tx, r)| {
+                // Contract address for deploy and deploy account transactions is not propagated via p2p
+                tx.variant.calculate_contract_address();
+
+                let computed_hash = tx.variant.calculate_hash(self.0, false);
+                if tx.hash != computed_hash {
+                    tracing::debug!(%peer, %block_number, expected_hash=%tx.hash, %computed_hash, "Transaction hash mismatch");
+                    Err(SyncError::BadTransactionHash(*peer))
+                } else {
+                    let receipt = Receipt {
+                        actual_fee: r.actual_fee,
+                        execution_resources: r.execution_resources,
+                        l2_to_l1_messages: r.l2_to_l1_messages,
+                        execution_status: r.execution_status,
+                        transaction_hash: computed_hash,
+                        transaction_index: r.transaction_index,
+                    };
+                    Ok((tx, receipt))
+                }
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
+
         Ok(UnverifiedTransactions {
             expected_commitment,
             transactions,
+            version,
+            block_number,
         })
+    }
+}
+
+pub struct FetchCommitmentFromDb<T> {
+    db: pathfinder_storage::Connection,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T> FetchCommitmentFromDb<T> {
+    pub fn new(db: pathfinder_storage::Connection) -> Self {
+        Self {
+            db,
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T> ProcessStage for FetchCommitmentFromDb<T> {
+    const NAME: &'static str = "Transactions::FetchCommitmentFromDb";
+    type Input = (T, BlockNumber);
+    type Output = (T, BlockNumber, StarknetVersion, TransactionCommitment);
+
+    fn map(
+        &mut self,
+        _: &PeerId,
+        (data, block_number): Self::Input,
+    ) -> Result<Self::Output, SyncError> {
+        let mut db = self
+            .db
+            .transaction()
+            .context("Creating database transaction")?;
+        let version = db
+            .block_version(block_number)
+            .context("Fetching starknet version")?
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Starknet version not found in db")?;
+        let commitment = db
+            .transaction_commitment(block_number)
+            .context("Fetching transaction commitment")?
+            // This block header is supposed to be in the database so this is a fatal error
+            .context("Transaction commitment not found in db")?;
+        Ok((data, block_number, version, commitment))
     }
 }
 
@@ -150,16 +181,22 @@ impl ProcessStage for VerifyCommitment {
     type Input = UnverifiedTransactions;
     type Output = Vec<(Transaction, Receipt)>;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, peer: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let UnverifiedTransactions {
             expected_commitment,
             transactions,
+            version,
+            block_number,
         } = transactions;
+
         let txs: Vec<_> = transactions.iter().map(|(t, _)| t.clone()).collect();
-        let actual =
-            calculate_transaction_commitment(&txs, TransactionCommitmentFinalHashType::Normal)?;
+        // This computation can only fail in case of internal trie error which is always
+        // a fatal error
+        let actual = calculate_transaction_commitment(&txs, version.max(StarknetVersion::V_0_13_2))
+            .context("Computing transaction commitment")?;
         if actual != expected_commitment {
-            return Err(SyncError2::TransactionCommitmentMismatch);
+            tracing::debug!(%peer, %block_number, %expected_commitment, actual_commitment=%actual, "Transaction commitment mismatch");
+            return Err(SyncError::TransactionCommitmentMismatch(*peer));
         }
         Ok(transactions)
     }
@@ -184,7 +221,7 @@ impl ProcessStage for Store {
     type Input = Vec<(Transaction, Receipt)>;
     type Output = BlockNumber;
 
-    fn map(&mut self, transactions: Self::Input) -> Result<Self::Output, SyncError2> {
+    fn map(&mut self, _: &PeerId, transactions: Self::Input) -> Result<Self::Output, SyncError> {
         let mut db = self
             .db
             .transaction()

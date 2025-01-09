@@ -4,7 +4,7 @@ use starknet_gateway_types::error::{KnownStarknetErrorCode, SequencerError};
 
 use crate::context::RpcContext;
 use crate::felt::{RpcFelt, RpcFelt251};
-use crate::v02::types::request::{
+use crate::types::request::{
     BroadcastedDeployAccountTransaction,
     BroadcastedDeployAccountTransactionV1,
 };
@@ -22,6 +22,12 @@ pub struct AddDeployAccountTransactionInput {
     deploy_account_transaction: Transaction,
 }
 
+impl crate::dto::DeserializeForVersion for AddDeployAccountTransactionInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize()
+    }
+}
+
 #[serde_with::serde_as]
 #[derive(serde::Serialize, Debug, PartialEq, Eq)]
 pub struct AddDeployAccountTransactionOutput {
@@ -35,7 +41,7 @@ pub struct AddDeployAccountTransactionOutput {
 pub enum AddDeployAccountTransactionError {
     ClassHashNotFound,
     InvalidTransactionNonce,
-    InsufficientMaxFee,
+    InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
     DuplicateTransaction,
@@ -50,7 +56,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
         match value {
             ClassHashNotFound => Self::ClassHashNotFound,
             InvalidTransactionNonce => Self::InvalidTransactionNonce,
-            InsufficientMaxFee => Self::InsufficientMaxFee,
+            InsufficientResourcesForValidate => Self::InsufficientResourcesForValidate,
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
             ValidationFailure(message) => Self::ValidationFailureV06(message),
             DuplicateTransaction => Self::DuplicateTransaction,
@@ -84,7 +90,7 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
                 AddDeployAccountTransactionError::InsufficientAccountBalance
             }
             SequencerError::StarknetError(e) if e.code == InsufficientMaxFee.into() => {
-                AddDeployAccountTransactionError::InsufficientMaxFee
+                AddDeployAccountTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
                 AddDeployAccountTransactionError::InvalidTransactionNonce
@@ -211,8 +217,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::v02::types::request::BroadcastedDeployAccountTransactionV3;
-    use crate::v02::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
+    use crate::dto::serialize::{self, SerializeForVersion};
+    use crate::types::request::BroadcastedDeployAccountTransactionV3;
+    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",
@@ -265,7 +272,9 @@ mod tests {
         let error = AddDeployAccountTransactionError::from(starknet_error);
         let error = crate::error::ApplicationError::from(error);
         let error = crate::jsonrpc::RpcError::from(error);
-        let error = serde_json::to_value(error).unwrap();
+        let error = error
+            .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         let expected = serde_json::json!({
             "code": 63,
@@ -348,6 +357,7 @@ mod tests {
                     max_amount: ResourceAmount(0),
                     max_price_per_unit: ResourcePricePerUnit(0),
                 },
+                l1_data_gas: None,
             },
             tip: Tip(0),
             paymaster_data: vec![],

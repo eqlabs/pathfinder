@@ -3,10 +3,19 @@ use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: BlockId,
+    block_id: pathfinder_common::BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+            })
+        })
+    }
 }
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
@@ -14,13 +23,13 @@ crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 #[derive(Debug)]
 pub struct Output(u64);
 
+/// Get the number of transactions in a block.
 pub async fn get_block_transaction_count(
     context: RpcContext,
     input: Input,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage
