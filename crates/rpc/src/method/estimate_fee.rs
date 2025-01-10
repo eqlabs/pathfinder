@@ -82,6 +82,8 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             pending,
             L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let skip_validate = input
@@ -171,15 +173,12 @@ impl From<EstimateFeeError> for ApplicationError {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(crate::dto::FeeEstimate),
-        )
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter().cloned())
     }
 }
 

@@ -9,7 +9,6 @@ use pathfinder_merkle_tree::{
     ContractsStorageTree,
     StorageCommitmentTree,
 };
-use serde::Serialize;
 
 use crate::context::RpcContext;
 
@@ -92,10 +91,22 @@ impl From<GetProofError> for crate::error::ApplicationError {
 }
 
 /// Utility struct used for serializing.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct PathWrapper {
     value: Felt,
     len: usize,
+}
+
+impl crate::dto::SerializeForVersion for PathWrapper {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("value", &self.value)?;
+        obj.serialize_field("len", &self.len)?;
+        obj.end()
+    }
 }
 
 /// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
@@ -103,60 +114,52 @@ struct PathWrapper {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProofNodes(Vec<TrieNode>);
 
-impl Serialize for ProofNodes {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::{SerializeSeq, SerializeStructVariant};
-        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
+impl crate::dto::SerializeForVersion for ProofNodes {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(|node| {
+                struct SerProofNode<'a>(&'a TrieNode);
 
-        for node in &self.0 {
-            struct SerProofNode<'a>(&'a TrieNode);
+                impl crate::dto::SerializeForVersion for SerProofNode<'_> {
+                    fn serialize(
+                        &self,
+                        serializer: crate::dto::Serializer,
+                    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                        let mut s = serializer.serialize_struct()?;
+                        match self.0 {
+                            TrieNode::Binary { left, right } => {
+                                s.serialize_field("type", &"binary")?;
+                                s.serialize_field("left", left)?;
+                                s.serialize_field("right", right)?;
+                            }
+                            TrieNode::Edge { child, path } => {
+                                let value = Felt::from_bits(path).unwrap();
+                                let path = PathWrapper {
+                                    value,
+                                    len: path.len(),
+                                };
 
-            impl Serialize for SerProofNode<'_> {
-                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: serde::Serializer,
-                {
-                    match self.0 {
-                        TrieNode::Binary { left, right } => {
-                            let mut state = serializer.serialize_struct_variant(
-                                "proof_node",
-                                0,
-                                "binary",
-                                2,
-                            )?;
-                            state.serialize_field("left", &left)?;
-                            state.serialize_field("right", &right)?;
-                            state.end()
+                                s.serialize_field("type", &"edge")?;
+                                s.serialize_field("path", &path)?;
+                                s.serialize_field("child", child)?;
+                            }
                         }
-                        TrieNode::Edge { child, path } => {
-                            let value = Felt::from_bits(path).unwrap();
-                            let path = PathWrapper {
-                                value,
-                                len: path.len(),
-                            };
-
-                            let mut state =
-                                serializer.serialize_struct_variant("proof_node", 1, "edge", 2)?;
-                            state.serialize_field("path", &path)?;
-                            state.serialize_field("child", &child)?;
-                            state.end()
-                        }
+                        s.end()
                     }
                 }
-            }
 
-            sequence.serialize_element(&SerProofNode(node))?;
-        }
-
-        sequence.end()
+                SerProofNode(node)
+            }),
+        )
     }
 }
 
 /// Holds the data and proofs for a specific contract.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ContractData {
     /// Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
@@ -172,6 +175,28 @@ pub struct ContractData {
 
     /// The proofs associated with the queried storage values
     storage_proofs: Vec<ProofNodes>,
+}
+
+impl crate::dto::SerializeForVersion for ContractData {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("class_hash", &self.class_hash)?;
+        obj.serialize_field("nonce", &self.nonce)?;
+        obj.serialize_field("root", &self.root)?;
+        obj.serialize_field(
+            "contract_state_hash_version",
+            &self.contract_state_hash_version,
+        )?;
+        obj.serialize_iter(
+            "storage_proofs",
+            self.storage_proofs.len(),
+            &mut self.storage_proofs.iter().cloned(),
+        )?;
+        obj.end()
+    }
 }
 
 /// Holds the membership/non-membership of a contract and its associated
@@ -191,11 +216,11 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
+impl crate::dto::SerializeForVersion for GetProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("state_commitment", self.state_commitment)?;
         serializer.serialize_field("contract_proof", &self.contract_proof)?;
@@ -210,11 +235,11 @@ pub struct GetClassProofOutput {
     class_proof: ProofNodes,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetClassProofOutput {
+impl crate::dto::SerializeForVersion for GetClassProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("class_proof", &self.class_proof)?;
         serializer.end()

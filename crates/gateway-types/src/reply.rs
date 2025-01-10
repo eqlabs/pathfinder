@@ -16,7 +16,8 @@ use pathfinder_common::{
     StateDiffCommitment,
     TransactionCommitment,
 };
-use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
+use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr, H256AsNoLeadingZerosHexStr};
+use primitive_types::H256;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 pub use transaction::DataAvailabilityMode;
@@ -31,6 +32,9 @@ pub struct Block {
 
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
+    // Introduced in v0.13.4
+    #[serde(default)]
+    pub l2_gas_price: Option<GasPrices>,
 
     pub parent_block_hash: BlockHash,
     /// Excluded in blocks prior to Starknet 0.8
@@ -314,21 +318,23 @@ pub mod transaction {
         pub builtin_instance_counter: BuiltinCounters,
         pub n_steps: u64,
         pub n_memory_holes: u64,
-        pub data_availability: Option<L1Gas>,
+        #[serde(default)]
+        pub data_availability: Option<Gas>,
         // Added in Starknet 0.13.2
-        pub total_gas_consumed: Option<L1Gas>,
+        #[serde(default)]
+        pub total_gas_consumed: Option<Gas>,
     }
 
     impl From<ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
         fn from(value: ExecutionResources) -> Self {
+            let (total_gas_consumed, l2_gas) = value.total_gas_consumed.unwrap_or_default().into();
             Self {
                 builtins: value.builtin_instance_counter.into(),
                 n_steps: value.n_steps,
                 n_memory_holes: value.n_memory_holes,
                 data_availability: value.data_availability.unwrap_or_default().into(),
-                total_gas_consumed: value.total_gas_consumed.unwrap_or_default().into(),
-                // TODO: Fix this when we have a way to get L2 gas from the gateway
-                l2_gas: Default::default(),
+                total_gas_consumed,
+                l2_gas,
             }
         }
     }
@@ -347,13 +353,18 @@ pub mod transaction {
 
     #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
-    pub struct L1Gas {
+    pub struct Gas {
         pub l1_gas: u128,
         pub l1_data_gas: u128,
+        /// Introduced in v0.13.4, ignored in
+        /// [`ExecutionResources::data_availability`], where it
+        /// was probably added by mistake on the fgw side.
+        #[serde(default)]
+        pub l2_gas: Option<u128>,
     }
 
-    impl From<L1Gas> for pathfinder_common::receipt::L1Gas {
-        fn from(value: L1Gas) -> Self {
+    impl From<Gas> for pathfinder_common::receipt::L1Gas {
+        fn from(value: Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
@@ -361,11 +372,29 @@ pub mod transaction {
         }
     }
 
-    impl From<pathfinder_common::receipt::L1Gas> for L1Gas {
+    impl From<Gas>
+        for (
+            pathfinder_common::receipt::L1Gas,
+            pathfinder_common::receipt::L2Gas,
+        )
+    {
+        fn from(value: Gas) -> Self {
+            (
+                pathfinder_common::receipt::L1Gas {
+                    l1_gas: value.l1_gas,
+                    l1_data_gas: value.l1_data_gas,
+                },
+                pathfinder_common::receipt::L2Gas(value.l2_gas.unwrap_or_default()),
+            )
+        }
+    }
+
+    impl From<pathfinder_common::receipt::L1Gas> for Gas {
         fn from(value: pathfinder_common::receipt::L1Gas) -> Self {
             Self {
                 l1_gas: value.l1_gas,
                 l1_data_gas: value.l1_data_gas,
+                l2_gas: None,
             }
         }
     }
@@ -376,13 +405,15 @@ pub mod transaction {
                 builtin_instance_counter: Faker.fake_with_rng(rng),
                 n_steps: rng.next_u32() as u64,
                 n_memory_holes: rng.next_u32() as u64,
-                data_availability: Some(L1Gas {
+                data_availability: Some(Gas {
                     l1_gas: rng.next_u32() as u128,
                     l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: None,
                 }),
-                total_gas_consumed: Some(L1Gas {
+                total_gas_consumed: Some(Gas {
                     l1_gas: rng.next_u32() as u128,
                     l1_data_gas: rng.next_u32() as u128,
+                    l2_gas: Some(rng.next_u32() as u128),
                 }),
             }
         }
@@ -2026,17 +2057,19 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
         // This must occur before we map the contract updates, since we want to first
         // remove the system contract updates.
         //
-        // Currently this is only the contract at address 0x1.
+        // Currently there are two such contracts, at addresses 0x1 and 0x2.
         //
-        // As of starknet v0.12.0 these are embedded in this way, but in the future will
+        // As of starknet v0.13.4 these are embedded in this way, but in the future will
         // be a separate property in the state diff.
-        if let Some((address, storage_updates)) = gateway
-            .state_diff
-            .storage_diffs
-            .remove_entry(&ContractAddress::ONE)
-        {
-            for state_update::StorageDiff { key, value } in storage_updates {
-                state_update = state_update.with_system_storage_update(address, key, value);
+        for system_contract in ContractAddress::SYSTEM.iter() {
+            if let Some((address, storage_updates)) = gateway
+                .state_diff
+                .storage_diffs
+                .remove_entry(system_contract)
+            {
+                for state_update::StorageDiff { key, value } in storage_updates {
+                    state_update = state_update.with_system_storage_update(address, key, value);
+                }
             }
         }
 
@@ -2152,6 +2185,12 @@ pub struct EthContractAddresses {
     #[serde(rename = "Starknet")]
     #[serde_as(as = "EthereumAddressAsHexStr")]
     pub starknet: EthereumAddress,
+
+    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+    pub strk_l2_token_address: H256,
+
+    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
+    pub eth_l2_token_address: H256,
 }
 
 pub mod add_transaction {
@@ -2369,12 +2408,16 @@ mod tests {
 
     #[test]
     fn eth_contract_addresses_ignores_extra_fields() {
-        // Some gateway mocks include extra addresses, check that we can still parse
-        // these.
+        // Sepolia integration gateway includes extra fields, check
+        // that we can still parse these.
         let json = serde_json::json!({
-            "Starknet": "0x12345abcd",
-            "GpsStatementVerifier": "0xaabdde",
-            "MemoryPageFactRegistry": "0xdeadbeef"
+            "FriStatementContract": "0x55d049b4C82807808E76e61a08C6764bbf2ffB55",
+            "GpsStatementVerifier": "0x2046B966994Adcb88D83f467a41b75d64C2a619F",
+            "MemoryPageFactRegistry": "0x5628E75245Cc69eCA0994F0449F4dDA9FbB5Ec6a",
+            "MerkleStatementContract": "0xd414f8f535D4a96cB00fFC8E85160b353cb7809c",
+            "Starknet": "0x4737c0c1B4D5b1A687B42610DdabEE781152359c",
+            "strk_l2_token_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+            "eth_l2_token_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
         });
 
         serde_json::from_value::<crate::reply::EthContractAddresses>(json).unwrap();

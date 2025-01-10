@@ -24,7 +24,7 @@ use tokio::sync::{broadcast, mpsc, watch};
 use tracing::error;
 
 use super::{EmittedEvent, Params, TransactionStatusUpdate};
-use crate::dto::serialize::{self, SerializeForVersion};
+use crate::dto::SerializeForVersion;
 use crate::error::ApplicationError;
 use crate::jsonrpc::request::RawParams;
 use crate::jsonrpc::router::RpcRequestError;
@@ -116,7 +116,7 @@ async fn send_response(
 ) -> ControlFlow<()> {
     let message = match serde_json::to_string(
         &response
-            .serialize(serialize::Serializer::new(version))
+            .serialize(crate::dto::Serializer::new(version))
             .unwrap(),
     ) {
         Ok(x) => x,
@@ -990,8 +990,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1043,8 +1042,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1097,8 +1095,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1147,8 +1144,7 @@ mod tests {
             block: PendingBlock {
                 l1_gas_price: block.l1_gas_price,
                 l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: Default::default(), /* TODO: Fix when we get l2_gas_price in the
-                                                   * gateway */
+                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
                 parent_hash: block.block_hash,
                 sequencer_address: SequencerAddress::ZERO,
                 status: Status::Pending,
@@ -1555,9 +1551,13 @@ mod tests {
                 price_in_fri: GasPrice(0),
             },
             l1_data_gas_price: GasPrices {
-                price_in_wei: GasPrice(0),
-                price_in_fri: GasPrice(0),
+                price_in_wei: GasPrice(1),
+                price_in_fri: GasPrice(1),
             },
+            l2_gas_price: Some(GasPrices {
+                price_in_wei: GasPrice(2),
+                price_in_fri: GasPrice(2),
+            }),
             parent_block_hash: block_hash!("0x2"),
             sequencer_address: None,
             state_commitment: state_commitment!("0x3"),
@@ -1725,7 +1725,7 @@ mod tests {
             // Deserialize it to a generic value to avoid field ordering issues.
             let received: Value = serde_json::from_str(&raw_text).unwrap();
             let expected = response
-                .serialize(serialize::Serializer::new(RpcVersion::V07))
+                .serialize(crate::dto::Serializer::new(RpcVersion::V07))
                 .unwrap();
             assert_eq!(received, expected);
         }

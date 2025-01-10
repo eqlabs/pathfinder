@@ -145,6 +145,8 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             pending,
             L1BlobDataAvailability::Disabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let result = pathfinder_executor::call(
@@ -162,15 +164,12 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
     result.map(Output)
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(|v| crate::dto::Felt(&v.0)),
-        )
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
 

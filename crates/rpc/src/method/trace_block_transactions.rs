@@ -115,6 +115,8 @@ pub async fn trace_block_transactions(
             header,
             None,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
         let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
             Ok(traces) => traces,
@@ -311,13 +313,28 @@ pub(crate) fn map_gateway_trace(
             .total_gas_consumed
             .unwrap_or_default()
             .l1_data_gas;
+    let l2_gas = validate_invocation_resources
+        .total_gas_consumed
+        .unwrap_or_default()
+        .l2_gas
+        .unwrap_or_default()
+        + function_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default()
+        + fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default();
     let execution_resources = pathfinder_executor::types::ExecutionResources {
         computation_resources,
         // These values are not available in the gateway trace.
         data_availability: Default::default(),
         l1_gas,
         l1_data_gas,
-        l2_gas: 0,
+        l2_gas,
     };
 
     use pathfinder_common::transaction::TransactionVariant;
@@ -529,11 +546,11 @@ fn map_gateway_computation_resources(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TraceBlockTransactionsOutput {
+impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(
             self.traces.len(),
             &mut self.traces.iter().map(|(hash, trace)| Trace {
@@ -551,16 +568,13 @@ struct Trace<'a> {
     pub include_state_diff: bool,
 }
 
-impl crate::dto::serialize::SerializeForVersion for Trace<'_> {
+impl crate::dto::SerializeForVersion for Trace<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::TxnHash(self.transaction_hash),
-        )?;
+        serializer.serialize_field("transaction_hash", self.transaction_hash)?;
         serializer.serialize_field(
             "trace_root",
             &crate::dto::TransactionTrace {
@@ -643,7 +657,7 @@ pub(crate) mod tests {
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
     use super::*;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     #[derive(Debug)]
@@ -772,6 +786,7 @@ pub(crate) mod tests {
             include_state_diffs: true,
         };
 
+        // V07
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
@@ -781,6 +796,20 @@ pub(crate) mod tests {
             expected
                 .serialize(Serializer {
                     version: RpcVersion::V07,
+                })
+                .unwrap(),
+        );
+
+        // V08
+        pretty_assertions_sorted::assert_eq!(
+            output
+                .serialize(Serializer {
+                    version: RpcVersion::V08,
+                })
+                .unwrap(),
+            expected
+                .serialize(Serializer {
+                    version: RpcVersion::V08,
                 })
                 .unwrap(),
         );
@@ -837,7 +866,7 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    pub(crate) async fn setup_multi_tx_trace_pending_test<'a>(
+    pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::{
             fixtures,
@@ -1025,8 +1054,8 @@ pub(crate) mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),

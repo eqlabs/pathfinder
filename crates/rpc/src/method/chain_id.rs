@@ -9,12 +9,12 @@ pub async fn chain_id(context: RpcContext) -> Result<Output, Error> {
     Ok(Output(context.chain_id))
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize(&crate::dto::ChainId(&self.0))
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&self.0)
     }
 }
 

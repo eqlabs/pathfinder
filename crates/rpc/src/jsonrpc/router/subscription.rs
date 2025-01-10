@@ -10,8 +10,7 @@ use tracing::Instrument;
 
 use super::{run_concurrently, RpcRouter};
 use crate::context::RpcContext;
-use crate::dto::serialize::{self, SerializeForVersion};
-use crate::dto::DeserializeForVersion;
+use crate::dto::{DeserializeForVersion, SerializeForVersion};
 use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::{RpcVersion, SubscriptionId};
@@ -63,7 +62,7 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// `params` field of the subscription request.
     type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
     /// The notification type to be sent to the client.
-    type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
+    type Notification: crate::dto::SerializeForVersion + Send + Sync + 'static;
     /// The maximum number of blocks to catch up to in a single batch.
     const CATCH_UP_BATCH_SIZE: u64 = 64;
 
@@ -364,7 +363,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
                     if ws_sender
                         .send(Message::Text(
                             serde_json::to_string(
-                                &e.serialize(serialize::Serializer::new(version)).unwrap(),
+                                &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
                             )
                             .unwrap(),
                         ))
@@ -470,7 +469,7 @@ pub fn handle_json_rpc_socket(
                             .send(Ok(Message::Text(
                                 serde_json::to_string(
                                     &response
-                                        .serialize(serialize::Serializer::new(state.version))
+                                        .serialize(crate::dto::Serializer::new(state.version))
                                         .unwrap(),
                                 )
                                 .unwrap(),
@@ -553,7 +552,7 @@ pub fn handle_json_rpc_socket(
                     .into_iter()
                     .map(|response| {
                         response
-                            .serialize(serialize::Serializer::new(state.version))
+                            .serialize(crate::dto::Serializer::new(state.version))
                             .unwrap()
                     })
                     .collect::<Vec<_>>();
@@ -660,7 +659,7 @@ async fn handle_request(
             }
             Ok(Some(RpcResponse {
                 output: Ok(subscription_id
-                    .serialize(serialize::Serializer::new(state.version))
+                    .serialize(crate::dto::Serializer::new(state.version))
                     .unwrap()),
                 id: req_id,
                 version: state.version,
@@ -701,7 +700,7 @@ impl<T> Clone for SubscriptionSender<T> {
     }
 }
 
-impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
+impl<T: crate::dto::SerializeForVersion> SubscriptionSender<T> {
     pub async fn send(
         &self,
         value: T,
@@ -719,7 +718,7 @@ impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
                 result: value,
             },
         }
-        .serialize(crate::dto::serialize::Serializer::new(self.version))
+        .serialize(crate::dto::Serializer::new(self.version))
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
@@ -741,7 +740,7 @@ impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
                 result: err,
             },
         }
-        .serialize(crate::dto::serialize::Serializer::new(self.version))
+        .serialize(crate::dto::Serializer::new(self.version))
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
@@ -764,14 +763,14 @@ pub struct SubscriptionResult<T> {
     result: T,
 }
 
-impl<T> crate::dto::serialize::SerializeForVersion for RpcNotification<T>
+impl<T> crate::dto::SerializeForVersion for RpcNotification<T>
 where
-    T: crate::dto::serialize::SerializeForVersion,
+    T: crate::dto::SerializeForVersion,
 {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("jsonrpc", &self.jsonrpc)?;
         serializer.serialize_field("method", &self.method)?;
@@ -780,14 +779,14 @@ where
     }
 }
 
-impl<T> crate::dto::serialize::SerializeForVersion for SubscriptionResult<T>
+impl<T> crate::dto::SerializeForVersion for SubscriptionResult<T>
 where
-    T: crate::dto::serialize::SerializeForVersion,
+    T: crate::dto::SerializeForVersion,
 {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("subscription_id", &self.subscription_id)?;
         serializer.serialize_field("result", &self.result)?;
@@ -805,12 +804,11 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
 
     use super::RpcSubscriptionEndpoint;
-    use crate::context::{RpcConfig, RpcContext};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
     use crate::dto::DeserializeForVersion;
     use crate::jsonrpc::{
         handle_json_rpc_socket,
@@ -1019,7 +1017,9 @@ mod tests {
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,

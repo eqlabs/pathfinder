@@ -135,6 +135,7 @@ mod tests {
         block_number: BlockNumber::new_or_panic(1),
         l1_gas_price: Default::default(),
         l1_data_gas_price: Default::default(),
+        l2_gas_price: Default::default(),
         parent_block_hash: PARENT_HASH,
         sequencer_address: None,
         state_commitment: PARENT_ROOT,

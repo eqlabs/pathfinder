@@ -7,7 +7,6 @@ pub(crate) mod transaction;
 
 pub use class::*;
 use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
-use pathfinder_serde::bytes_to_hex_str;
 use serde::de::Error;
 
 use crate::dto::{U128Hex, U64Hex};
@@ -29,11 +28,11 @@ impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourceBounds {
+impl crate::dto::SerializeForVersion for ResourceBounds {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("l1_gas", &self.l1_gas)?;
         serializer.serialize_field("l2_gas", &self.l2_gas)?;
@@ -69,16 +68,14 @@ impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourceBound {
+impl crate::dto::SerializeForVersion for ResourceBound {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        let max_amount_hex = bytes_to_hex_str(&self.max_amount.0.to_be_bytes());
-        serializer.serialize_field("max_amount", &max_amount_hex)?;
-        let max_price_hex = bytes_to_hex_str(&self.max_price_per_unit.0.to_be_bytes());
-        serializer.serialize_field("max_price_per_unit", &max_price_hex)?;
+        serializer.serialize_field("max_amount", &self.max_amount)?;
+        serializer.serialize_field("max_price_per_unit", &self.max_price_per_unit)?;
         serializer.end()
     }
 }
@@ -121,11 +118,11 @@ impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailab
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DataAvailabilityMode {
+impl crate::dto::SerializeForVersion for DataAvailabilityMode {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(match self {
             DataAvailabilityMode::L1 => "L1",
             DataAvailabilityMode::L2 => "L2",
@@ -158,11 +155,11 @@ pub mod request {
         Fee,
         PaymasterDataElem,
         Tip,
+        TipHex,
         TransactionNonce,
         TransactionSignatureElem,
         TransactionVersion,
     };
-    use pathfinder_serde::bytes_to_hex_str;
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -181,11 +178,11 @@ pub mod request {
         DeployAccount(BroadcastedDeployAccountTransaction),
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedTransaction {
+    impl crate::dto::SerializeForVersion for BroadcastedTransaction {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             match self {
                 Self::Declare(tx) => {
@@ -288,11 +285,11 @@ pub mod request {
         V3(BroadcastedDeclareTransactionV3),
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeclareTransaction {
+    impl crate::dto::SerializeForVersion for BroadcastedDeclareTransaction {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             match self {
                 Self::V0(tx) => {
                     let mut serializer = serializer.serialize_struct()?;
@@ -450,11 +447,11 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeclareTransactionV0 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeclareTransactionV0 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
             serializer.serialize_field("version", &self.version)?;
@@ -495,11 +492,11 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeclareTransactionV1 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeclareTransactionV1 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
             serializer.serialize_field("version", &self.version)?;
@@ -543,11 +540,11 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeclareTransactionV2 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeclareTransactionV2 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
             serializer.serialize_field("version", &self.version)?;
@@ -595,18 +592,17 @@ pub mod request {
         pub sender_address: ContractAddress,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeclareTransactionV3 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeclareTransactionV3 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field("account_deployment_data", &self.account_deployment_data)?;
             serializer.serialize_field(
@@ -659,11 +655,11 @@ pub mod request {
         V3(BroadcastedDeployAccountTransactionV3),
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeployAccountTransaction {
+    impl crate::dto::SerializeForVersion for BroadcastedDeployAccountTransaction {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             match self {
                 Self::V1(tx) => {
                     let mut serializer = serializer.serialize_struct()?;
@@ -803,11 +799,11 @@ pub mod request {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeployAccountTransactionV1 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeployAccountTransactionV1 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
@@ -869,18 +865,17 @@ pub mod request {
         }
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedDeployAccountTransactionV3 {
+    impl crate::dto::SerializeForVersion for BroadcastedDeployAccountTransactionV3 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field(
                 "nonce_data_availability_mode",
@@ -934,11 +929,11 @@ pub mod request {
         V3(BroadcastedInvokeTransactionV3),
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedInvokeTransaction {
+    impl crate::dto::SerializeForVersion for BroadcastedInvokeTransaction {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             match self {
                 Self::V0(tx) => {
                     let mut serializer = serializer.serialize_struct()?;
@@ -1090,11 +1085,11 @@ pub mod request {
         pub calldata: Vec<CallParam>,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedInvokeTransactionV0 {
+    impl crate::dto::SerializeForVersion for BroadcastedInvokeTransactionV0 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
@@ -1142,11 +1137,11 @@ pub mod request {
         pub calldata: Vec<CallParam>,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedInvokeTransactionV1 {
+    impl crate::dto::SerializeForVersion for BroadcastedInvokeTransactionV1 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("max_fee", &self.max_fee)?;
@@ -1193,18 +1188,17 @@ pub mod request {
         pub calldata: Vec<CallParam>,
     }
 
-    impl crate::dto::serialize::SerializeForVersion for BroadcastedInvokeTransactionV3 {
+    impl crate::dto::SerializeForVersion for BroadcastedInvokeTransactionV3 {
         fn serialize(
             &self,
-            serializer: crate::dto::serialize::Serializer,
-        ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
             let mut serializer = serializer.serialize_struct()?;
             serializer.serialize_field("version", &self.version)?;
             serializer.serialize_field("signature", &self.signature)?;
             serializer.serialize_field("nonce", &self.nonce)?;
             serializer.serialize_field("resource_bounds", &self.resource_bounds)?;
-            let tip_hex = bytes_to_hex_str(&self.tip.0.to_be_bytes());
-            serializer.serialize_field("tip", &tip_hex)?;
+            serializer.serialize_field("tip", &TipHex(self.tip))?;
             serializer.serialize_field("paymaster_data", &self.paymaster_data)?;
             serializer.serialize_field("account_deployment_data", &self.account_deployment_data)?;
             serializer.serialize_field(
@@ -1599,7 +1593,7 @@ pub mod request {
                 let json_fixture: serde_json::Value =
                     serde_json::from_str(&fixture!("broadcasted_transactions.json")).unwrap();
 
-                let serializer = crate::dto::serialize::Serializer::new(crate::RpcVersion::V07);
+                let serializer = crate::dto::Serializer::new(crate::RpcVersion::V07);
                 let serialized = serializer
                     .serialize_iter(txs.len(), &mut txs.clone().into_iter())
                     .unwrap();
@@ -1619,26 +1613,47 @@ pub mod request {
 
 /// Groups all strictly output types of the RPC API.
 pub mod reply {
-    use serde::Serialize;
+    use serde::de::Error;
 
     /// L2 Block status as returned by the RPC API.
-    #[derive(Copy, Clone, Debug, Serialize, PartialEq, Eq)]
-    #[cfg_attr(test, derive(serde::Deserialize))]
-    #[serde(deny_unknown_fields)]
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
     pub enum BlockStatus {
-        #[serde(rename = "PENDING")]
         Pending,
-        #[serde(rename = "ACCEPTED_ON_L2")]
         AcceptedOnL2,
-        #[serde(rename = "ACCEPTED_ON_L1")]
         AcceptedOnL1,
-        #[serde(rename = "REJECTED")]
         Rejected,
     }
 
     impl BlockStatus {
         pub fn is_pending(&self) -> bool {
             self == &Self::Pending
+        }
+    }
+
+    impl crate::dto::SerializeForVersion for BlockStatus {
+        fn serialize(
+            &self,
+            serializer: crate::dto::Serializer,
+        ) -> Result<crate::dto::Ok, crate::dto::Error> {
+            serializer.serialize_str(match self {
+                Self::Pending => "PENDING",
+                Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
+                Self::AcceptedOnL1 => "ACCEPTED_ON_L1",
+                Self::Rejected => "REJECTED",
+            })
+        }
+    }
+
+    impl crate::dto::DeserializeForVersion for BlockStatus {
+        fn deserialize(value: crate::dto::Value) -> Result<Self, crate::dto::Error> {
+            let status: String = value.deserialize()?;
+            match status.as_str() {
+                "PENDING" => Ok(Self::Pending),
+                "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
+                "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
+                "REJECTED" => Ok(Self::Rejected),
+                _ => Err(serde_json::Error::custom("Invalid block status")),
+            }
         }
     }
 

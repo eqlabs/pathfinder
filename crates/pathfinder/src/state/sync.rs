@@ -908,8 +908,8 @@ async fn l2_update(
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             // Default value for Starknet <0.13.1 is zero
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
@@ -1202,6 +1202,10 @@ mod tests {
                     price_in_wei: header.eth_l1_data_gas_price,
                     price_in_fri: header.strk_l1_data_gas_price,
                 },
+                l2_gas_price: Some(GasPrices {
+                    price_in_wei: header.eth_l2_gas_price,
+                    price_in_fri: header.strk_l2_gas_price,
+                }),
                 parent_block_hash: header.parent_hash,
                 sequencer_address: Some(header.sequencer_address),
                 state_commitment: header.state_commitment,

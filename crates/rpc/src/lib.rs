@@ -241,11 +241,11 @@ impl SubscriptionId {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for SubscriptionId {
+impl crate::dto::SerializeForVersion for SubscriptionId {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_u64(self.0 as u64)
     }
 }
@@ -827,12 +827,10 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
-    use dto::serialize::SerializeForVersion;
     use dto::DeserializeForVersion;
     use serde_json::json;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
 
     #[test]
     fn roundtrip_syncing() {
@@ -857,15 +855,7 @@ mod tests {
                 RpcVersion::V07,
             ))
             .unwrap();
-            let output = parsed.serialize(Serializer::new(RpcVersion::V07)).unwrap();
-
             assert_eq!(parsed, expected, "example from line {line}");
-
-            // Compare parsed JSON values instead of strings
-            let output_value: serde_json::Value =
-                serde_json::from_str(&output.to_string()).unwrap();
-            let input_value: serde_json::Value = serde_json::from_str(input).unwrap();
-            assert_eq!(output_value, input_value, "example from line {line}");
         }
     }
 

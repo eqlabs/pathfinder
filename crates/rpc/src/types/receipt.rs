@@ -27,11 +27,11 @@ pub struct ExecutionResourcesProperties {
     pub segment_arena_builtin: u64,
 }
 
-impl crate::dto::serialize::SerializeForVersion for ExecutionResourcesProperties {
+impl crate::dto::SerializeForVersion for ExecutionResourcesProperties {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("steps", &self.steps)?;
         if !is_zero(&self.memory_holes) {
@@ -144,11 +144,11 @@ impl From<pathfinder_common::receipt::ExecutionStatus> for ExecutionStatus {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ExecutionStatus {
+impl crate::dto::SerializeForVersion for ExecutionStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Self::Succeeded => serializer.serialize_str("SUCCEEDED"),
             Self::Reverted => serializer.serialize_str("REVERTED"),
@@ -163,11 +163,11 @@ pub enum FinalityStatus {
     //AcceptedOnL1,
 }
 
-impl crate::dto::serialize::SerializeForVersion for FinalityStatus {
+impl crate::dto::SerializeForVersion for FinalityStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Self::AcceptedOnL2 => serializer.serialize_str("ACCEPTED_ON_L2"),
         }
@@ -206,11 +206,11 @@ impl From<pathfinder_common::receipt::L2ToL1Message> for MessageToL1 {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for MessageToL1 {
+impl crate::dto::SerializeForVersion for MessageToL1 {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("from_address", &self.from_address)?;
         serializer.serialize_field("to_address", &self.to_address)?;
@@ -242,11 +242,11 @@ impl From<pathfinder_common::event::Event> for Event {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Event {
+impl crate::dto::SerializeForVersion for Event {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("from_address", &RpcFelt251(RpcFelt(self.from_address.0)))?;
         serializer.serialize_iter(
@@ -283,11 +283,11 @@ impl From<BlockStatus> for TransactionStatus {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionStatus {
+impl crate::dto::SerializeForVersion for TransactionStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_str(match self {
             Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
             Self::AcceptedOnL1 => "ACCEPTED_ON_L1",

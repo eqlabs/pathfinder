@@ -42,6 +42,17 @@ impl ContractAddress {
     /// It is used by starknet to store values for smart contracts to access
     /// using syscalls. For example the block hash.
     pub const ONE: ContractAddress = contract_address!("0x1");
+    /// The contract at 0x2 was introduced in Starknet version 0.13.4. It is
+    /// used for stateful compression:
+    /// - storage key 0 points to the global counter, which is the base for
+    ///   index values in the next block,
+    /// - other storage k-v pairs store the mapping of key to index,
+    /// - the global counter starts at value 0x80 in the first block from
+    ///   0.13.4,
+    /// - keys of value lower than 0x80 are not indexed.
+    pub const TWO: ContractAddress = contract_address!("0x2");
+    /// Useful for iteration over the system contracts
+    pub const SYSTEM: [ContractAddress; 2] = [ContractAddress::ONE, ContractAddress::TWO];
 }
 
 // Bytecode and entry point list of a class
@@ -169,6 +180,10 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct GasPrice(pub u128);
 
+/// A hex representation of a [GasPrice].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+pub struct GasPriceHex(pub GasPrice);
+
 /// Starknet resource bound: amount.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct ResourceAmount(pub u64);
@@ -177,6 +192,10 @@ pub struct ResourceAmount(pub u64);
 // transactions in the mempool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct Tip(pub u64);
+
+// A hex representation of a [Tip].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Dummy)]
+pub struct TipHex(pub Tip);
 
 /// Starknet resource bound: price per unit.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
@@ -595,7 +614,7 @@ impl ContractAddress {
     }
 
     pub fn is_system_contract(&self) -> bool {
-        *self == ContractAddress::ONE
+        (*self == ContractAddress::ONE) || (*self == ContractAddress::TWO)
     }
 }
 

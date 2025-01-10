@@ -160,11 +160,11 @@ impl Output {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("finality_status", &self.finality_status())?;
         serializer.serialize_optional("execution_status", self.execution_status())?;
@@ -197,7 +197,7 @@ mod tests {
         json!({"finality_status":"ACCEPTED_ON_L2","execution_status":"REVERTED"})
     )]
     fn output_serialization(#[case] output: Output, #[case] expected: serde_json::Value) {
-        use crate::dto::serialize::SerializeForVersion;
+        use crate::dto::SerializeForVersion;
         let encoded = output.serialize(Default::default()).unwrap();
         assert_eq!(encoded, expected);
     }
