@@ -741,7 +741,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 192,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 878,
                                 l1_data_gas: 192,
                                 l2_gas: 0,
                             },
@@ -1004,7 +1004,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 16,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1415,7 +1415,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 12,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1645,7 +1645,10 @@ pub(crate) mod tests {
                             ..Default::default()
                         },
                         execution_resources:
-                            pathfinder_executor::types::InnerCallExecutionResources::default(),
+                            pathfinder_executor::types::InnerCallExecutionResources {
+                                l1_gas: 12840,
+                                ..Default::default()
+                            },
                     }],
                     class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,

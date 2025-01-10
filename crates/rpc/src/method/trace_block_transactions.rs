@@ -769,6 +769,7 @@ pub(crate) mod tests {
             include_state_diffs: true,
         };
 
+        // V07
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
@@ -778,6 +779,20 @@ pub(crate) mod tests {
             expected
                 .serialize(Serializer {
                     version: RpcVersion::V07,
+                })
+                .unwrap(),
+        );
+
+        // V08
+        pretty_assertions_sorted::assert_eq!(
+            output
+                .serialize(Serializer {
+                    version: RpcVersion::V08,
+                })
+                .unwrap(),
+            expected
+                .serialize(Serializer {
+                    version: RpcVersion::V08,
                 })
                 .unwrap(),
         );
