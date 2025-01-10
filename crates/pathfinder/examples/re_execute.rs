@@ -5,6 +5,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
 use pathfinder_executor::ExecutionState;
+use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::{BlockId, Storage};
 use rayon::prelude::*;
 
@@ -132,7 +133,15 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
     let db_tx = connection.transaction().expect("Create transaction");
 
-    let execution_state = ExecutionState::trace(&db_tx, chain_id, work.header.clone(), None, None);
+    let execution_state = ExecutionState::trace(
+        &db_tx,
+        chain_id,
+        work.header.clone(),
+        None,
+        None,
+        ETH_FEE_TOKEN_ADDRESS,
+        STRK_FEE_TOKEN_ADDRESS,
+    );
 
     let transactions = work
         .transactions

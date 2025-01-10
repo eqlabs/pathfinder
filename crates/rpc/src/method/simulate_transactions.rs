@@ -83,6 +83,8 @@ pub async fn simulate_transactions(
             pending,
             pathfinder_executor::L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let transactions = input
@@ -218,7 +220,7 @@ pub(crate) mod tests {
     };
 
     use super::simulate_transactions;
-    use crate::context::RpcContext;
+    use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
     use crate::method::simulate_transactions::SimulateTransactionInput;
     use crate::types::request::{
@@ -463,7 +465,7 @@ pub(crate) mod tests {
                                 Felt::from_u64(OVERALL_FEE),
                                 call_param!("0x0").0,
                             ],
-                            contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                            contract_address: ETH_FEE_TOKEN_ADDRESS,
                             selector: EntryPoint::hashed(b"transfer").0,
                             messages: vec![],
                             result: vec![felt!("0x1")],
@@ -480,7 +482,7 @@ pub(crate) mod tests {
                     ),
                     state_diff: pathfinder_executor::types::StateDiff {
                         storage_diffs: BTreeMap::from([
-                            (pathfinder_executor::ETH_FEE_TOKEN_ADDRESS, vec![
+                            (ETH_FEE_TOKEN_ADDRESS, vec![
                                 pathfinder_executor::types::StorageDiff {
                                     key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
                                     value: storage_value!("0x000000000000000000000000000000000000ffffffffffffffffffffffffc298"),
@@ -881,7 +883,7 @@ pub(crate) mod tests {
 
             fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    address: ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -921,7 +923,7 @@ pub(crate) mod tests {
                         Felt::from_u64(DECLARE_OVERALL_FEE),
                         felt!("0x0"),
                     ],
-                    contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
                     selector: EntryPoint::hashed(b"transfer").0,
                     internal_calls: vec![],
                     messages: vec![],
@@ -1182,7 +1184,7 @@ pub(crate) mod tests {
 
             fn universal_deployer_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    address: ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -1358,7 +1360,7 @@ pub(crate) mod tests {
                         // calldata_len
                         call_param!("0x0").0,
                     ],
-                    contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
                     selector: EntryPoint::hashed(b"transfer").0,
                     messages: vec![],
                     result: vec![felt!("0x1")],
@@ -1580,7 +1582,7 @@ pub(crate) mod tests {
 
             fn invoke_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    address: ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
@@ -1693,7 +1695,7 @@ pub(crate) mod tests {
                         Felt::from_u64(INVOKE_OVERALL_FEE),
                         call_param!("0x0").0,
                     ],
-                    contract_address: pathfinder_executor::ETH_FEE_TOKEN_ADDRESS,
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
                     selector: EntryPoint::hashed(b"transfer").0,
                     messages: vec![],
                     result: vec![felt!("0x1")],
@@ -1881,7 +1883,7 @@ pub(crate) mod tests {
                         Felt::from_u64(INVOKE_V3_OVERALL_FEE),
                         felt!("0x0"),
                     ],
-                    contract_address: pathfinder_executor::STRK_FEE_TOKEN_ADDRESS,
+                    contract_address: STRK_FEE_TOKEN_ADDRESS,
                     selector: EntryPoint::hashed(b"transfer").0,
                     messages: vec![],
                     result: vec![felt!("0x1")],
@@ -1923,7 +1925,7 @@ pub(crate) mod tests {
 
             fn invoke_v3_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
                 vec![StorageDiff {
-                    address: pathfinder_executor::STRK_FEE_TOKEN_ADDRESS,
+                    address: STRK_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),

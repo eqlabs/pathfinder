@@ -115,6 +115,8 @@ pub async fn trace_block_transactions(
             header,
             None,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
         let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
             Ok(traces) => traces,
@@ -834,7 +836,7 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    pub(crate) async fn setup_multi_tx_trace_pending_test<'a>(
+    pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::{
             fixtures,

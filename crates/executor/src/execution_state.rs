@@ -7,7 +7,6 @@ use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{
-    contract_address,
     BlockHeader,
     ChainId,
     ContractAddress,
@@ -19,12 +18,6 @@ use starknet_api::core::PatriciaKey;
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
-
-// NOTE: these are the same for _all_ networks
-pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
-    contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
-pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
-    contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
 mod versioned_constants {
     use std::borrow::Cow;
@@ -103,6 +96,8 @@ pub struct ExecutionState<'tx> {
     pending_state: Option<Arc<StateUpdate>>,
     allow_use_kzg_data: bool,
     custom_versioned_constants: Option<VersionedConstants>,
+    eth_fee_address: ContractAddress,
+    strk_fee_address: ContractAddress,
 }
 
 impl<'tx> ExecutionState<'tx> {
@@ -174,11 +169,11 @@ impl<'tx> ExecutionState<'tx> {
 
     fn chain_info(&self) -> anyhow::Result<ChainInfo> {
         let eth_fee_token_address = starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(ETH_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            PatriciaKey::try_from(self.eth_fee_address.0.into_starkfelt())
                 .expect("ETH fee token address overflow"),
         );
         let strk_fee_token_address = starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(STRK_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            PatriciaKey::try_from(self.strk_fee_address.0.into_starkfelt())
                 .expect("STRK fee token address overflow"),
         );
 
@@ -259,6 +254,8 @@ impl<'tx> ExecutionState<'tx> {
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
         custom_versioned_constants: Option<VersionedConstants>,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
     ) -> Self {
         Self {
             transaction,
@@ -268,9 +265,12 @@ impl<'tx> ExecutionState<'tx> {
             execute_on_parent_state: true,
             allow_use_kzg_data: true,
             custom_versioned_constants,
+            eth_fee_address,
+            strk_fee_address,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn simulation(
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
@@ -278,6 +278,8 @@ impl<'tx> ExecutionState<'tx> {
         pending_state: Option<Arc<StateUpdate>>,
         l1_blob_data_availability: L1BlobDataAvailability,
         custom_versioned_constants: Option<VersionedConstants>,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
     ) -> Self {
         Self {
             transaction,
@@ -287,6 +289,8 @@ impl<'tx> ExecutionState<'tx> {
             execute_on_parent_state: false,
             allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
             custom_versioned_constants,
+            eth_fee_address,
+            strk_fee_address,
         }
     }
 }

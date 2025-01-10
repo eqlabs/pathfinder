@@ -100,7 +100,6 @@ impl<'de> DeserializeAs<'de, EthereumAddress> for EthereumAddressAsHexStr {
     }
 }
 
-// TODO: This can be removed once we yank RPC V06
 pub struct H256AsNoLeadingZerosHexStr;
 
 impl SerializeAs<H256> for H256AsNoLeadingZerosHexStr {

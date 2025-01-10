@@ -40,7 +40,7 @@ impl crate::dto::SerializeForVersion for Output {
     }
 }
 
-pub async fn trace_transaction<'a>(
+pub async fn trace_transaction(
     context: RpcContext,
     input: Input,
 ) -> Result<Output, TraceTransactionError> {
@@ -126,6 +126,8 @@ pub async fn trace_transaction<'a>(
                 header,
                 None,
                 context.config.custom_versioned_constants,
+                context.contract_addresses.eth_l2_token_address,
+                context.contract_addresses.strk_l2_token_address,
             );
 
             let executor_transactions = transactions

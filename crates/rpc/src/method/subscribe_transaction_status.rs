@@ -449,12 +449,11 @@ mod tests {
     use pathfinder_ethereum::{EthereumClient, EthereumStateUpdate};
     use pathfinder_storage::StorageBuilder;
     use pretty_assertions_sorted::assert_eq;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::{Block, PendingBlock};
     use tokio::sync::mpsc;
 
-    use crate::context::{RpcConfig, RpcContext};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
@@ -1162,7 +1161,9 @@ mod tests {
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
