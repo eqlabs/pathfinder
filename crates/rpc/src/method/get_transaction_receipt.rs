@@ -5,7 +5,7 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use crate::context::RpcContext;
-use crate::dto::{self, serialize};
+use crate::dto;
 
 pub struct Input {
     pub transaction_hash: TransactionHash,
@@ -37,11 +37,11 @@ pub enum Output {
     },
 }
 
-impl serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Output::Full {
                 block_hash,

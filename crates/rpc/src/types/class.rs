@@ -6,8 +6,7 @@ use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::class_hash::{compute_class_hash, ComputedClassHash};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContractClass {
     Cairo(CairoContractClass),
     Sierra(SierraContractClass),
@@ -427,7 +426,7 @@ pub struct TypedParameter {
 /// Also matches the gateway representation, which means it
 /// can be used to deserialize directly from storage.
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SierraContractClass {
     #[serde_as(as = "Vec<crate::felt::RpcFelt>")]

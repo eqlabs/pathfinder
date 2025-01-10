@@ -215,20 +215,14 @@ pub(crate) async fn add_deploy_account_transaction_impl(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::Felt(&self.transaction_hash.0),
-        )?;
-        serializer.serialize_field(
-            "contract_address",
-            &crate::dto::Felt(&self.contract_address.0),
-        )?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.serialize_field("contract_address", &self.contract_address)?;
         serializer.end()
     }
 }
@@ -245,7 +239,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::dto::serialize::{self, SerializeForVersion};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::types::request::BroadcastedDeployAccountTransactionV3;
     use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
@@ -305,7 +299,7 @@ mod tests {
         let error = crate::error::ApplicationError::from(error);
         let error = crate::jsonrpc::RpcError::from(error);
         let error = error
-            .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+            .serialize(Serializer::new(crate::RpcVersion::V07))
             .unwrap();
 
         let expected = serde_json::json!({

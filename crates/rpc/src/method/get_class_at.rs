@@ -3,7 +3,7 @@ use pathfinder_common::{BlockId, ContractAddress};
 
 use crate::context::RpcContext;
 use crate::dto;
-use crate::dto::serialize::SerializeForVersion;
+use crate::dto::SerializeForVersion;
 use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
@@ -41,21 +41,16 @@ impl From<ContractClass> for Output {
 }
 
 impl SerializeForVersion for Output {
-    fn serialize(
-        &self,
-        serializer: dto::serialize::Serializer,
-    ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
+    fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
-            Output::DeprecatedClass(cairo) => {
-                dto::DeprecatedContractClass(cairo).serialize(serializer)
-            }
-            Output::Class(sierra) => dto::ContractClass(sierra).serialize(serializer),
+            Output::DeprecatedClass(cairo) => cairo.serialize(serializer),
+            Output::Class(sierra) => sierra.serialize(serializer),
         }
     }
 }
 
 /// Get a contract class.
-pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractClass, Error> {
+pub async fn get_class_at(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -106,7 +101,8 @@ pub async fn get_class_at(context: RpcContext, input: Input) -> Result<ContractC
         Ok(class)
     });
 
-    jh.await.context("Reading class from database")?
+    let class = jh.await.context("Reading class from database")??;
+    Ok(Output::from(class))
 }
 
 #[cfg(test)]

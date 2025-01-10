@@ -292,6 +292,7 @@ macro_rules! felt {
     ($hex:expr) => {{
         // This forces const evaluation of the macro call. Without this the invocation
         // will only be evaluated at runtime.
+        use ::pathfinder_crypto;
         const CONST_FELT: pathfinder_crypto::Felt =
             match pathfinder_crypto::Felt::from_hex_str($hex) {
                 Ok(f) => f,

@@ -4,8 +4,8 @@ use pathfinder_common::transaction::{Transaction, TransactionKind, TransactionVa
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash, TransactionVersion};
 use serde::ser::Error;
 
-use super::{serialize, H256Hex};
-use crate::dto::serialize::{SerializeForVersion, Serializer};
+use super::H256Hex;
+use crate::dto::{SerializeForVersion, Serializer};
 use crate::{dto, RpcVersion};
 
 #[derive(Copy, Clone)]
@@ -81,7 +81,7 @@ pub struct ExecutionResources<'a>(pub &'a pathfinder_common::receipt::ExecutionR
 pub struct ComputationResources<'a>(pub &'a pathfinder_common::receipt::ExecutionResources);
 
 impl SerializeForVersion for TxnStatus {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             TxnStatus::Received => "RECEIVED",
             TxnStatus::Rejected => "REJECTED",
@@ -93,7 +93,7 @@ impl SerializeForVersion for TxnStatus {
 }
 
 impl SerializeForVersion for TxnExecutionStatus {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             TxnExecutionStatus::Succeeded => "SUCCEEDED",
             TxnExecutionStatus::Reverted { .. } => "REVERTED",
@@ -103,7 +103,7 @@ impl SerializeForVersion for TxnExecutionStatus {
 }
 
 impl SerializeForVersion for TxnExecutionStatusWithRevertReason<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_common::receipt::ExecutionStatus;
 
         let mut serializer = serializer.serialize_struct()?;
@@ -128,7 +128,7 @@ impl SerializeForVersion for TxnExecutionStatusWithRevertReason<'_> {
 }
 
 impl SerializeForVersion for TxnFinalityStatus {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             TxnFinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
             TxnFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
@@ -138,7 +138,7 @@ impl SerializeForVersion for TxnFinalityStatus {
 }
 
 impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let Self {
             block_hash,
             block_number,
@@ -157,15 +157,15 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
             finality: *finality,
         })?;
 
-        serializer.serialize_optional("block_hash", block_hash.map(dto::BlockHash))?;
-        serializer.serialize_optional("block_number", block_number.map(dto::BlockNumber))?;
+        serializer.serialize_optional("block_hash", block_hash.cloned())?;
+        serializer.serialize_optional("block_number", *block_number)?;
 
         serializer.end()
     }
 }
 
 impl SerializeForVersion for TxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.transaction.variant.kind() {
             TransactionKind::Declare => serializer.serialize(&DeclareTxnReceipt(self)),
             TransactionKind::Deploy => serializer.serialize(&DeployTxnReceipt(self)),
@@ -177,7 +177,7 @@ impl SerializeForVersion for TxnReceipt<'_> {
 }
 
 impl SerializeForVersion for DeclareTxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         if self.0.transaction.variant.kind() != TransactionKind::Declare {
             return Err(serde_json::error::Error::custom(
                 "expected Declare transaction",
@@ -194,7 +194,7 @@ impl SerializeForVersion for DeclareTxnReceipt<'_> {
 }
 
 impl SerializeForVersion for DeployTxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let contract_address = match &self.0.transaction.variant {
             // Partial match here is safe since this variant is deprecated.
             // i.e. no risk of forgetting to handle a new variant.
@@ -211,13 +211,13 @@ impl SerializeForVersion for DeployTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY")?;
-        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+        serializer.serialize_field("contract_address", contract_address)?;
 
         serializer.end()
     }
 }
 impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let contract_address = match &self.0.transaction.variant {
             TransactionVariant::DeployAccountV1(tx) => &tx.contract_address,
             TransactionVariant::DeployAccountV3(tx) => &tx.contract_address,
@@ -241,13 +241,13 @@ impl SerializeForVersion for DeployAccountTxnReceipt<'_> {
 
         serializer.flatten(&CommonReceiptProperties(self.0))?;
         serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
-        serializer.serialize_field("contract_address", &dto::Felt(&contract_address.0))?;
+        serializer.serialize_field("contract_address", contract_address)?;
 
         serializer.end()
     }
 }
 impl SerializeForVersion for InvokeTxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         if self.0.transaction.variant.kind() != TransactionKind::Invoke {
             return Err(serde_json::error::Error::custom(
                 "expected Invoke transaction",
@@ -263,7 +263,7 @@ impl SerializeForVersion for InvokeTxnReceipt<'_> {
     }
 }
 impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let message_hash = match &self.0.transaction.variant {
             TransactionVariant::L1Handler(tx) => tx.calculate_message_hash(),
             TransactionVariant::DeclareV0(_)
@@ -294,10 +294,10 @@ impl SerializeForVersion for L1HandlerTxnReceipt<'_> {
 }
 
 impl SerializeForVersion for CommonReceiptProperties<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.0.transaction.hash))?;
+        serializer.serialize_field("transaction_hash", &self.0.transaction.hash)?;
         serializer.serialize_field(
             "actual_fee",
             &FeePayment {
@@ -333,10 +333,10 @@ impl SerializeForVersion for CommonReceiptProperties<'_> {
 }
 
 impl SerializeForVersion for FeePayment<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("amount", &dto::Felt(&self.amount.0))?;
+        serializer.serialize_field("amount", self.amount)?;
         serializer.serialize_field("unit", &PriceUnit(self.transaction_version))?;
 
         serializer.end()
@@ -344,11 +344,11 @@ impl SerializeForVersion for FeePayment<'_> {
 }
 
 impl SerializeForVersion for MsgToL1<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("from_address", &dto::Felt(&self.0.from_address.0))?;
-        serializer.serialize_field("to_address", &dto::Felt(&self.0.to_address.0))?;
+        serializer.serialize_field("from_address", &self.0.from_address)?;
+        serializer.serialize_field("to_address", &self.0.to_address)?;
         serializer.serialize_iter("payload", self.0.payload.len(), &mut self.0.payload.iter())?;
 
         serializer.end()
@@ -356,11 +356,14 @@ impl SerializeForVersion for MsgToL1<'_> {
 }
 
 impl SerializeForVersion for ExecutionResources<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         struct DataAvailability<'a>(&'a pathfinder_common::receipt::L1Gas);
 
         impl SerializeForVersion for DataAvailability<'_> {
-            fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+            fn serialize(
+                &self,
+                serializer: Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
 
                 serializer.serialize_field("l1_gas", &self.0.l1_gas)?;
@@ -389,7 +392,7 @@ impl SerializeForVersion for ExecutionResources<'_> {
 }
 
 impl SerializeForVersion for PriceUnit<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             &TransactionVersion::ZERO | &TransactionVersion::ONE | &TransactionVersion::TWO => {
                 "WEI"
@@ -401,7 +404,7 @@ impl SerializeForVersion for PriceUnit<'_> {
 }
 
 impl SerializeForVersion for ComputationResources<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         use std::num::NonZeroU64;
 
         // We're technically breaking the spec here if `steps` is zero but turns out
@@ -442,7 +445,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::dto::serialize::Serializer;
+    use crate::dto::Serializer;
 
     #[rstest]
     #[case::received(TxnStatus::Received, "RECEIVED")]

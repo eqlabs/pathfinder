@@ -1,5 +1,4 @@
 use pathfinder_common::{BlockHash, BlockNumber};
-use pathfinder_serde::block_number_as_hex_str;
 use serde_with::serde_as;
 
 use crate::dto::U64Hex;
@@ -22,11 +21,11 @@ impl std::fmt::Display for Syncing {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Syncing {
+impl crate::dto::SerializeForVersion for Syncing {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Syncing::False => serializer.serialize_bool(false),
             Syncing::Status(status) => status.serialize(serializer),
@@ -55,10 +54,6 @@ pub struct Status {
     pub highest: NumberedBlock,
 }
 
-serde_with::with_prefix!(prefix_starting "starting_");
-serde_with::with_prefix!(prefix_current "current_");
-serde_with::with_prefix!(prefix_highest "highest_");
-
 impl std::fmt::Display for Status {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -69,27 +64,18 @@ impl std::fmt::Display for Status {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Status {
+impl crate::dto::SerializeForVersion for Status {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("starting_block_hash", &self.starting.hash)?;
-        serializer.serialize_field(
-            "starting_block_num",
-            &block_number_as_hex_str(&self.starting.number),
-        )?;
+        serializer.serialize_field("starting_block_num", &self.starting.number)?;
         serializer.serialize_field("current_block_hash", &self.current.hash)?;
-        serializer.serialize_field(
-            "current_block_num",
-            &block_number_as_hex_str(&self.current.number),
-        )?;
+        serializer.serialize_field("current_block_num", &self.current.number)?;
         serializer.serialize_field("highest_block_hash", &self.highest.hash)?;
-        serializer.serialize_field(
-            "highest_block_num",
-            &block_number_as_hex_str(&self.highest.number),
-        )?;
+        serializer.serialize_field("highest_block_num", &self.highest.number)?;
         serializer.end()
     }
 }

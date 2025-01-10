@@ -282,17 +282,14 @@ pub async fn add_declare_transaction(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::Felt(&self.transaction_hash.0),
-        )?;
-        serializer.serialize_field("class_hash", &crate::dto::Felt(&self.class_hash.0))?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.serialize_field("class_hash", &self.class_hash)?;
         serializer.end()
     }
 }
@@ -381,8 +378,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::dto::serialize::SerializeForVersion;
-            use crate::dto::{serialize, DeserializeForVersion};
+            use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
             use crate::types::request::BroadcastedDeclareTransactionV1;
             use crate::RpcVersion;
 
@@ -461,9 +457,7 @@ mod tests {
                 let error = AddDeclareTransactionError::from(starknet_error);
                 let error = crate::error::ApplicationError::from(error);
                 let error = crate::jsonrpc::RpcError::from(error);
-                let error = error
-                    .serialize(serialize::Serializer::new(RpcVersion::V07))
-                    .unwrap();
+                let error = error.serialize(Serializer::new(RpcVersion::V07)).unwrap();
 
                 let expected = json!({
                     "code": 63,

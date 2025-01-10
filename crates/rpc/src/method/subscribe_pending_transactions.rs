@@ -40,11 +40,11 @@ pub enum Notification {
     TransactionHash(TransactionHash),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Notification::Transaction(transaction) => {
                 crate::dto::TransactionWithHash(transaction).serialize(serializer)
