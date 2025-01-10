@@ -494,7 +494,7 @@ impl Behaviour {
         if self
             .peers
             .get(peer_id)
-            .map_or(false, |peer| peer.is_connected())
+            .is_some_and(|peer| peer.is_connected())
         {
             tracing::debug!(%peer_id, "Peer already connected, closing");
             return Err(ConnectionDenied::new("duplicate connection"));

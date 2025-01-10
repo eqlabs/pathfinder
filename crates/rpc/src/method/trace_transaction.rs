@@ -40,7 +40,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
     }
 }
 
-pub async fn trace_transaction<'a>(
+pub async fn trace_transaction(
     context: RpcContext,
     input: Input,
 ) -> Result<Output, TraceTransactionError> {

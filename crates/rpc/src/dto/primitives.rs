@@ -121,10 +121,7 @@ pub mod hex_str {
             // Handle a possible odd nibble remaining nibble.
             if len % 2 == 1 {
                 let idx = len / 2;
-                buf[N - 1 - idx] = match parse_hex_digit(bytes[start]) {
-                    Ok(b) => b,
-                    Err(e) => return Err(e),
-                };
+                buf[N - 1 - idx] = parse_hex_digit(bytes[start])?;
             }
         } else if len != 2 * N {
             return Err(anyhow!(
@@ -137,14 +134,8 @@ pub mod hex_str {
         let mut chunk = 0;
 
         while chunk < chunks {
-            let lower = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 1]) {
-                Ok(b) => b,
-                Err(e) => return Err(e),
-            };
-            let upper = match parse_hex_digit(bytes[bytes.len() - chunk * 2 - 2]) {
-                Ok(b) => b,
-                Err(e) => return Err(e),
-            };
+            let lower = parse_hex_digit(bytes[bytes.len() - chunk * 2 - 1])?;
+            let upper = parse_hex_digit(bytes[bytes.len() - chunk * 2 - 2])?;
             buf[N - 1 - chunk] = upper << 4 | lower;
             chunk += 1;
         }

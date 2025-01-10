@@ -839,7 +839,7 @@ pub(crate) mod tests {
         Ok(())
     }
 
-    pub(crate) async fn setup_multi_tx_trace_pending_test<'a>(
+    pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
         use super::super::simulate_transactions::tests::{
             fixtures,

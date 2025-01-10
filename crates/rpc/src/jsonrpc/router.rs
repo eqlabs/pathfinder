@@ -174,7 +174,7 @@ fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
 
     // `application/json` or `XXX+json` are allowed.
     let is_json = (mime.type_() == "application" && mime.subtype() == "json")
-        || mime.suffix().map_or(false, |name| name == "json");
+        || mime.suffix().is_some_and(|name| name == "json");
 
     is_json && valid_charset
 }

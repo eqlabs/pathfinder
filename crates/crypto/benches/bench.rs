@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+
 use ::pathfinder_crypto::hash::poseidon::poseidon_hash;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pathfinder_crypto::algebra::curve::{ProjectivePoint, CURVE_G};
