@@ -16,7 +16,7 @@ use pathfinder_crypto::Felt;
 
 use super::felt::IntoFelt;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FeeEstimate {
     pub l1_gas_consumed: primitive_types::U256,
     pub l1_gas_price: primitive_types::U256,
@@ -85,7 +85,7 @@ impl FeeEstimate {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PriceUnit {
     Wei,
     Fri,

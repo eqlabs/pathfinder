@@ -109,11 +109,11 @@ pub enum TransactionStatus {
     Aborted,
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionStatus {
+impl crate::dto::SerializeForVersion for TransactionStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             TransactionStatus::NotReceived => serializer.serialize_str("NOT_RECEIVED"),
             TransactionStatus::Received => serializer.serialize_str("RECEIVED"),

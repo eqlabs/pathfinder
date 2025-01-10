@@ -82,11 +82,11 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
     .context("Joining blocking task")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         match self {
             Output::Full {
@@ -107,7 +107,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                         "ACCEPTED_ON_L2"
                     },
                 )?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     body.len(),
@@ -122,7 +122,7 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 )?;
             }
             Output::Pending(block) => {
-                serializer.flatten(&crate::dto::PendingBlockHeader(block))?;
+                serializer.flatten(block.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     block.transactions.len(),
@@ -150,11 +150,11 @@ struct TransactionWithReceipt<'a> {
     pub finality: crate::dto::TxnFinalityStatus,
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionWithReceipt<'_> {
+impl crate::dto::SerializeForVersion for TransactionWithReceipt<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         match serializer.version {
             crate::RpcVersion::V07 => {
@@ -164,8 +164,7 @@ impl crate::dto::serialize::SerializeForVersion for TransactionWithReceipt<'_> {
                 )?;
             }
             _ => {
-                serializer
-                    .serialize_field("transaction", &crate::dto::Transaction(self.transaction))?;
+                serializer.serialize_field("transaction", &self.transaction)?;
             }
         }
         serializer.serialize_field(
@@ -186,7 +185,7 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     #[tokio::test]

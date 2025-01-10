@@ -15,8 +15,7 @@ use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::{self, SerializeForVersion, Serializer};
-use crate::dto::{self};
+use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::PendingData;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
@@ -573,33 +572,32 @@ pub struct GetEventsResult {
 }
 
 impl SerializeForVersion for EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|d| d.0))?;
         serializer.serialize_iter("keys", self.keys.len(), &mut self.keys.iter().map(|d| d.0))?;
-        serializer.serialize_field("from_address", &dto::Address(&self.from_address))?;
-        serializer
-            .serialize_optional("block_hash", self.block_hash.as_ref().map(dto::BlockHash))?;
-        serializer.serialize_optional("block_number", self.block_number.map(dto::BlockNumber))?;
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction_hash))?;
+        serializer.serialize_field("from_address", &self.from_address)?;
+        serializer.serialize_optional("block_hash", self.block_hash)?;
+        serializer.serialize_optional("block_number", self.block_number)?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
 
         serializer.end()
     }
 }
 
 impl SerializeForVersion for &'_ EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         (*self).serialize(serializer)
     }
 }
 
 impl SerializeForVersion for GetEventsResult {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;
-        serializer.serialize_optional("continuation_token", self.continuation_token.as_ref())?;
+        serializer.serialize_optional("continuation_token", self.continuation_token.clone())?;
 
         serializer.end()
     }

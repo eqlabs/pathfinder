@@ -42,11 +42,11 @@ impl From<pathfinder_common::transaction::Transaction> for TransactionWithHash {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionWithHash {
+impl crate::dto::SerializeForVersion for TransactionWithHash {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.flatten(&self.txn)?;
@@ -54,11 +54,11 @@ impl crate::dto::serialize::SerializeForVersion for TransactionWithHash {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Transaction {
+impl crate::dto::SerializeForVersion for Transaction {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_common::transaction::TransactionVariant;
         match &self.0 {
             TransactionVariant::DeclareV0(x) => DeclareV0Helper(x).serialize(serializer),
@@ -102,11 +102,56 @@ struct ResourcePricePerUnitHelper<'a>(&'a ResourcePricePerUnit);
 struct DataAvailabilityModeHelper<'a>(&'a DataAvailabilityMode);
 struct TipHelper<'a>(&'a Tip);
 
-impl crate::dto::serialize::SerializeForVersion for DeclareV0Helper<'_> {
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::CallParam> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::AccountDeploymentDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::TransactionSignatureElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ConstructorParam> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::PaymasterDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for DeclareV0Helper<'_> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -118,11 +163,11 @@ impl crate::dto::serialize::SerializeForVersion for DeclareV0Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeclareV1Helper<'_> {
+impl crate::dto::SerializeForVersion for DeclareV1Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -135,11 +180,11 @@ impl crate::dto::serialize::SerializeForVersion for DeclareV1Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeclareV2Helper<'_> {
+impl crate::dto::SerializeForVersion for DeclareV2Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -153,11 +198,11 @@ impl crate::dto::serialize::SerializeForVersion for DeclareV2Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeclareV3Helper<'_> {
+impl crate::dto::SerializeForVersion for DeclareV3Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DECLARE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -185,11 +230,11 @@ impl crate::dto::serialize::SerializeForVersion for DeclareV3Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeployV0Helper<'_> {
+impl crate::dto::SerializeForVersion for DeployV0Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
@@ -203,11 +248,11 @@ impl crate::dto::serialize::SerializeForVersion for DeployV0Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeployV1Helper<'_> {
+impl crate::dto::SerializeForVersion for DeployV1Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
@@ -221,11 +266,11 @@ impl crate::dto::serialize::SerializeForVersion for DeployV1Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeployAccountV1Helper<'_> {
+impl crate::dto::SerializeForVersion for DeployAccountV1Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DEPLOY_ACCOUNT")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
@@ -239,11 +284,11 @@ impl crate::dto::serialize::SerializeForVersion for DeployAccountV1Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DeployAccountV3Helper<'_> {
+impl crate::dto::SerializeForVersion for DeployAccountV3Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"DEPLOY_ACCOUNT")?;
         s.serialize_field("version", &"0x3")?;
@@ -270,11 +315,11 @@ impl crate::dto::serialize::SerializeForVersion for DeployAccountV3Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for InvokeV0Helper<'_> {
+impl crate::dto::SerializeForVersion for InvokeV0Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("max_fee", &self.0.max_fee)?;
@@ -287,11 +332,11 @@ impl crate::dto::serialize::SerializeForVersion for InvokeV0Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for InvokeV1Helper<'_> {
+impl crate::dto::SerializeForVersion for InvokeV1Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -304,11 +349,11 @@ impl crate::dto::serialize::SerializeForVersion for InvokeV1Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for InvokeV3Helper<'_> {
+impl crate::dto::SerializeForVersion for InvokeV3Helper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("type", &"INVOKE")?;
         s.serialize_field("sender_address", &self.0.sender_address)?;
@@ -335,11 +380,11 @@ impl crate::dto::serialize::SerializeForVersion for InvokeV3Helper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for L1HandlerHelper<'_> {
+impl crate::dto::SerializeForVersion for L1HandlerHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field(
             "version",
@@ -354,21 +399,21 @@ impl crate::dto::serialize::SerializeForVersion for L1HandlerHelper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TransactionVersionHelper<'_> {
+impl crate::dto::SerializeForVersion for TransactionVersionHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(self.0 .0.as_be_bytes()))
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourceBoundsHelper<'_> {
+impl crate::dto::SerializeForVersion for ResourceBoundsHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("l1_gas", &ResourceBoundHelper(&self.0.l1_gas))?;
         s.serialize_field("l2_gas", &ResourceBoundHelper(&self.0.l2_gas))?;
@@ -376,11 +421,11 @@ impl crate::dto::serialize::SerializeForVersion for ResourceBoundsHelper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourceBoundHelper<'_> {
+impl crate::dto::SerializeForVersion for ResourceBoundHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("max_amount", &ResourceAmountHelper(&self.0.max_amount))?;
         s.serialize_field(
@@ -391,31 +436,31 @@ impl crate::dto::serialize::SerializeForVersion for ResourceBoundHelper<'_> {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourceAmountHelper<'_> {
+impl crate::dto::SerializeForVersion for ResourceAmountHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for ResourcePricePerUnitHelper<'_> {
+impl crate::dto::SerializeForVersion for ResourcePricePerUnitHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for DataAvailabilityModeHelper<'_> {
+impl crate::dto::SerializeForVersion for DataAvailabilityModeHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self.0 {
             DataAvailabilityMode::L1 => serializer.serialize_str("L1"),
             DataAvailabilityMode::L2 => serializer.serialize_str("L2"),
@@ -423,11 +468,11 @@ impl crate::dto::serialize::SerializeForVersion for DataAvailabilityModeHelper<'
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for TipHelper<'_> {
+impl crate::dto::SerializeForVersion for TipHelper<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         use pathfinder_serde::bytes_to_hex_str;
         serializer.serialize_str(&bytes_to_hex_str(&self.0 .0.to_be_bytes()))
     }
@@ -446,7 +491,7 @@ mod tests {
         use serde_json::json;
 
         use super::*;
-        use crate::dto::serialize::{SerializeForVersion, Serializer};
+        use crate::dto::{SerializeForVersion, Serializer};
         use crate::RpcVersion;
 
         #[test]

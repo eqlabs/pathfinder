@@ -3,7 +3,7 @@ use pathfinder_common::{BlockId, ClassHash};
 
 use crate::context::RpcContext;
 use crate::dto;
-use crate::dto::serialize::SerializeForVersion;
+use crate::dto::SerializeForVersion;
 use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
@@ -98,15 +98,10 @@ pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Erro
 }
 
 impl SerializeForVersion for Output {
-    fn serialize(
-        &self,
-        serializer: dto::serialize::Serializer,
-    ) -> Result<dto::serialize::Ok, dto::serialize::Error> {
+    fn serialize(&self, serializer: dto::Serializer) -> Result<dto::Ok, dto::Error> {
         match self {
-            Output::DeprecatedClass(cairo) => {
-                dto::DeprecatedContractClass(cairo).serialize(serializer)
-            }
-            Output::Class(sierra) => dto::ContractClass(sierra).serialize(serializer),
+            Output::DeprecatedClass(cairo) => cairo.serialize(serializer),
+            Output::Class(sierra) => sierra.serialize(serializer),
         }
     }
 }

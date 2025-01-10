@@ -31,11 +31,11 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug)]
 pub struct Output(TransactionTrace);
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         self.0.serialize(serializer)
     }
 }
@@ -268,7 +268,7 @@ pub mod tests {
         setup_multi_tx_trace_test,
     };
     use super::{trace_transaction, Input, Output};
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     #[tokio::test]

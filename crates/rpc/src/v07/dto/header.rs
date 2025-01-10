@@ -1,9 +1,5 @@
 use pathfinder_common::prelude::*;
-use serde::Serialize;
-use serde_with::{serde_as, DisplayFromStr};
-
-#[serde_as]
-#[derive(Serialize)]
+use pathfinder_common::GasPriceHex;
 pub struct Header {
     block_hash: BlockHash,
     parent_hash: BlockHash,
@@ -12,10 +8,29 @@ pub struct Header {
     timestamp: BlockTimestamp,
     sequencer_address: SequencerAddress,
     l1_gas_price: ResourcePrice,
-    #[serde_as(as = "DisplayFromStr")]
     starknet_version: StarknetVersion,
     l1_data_gas_price: ResourcePrice,
     l1_da_mode: L1DaMode,
+}
+
+impl crate::dto::SerializeForVersion for Header {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("block_hash", &self.block_hash)?;
+        serializer.serialize_field("parent_hash", &self.parent_hash)?;
+        serializer.serialize_field("block_number", &self.block_number)?;
+        serializer.serialize_field("new_root", &self.new_root)?;
+        serializer.serialize_field("timestamp", &self.timestamp)?;
+        serializer.serialize_field("sequencer_address", &self.sequencer_address)?;
+        serializer.serialize_field("l1_gas_price", &self.l1_gas_price)?;
+        serializer.serialize_field("starknet_version", &self.starknet_version)?;
+        serializer.serialize_field("l1_data_gas_price", &self.l1_data_gas_price)?;
+        serializer.serialize_field("l1_da_mode", &self.l1_da_mode)?;
+        serializer.end()
+    }
 }
 
 impl From<pathfinder_common::BlockHeader> for Header {
@@ -44,14 +59,11 @@ impl From<pathfinder_common::BlockHeader> for Header {
     }
 }
 
-#[serde_as]
-#[derive(Serialize)]
 pub struct PendingHeader {
     parent_hash: BlockHash,
     timestamp: BlockTimestamp,
     sequencer_address: SequencerAddress,
     l1_gas_price: ResourcePrice,
-    #[serde_as(as = "DisplayFromStr")]
     starknet_version: StarknetVersion,
     l1_data_gas_price: ResourcePrice,
     l1_da_mode: L1DaMode,
@@ -80,17 +92,40 @@ impl From<pathfinder_common::BlockHeader> for PendingHeader {
     }
 }
 
-#[serde_as]
-#[derive(Serialize)]
+impl crate::dto::SerializeForVersion for PendingHeader {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("parent_hash", &self.parent_hash)?;
+        serializer.serialize_field("timestamp", &self.timestamp)?;
+        serializer.serialize_field("sequencer_address", &self.sequencer_address)?;
+        serializer.serialize_field("l1_gas_price", &self.l1_gas_price)?;
+        serializer.serialize_field("starknet_version", &self.starknet_version)?;
+        serializer.serialize_field("l1_data_gas_price", &self.l1_data_gas_price)?;
+        serializer.serialize_field("l1_da_mode", &self.l1_da_mode)?;
+        serializer.end()
+    }
+}
+
 struct ResourcePrice {
-    #[serde_as(as = "pathfinder_serde::GasPriceAsHexStr")]
     pub price_in_wei: GasPrice,
-    #[serde_as(as = "pathfinder_serde::GasPriceAsHexStr")]
     pub price_in_fri: GasPrice,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+impl crate::dto::SerializeForVersion for ResourcePrice {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("price_in_wei", &GasPriceHex(self.price_in_wei))?;
+        serializer.serialize_field("price_in_fri", &GasPriceHex(self.price_in_fri))?;
+        serializer.end()
+    }
+}
+
 enum L1DaMode {
     Blob,
     Calldata,
@@ -105,6 +140,18 @@ impl From<pathfinder_common::L1DataAvailabilityMode> for L1DaMode {
     }
 }
 
+impl crate::dto::SerializeForVersion for L1DaMode {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_str(match self {
+            L1DaMode::Blob => "BLOB",
+            L1DaMode::Calldata => "CALLDATA",
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
@@ -113,6 +160,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::dto::SerializeForVersion;
 
     #[test]
     fn pending_header() {
@@ -145,8 +193,9 @@ mod tests {
             ..Default::default()
         };
         let uut = PendingHeader::from(uut);
-
-        let encoded = serde_json::to_value(uut).unwrap();
+        let encoded = uut
+            .serialize(crate::dto::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         assert_eq!(encoded, expected);
     }
@@ -188,8 +237,9 @@ mod tests {
             ..Default::default()
         };
         let uut = Header::from(uut);
-
-        let encoded = serde_json::to_value(uut).unwrap();
+        let encoded = uut
+            .serialize(crate::dto::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         assert_eq!(encoded, expected);
     }
@@ -197,11 +247,15 @@ mod tests {
     #[test]
     fn l1_data_availability_mode() {
         let calldata = L1DaMode::from(pathfinder_common::L1DataAvailabilityMode::Calldata);
-        let encoded = serde_json::to_value(calldata).unwrap();
+        let encoded = calldata
+            .serialize(crate::dto::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
         assert_eq!(encoded, json!("CALLDATA"));
 
         let blob = L1DaMode::from(pathfinder_common::L1DataAvailabilityMode::Blob);
-        let encoded = serde_json::to_value(blob).unwrap();
+        let encoded = blob
+            .serialize(crate::dto::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
         assert_eq!(encoded, json!("BLOB"));
     }
 
@@ -217,7 +271,9 @@ mod tests {
             price_in_fri: GasPrice(0x123),
         };
 
-        let encoded = serde_json::to_value(uut).unwrap();
+        let encoded = uut
+            .serialize(crate::dto::Serializer::new(crate::RpcVersion::V07))
+            .unwrap();
 
         assert_eq!(encoded, expected);
     }
