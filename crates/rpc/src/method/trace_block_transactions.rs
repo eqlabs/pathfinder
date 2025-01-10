@@ -313,13 +313,28 @@ pub(crate) fn map_gateway_trace(
             .total_gas_consumed
             .unwrap_or_default()
             .l1_data_gas;
+    let l2_gas = validate_invocation_resources
+        .total_gas_consumed
+        .unwrap_or_default()
+        .l2_gas
+        .unwrap_or_default()
+        + function_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default()
+        + fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default();
     let execution_resources = pathfinder_executor::types::ExecutionResources {
         computation_resources,
         // These values are not available in the gateway trace.
         data_availability: Default::default(),
         l1_gas,
         l1_data_gas,
-        l2_gas: 0,
+        l2_gas,
     };
 
     use pathfinder_common::transaction::TransactionVariant;
@@ -1024,8 +1039,8 @@ pub(crate) mod tests {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
