@@ -56,7 +56,7 @@ mod versioned_constants {
 
     const STARKNET_VERSION_0_13_3: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
 
-    const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
+    const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
 
     pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: LazyLock<VersionedConstants> =
         LazyLock::new(|| {
