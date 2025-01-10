@@ -54,7 +54,11 @@ impl From<anyhow::Error> for Error {
 impl From<Error> for crate::jsonrpc::RpcError {
     fn from(error: Error) -> Self {
         match error {
-            Error::CompilationFailed => Self::ApplicationError(ApplicationError::CompilationFailed),
+            Error::CompilationFailed => {
+                Self::ApplicationError(ApplicationError::CompilationFailed {
+                    data: String::new(),
+                })
+            }
             Error::ClassHashNotFound(_) => {
                 Self::ApplicationError(ApplicationError::ClassHashNotFound)
             }
