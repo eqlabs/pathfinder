@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.8.0-rc.0",
+    "version": "0.8.0-rc.2",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -993,6 +993,9 @@
                         "$ref": "#/components/schemas/FELT"
                       },
                       "class_hash": {
+                        "$ref": "#/components/schemas/FELT"
+                      },
+                      "storage_root": {
                         "$ref": "#/components/schemas/FELT"
                       }
                     },
