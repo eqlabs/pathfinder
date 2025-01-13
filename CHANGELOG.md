@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
+- `storage_root` along `nonce` and `class_hash` in `contracts_proof/contract_leaves_data` for `starknet_getStorageProof`.
 
 ### Removed
 
