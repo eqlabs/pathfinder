@@ -208,6 +208,11 @@ pub struct GetProofOutput {
     /// [contract_proof](GetProofOutput#contract_proof) is the global state
     /// commitment.
     state_commitment: Option<StateCommitment>,
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
 
     /// Membership / Non-membership proof for the queried contract
     contract_proof: ProofNodes,
@@ -223,6 +228,7 @@ impl crate::dto::SerializeForVersion for GetProofOutput {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_optional("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional("class_commitment", self.class_commitment)?;
         serializer.serialize_field("contract_proof", &self.contract_proof)?;
         serializer.serialize_optional("contract_data", self.contract_data.clone())?;
         serializer.end()
@@ -231,6 +237,11 @@ impl crate::dto::SerializeForVersion for GetProofOutput {
 
 #[derive(Debug, PartialEq)]
 pub struct GetClassProofOutput {
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
 }
@@ -241,6 +252,7 @@ impl crate::dto::SerializeForVersion for GetClassProofOutput {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional("class_commitment", self.class_commitment)?;
         serializer.serialize_field("class_proof", &self.class_proof)?;
         serializer.end()
     }
@@ -295,6 +307,9 @@ pub async fn get_proof(
         let storage_root_idx = tx
             .storage_root_index(header.number)
             .context("Querying storage root index")?;
+        let class_commitment = tx
+            .class_root(header.number)
+            .context("Querying class commitment")?;
 
         let Some(storage_root_idx) = storage_root_idx else {
             if tx.trie_pruning_enabled() {
@@ -306,6 +321,7 @@ pub async fn get_proof(
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetProofOutput {
                     state_commitment,
+                    class_commitment,
                     contract_proof: ProofNodes(vec![]),
                     contract_data: None,
                 });
@@ -333,6 +349,7 @@ pub async fn get_proof(
         if contract_state_hash.is_none() {
             return Ok(GetProofOutput {
                 state_commitment,
+                class_commitment,
                 contract_proof,
                 contract_data: None,
             });
@@ -388,6 +405,7 @@ pub async fn get_proof(
 
         Ok(GetProofOutput {
             state_commitment,
+            class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
         })
@@ -442,10 +460,16 @@ pub async fn get_class_proof(
                 // - or all leaves were removed resulting in an empty trie
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetClassProofOutput {
+                    class_commitment: None,
                     class_proof: ProofNodes(vec![]),
                 });
             }
         };
+
+        let class_commitment = tx
+            .class_trie_node_hash(class_root_idx)
+            .context("Querying class trie root")?
+            .map(ClassCommitment);
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
@@ -457,7 +481,10 @@ pub async fn get_class_proof(
 
         let class_proof = ProofNodes(class_proof);
 
-        Ok(GetClassProofOutput { class_proof })
+        Ok(GetClassProofOutput {
+            class_commitment,
+            class_proof,
+        })
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -678,6 +705,7 @@ mod tests {
             assert_eq!(
                 output,
                 GetClassProofOutput {
+                    class_commitment: None,
                     class_proof: ProofNodes(vec![])
                 }
             );
