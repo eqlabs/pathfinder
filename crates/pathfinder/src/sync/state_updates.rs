@@ -285,7 +285,7 @@ pub async fn batch_update_starknet_state(
             tail,
             storage.clone(),
         )
-        .context("Updating Starknet state")?;
+        .with_context(|| format!("Updating Starknet state, tail {tail}"))?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
         let expected_state_commitment = db
             .state_commitment(tail.into())

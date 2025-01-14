@@ -147,7 +147,7 @@ where
                     continue_from
                 }
                 Err(SyncError::Fatal(mut error)) => {
-                    tracing::error!(%error, "Stopping checkpoint sync");
+                    tracing::error!(?error, "Stopping checkpoint sync");
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
@@ -204,7 +204,7 @@ where
             match result {
                 Ok(_) => tracing::debug!("Restarting track sync: unexpected end of Block stream"),
                 Err(SyncError::Fatal(mut error)) => {
-                    tracing::error!(%error, "Stopping track sync");
+                    tracing::error!(?error, "Stopping track sync");
                     return Err(error.take_or_deep_clone());
                 }
                 Err(error) => {
@@ -315,7 +315,7 @@ mod tests {
     use p2p::libp2p::PeerId;
     use pathfinder_common::event::Event;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::state_update::StateUpdateData;
+    use pathfinder_common::state_update::{self, StateUpdateData};
     use pathfinder_common::transaction::Transaction;
     use pathfinder_common::{
         BlockHeader,
@@ -376,27 +376,49 @@ mod tests {
         (public_key, blocks)
     }
 
-    async fn sync_done_watch(storage: Storage, expected_last: BlockNumber) {
+    async fn sync_done_watch(
+        mut last_event_rx: tokio::sync::mpsc::Receiver<()>,
+        storage: Storage,
+        expected_last: BlockNumber,
+    ) {
+        // Don't poll the DB until the last event is emitted from the fake P2P client
+        last_event_rx.recv().await.unwrap();
+
+        let mut interval = tokio::time::interval_at(
+            // Give sync some slack to process the last event and commit the last block
+            tokio::time::Instant::now() + Duration::from_millis(500),
+            Duration::from_millis(200),
+        );
+
         let mut start = std::time::Instant::now();
-        tokio::task::spawn_blocking(move || loop {
-            std::thread::sleep(Duration::from_millis(200));
-            let mut db = storage.connection().unwrap();
-            let db = db.transaction().unwrap();
-            let header = db.block_header(expected_last.into()).unwrap();
-            if let Some(header) = header {
-                let after = start.elapsed();
-                if after > TIMEOUT {
-                    break;
+
+        loop {
+            interval.tick().await;
+            let storage = storage.clone();
+
+            let done = tokio::task::spawn_blocking(move || {
+                let mut db = storage.connection().unwrap();
+                let db = db.transaction().unwrap();
+                // We don't have to query the entire block, as tracking sync commits entire
+                // blocks to the DB, so if the header is there, the block is there
+                let header = db.block_header(expected_last.into()).unwrap();
+                if let Some(header) = header {
+                    if header.number == expected_last {
+                        let after = start.elapsed();
+                        tracing::info!(?after, "Sync done");
+                        return true;
+                    }
                 }
 
-                if header.number == expected_last {
-                    tracing::info!(?after, "Sync done");
-                    break;
-                }
+                false
+            })
+            .await
+            .unwrap();
+
+            if done {
+                break;
             }
-        })
-        .await
-        .unwrap();
+        }
     }
 
     #[derive(Copy, Clone, Debug)]
@@ -449,6 +471,8 @@ mod tests {
     })]
     #[test_log::test(tokio::test)]
     async fn sync(#[case] error_setup: ErrorSetup) {
+        use futures::FutureExt;
+
         let (public_key, blocks) = generate_fake_blocks(ALL_BLOCKS as usize);
         let last_header = &blocks.last().unwrap().header.header;
         let last_checkpoint_header = &blocks[LAST_IN_CHECKPOINT.get() as usize].header.header;
@@ -458,6 +482,7 @@ mod tests {
         let expect_fully_synced_blocks = error_setup.expected_last_synced.is_full();
 
         let error_trigger = ErrorTrigger::new(error_setup.fatal_at);
+        let (last_event_tx, mut last_event_rx) = tokio::sync::mpsc::channel(1);
 
         let sync = Sync {
             storage: storage.clone(),
@@ -465,6 +490,7 @@ mod tests {
                 blocks: blocks.clone(),
                 error_trigger: error_trigger.clone(),
                 storage: storage.clone(),
+                last_event_tx,
             },
             // We use `l1_checkpoint_override` instead
             eth_client: EthereumClient::new("https://unused.com").unwrap(),
@@ -483,13 +509,42 @@ mod tests {
             block_hash_db: None,
         };
 
-        tokio::select! {
+        let sync_done = if error_setup.fatal_at.is_some() {
+            // Sync will either bail on fatal error or time out
+            std::future::pending().boxed()
+        } else {
+            // Successful sync never ends
+            sync_done_watch(last_event_rx, storage.clone(), expected_last_synced_block).boxed()
+        };
+
+        let bail_early = tokio::select! {
             result = tokio::time::timeout(TIMEOUT, sync.run()) => match result {
                 Ok(Ok(())) => unreachable!("Sync does not exit upon success, sync_done_watch should have been triggered"),
-                Ok(Err(e)) => tracing::debug!(%e, "Sync failed with a fatal error"),
-                Err(_) => tracing::debug!("Test timed out"),
+                Ok(Err(error)) => {
+                    let unexpected_fatal = error_setup.fatal_at.is_none();
+                    if unexpected_fatal {
+                        tracing::debug!(?error, "Sync failed with an enexpected fatal error");
+                    } else {
+                        tracing::debug!(?error, "Sync failed with a fatal error");
+                    }
+                    unexpected_fatal
+                },
+                Err(_) => {
+                    tracing::debug!("Test timed out");
+                    true
+                },
             },
-            _ = sync_done_watch(storage.clone(), expected_last_synced_block) => tracing::debug!("Sync completion detected"),
+            _ = sync_done => {
+                tracing::debug!("Sync completion detected");
+                false
+            },
+        };
+
+        if bail_early {
+            blocks.iter().for_each(|b| {
+                tracing::error!(block=%b.header.header.number, state_update=?b.state_update.as_ref().unwrap());
+            });
+            return;
         }
 
         assert!(error_trigger.all_errors_triggered());
@@ -590,6 +645,7 @@ mod tests {
         pub blocks: Vec<Block>,
         pub error_trigger: ErrorTrigger,
         pub storage: Storage,
+        pub last_event_tx: tokio::sync::mpsc::Sender<()>,
     }
 
     #[derive(Clone)]
@@ -606,7 +662,11 @@ mod tests {
                     (0..=4)
                         .map(|_| AtomicU64::new((0..CHECKPOINT_BLOCKS).fake()))
                         .chain(
-                            (5..=9).map(|_| AtomicU64::new((CHECKPOINT_BLOCKS..ALL_BLOCKS).fake())),
+                            // The last block is always error free to ease checking for sync
+                            // completion
+                            (5..=9).map(|_| {
+                                AtomicU64::new((CHECKPOINT_BLOCKS..ALL_BLOCKS - 1).fake())
+                            }),
                         )
                         .collect(),
                 )),
@@ -1000,6 +1060,11 @@ mod tests {
                 );
                 // This will trigger commitment mismatch
                 e.push(Ok(Faker.fake()));
+            }
+
+            if block == LAST_IN_TRACK {
+                let last_event_tx = self.last_event_tx.clone();
+                last_event_tx.send(()).await.unwrap();
             }
 
             Some((PeerId::random(), stream::iter(e)))
