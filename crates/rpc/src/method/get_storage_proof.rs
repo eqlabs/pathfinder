@@ -9,6 +9,7 @@ use pathfinder_common::{
     ClassHash,
     ContractAddress,
     ContractNonce,
+    ContractRoot,
     StorageAddress,
 };
 use pathfinder_crypto::Felt;
@@ -172,6 +173,7 @@ impl SerializeForVersion for &NodeHashToNodeMappings {
 struct ContractLeafData {
     nonce: ContractNonce,
     class_hash: ClassHash,
+    storage_root: ContractRoot,
 }
 
 impl SerializeForVersion for &ContractLeafData {
@@ -182,6 +184,7 @@ impl SerializeForVersion for &ContractLeafData {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("nonce", &self.nonce)?;
         s.serialize_field("class_hash", &self.class_hash)?;
+        s.serialize_field("storage_root", &self.storage_root)?;
         s.end()
     }
 }
@@ -439,7 +442,16 @@ fn get_contract_proofs(
                 .context("Querying contract's nonce")?
                 .unwrap_or_default();
 
-            Ok(ContractLeafData { nonce, class_hash })
+            let storage_root = tx
+                .contract_root(block_number, address)
+                .context("Querying contract's storage root")?
+                .unwrap_or_default();
+
+            Ok(ContractLeafData {
+                nonce,
+                class_hash,
+                storage_root,
+            })
         })
         .collect::<Result<Vec<_>, Error>>()?;
     Ok((
@@ -670,6 +682,7 @@ mod tests {
                     contract_leaves_data: vec![ContractLeafData {
                         nonce: ContractNonce::ZERO,
                         class_hash: ClassHash(Felt::from_hex_str("0x123").unwrap()),
+                        storage_root: ContractRoot(Felt::from_hex_str("0x234").unwrap()),
                     }],
                 },
                 contracts_storage_proofs: vec![NodeHashToNodeMappings(vec![NodeHashToNodeMapping {
@@ -702,14 +715,15 @@ mod tests {
                             "node": {
                                 "child": "0x123",
                                 "length": 8,
-                                "path": "0x0",
+                                "path": "0x0"
                             }
                         }
                     ],
                     "contract_leaves_data": [
                         {
                             "nonce": "0x0",
-                            "class_hash": "0x123"
+                            "class_hash": "0x123",
+                            "storage_root": "0x234"
                         }
                     ]
                 },
@@ -734,7 +748,7 @@ mod tests {
         fn serialization_output(#[case] output: Output, #[case] expected: serde_json::Value) {
             let output = output.serialize(crate::dto::Serializer::default()).unwrap();
 
-            assert_eq!(output, expected);
+            pretty_assertions_sorted::assert_eq!(output, expected);
         }
     }
 
