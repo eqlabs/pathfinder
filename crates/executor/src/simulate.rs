@@ -6,6 +6,7 @@ use blockifier::state::cached_state::CachedState;
 use blockifier::state::errors::StateError;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
+use blockifier::versioned_constants::VersionedConstants;
 use cached::{Cached, SizedCache};
 use pathfinder_common::{
     BlockHash,
@@ -125,7 +126,12 @@ pub fn simulate(
                         fee_type,
                         &minimal_l1_gas_amount_vector,
                     ),
-                    trace: to_trace(transaction_type, tx_info, state_diff),
+                    trace: to_trace(
+                        transaction_type,
+                        tx_info,
+                        state_diff,
+                        block_context.versioned_constants(),
+                    ),
                 });
             }
             Err(error) => {
@@ -203,7 +209,12 @@ pub fn trace(
             })?;
         tx_state.commit();
 
-        let trace = to_trace(tx_type, tx_info, state_diff);
+        let trace = to_trace(
+            tx_type,
+            tx_info,
+            state_diff,
+            block_context.versioned_constants(),
+        );
         traces.push((hash, trace));
     }
 
@@ -350,10 +361,17 @@ fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
+    versioned_constants: &VersionedConstants,
 ) -> TransactionTrace {
-    let validate_invocation = execution_info.validate_call_info.map(Into::into);
-    let maybe_function_invocation = execution_info.execute_call_info.map(Into::into);
-    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(Into::into);
+    let validate_invocation = execution_info
+        .validate_call_info
+        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
+    let maybe_function_invocation = execution_info
+        .execute_call_info
+        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
+    let fee_transfer_invocation = execution_info
+        .fee_transfer_call_info
+        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
 
     let computation_resources = validate_invocation
         .as_ref()

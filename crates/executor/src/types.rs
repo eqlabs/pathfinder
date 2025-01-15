@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::fee::fee_utils::get_vm_resources_cost;
 use blockifier::transaction::objects::TransactionExecutionInfo;
 use pathfinder_common::{
     CasmHash,
@@ -311,11 +312,18 @@ pub struct DataAvailabilityResources {
     pub l1_data_gas: u128,
 }
 
-impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
-    fn from(call_info: blockifier::execution::call_info::CallInfo) -> Self {
+impl FunctionInvocation {
+    pub fn from_call_info(
+        call_info: blockifier::execution::call_info::CallInfo,
+        versioned_constants: &blockifier::versioned_constants::VersionedConstants,
+    ) -> Self {
         let messages = ordered_l2_to_l1_messages(&call_info);
 
-        let internal_calls = call_info.inner_calls.into_iter().map(Into::into).collect();
+        let internal_calls = call_info
+            .inner_calls
+            .into_iter()
+            .map(|call_info| Self::from_call_info(call_info, versioned_constants))
+            .collect();
 
         let events = call_info
             .execution
@@ -331,6 +339,22 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             .into_iter()
             .map(IntoFelt::into_felt)
             .collect();
+
+        let gas_vector = match call_info.tracked_resource {
+            blockifier::execution::contract_class::TrackedResource::CairoSteps => {
+                get_vm_resources_cost(
+                    versioned_constants,
+                    &call_info.resources,
+                    0,
+                    &starknet_api::transaction::fields::GasVectorComputationMode::NoL2Gas,
+                )
+            }
+            blockifier::execution::contract_class::TrackedResource::SierraGas => GasVector {
+                l1_gas: 0u64.into(),
+                l1_data_gas: 0u64.into(),
+                l2_gas: call_info.execution.gas_consumed.into(),
+            },
+        };
 
         Self {
             calldata: call_info
@@ -357,9 +381,8 @@ impl From<blockifier::execution::call_info::CallInfo> for FunctionInvocation {
             result,
             computation_resources: call_info.resources.into(),
             execution_resources: InnerCallExecutionResources {
-                l1_gas: call_info.execution.gas_consumed.into(),
-                // TODO: Use proper l2_gas value for Starknet 0.13.3
-                l2_gas: 0,
+                l1_gas: gas_vector.l1_gas.0.into(),
+                l2_gas: gas_vector.l2_gas.0.into(),
             },
         }
     }

@@ -935,8 +935,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: declare_fee_transfer_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -956,8 +958,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![],
                     computation_resources: declare_validate_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 1,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -1234,8 +1238,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![],
                     computation_resources: universal_deployer_validate_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 1,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -1308,7 +1314,7 @@ pub(crate) mod tests {
                                 pedersen_builtin_applications: 7,
                                 ..Default::default()
                             },
-                            execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
+                            execution_resources: pathfinder_executor::types::InnerCallExecutionResources { l1_gas: 4, l2_gas: 0 },
                         }
                     ],
                     class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
@@ -1334,7 +1340,10 @@ pub(crate) mod tests {
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
                     computation_resources: universal_deployer_execute_computation_resources(),
-                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 6,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -1371,8 +1380,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: universal_deployer_fee_transfer_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -1622,8 +1633,10 @@ pub(crate) mod tests {
                     ],
                     messages: vec![],
                     result: vec![],
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 1,
+                        l2_gas: 0,
+                    },
                     computation_resources: invoke_validate_computation_resources(),
                 }
             }
@@ -1654,8 +1667,8 @@ pub(crate) mod tests {
                         },
                         execution_resources:
                             pathfinder_executor::types::InnerCallExecutionResources {
-                                l1_gas: 12840,
-                                ..Default::default()
+                                l1_gas: 1,
+                                l2_gas: 0,
                             },
                     }],
                     class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
@@ -1672,8 +1685,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![test_storage_value.0],
                     computation_resources: invoke_execute_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 3,
+                        l2_gas: 0,
+                    },
                 }
             }
 
@@ -1709,8 +1724,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: invoke_fee_transfer_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
                 }
             }
 
