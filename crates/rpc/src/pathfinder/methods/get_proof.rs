@@ -132,9 +132,12 @@ impl crate::dto::SerializeForVersion for ProofNodes {
                         let mut s = serializer.serialize_struct()?;
                         match self.0 {
                             TrieNode::Binary { left, right } => {
-                                s.serialize_field("type", &"binary")?;
-                                s.serialize_field("left", left)?;
-                                s.serialize_field("right", right)?;
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("left", left)?;
+                                inner.serialize_field("right", right)?;
+                                let inner = inner.end()?;
+
+                                s.serialize_field("binary", &inner)?;
                             }
                             TrieNode::Edge { child, path } => {
                                 let value = Felt::from_bits(path).unwrap();
@@ -143,9 +146,12 @@ impl crate::dto::SerializeForVersion for ProofNodes {
                                     len: path.len(),
                                 };
 
-                                s.serialize_field("type", &"edge")?;
-                                s.serialize_field("path", &path)?;
-                                s.serialize_field("child", child)?;
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("path", &path)?;
+                                inner.serialize_field("child", child)?;
+                                let inner = inner.end()?;
+
+                                s.serialize_field("edge", &inner)?;
                             }
                         }
                         s.end()
@@ -227,8 +233,8 @@ impl crate::dto::SerializeForVersion for GetProofOutput {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_optional("state_commitment", self.state_commitment)?;
-        serializer.serialize_optional("class_commitment", self.class_commitment)?;
+        serializer.serialize_optional_with_null("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
         serializer.serialize_field("contract_proof", &self.contract_proof)?;
         serializer.serialize_optional("contract_data", self.contract_data.clone())?;
         serializer.end()
@@ -252,7 +258,7 @@ impl crate::dto::SerializeForVersion for GetClassProofOutput {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_optional("class_commitment", self.class_commitment)?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
         serializer.serialize_field("class_proof", &self.class_proof)?;
         serializer.end()
     }
@@ -498,6 +504,52 @@ mod tests {
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
     use super::*;
+
+    mod serialization {
+        use bitvec::prelude::*;
+
+        use super::*;
+        use crate::dto::SerializeForVersion;
+
+        #[test]
+        fn serialize_proof_nodes() {
+            let nodes = ProofNodes(vec![
+                TrieNode::Binary {
+                    left: Felt::from_u64(0),
+                    right: Felt::from_u64(1),
+                },
+                TrieNode::Edge {
+                    child: Felt::from_u64(2),
+                    path: bitvec::bitvec![u8, Msb0; 1, 1],
+                },
+            ]);
+            let actual = nodes
+                .serialize(crate::dto::Serializer {
+                    version: crate::RpcVersion::default(),
+                })
+                .unwrap();
+            let expected = serde_json::json!(
+                [
+                    {
+                        "binary": {
+                            "left": "0x0",
+                            "right": "0x1",
+                        }
+                    },
+                    {
+                        "edge": {
+                            "path": {
+                                "value": "0x3",
+                                "len": 2,
+                            },
+                            "child": "0x2",
+                        }
+                    },
+                ]
+            );
+            assert_eq!(actual, expected);
+        }
+    }
 
     mod get_proof {
         use super::*;
