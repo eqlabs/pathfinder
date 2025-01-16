@@ -1,6 +1,5 @@
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
-use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -19,12 +18,14 @@ pub fn estimate(
         let _span = tracing::debug_span!("estimate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
 
         let fee_type = super::transaction::fee_type(&transaction);
+        let gas_vector_computation_mode =
+            super::transaction::gas_vector_computation_mode(&transaction);
         let minimal_l1_gas_amount_vector = match &transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     &block_context,
                     account_transaction,
-                    &GasVectorComputationMode::All,
+                    &gas_vector_computation_mode,
                 ))
             }
             Transaction::L1Handler(_) => None,

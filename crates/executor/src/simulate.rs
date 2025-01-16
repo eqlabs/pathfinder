@@ -94,12 +94,15 @@ pub fn simulate(
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
         let fee_type = super::transaction::fee_type(&transaction);
+        let gas_vector_computation_mode =
+            super::transaction::gas_vector_computation_mode(&transaction);
+
         let minimal_l1_gas_amount_vector = match &transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     &block_context,
                     account_transaction,
-                    &GasVectorComputationMode::All,
+                    &gas_vector_computation_mode,
                 ))
             }
             Transaction::L1Handler(_) => None,
@@ -131,6 +134,7 @@ pub fn simulate(
                         tx_info,
                         state_diff,
                         block_context.versioned_constants(),
+                        &gas_vector_computation_mode,
                     ),
                 });
             }
@@ -186,6 +190,7 @@ pub fn trace(
 
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+        let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx.execute(&mut tx_state, &block_context).map_err(|e| {
@@ -216,6 +221,7 @@ pub fn trace(
             tx_info,
             state_diff,
             block_context.versioned_constants(),
+            &gas_vector_computation_mode,
         );
         traces.push((hash, trace));
     }
@@ -364,16 +370,29 @@ fn to_trace(
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
     versioned_constants: &VersionedConstants,
+    gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> TransactionTrace {
-    let validate_invocation = execution_info
-        .validate_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
-    let maybe_function_invocation = execution_info
-        .execute_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
-    let fee_transfer_invocation = execution_info
-        .fee_transfer_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
+    let validate_invocation = execution_info.validate_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
+    let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
+    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
 
     let computation_resources = validate_invocation
         .as_ref()

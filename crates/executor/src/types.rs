@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::fee::fee_utils::get_vm_resources_cost;
 use blockifier::transaction::objects::TransactionExecutionInfo;
 use pathfinder_common::{
     CasmHash,
@@ -313,17 +312,135 @@ pub struct DataAvailabilityResources {
     pub l1_data_gas: u128,
 }
 
+// Non-recursive variant of `CallInfo::summarize()`
+fn summarize_call_info(
+    call_info: &blockifier::execution::call_info::CallInfo,
+) -> blockifier::execution::call_info::ExecutionSummary {
+    let class_hash = call_info
+        .call
+        .class_hash
+        .expect("Class hash must be set after execution.");
+    let executed_class_hashes: HashSet<starknet_api::core::ClassHash> =
+        std::iter::once(class_hash).collect();
+
+    // Storage entries.
+    let visited_storage_entries = call_info
+        .accessed_storage_keys
+        .iter()
+        .map(|storage_key| (call_info.call.storage_address, *storage_key))
+        .collect();
+
+    // Messages.
+    let l2_to_l1_payload_lengths = call_info
+        .execution
+        .l2_to_l1_messages
+        .iter()
+        .map(|message| message.message.payload.0.len())
+        .collect();
+
+    let event_summary = specific_event_summary(call_info);
+
+    let inner_call_execution_resources = call_info.inner_calls.iter().fold(
+        cairo_vm::vm::runners::cairo_runner::ExecutionResources::default(),
+        |acc, call_info| &acc + &call_info.resources,
+    );
+    let non_recursive_vm_resources = &call_info.resources - &inner_call_execution_resources;
+
+    blockifier::execution::call_info::ExecutionSummary {
+        charged_resources: blockifier::execution::call_info::ChargedResources {
+            vm_resources: non_recursive_vm_resources,
+            gas_consumed: starknet_api::execution_resources::GasAmount(
+                call_info.execution.gas_consumed,
+            ),
+        },
+        executed_class_hashes,
+        visited_storage_entries,
+        l2_to_l1_payload_lengths,
+        event_summary,
+    }
+}
+
+// Copy of `CallInfo::specific_event_summary()` because that is private
+fn specific_event_summary(
+    call_info: &blockifier::execution::call_info::CallInfo,
+) -> blockifier::execution::call_info::EventSummary {
+    let mut event_summary = blockifier::execution::call_info::EventSummary {
+        n_events: call_info.execution.events.len(),
+        ..Default::default()
+    };
+    for blockifier::execution::call_info::OrderedEvent { event, .. } in
+        call_info.execution.events.iter()
+    {
+        let data_len: u64 = event
+            .data
+            .0
+            .len()
+            .try_into()
+            .expect("Conversion from usize to u64 should not fail.");
+        event_summary.total_event_data_size += data_len;
+        let key_len: u64 = event
+            .keys
+            .len()
+            .try_into()
+            .expect("Conversion from usize to u64 should not fail.");
+        event_summary.total_event_keys += key_len;
+    }
+    event_summary
+}
+
 impl FunctionInvocation {
     pub fn from_call_info(
         call_info: blockifier::execution::call_info::CallInfo,
         versioned_constants: &blockifier::versioned_constants::VersionedConstants,
+        gas_vector_computation_mode: &starknet_api::transaction::fields::GasVectorComputationMode,
     ) -> Self {
+        let execution_summary = summarize_call_info(&call_info);
+
+        // Message costs
+        let message_resources = blockifier::fee::resources::MessageResources::new(
+            execution_summary.l2_to_l1_payload_lengths,
+            None,
+        );
+        let message_gas_cost = message_resources.to_gas_vector();
+
+        // Event costs
+        let archival_gas_costs = &versioned_constants.deprecated_l2_resource_gas_costs;
+        let event_gas_cost = GasVector::from_l1_gas(
+            (archival_gas_costs.gas_per_data_felt
+                * (archival_gas_costs.event_key_factor
+                    * execution_summary.event_summary.total_event_keys
+                    + execution_summary.event_summary.total_event_data_size))
+                .to_integer()
+                .into(),
+        );
+
+        // Computation costs
+        let computation_resources = blockifier::fee::resources::ComputationResources {
+            vm_resources: execution_summary
+                .charged_resources
+                .vm_resources
+                .filter_unused_builtins(),
+            n_reverted_steps: 0,
+            sierra_gas: execution_summary.charged_resources.gas_consumed,
+            reverted_sierra_gas: 0u64.into(),
+        };
+        let computation_gas_cost =
+            computation_resources.to_gas_vector(versioned_constants, gas_vector_computation_mode);
+
+        let gas_vector = computation_gas_cost
+            .checked_add(event_gas_cost)
+            .unwrap_or_else(|| panic!("resource overflow while adding event costs"))
+            .checked_add(message_gas_cost)
+            .unwrap_or_else(|| panic!("resource overflow while adding message costs"));
+
         let messages = ordered_l2_to_l1_messages(&call_info);
 
         let internal_calls = call_info
             .inner_calls
             .into_iter()
-            .map(|call_info| Self::from_call_info(call_info, versioned_constants))
+            .map(|call_info| {
+                Self::from_call_info(call_info, versioned_constants, gas_vector_computation_mode)
+            })
             .collect();
 
         let events = call_info
@@ -340,22 +457,6 @@ impl FunctionInvocation {
             .into_iter()
             .map(IntoFelt::into_felt)
             .collect();
-
-        let gas_vector = match call_info.tracked_resource {
-            blockifier::execution::contract_class::TrackedResource::CairoSteps => {
-                get_vm_resources_cost(
-                    versioned_constants,
-                    &call_info.resources,
-                    0,
-                    &starknet_api::transaction::fields::GasVectorComputationMode::NoL2Gas,
-                )
-            }
-            blockifier::execution::contract_class::TrackedResource::SierraGas => GasVector {
-                l1_gas: 0u64.into(),
-                l1_data_gas: 0u64.into(),
-                l2_gas: call_info.execution.gas_consumed.into(),
-            },
-        };
 
         Self {
             calldata: call_info
