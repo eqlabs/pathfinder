@@ -1,8 +1,10 @@
 use blockifier::execution::stack_trace::{
-    gen_transaction_execution_error_trace,
+    gen_tx_execution_error_trace,
     ErrorStack as BlockifierErrorStack,
+    ErrorStackSegment,
 };
 use blockifier::transaction::errors::TransactionExecutionError;
+use blockifier::transaction::objects::RevertError;
 use pathfinder_common::{ClassHash, ContractAddress, EntryPoint};
 
 use crate::IntoFelt;
@@ -18,8 +20,19 @@ impl From<BlockifierErrorStack> for ErrorStack {
 
 impl From<TransactionExecutionError> for ErrorStack {
     fn from(value: TransactionExecutionError) -> Self {
-        let error_stack = gen_transaction_execution_error_trace(&value);
+        let error_stack = gen_tx_execution_error_trace(&value);
         error_stack.into()
+    }
+}
+
+impl From<RevertError> for ErrorStack {
+    fn from(value: RevertError) -> Self {
+        match value {
+            RevertError::Execution(error_stack) => error_stack.into(),
+            RevertError::PostExecution(fee_check_error) => {
+                Self(vec![Frame::StringFrame(fee_check_error.to_string())])
+            }
+        }
     }
 }
 
@@ -29,22 +42,19 @@ pub enum Frame {
     StringFrame(String),
 }
 
-impl From<blockifier::execution::stack_trace::Frame> for Frame {
-    fn from(value: blockifier::execution::stack_trace::Frame) -> Self {
+impl From<ErrorStackSegment> for Frame {
+    fn from(value: ErrorStackSegment) -> Self {
         match value {
-            blockifier::execution::stack_trace::Frame::EntryPoint(entry_point) => {
-                Frame::CallFrame(CallFrame {
-                    storage_address: ContractAddress(entry_point.storage_address.0.into_felt()),
-                    class_hash: ClassHash(entry_point.class_hash.0.into_felt()),
-                    selector: entry_point.selector.map(|s| EntryPoint(s.0.into_felt())),
-                })
+            ErrorStackSegment::EntryPoint(entry_point) => Frame::CallFrame(CallFrame {
+                storage_address: ContractAddress(entry_point.storage_address.0.into_felt()),
+                class_hash: ClassHash(entry_point.class_hash.0.into_felt()),
+                selector: entry_point.selector.map(|s| EntryPoint(s.0.into_felt())),
+            }),
+            ErrorStackSegment::Cairo1RevertSummary(revert_summary) => {
+                Frame::StringFrame(format!("{:?}", revert_summary))
             }
-            blockifier::execution::stack_trace::Frame::Vm(vm_exception) => {
-                Frame::StringFrame(String::from(&vm_exception))
-            }
-            blockifier::execution::stack_trace::Frame::StringFrame(string_frame) => {
-                Frame::StringFrame(string_frame)
-            }
+            ErrorStackSegment::Vm(vm_exception) => Frame::StringFrame(String::from(&vm_exception)),
+            ErrorStackSegment::StringFrame(string_frame) => Frame::StringFrame(string_frame),
         }
     }
 }

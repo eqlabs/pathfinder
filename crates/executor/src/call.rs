@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use blockifier::context::TransactionContext;
-use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionContext};
+use blockifier::execution::entry_point::{
+    CallEntryPoint,
+    EntryPointExecutionContext,
+    SierraGasRevertTracker,
+};
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
-use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
 use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
+use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
 
 use super::error::CallError;
@@ -32,27 +36,34 @@ pub fn call(
         .collect();
     let class_hash = state.get_class_hash_at(contract_address)?;
 
+    let initial_gas = VersionedConstants::latest_constants()
+        .os_constants
+        .gas_costs
+        .base
+        .default_initial_gas_cost;
+
     let call_entry_point = CallEntryPoint {
         storage_address: contract_address,
-        entry_point_type: starknet_api::deprecated_contract_class::EntryPointType::External,
+        entry_point_type: EntryPointType::External,
         entry_point_selector,
-        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
-        initial_gas: VersionedConstants::latest_constants().tx_initial_gas(),
+        calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
+        initial_gas,
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
 
-    let mut resources = ExecutionResources::default();
     let mut context = EntryPointExecutionContext::new_invoke(
         Arc::new(TransactionContext {
             block_context,
             tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
         }),
         false,
-    )?;
+        SierraGasRevertTracker::new(starknet_api::execution_resources::GasAmount(initial_gas)),
+    );
 
+    let mut remaining_gas = call_entry_point.initial_gas;
     let call_info = call_entry_point
-        .execute(&mut state, &mut resources, &mut context)
+        .execute(&mut state, &mut context, &mut remaining_gas)
         .map_err(|e| {
             CallError::from_entry_point_execution_error(
                 e,

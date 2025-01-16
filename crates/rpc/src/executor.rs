@@ -2,7 +2,21 @@ use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{ChainId, StarknetVersion};
 use pathfinder_executor::{ClassInfo, IntoStarkFelt};
+use starknet_api::block::GasPrice;
+use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
+use starknet_api::execution_resources::GasAmount;
+use starknet_api::transaction::fields::{
+    AccountDeploymentData,
+    AllResourceBounds,
+    Calldata,
+    ContractAddressSalt,
+    Fee,
+    PaymasterData,
+    Tip,
+    TransactionSignature,
+    ValidResourceBounds,
+};
 
 use crate::types::request::{
     BroadcastedDeployAccountTransaction,
@@ -28,6 +42,8 @@ pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEW
 pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,
     chain_id: ChainId,
+    skip_validate: bool,
+    skip_fee_charge: bool,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
     use crate::types::request::BroadcastedDeclareTransaction;
 
@@ -41,7 +57,12 @@ pub(crate) fn map_broadcasted_transaction(
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-            Some(ClassInfo::new(&contract_class, 0, 0)?)
+            Some(ClassInfo::new(
+                &contract_class,
+                0,
+                0,
+                SierraVersion::DEPRECATED,
+            )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(tx)) => {
             let contract_class_json = tx
@@ -52,7 +73,12 @@ pub(crate) fn map_broadcasted_transaction(
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(contract_class_json)?;
 
-            Some(ClassInfo::new(&contract_class, 0, 0)?)
+            Some(ClassInfo::new(
+                &contract_class,
+                0,
+                0,
+                SierraVersion::DEPRECATED,
+            )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(tx)) => {
             let casm_contract_definition = pathfinder_compiler::compile_to_casm(
@@ -61,14 +87,19 @@ pub(crate) fn map_broadcasted_transaction(
                     .context("Serializing Sierra class definition")?,
             )
             .context("Compiling Sierra class definition to CASM")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_casm_definition(
+                casm_contract_definition,
+                sierra_version.clone(),
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
                 tx.contract_class.abi.len(),
+                sierra_version,
             )?)
         }
         BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(tx)) => {
@@ -78,14 +109,19 @@ pub(crate) fn map_broadcasted_transaction(
                     .context("Serializing Sierra class definition")?,
             )
             .context("Compiling Sierra class definition to CASM")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&tx.contract_class.sierra_program)?;
 
-            let casm_contract_definition =
-                pathfinder_executor::parse_casm_definition(casm_contract_definition)
-                    .context("Parsing CASM contract definition")?;
+            let casm_contract_definition = pathfinder_executor::parse_casm_definition(
+                casm_contract_definition,
+                sierra_version.clone(),
+            )
+            .context("Parsing CASM contract definition")?;
             Some(ClassInfo::new(
                 &casm_contract_definition,
                 tx.contract_class.sierra_program.len(),
                 tx.contract_class.abi.len(),
+                sierra_version,
             )?)
         }
         BroadcastedTransaction::Invoke(_) | BroadcastedTransaction::DeployAccount(_) => None,
@@ -137,6 +173,12 @@ pub(crate) fn map_broadcasted_transaction(
         }
     };
 
+    let execution_flags = pathfinder_executor::AccountTransactionExecutionFlags {
+        only_query: has_query_version,
+        validate: !skip_validate,
+        charge_fee: !skip_fee_charge,
+    };
+
     let transaction = transaction.clone().into_common(chain_id);
     let transaction_hash = transaction.hash;
     let transaction = map_transaction_variant(transaction.variant)?;
@@ -147,7 +189,7 @@ pub(crate) fn map_broadcasted_transaction(
         class_info,
         None,
         deployed_address,
-        has_query_version,
+        execution_flags,
     )?;
 
     Ok(tx)
@@ -159,10 +201,10 @@ fn map_transaction_variant(
     match variant {
         TransactionVariant::DeclareV0(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: starknet_api::transaction::TransactionSignature(
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -179,10 +221,10 @@ fn map_transaction_variant(
         }
         TransactionVariant::DeclareV1(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV0V1 {
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: starknet_api::transaction::TransactionSignature(
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -199,10 +241,10 @@ fn map_transaction_variant(
         }
         TransactionVariant::DeclareV2(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV2 {
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: starknet_api::transaction::TransactionSignature(
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -223,8 +265,8 @@ fn map_transaction_variant(
         TransactionVariant::DeclareV3(tx) => {
             let tx = starknet_api::transaction::DeclareTransactionV3 {
                 resource_bounds: map_resource_bounds(tx.resource_bounds)?,
-                tip: starknet_api::transaction::Tip(tx.tip.0),
-                signature: starknet_api::transaction::TransactionSignature(
+                tip: Tip(tx.tip.0),
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -244,13 +286,13 @@ fn map_transaction_variant(
                     .fee_data_availability_mode
                     .into_starkfelt()
                     .try_into()?,
-                paymaster_data: starknet_api::transaction::PaymasterData(
+                paymaster_data: PaymasterData(
                     tx.paymaster_data
                         .iter()
                         .map(|p| p.0.into_starkfelt())
                         .collect(),
                 ),
-                account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                account_deployment_data: AccountDeploymentData(
                     tx.account_deployment_data
                         .iter()
                         .map(|a| a.0.into_starkfelt())
@@ -268,19 +310,19 @@ fn map_transaction_variant(
         TransactionVariant::DeployAccountV1(tx) => {
             let tx = starknet_api::transaction::DeployAccountTransaction::V1(
                 starknet_api::transaction::DeployAccountTransactionV1 {
-                    max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                    max_fee: Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
-                    signature: starknet_api::transaction::TransactionSignature(
+                    signature: TransactionSignature(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                     ),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
 
-                    contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                    contract_address_salt: ContractAddressSalt(
                         tx.contract_address_salt.0.into_starkfelt(),
                     ),
-                    constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                    constructor_calldata: Calldata(std::sync::Arc::new(
                         tx.constructor_calldata
                             .iter()
                             .map(|c| c.0.into_starkfelt())
@@ -297,16 +339,16 @@ fn map_transaction_variant(
             let tx = starknet_api::transaction::DeployAccountTransaction::V3(
                 starknet_api::transaction::DeployAccountTransactionV3 {
                     resource_bounds,
-                    tip: starknet_api::transaction::Tip(tx.tip.0),
-                    signature: starknet_api::transaction::TransactionSignature(
+                    tip: Tip(tx.tip.0),
+                    signature: TransactionSignature(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                     ),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
-                    contract_address_salt: starknet_api::transaction::ContractAddressSalt(
+                    contract_address_salt: ContractAddressSalt(
                         tx.contract_address_salt.0.into_starkfelt(),
                     ),
-                    constructor_calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                    constructor_calldata: Calldata(std::sync::Arc::new(
                         tx.constructor_calldata
                             .iter()
                             .map(|c| c.0.into_starkfelt())
@@ -320,7 +362,7 @@ fn map_transaction_variant(
                         .fee_data_availability_mode
                         .into_starkfelt()
                         .try_into()?,
-                    paymaster_data: starknet_api::transaction::PaymasterData(
+                    paymaster_data: PaymasterData(
                         tx.paymaster_data
                             .iter()
                             .map(|p| p.0.into_starkfelt())
@@ -334,10 +376,10 @@ fn map_transaction_variant(
         TransactionVariant::InvokeV0(tx) => {
             let tx = starknet_api::transaction::InvokeTransactionV0 {
                 // TODO: maybe we should store tx.max_fee as u128 internally?
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: starknet_api::transaction::TransactionSignature(
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 contract_address: starknet_api::core::ContractAddress(
@@ -347,7 +389,7 @@ fn map_transaction_variant(
                 entry_point_selector: starknet_api::core::EntryPointSelector(
                     tx.entry_point_selector.0.into_starkfelt(),
                 ),
-                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                calldata: Calldata(std::sync::Arc::new(
                     tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
                 )),
             };
@@ -359,10 +401,10 @@ fn map_transaction_variant(
         TransactionVariant::InvokeV1(tx) => {
             let tx = starknet_api::transaction::InvokeTransactionV1 {
                 // TODO: maybe we should store tx.max_fee as u128 internally?
-                max_fee: starknet_api::transaction::Fee(u128::from_be_bytes(
+                max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: starknet_api::transaction::TransactionSignature(
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -370,7 +412,7 @@ fn map_transaction_variant(
                     PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
                         .expect("No sender address overflow expected"),
                 ),
-                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                calldata: Calldata(std::sync::Arc::new(
                     tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
                 )),
             };
@@ -384,8 +426,8 @@ fn map_transaction_variant(
 
             let tx = starknet_api::transaction::InvokeTransactionV3 {
                 resource_bounds,
-                tip: starknet_api::transaction::Tip(tx.tip.0),
-                signature: starknet_api::transaction::TransactionSignature(
+                tip: Tip(tx.tip.0),
+                signature: TransactionSignature(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
                 ),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
@@ -393,7 +435,7 @@ fn map_transaction_variant(
                     PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
                         .expect("No sender address overflow expected"),
                 ),
-                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                calldata: Calldata(std::sync::Arc::new(
                     tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
                 )),
                 nonce_data_availability_mode: tx
@@ -404,13 +446,13 @@ fn map_transaction_variant(
                     .fee_data_availability_mode
                     .into_starkfelt()
                     .try_into()?,
-                paymaster_data: starknet_api::transaction::PaymasterData(
+                paymaster_data: PaymasterData(
                     tx.paymaster_data
                         .iter()
                         .map(|p| p.0.into_starkfelt())
                         .collect(),
                 ),
-                account_deployment_data: starknet_api::transaction::AccountDeploymentData(
+                account_deployment_data: AccountDeploymentData(
                     tx.account_deployment_data
                         .iter()
                         .map(|a| a.0.into_starkfelt())
@@ -433,7 +475,7 @@ fn map_transaction_variant(
                 entry_point_selector: starknet_api::core::EntryPointSelector(
                     tx.entry_point_selector.0.into_starkfelt(),
                 ),
-                calldata: starknet_api::transaction::Calldata(std::sync::Arc::new(
+                calldata: Calldata(std::sync::Arc::new(
                     tx.calldata.iter().map(|c| c.0.into_starkfelt()).collect(),
                 )),
             };
@@ -459,7 +501,12 @@ pub fn compose_executor_transaction(
 
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-            Some(ClassInfo::new(&contract_class, 0, 0)?)
+            Some(ClassInfo::new(
+                &contract_class,
+                0,
+                0,
+                SierraVersion::DEPRECATED,
+            )?)
         }
         TransactionVariant::DeclareV1(tx) => {
             let class_definition = db_transaction
@@ -468,7 +515,12 @@ pub fn compose_executor_transaction(
 
             let contract_class =
                 pathfinder_executor::parse_deprecated_class_definition(class_definition)?;
-            Some(ClassInfo::new(&contract_class, 0, 0)?)
+            Some(ClassInfo::new(
+                &contract_class,
+                0,
+                0,
+                SierraVersion::DEPRECATED,
+            )?)
         }
         TransactionVariant::DeclareV2(tx) => {
             let casm_definition = db_transaction
@@ -480,12 +532,16 @@ pub fn compose_executor_transaction(
             let class_definition: SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class =
+                pathfinder_executor::parse_casm_definition(casm_definition, sierra_version)?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),
                 class_definition.abi.len(),
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?,
             )?)
         }
         TransactionVariant::DeclareV3(tx) => {
@@ -498,12 +554,16 @@ pub fn compose_executor_transaction(
             let class_definition: SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
+            let sierra_version =
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?;
 
-            let contract_class = pathfinder_executor::parse_casm_definition(casm_definition)?;
+            let contract_class =
+                pathfinder_executor::parse_casm_definition(casm_definition, sierra_version)?;
             Some(ClassInfo::new(
                 &contract_class,
                 class_definition.sierra_program.len(),
                 class_definition.abi.len(),
+                SierraVersion::extract_from_program(&class_definition.sierra_program)?,
             )?)
         }
         TransactionVariant::DeployV0(_)
@@ -546,7 +606,7 @@ pub fn compose_executor_transaction(
     };
 
     let paid_fee_on_l1 = match &transaction.variant {
-        TransactionVariant::L1Handler(_) => Some(starknet_api::transaction::Fee(1_000_000_000_000)),
+        TransactionVariant::L1Handler(_) => Some(Fee(1_000_000_000_000)),
         _ => None,
     };
 
@@ -560,7 +620,7 @@ pub fn compose_executor_transaction(
         class_info,
         paid_fee_on_l1,
         deployed_address,
-        false,
+        pathfinder_executor::AccountTransactionExecutionFlags::default(),
     )?;
 
     Ok(tx)
@@ -568,25 +628,29 @@ pub fn compose_executor_transaction(
 
 fn map_resource_bounds(
     r: pathfinder_common::transaction::ResourceBounds,
-) -> Result<starknet_api::transaction::ResourceBoundsMapping, starknet_api::StarknetApiError> {
-    use starknet_api::transaction::{Resource, ResourceBounds};
+) -> Result<ValidResourceBounds, starknet_api::StarknetApiError> {
+    use starknet_api::transaction::fields::ResourceBounds;
 
-    let bounds = vec![
-        (
-            Resource::L1Gas,
-            ResourceBounds {
-                max_amount: r.l1_gas.max_amount.0,
-                max_price_per_unit: r.l1_gas.max_price_per_unit.0,
+    let valid_resource_bounds = match r.l1_data_gas {
+        Some(l1_data_gas) => ValidResourceBounds::AllResources(AllResourceBounds {
+            l1_gas: ResourceBounds {
+                max_amount: GasAmount(r.l1_gas.max_amount.0),
+                max_price_per_unit: GasPrice(r.l1_gas.max_price_per_unit.0),
             },
-        ),
-        (
-            Resource::L2Gas,
-            ResourceBounds {
-                max_amount: r.l2_gas.max_amount.0,
-                max_price_per_unit: r.l2_gas.max_price_per_unit.0,
+            l2_gas: ResourceBounds {
+                max_amount: GasAmount(r.l2_gas.max_amount.0),
+                max_price_per_unit: GasPrice(r.l2_gas.max_price_per_unit.0),
             },
-        ),
-    ];
+            l1_data_gas: ResourceBounds {
+                max_amount: GasAmount(l1_data_gas.max_amount.0),
+                max_price_per_unit: GasPrice(l1_data_gas.max_price_per_unit.0),
+            },
+        }),
+        None => ValidResourceBounds::L1Gas(ResourceBounds {
+            max_amount: GasAmount(r.l1_gas.max_amount.0),
+            max_price_per_unit: GasPrice(r.l1_gas.max_price_per_unit.0),
+        }),
+    };
 
-    bounds.try_into()
+    Ok(valid_resource_bounds)
 }

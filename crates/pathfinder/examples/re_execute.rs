@@ -157,7 +157,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::simulate(execution_state, transactions, false, false) {
+    match pathfinder_executor::simulate(execution_state, transactions) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()
@@ -181,38 +181,25 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
 
                 let estimate = &simulation.fee_estimation;
 
-                let (gas_price, data_gas_price) = match estimate.unit {
-                    pathfinder_executor::types::PriceUnit::Wei => (
-                        work.header.eth_l1_gas_price.0,
-                        work.header.eth_l1_data_gas_price.0,
-                    ),
-                    pathfinder_executor::types::PriceUnit::Fri => (
-                        work.header.strk_l1_gas_price.0,
-                        work.header.strk_l1_data_gas_price.0,
-                    ),
-                };
-
                 let actual_data_gas_consumed =
                     receipt.execution_resources.data_availability.l1_data_gas;
-                let actual_gas_consumed =
-                    if receipt.execution_resources.total_gas_consumed.l1_gas == 0 {
-                        (actual_fee - actual_data_gas_consumed.saturating_mul(data_gas_price))
-                            / gas_price.max(1)
-                    } else {
-                        receipt.execution_resources.total_gas_consumed.l1_gas
-                    };
+                let actual_gas_consumed = receipt.execution_resources.total_gas_consumed.l1_gas;
+                let actual_l2_gas_consumed = receipt.execution_resources.l2_gas.0;
 
                 let estimated_gas_consumed = estimate.l1_gas_consumed.as_u128();
                 let estimated_data_gas_consumed = estimate.l1_data_gas_consumed.as_u128();
+                let estimated_l2_gas_consumed = estimate.l2_gas_consumed.as_u128();
 
                 let gas_diff = actual_gas_consumed.abs_diff(estimated_gas_consumed);
                 let data_gas_diff = actual_data_gas_consumed.abs_diff(estimated_data_gas_consumed);
+                let l2_gas_diff = actual_l2_gas_consumed.abs_diff(estimated_l2_gas_consumed);
                 let estimate_diff = estimate.overall_fee.abs_diff(actual_fee.into());
 
-                if gas_diff > 0 || data_gas_diff > 0 || estimate_diff > 0.into() {
-                    tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, execution_status=?receipt.execution_status, transaction=?transaction.variant, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
+                if gas_diff > 0 || data_gas_diff > 0 || l2_gas_diff > 0 || estimate_diff > 0.into()
+                {
+                    tracing::warn!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, execution_status=?receipt.execution_status, transaction=?transaction.variant, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, %estimated_l2_gas_consumed, %actual_l2_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation mismatch");
                 } else {
-                    tracing::debug!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation matches");
+                    tracing::debug!(block_number=%work.header.number, transaction_hash=%receipt.transaction_hash, %estimated_gas_consumed, %actual_gas_consumed, %estimated_data_gas_consumed, %actual_data_gas_consumed, %estimated_l2_gas_consumed, %actual_l2_gas_consumed, estimated_fee=%estimate.overall_fee, %actual_fee, "Estimation matches");
                 }
             }
         }
