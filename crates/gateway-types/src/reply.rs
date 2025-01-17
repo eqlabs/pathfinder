@@ -856,8 +856,7 @@ pub mod transaction {
             Self {
                 l1_gas: value.l1_gas.into(),
                 l2_gas: value.l2_gas.into(),
-                // TODO: add this when adding support for Starknet 0.13.4
-                l1_data_gas: None,
+                l1_data_gas: value.l1_data_gas.map(|g| g.into()),
             }
         }
     }
