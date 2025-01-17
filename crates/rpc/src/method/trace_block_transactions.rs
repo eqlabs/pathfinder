@@ -426,6 +426,10 @@ pub(crate) fn map_gateway_trace(
 fn map_gateway_function_invocation(
     invocation: starknet_gateway_types::trace::FunctionInvocation,
 ) -> anyhow::Result<pathfinder_executor::types::FunctionInvocation> {
+    let gas_consumed = invocation
+        .execution_resources
+        .total_gas_consumed
+        .unwrap_or_default();
     Ok(pathfinder_executor::types::FunctionInvocation {
         calldata: invocation.calldata,
         contract_address: invocation.contract_address,
@@ -486,13 +490,8 @@ fn map_gateway_function_invocation(
         result: invocation.result,
         computation_resources: map_gateway_computation_resources(invocation.execution_resources),
         execution_resources: InnerCallExecutionResources {
-            l1_gas: invocation
-                .execution_resources
-                .total_gas_consumed
-                .map(|gas| gas.l1_gas)
-                .unwrap_or_default(),
-            // TODO: Use proper l1_gas value for Starknet 0.13.3
-            l2_gas: 0,
+            l1_gas: gas_consumed.l1_gas,
+            l2_gas: gas_consumed.l2_gas.unwrap_or_default(),
         },
     })
 }
