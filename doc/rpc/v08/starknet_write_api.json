@@ -183,7 +183,7 @@
           "$ref": "#/components/errors/NON_ACCOUNT"
         },
         {
-          "$ref": "#/components/errors/CLASS_HASH_NOT_FOUND"
+          "$ref": "./api/starknet_api_openrpc.json#/components/errors/CLASS_HASH_NOT_FOUND"
         },
         {
           "$ref": "#/components/errors/DUPLICATE_TX"
@@ -201,9 +201,7 @@
     "contentDescriptors": {},
     "schemas": {
       "NUM_AS_HEX": {
-        "title": "An integer number in hex format (0x...)",
-        "type": "string",
-        "pattern": "^0x[a-fA-F0-9]+$"
+        "$ref": "./api/starknet_api_openrpc.json#/components/schemas/NUM_AS_HEX"
       },
       "SIGNATURE": {
         "$ref": "./api/starknet_api_openrpc.json#/components/schemas/SIGNATURE"
@@ -228,10 +226,6 @@
       }
     },
     "errors": {
-      "CLASS_HASH_NOT_FOUND": {
-        "code": 28,
-        "message": "Class hash not found"
-      },
       "CLASS_ALREADY_DECLARED": {
         "code": 51,
         "message": "Class already declared"
@@ -255,7 +249,8 @@
       },
       "COMPILATION_FAILED": {
         "code": 56,
-        "message": "Compilation failed"
+        "message": "Compilation failed",
+        "data": "string"
       },
       "CONTRACT_CLASS_SIZE_IS_TOO_LARGE": {
         "code": 57,
