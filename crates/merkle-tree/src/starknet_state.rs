@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::state_update::StateUpdateRef;
+use pathfinder_common::state_update::{StateUpdateError, StateUpdateRef};
 use pathfinder_common::{BlockNumber, ClassCommitment, StorageCommitment};
 use pathfinder_storage::{Storage, Transaction};
 
@@ -14,7 +14,7 @@ pub fn update_starknet_state(
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
-) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
+) -> Result<(StorageCommitment, ClassCommitment), StateUpdateError> {
     use rayon::prelude::*;
 
     let mut storage_commitment_tree = match block.parent() {
@@ -36,10 +36,13 @@ pub fn update_starknet_state(
                     |connection, (contract_address, update)| {
                         let connection = match connection {
                             Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
+                            Err(e) => {
+                                return Err(anyhow::anyhow!(
+                                    "Failed to create database connection in rayon thread: {}",
+                                    e
+                                )
+                                .into())
+                            }
                         };
                         let transaction = connection.transaction()?;
                         update_contract_state(
