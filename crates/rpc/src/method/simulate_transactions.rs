@@ -320,6 +320,7 @@ pub(crate) mod tests {
                                 execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
                                 internal_calls: vec![],
                                 computation_resources: pathfinder_executor::types::ComputationResources::default(),
+                                is_reverted: false,
                             }),
                         validate_invocation: Some(
                             pathfinder_executor::types::FunctionInvocation {
@@ -344,7 +345,8 @@ pub(crate) mod tests {
                                 computation_resources: pathfinder_executor::types::ComputationResources{
                                     steps: 13,
                                     ..Default::default()
-                                }
+                                },
+                                is_reverted: false,
                             },
                         ),
                         fee_transfer_invocation: None,
@@ -446,6 +448,7 @@ pub(crate) mod tests {
                                 steps: 12,
                                 ..Default::default()
                             },
+                            is_reverted: false,
                         }
                     ),
                     fee_transfer_invocation: Some(
@@ -484,6 +487,7 @@ pub(crate) mod tests {
                                 pedersen_builtin_applications: 4,
                                 ..Default::default()
                             },
+                            is_reverted: false,
                         }
                     ),
                     state_diff: pathfinder_executor::types::StateDiff {
@@ -939,6 +943,7 @@ pub(crate) mod tests {
                         l1_gas: 4,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -962,6 +967,7 @@ pub(crate) mod tests {
                         l1_gas: 1,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1242,6 +1248,7 @@ pub(crate) mod tests {
                         l1_gas: 1,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1271,6 +1278,7 @@ pub(crate) mod tests {
                                     result: vec![],
                                     computation_resources: pathfinder_executor::types::ComputationResources::default(),
                                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
+                                    is_reverted: false,
                                 },
                             ],
                             class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
@@ -1315,6 +1323,7 @@ pub(crate) mod tests {
                                 ..Default::default()
                             },
                             execution_resources: pathfinder_executor::types::InnerCallExecutionResources { l1_gas: 4, l2_gas: 0 },
+                            is_reverted: false,
                         }
                     ],
                     class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
@@ -1344,6 +1353,7 @@ pub(crate) mod tests {
                         l1_gas: 6,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1384,6 +1394,7 @@ pub(crate) mod tests {
                         l1_gas: 4,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1638,6 +1649,7 @@ pub(crate) mod tests {
                         l2_gas: 0,
                     },
                     computation_resources: invoke_validate_computation_resources(),
+                    is_reverted: false,
                 }
             }
 
@@ -1670,6 +1682,7 @@ pub(crate) mod tests {
                                 l1_gas: 1,
                                 l2_gas: 0,
                             },
+                        is_reverted: false,
                     }],
                     class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
@@ -1689,6 +1702,7 @@ pub(crate) mod tests {
                         l1_gas: 3,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1728,6 +1742,7 @@ pub(crate) mod tests {
                         l1_gas: 4,
                         l2_gas: 0,
                     },
+                    is_reverted: false,
                 }
             }
 
@@ -1916,6 +1931,7 @@ pub(crate) mod tests {
                     computation_resources: invoke_fee_transfer_computation_resources(),
                     execution_resources:
                         pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    is_reverted: false,
                 }
             }
 

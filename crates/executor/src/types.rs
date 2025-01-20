@@ -207,6 +207,7 @@ pub struct FunctionInvocation {
     pub result: Vec<Felt>,
     pub computation_resources: ComputationResources,
     pub execution_resources: InnerCallExecutionResources,
+    pub is_reverted: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -384,6 +385,7 @@ impl FunctionInvocation {
                 l1_gas: gas_vector.l1_gas.0.into(),
                 l2_gas: gas_vector.l2_gas.0.into(),
             },
+            is_reverted: call_info.execution.failed,
         }
     }
 }
