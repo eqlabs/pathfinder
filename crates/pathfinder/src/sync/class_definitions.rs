@@ -9,6 +9,7 @@ use p2p::client::types::ClassDefinition as P2PClassDefinition;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::transaction;
+use pathfinder_class_hash::from_parts::{compute_cairo_class_hash, compute_sierra_class_hash};
 use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
@@ -16,10 +17,6 @@ use pathfinder_storage::{Storage, Transaction};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::class_hash::from_parts::{
-    compute_cairo_class_hash,
-    compute_sierra_class_hash,
-};
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};

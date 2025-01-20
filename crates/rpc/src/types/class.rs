@@ -1,10 +1,10 @@
 use std::io::{Cursor, Read};
 
 use anyhow::Context;
+use pathfinder_class_hash::{compute_class_hash, ComputedClassHash};
 use pathfinder_crypto::Felt;
 use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
-use starknet_gateway_types::class_hash::{compute_class_hash, ComputedClassHash};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContractClass {
@@ -531,11 +531,11 @@ mod tests {
     }
 
     mod declare_class_hash {
+        use pathfinder_class_hash::compute_class_hash;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_11_SIERRA,
             CONTRACT_DEFINITION,
         };
-        use starknet_gateway_types::class_hash::compute_class_hash;
 
         use super::super::ContractClass;
 

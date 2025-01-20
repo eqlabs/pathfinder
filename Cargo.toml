@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/block-hashes",
+    "crates/class-hash",
     "crates/common",
     "crates/compiler",
     "crates/crypto",

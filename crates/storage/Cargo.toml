@@ -21,6 +21,7 @@ flume = { version = "0.11.0", default-features = false, features = [
 hex = { workspace = true }
 metrics = { workspace = true }
 paste = { workspace = true }
+pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }

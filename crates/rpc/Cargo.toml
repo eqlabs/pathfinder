@@ -19,6 +19,7 @@ http-body = { workspace = true }
 hyper = { workspace = true }
 metrics = { workspace = true }
 mime = { workspace = true }
+pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }

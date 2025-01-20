@@ -1,5 +1,5 @@
 [package]
-name = "starknet-gateway-types"
+name = "pathfinder-class-hash"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -8,15 +8,10 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-fake = { workspace = true, features = ["serde_json"] }
-pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-serde = { path = "../serde" }
 primitive-types = { workspace = true }
-rand = { workspace = true }
-reqwest = { workspace = true }
-rstest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
@@ -29,5 +24,8 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 assert_matches = { workspace = true }
+fake = { workspace = true, features = ["serde_json"] }
+rand = { workspace = true }
+rstest = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }

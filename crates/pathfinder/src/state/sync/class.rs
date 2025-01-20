@@ -19,7 +19,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     class_hash: ClassHash,
     fetch_casm_from_fgw: bool,
 ) -> Result<DownloadedClass, anyhow::Error> {
-    use starknet_gateway_types::class_hash::compute_class_hash;
+    use pathfinder_class_hash::compute_class_hash;
 
     let definition = sequencer
         .pending_class_by_hash(class_hash)
@@ -35,7 +35,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     let (hash, definition) = rx.await.context("Panic on rayon thread")?;
     let hash = hash?;
 
-    use starknet_gateway_types::class_hash::ComputedClassHash;
+    use pathfinder_class_hash::ComputedClassHash;
     match hash {
         ComputedClassHash::Cairo(hash) => {
             if class_hash != hash {
@@ -44,7 +44,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
 
             Ok(DownloadedClass::Cairo { definition, hash })
         }
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+        ComputedClassHash::Sierra(hash) => {
             anyhow::ensure!(
                 class_hash == hash,
                 "Class hash mismatch, {} instead of {}",

@@ -11,9 +11,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut s = Vec::new();
     std::io::stdin().read_to_end(&mut s).unwrap();
     let s = s;
-    let class_hash = match starknet_gateway_types::class_hash::compute_class_hash(&s)? {
-        starknet_gateway_types::class_hash::ComputedClassHash::Cairo(h) => h.0,
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(h) => h.0,
+    let class_hash = match pathfinder_class_hash::compute_class_hash(&s)? {
+        pathfinder_class_hash::ComputedClassHash::Cairo(h) => h.0,
+        pathfinder_class_hash::ComputedClassHash::Sierra(h) => h.0,
     };
     println!("{class_hash:x}");
     Ok(())
