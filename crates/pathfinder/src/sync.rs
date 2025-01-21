@@ -523,7 +523,7 @@ mod tests {
                 Ok(Err(error)) => {
                     let unexpected_fatal = error_setup.fatal_at.is_none();
                     if unexpected_fatal {
-                        tracing::debug!(?error, "Sync failed with an enexpected fatal error");
+                        tracing::debug!(?error, "Sync failed with an unexpected fatal error");
                     } else {
                         tracing::debug!(?error, "Sync failed with a fatal error");
                     }
