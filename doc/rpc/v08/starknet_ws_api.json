@@ -133,7 +133,7 @@
     {
       "name": "starknet_subscribeTransactionStatus",
       "summary": "Transaction Status subscription",
-      "description": "Creates a WebSocket stream which will fire events when a transaction status is updated",
+      "description": "Creates a WebSocket stream which at first fires an event with the current known transaction status, followed by events for every transaction status update",
       "params": [
         {
           "name": "transaction_hash",
@@ -141,13 +141,6 @@
           "required": true,
           "schema": {
             "$ref": "#/components/schemas/FELT"
-        },
-        {
-          "name": "block_id",
-          "summary": "The block to get notifications from, default is latest, limited to 1024 blocks back",
-          "required": false,
-          "schema": {
-            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_ID"
           }
         }
       ],
