@@ -461,7 +461,7 @@ mod tests {
                                         "finality_status": "RECEIVED",
                                     }
                                 },
-                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                             }
                         }),
                         serde_json::json!({
@@ -562,7 +562,7 @@ mod tests {
                             "execution_status": "SUCCEEDED",
                         }
                     },
-                    "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                    "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                 }
             })
         );
@@ -591,7 +591,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -606,7 +606,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                 ]
@@ -636,7 +636,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -650,7 +650,7 @@ mod tests {
                                     "execution_status": "SUCCEEDED"
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -664,7 +664,7 @@ mod tests {
                                     "execution_status": "SUCCEEDED"
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                 ]
@@ -696,7 +696,7 @@ mod tests {
                                     "finality_status": "RECEIVED",
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -711,7 +711,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                     serde_json::json!({
@@ -726,7 +726,7 @@ mod tests {
                                     "failure_reason": "tx revert"
                                 }
                             },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
                         }
                     }),
                 ]
@@ -1105,7 +1105,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
 
-        let subscription_id = crate::dto::Value::new(subscription_id, RpcVersion::V07);
+        let subscription_id = crate::dto::Value::new(subscription_id, RpcVersion::V08);
         let subscription_id: SubscriptionId = subscription_id.deserialize().unwrap();
         for msg in expected(subscription_id) {
             let status = sender_rx.recv().await.unwrap().unwrap();
