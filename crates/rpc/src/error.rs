@@ -21,6 +21,8 @@ pub enum ApplicationError {
     FailedToReceiveTxn,
     #[error("Contract not found")]
     ContractNotFound,
+    #[error("Requested entrypoint does not exist in the contract")]
+    EntrypointNotFound,
     #[error("Block not found")]
     BlockNotFound,
     #[error("Invalid transaction index in a block")]
@@ -125,6 +127,7 @@ impl ApplicationError {
             ApplicationError::FailedToReceiveTxn => 1,
             ApplicationError::NoTraceAvailable(_) => 10,
             ApplicationError::ContractNotFound => 20,
+            ApplicationError::EntrypointNotFound => 21,
             ApplicationError::BlockNotFound => 24,
             ApplicationError::InvalidTxnHash => 25,
             ApplicationError::InvalidBlockHash => 26,
@@ -187,6 +190,7 @@ impl ApplicationError {
         match self {
             ApplicationError::FailedToReceiveTxn => None,
             ApplicationError::ContractNotFound => None,
+            ApplicationError::EntrypointNotFound => None,
             ApplicationError::BlockNotFound => None,
             ApplicationError::InvalidTxnIndex => None,
             ApplicationError::InvalidTxnHash => None,
