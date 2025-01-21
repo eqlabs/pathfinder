@@ -138,10 +138,12 @@
                             "properties": {
                                 "builtins": {
                                     "type": "array",
-                                    "items": "string"
+                                    "items": {
+                                        "type": "string"
+                                    }
                                 }
                             },
-                            "required": "builtins"
+                            "required": ["builtins"]
                         }
                     ]
                 }
@@ -893,7 +895,7 @@
                             "InitSquashData": {
                                 "type": "object",
                                 "properties": {
-                                    "dict_access": {
+                                    "dict_accesses": {
                                         "$ref": "#/components/schemas/ResOperand"
                                     },
                                     "ptr_diff": {

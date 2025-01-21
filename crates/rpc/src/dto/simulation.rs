@@ -122,10 +122,13 @@ impl crate::dto::SerializeForVersion for &pathfinder_executor::types::FunctionIn
         serializer.serialize_iter("messages", self.messages.len(), &mut self.messages.iter())?;
         serializer.serialize_iter("result", self.result.len(), &mut self.result.iter())?;
         match serializer.version {
-            RpcVersion::V08 => serializer.serialize_field(
-                "execution_resources",
-                &InnerCallExecutionResources(&self.execution_resources),
-            )?,
+            RpcVersion::V08 => {
+                serializer.serialize_field(
+                    "execution_resources",
+                    &InnerCallExecutionResources(&self.execution_resources),
+                )?;
+                serializer.serialize_field("is_reverted", &self.is_reverted)?;
+            }
             _ => serializer.serialize_field(
                 "execution_resources",
                 &ComputationResources(&self.computation_resources),

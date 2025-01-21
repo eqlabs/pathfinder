@@ -133,7 +133,7 @@
     {
       "name": "starknet_subscribeTransactionStatus",
       "summary": "Transaction Status subscription",
-      "description": "Creates a WebSocket stream which will fire events when a transaction status is updated",
+      "description": "Creates a WebSocket stream which at first fires an event with the current known transaction status, followed by events for every transaction status update",
       "params": [
         {
           "name": "transaction_hash",
@@ -141,14 +141,6 @@
           "required": true,
           "schema": {
             "$ref": "#/components/schemas/FELT"
-          }
-        },
-        {
-          "name": "block_id",
-          "summary": "The block to get notifications from, default is latest, limited to 1024 blocks back",
-          "required": false,
-          "schema": {
-            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_ID"
           }
         }
       ],
@@ -159,12 +151,6 @@
         }
       },
       "errors": [
-        {
-          "$ref": "#/components/errors/TOO_MANY_BLOCKS_BACK"
-        },
-        {
-          "$ref": "./api/starknet_api_openrpc.json#/components/errors/BLOCK_NOT_FOUND"
-        }
       ]
     },
     {
@@ -244,7 +230,7 @@
                 "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_HASH"
               },
               {
-                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN"
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_WITH_HASH"
               }
             ]
           }
@@ -316,9 +302,7 @@
             "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_HASH"
           },
           "status": {
-            "schema": {
-              "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_STATUS_RESULT"
-            }
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_STATUS_RESULT"
           }
         }
       },
@@ -336,9 +320,7 @@
           "starting_block_hash": {
             "title": "Starting Block Hash",
             "description": "Hash of the first known block of the orphaned chain",
-            "schema": {
-              "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_HASH"
-            }
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_HASH"
           },
           "starting_block_number": {
             "title": "Starting Block Number",
@@ -348,9 +330,7 @@
           "ending_block_hash": {
             "title": "Ending Block",
             "description": "The last known block of the orphaned chain",
-            "schema": {
-              "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_HASH"
-            }
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_HASH"
           },
           "ending_block_number": {
             "title": "Ending Block Number",
