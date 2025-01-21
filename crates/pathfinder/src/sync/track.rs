@@ -827,7 +827,7 @@ impl ProcessStage for StoreBlock {
             block_number,
             self.storage.clone(),
         )
-        .context("Updating Starknet state")?;
+        .with_context(|| format!("Updating Starknet state, block_number {block_number}"))?;
 
         // Ensure that roots match.
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);

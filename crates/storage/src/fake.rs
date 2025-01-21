@@ -8,6 +8,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
     ContractClassUpdate,
     ContractUpdate,
+    StateUpdateError,
     StateUpdateRef,
     SystemContractUpdate,
 };
@@ -70,7 +71,7 @@ pub type UpdateTriesFn = Box<
         bool,
         BlockNumber,
         Storage,
-    ) -> anyhow::Result<(StorageCommitment, ClassCommitment)>,
+    ) -> Result<(StorageCommitment, ClassCommitment), StateUpdateError>,
 >;
 
 pub struct Config {
