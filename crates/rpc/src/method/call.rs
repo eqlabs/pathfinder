@@ -11,6 +11,7 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
+    EntrypointNotFound,
     ContractError {
         revert_error: Option<String>,
         revert_error_stack: pathfinder_executor::ErrorStack,
@@ -28,7 +29,7 @@ impl From<pathfinder_executor::CallError> for CallError {
         use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::EntrypointNotFound,
             ContractError(error, error_stack) => Self::ContractError {
                 revert_error: Some(format!("Execution error: {}", error)),
                 revert_error_stack: error_stack,
@@ -54,6 +55,7 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
+            CallError::EntrypointNotFound => ApplicationError::EntrypointNotFound,
             CallError::ContractError {
                 revert_error,
                 revert_error_stack,
@@ -613,7 +615,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let error = call(context, input).await;
-            assert_matches::assert_matches!(error, Err(CallError::Custom(_)));
+            assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
         }
 
         #[tokio::test]
