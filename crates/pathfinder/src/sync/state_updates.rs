@@ -10,6 +10,7 @@ use pathfinder_common::state_update::{
     ContractClassUpdate,
     ContractUpdate,
     StateUpdateData,
+    StateUpdateError,
     StateUpdateRef,
     SystemContractUpdate,
 };
@@ -285,7 +286,15 @@ pub async fn batch_update_starknet_state(
             tail,
             storage.clone(),
         )
-        .context("Updating Starknet state")?;
+        .map_err(|error| match error {
+            StateUpdateError::ContractClassHashMissing(for_contract) => {
+                tracing::debug!(%for_contract, "Contract class hash is missing");
+                SyncError::ContractClassMissing(peer)
+            }
+            StateUpdateError::StorageError(error) => SyncError::Fatal(Arc::new(
+                error.context(format!("Updating Starknet state, tail {tail}")),
+            )),
+        })?;
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
         let expected_state_commitment = db
             .state_commitment(tail.into())

@@ -13,6 +13,7 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
+use starknet_api::transaction::fields::{Calldata, Fee};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
@@ -103,11 +104,13 @@ pub async fn estimate_message_fee(
             pending,
             L1BlobDataAvailability::Enabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let transaction = create_executor_transaction(input, context.chain_id)?;
 
-        let result = pathfinder_executor::estimate(state, vec![transaction], false)?;
+        let result = pathfinder_executor::estimate(state, vec![transaction])?;
 
         Ok::<_, EstimateMessageFeeError>(result)
     })
@@ -162,7 +165,7 @@ fn create_executor_transaction(
         entry_point_selector: starknet_api::core::EntryPointSelector(
             input.message.entry_point_selector.0.into_starkfelt(),
         ),
-        calldata: starknet_api::transaction::Calldata(Arc::new(
+        calldata: Calldata(Arc::new(
             transaction
                 .calldata
                 .into_iter()
@@ -175,19 +178,19 @@ fn create_executor_transaction(
         starknet_api::transaction::Transaction::L1Handler(tx),
         starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt()),
         None,
-        Some(starknet_api::transaction::Fee(1)),
+        Some(Fee(1)),
         None,
-        false,
+        pathfinder_executor::AccountTransactionExecutionFlags::default(),
     )?;
     Ok(transaction)
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        crate::dto::FeeEstimate(&self.0).serialize(serializer)
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        self.0.serialize(serializer)
     }
 }
 
@@ -363,7 +366,7 @@ mod tests {
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 1.into(),
             l2_gas_consumed: 0.into(),
-            l2_gas_price: 0.into(),
+            l2_gas_price: 1.into(),
             overall_fee: 29422.into(),
             unit: pathfinder_executor::types::PriceUnit::Wei,
         });

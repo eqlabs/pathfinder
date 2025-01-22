@@ -1,30 +1,24 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use blockifier::blockifier::block::{pre_process_block, BlockInfo, BlockNumberHashPair};
+use blockifier::blockifier::block::pre_process_block;
 use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{
-    contract_address,
     BlockHeader,
     ChainId,
     ContractAddress,
     L1DataAvailabilityMode,
     StateUpdate,
 };
+use starknet_api::block::{BlockHashAndNumber, BlockInfo, GasPrice, NonzeroGasPrice};
 use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
-
-// NOTE: these are the same for _all_ networks
-pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
-    contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
-pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
-    contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
 
 mod versioned_constants {
     use std::borrow::Cow;
@@ -35,16 +29,22 @@ mod versioned_constants {
     use super::VersionedConstants;
 
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0: &[u8] =
-        include_bytes!("../resources/versioned_constants_13_0.json");
+        include_bytes!("../resources/versioned_constants_0_13_0.json");
 
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1: &[u8] =
-        include_bytes!("../resources/versioned_constants_13_1.json");
+        include_bytes!("../resources/versioned_constants_0_13_1.json");
 
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1: &[u8] =
-        include_bytes!("../resources/versioned_constants_13_1_1.json");
+        include_bytes!("../resources/versioned_constants_0_13_1_1.json");
 
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2: &[u8] =
-        include_bytes!("../resources/versioned_constants_13_2.json");
+        include_bytes!("../resources/versioned_constants_0_13_2.json");
+
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2_1: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_2_1.json");
+
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_3.json");
 
     const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
@@ -53,6 +53,10 @@ mod versioned_constants {
     const STARKNET_VERSION_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
     const STARKNET_VERSION_0_13_2_1: StarknetVersion = StarknetVersion::new(0, 13, 2, 1);
+
+    const STARKNET_VERSION_0_13_3: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
+
+    const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
 
     pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: LazyLock<VersionedConstants> =
         LazyLock::new(|| {
@@ -74,6 +78,16 @@ mod versioned_constants {
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2).unwrap()
         });
 
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2_1).unwrap()
+        });
+
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3).unwrap()
+        });
+
     pub(super) fn for_version(
         version: &StarknetVersion,
         custom_versioned_constants: Option<VersionedConstants>,
@@ -87,6 +101,10 @@ mod versioned_constants {
             Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1)
         } else if version < &STARKNET_VERSION_0_13_2_1 {
             Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2)
+        } else if version < &STARKNET_VERSION_0_13_3 {
+            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1)
+        } else if version < &STARKNET_VERSION_0_13_4 {
+            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3)
         } else {
             custom_versioned_constants
                 .map(Cow::Owned)
@@ -103,6 +121,8 @@ pub struct ExecutionState<'tx> {
     pending_state: Option<Arc<StateUpdate>>,
     allow_use_kzg_data: bool,
     custom_versioned_constants: Option<VersionedConstants>,
+    eth_fee_address: ContractAddress,
+    strk_fee_address: ContractAddress,
 }
 
 impl<'tx> ExecutionState<'tx> {
@@ -141,7 +161,7 @@ impl<'tx> ExecutionState<'tx> {
 
             tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
 
-            Some(BlockNumberHashPair {
+            Some(BlockHashAndNumber {
                 number: starknet_api::block::BlockNumber(
                     block_number_whose_hash_becomes_available.get(),
                 ),
@@ -160,6 +180,7 @@ impl<'tx> ExecutionState<'tx> {
             &mut cached_state,
             old_block_number_and_hash,
             block_info.block_number,
+            &versioned_constants.os_constants,
         )?;
 
         let block_context = BlockContext::new(
@@ -174,11 +195,11 @@ impl<'tx> ExecutionState<'tx> {
 
     fn chain_info(&self) -> anyhow::Result<ChainInfo> {
         let eth_fee_token_address = starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(ETH_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            PatriciaKey::try_from(self.eth_fee_address.0.into_starkfelt())
                 .expect("ETH fee token address overflow"),
         );
         let strk_fee_token_address = starknet_api::core::ContractAddress(
-            PatriciaKey::try_from(STRK_FEE_TOKEN_ADDRESS.0.into_starkfelt())
+            PatriciaKey::try_from(self.strk_fee_address.0.into_starkfelt())
                 .expect("STRK fee token address overflow"),
         );
 
@@ -207,6 +228,55 @@ impl<'tx> ExecutionState<'tx> {
     }
 
     fn block_info(&self) -> anyhow::Result<BlockInfo> {
+        let eth_l1_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_gas_price.0 == 0 {
+                // Bad API design - the genesis block has 0 gas price, but
+                // blockifier doesn't allow for it. This isn't critical for
+                // consensus, so we just use 1.
+                1
+            } else {
+                self.header.eth_l1_gas_price.0
+            }))?;
+        let strk_l1_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_gas_price.0 == 0 {
+                // Bad API design - the genesis block has 0 gas price, but
+                // blockifier doesn't allow for it. This isn't critical for
+                // consensus, so we just use 1.
+                1
+            } else {
+                self.header.strk_l1_gas_price.0
+            }))?;
+        let eth_l1_data_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_data_gas_price.0 == 0 {
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                // blockifier doesn't allow for it. This value is ignored for those
+                // transactions.
+                1
+            } else {
+                self.header.eth_l1_data_gas_price.0
+            }))?;
+        let strk_l1_data_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_data_gas_price.0 == 0 {
+                // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
+                // blockifier doesn't allow for it. This value is ignored for those
+                // transactions.
+                1
+            } else {
+                self.header.strk_l1_data_gas_price.0
+            }))?;
+        let eth_l2_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.eth_l2_gas_price.0 == 0 {
+                1
+            } else {
+                self.header.eth_l2_gas_price.0
+            }))?;
+        let strk_l2_gas_price =
+            NonzeroGasPrice::new(GasPrice(if self.header.strk_l2_gas_price.0 == 0 {
+                1
+            } else {
+                self.header.strk_l2_gas_price.0
+            }))?;
+
         Ok(BlockInfo {
             block_number: starknet_api::block::BlockNumber(self.header.number.get()),
             block_timestamp: starknet_api::block::BlockTimestamp(self.header.timestamp.get()),
@@ -214,38 +284,16 @@ impl<'tx> ExecutionState<'tx> {
                 PatriciaKey::try_from(self.header.sequencer_address.0.into_starkfelt())
                     .expect("Sequencer address overflow"),
             ),
-            gas_prices: blockifier::blockifier::block::GasPrices {
-                eth_l1_gas_price: if self.header.eth_l1_gas_price.0 == 0 {
-                    // Bad API design - the genesis block has 0 gas price, but
-                    // blockifier doesn't allow for it. This isn't critical for
-                    // consensus, so we just use 1.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.eth_l1_gas_price.0.try_into().unwrap()
+            gas_prices: starknet_api::block::GasPrices {
+                eth_gas_prices: starknet_api::block::GasPriceVector {
+                    l1_gas_price: eth_l1_gas_price,
+                    l1_data_gas_price: eth_l1_data_gas_price,
+                    l2_gas_price: eth_l2_gas_price,
                 },
-                strk_l1_gas_price: if self.header.strk_l1_gas_price.0 == 0 {
-                    // Bad API design - the genesis block has 0 gas price, but
-                    // blockifier doesn't allow for it. This isn't critical for
-                    // consensus, so we just use 1.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.strk_l1_gas_price.0.try_into().unwrap()
-                },
-                eth_l1_data_gas_price: if self.header.eth_l1_data_gas_price.0 == 0 {
-                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                    // blockifier doesn't allow for it. This value is ignored for those
-                    // transactions.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.eth_l1_data_gas_price.0.try_into().unwrap()
-                },
-                strk_l1_data_gas_price: if self.header.strk_l1_data_gas_price.0 == 0 {
-                    // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
-                    // blockifier doesn't allow for it. This value is ignored for those
-                    // transactions.
-                    1.try_into().unwrap()
-                } else {
-                    self.header.strk_l1_data_gas_price.0.try_into().unwrap()
+                strk_gas_prices: starknet_api::block::GasPriceVector {
+                    l1_gas_price: strk_l1_gas_price,
+                    l1_data_gas_price: strk_l1_data_gas_price,
+                    l2_gas_price: strk_l2_gas_price,
                 },
             },
             use_kzg_da: self.allow_use_kzg_data
@@ -259,6 +307,8 @@ impl<'tx> ExecutionState<'tx> {
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
         custom_versioned_constants: Option<VersionedConstants>,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
     ) -> Self {
         Self {
             transaction,
@@ -268,9 +318,12 @@ impl<'tx> ExecutionState<'tx> {
             execute_on_parent_state: true,
             allow_use_kzg_data: true,
             custom_versioned_constants,
+            eth_fee_address,
+            strk_fee_address,
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn simulation(
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
@@ -278,6 +331,8 @@ impl<'tx> ExecutionState<'tx> {
         pending_state: Option<Arc<StateUpdate>>,
         l1_blob_data_availability: L1BlobDataAvailability,
         custom_versioned_constants: Option<VersionedConstants>,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
     ) -> Self {
         Self {
             transaction,
@@ -287,6 +342,8 @@ impl<'tx> ExecutionState<'tx> {
             execute_on_parent_state: false,
             allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
             custom_versioned_constants,
+            eth_fee_address,
+            strk_fee_address,
         }
     }
 }

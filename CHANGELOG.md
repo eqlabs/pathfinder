@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
+- `storage_root` along `nonce` and `class_hash` in `contracts_proof/contract_leaves_data` for `starknet_getStorageProof`.
 
 ### Removed
 
@@ -27,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
+
+## [0.15.3] - 2025-01-10
+
+### Changed
+
+- Cairo 0 class definition size is now capped at 4 MiB.
 
 ## [0.15.2] - 2024-12-04
 

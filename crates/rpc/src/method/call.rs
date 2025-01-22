@@ -11,6 +11,7 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
+    EntrypointNotFound,
     ContractError {
         revert_error: Option<String>,
         revert_error_stack: pathfinder_executor::ErrorStack,
@@ -28,7 +29,7 @@ impl From<pathfinder_executor::CallError> for CallError {
         use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::EntrypointNotFound,
             ContractError(error, error_stack) => Self::ContractError {
                 revert_error: Some(format!("Execution error: {}", error)),
                 revert_error_stack: error_stack,
@@ -54,6 +55,7 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
+            CallError::EntrypointNotFound => ApplicationError::EntrypointNotFound,
             CallError::ContractError {
                 revert_error,
                 revert_error_stack,
@@ -145,6 +147,8 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             pending,
             L1BlobDataAvailability::Disabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let result = pathfinder_executor::call(
@@ -162,15 +166,12 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
     result.map(Output)
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(|v| crate::dto::Felt(&v.0)),
-        )
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
 
@@ -614,7 +615,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let error = call(context, input).await;
-            assert_matches::assert_matches!(error, Err(CallError::Custom(_)));
+            assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
         }
 
         #[tokio::test]

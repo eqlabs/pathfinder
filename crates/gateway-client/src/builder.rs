@@ -228,7 +228,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 }
 
-impl<'a> Request<'a, stage::Final> {
+impl Request<'_, stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and parses the
     /// response into `T`.
     pub async fn get<T>(self) -> Result<T, SequencerError>

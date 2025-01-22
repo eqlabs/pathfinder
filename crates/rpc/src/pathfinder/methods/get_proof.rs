@@ -9,7 +9,6 @@ use pathfinder_merkle_tree::{
     ContractsStorageTree,
     StorageCommitmentTree,
 };
-use serde::Serialize;
 
 use crate::context::RpcContext;
 
@@ -92,10 +91,22 @@ impl From<GetProofError> for crate::error::ApplicationError {
 }
 
 /// Utility struct used for serializing.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct PathWrapper {
     value: Felt,
     len: usize,
+}
+
+impl crate::dto::SerializeForVersion for PathWrapper {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("value", &self.value)?;
+        obj.serialize_field("len", &self.len)?;
+        obj.end()
+    }
 }
 
 /// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
@@ -103,60 +114,58 @@ struct PathWrapper {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProofNodes(Vec<TrieNode>);
 
-impl Serialize for ProofNodes {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::{SerializeSeq, SerializeStructVariant};
-        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
+impl crate::dto::SerializeForVersion for ProofNodes {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(|node| {
+                struct SerProofNode<'a>(&'a TrieNode);
 
-        for node in &self.0 {
-            struct SerProofNode<'a>(&'a TrieNode);
+                impl crate::dto::SerializeForVersion for SerProofNode<'_> {
+                    fn serialize(
+                        &self,
+                        serializer: crate::dto::Serializer,
+                    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                        let mut s = serializer.serialize_struct()?;
+                        match self.0 {
+                            TrieNode::Binary { left, right } => {
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("left", left)?;
+                                inner.serialize_field("right", right)?;
+                                let inner = inner.end()?;
 
-            impl Serialize for SerProofNode<'_> {
-                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: serde::Serializer,
-                {
-                    match self.0 {
-                        TrieNode::Binary { left, right } => {
-                            let mut state = serializer.serialize_struct_variant(
-                                "proof_node",
-                                0,
-                                "binary",
-                                2,
-                            )?;
-                            state.serialize_field("left", &left)?;
-                            state.serialize_field("right", &right)?;
-                            state.end()
+                                s.serialize_field("binary", &inner)?;
+                            }
+                            TrieNode::Edge { child, path } => {
+                                let value = Felt::from_bits(path).unwrap();
+                                let path = PathWrapper {
+                                    value,
+                                    len: path.len(),
+                                };
+
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("path", &path)?;
+                                inner.serialize_field("child", child)?;
+                                let inner = inner.end()?;
+
+                                s.serialize_field("edge", &inner)?;
+                            }
                         }
-                        TrieNode::Edge { child, path } => {
-                            let value = Felt::from_bits(path).unwrap();
-                            let path = PathWrapper {
-                                value,
-                                len: path.len(),
-                            };
-
-                            let mut state =
-                                serializer.serialize_struct_variant("proof_node", 1, "edge", 2)?;
-                            state.serialize_field("path", &path)?;
-                            state.serialize_field("child", &child)?;
-                            state.end()
-                        }
+                        s.end()
                     }
                 }
-            }
 
-            sequence.serialize_element(&SerProofNode(node))?;
-        }
-
-        sequence.end()
+                SerProofNode(node)
+            }),
+        )
     }
 }
 
 /// Holds the data and proofs for a specific contract.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ContractData {
     /// Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
@@ -174,6 +183,28 @@ pub struct ContractData {
     storage_proofs: Vec<ProofNodes>,
 }
 
+impl crate::dto::SerializeForVersion for ContractData {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("class_hash", &self.class_hash)?;
+        obj.serialize_field("nonce", &self.nonce)?;
+        obj.serialize_field("root", &self.root)?;
+        obj.serialize_field(
+            "contract_state_hash_version",
+            &self.contract_state_hash_version,
+        )?;
+        obj.serialize_iter(
+            "storage_proofs",
+            self.storage_proofs.len(),
+            &mut self.storage_proofs.iter().cloned(),
+        )?;
+        obj.end()
+    }
+}
+
 /// Holds the membership/non-membership of a contract and its associated
 /// contract contract if the contract exists.
 #[derive(Debug)]
@@ -183,6 +214,11 @@ pub struct GetProofOutput {
     /// [contract_proof](GetProofOutput#contract_proof) is the global state
     /// commitment.
     state_commitment: Option<StateCommitment>,
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
 
     /// Membership / Non-membership proof for the queried contract
     contract_proof: ProofNodes,
@@ -191,13 +227,14 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
+impl crate::dto::SerializeForVersion for GetProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_optional("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional_with_null("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
         serializer.serialize_field("contract_proof", &self.contract_proof)?;
         serializer.serialize_optional("contract_data", self.contract_data.clone())?;
         serializer.end()
@@ -206,16 +243,22 @@ impl crate::dto::serialize::SerializeForVersion for GetProofOutput {
 
 #[derive(Debug, PartialEq)]
 pub struct GetClassProofOutput {
+    /// Required to verify that the hash of the class commitment and the root of
+    /// the [contract_proof](GetProofOutput::contract_proof) matches the
+    /// [state_commitment](Self#state_commitment). Present only for Starknet
+    /// blocks 0.11.0 onwards.
+    class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
 }
 
-impl crate::dto::serialize::SerializeForVersion for GetClassProofOutput {
+impl crate::dto::SerializeForVersion for GetClassProofOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
         serializer.serialize_field("class_proof", &self.class_proof)?;
         serializer.end()
     }
@@ -270,6 +313,9 @@ pub async fn get_proof(
         let storage_root_idx = tx
             .storage_root_index(header.number)
             .context("Querying storage root index")?;
+        let class_commitment = tx
+            .class_root(header.number)
+            .context("Querying class commitment")?;
 
         let Some(storage_root_idx) = storage_root_idx else {
             if tx.trie_pruning_enabled() {
@@ -281,6 +327,7 @@ pub async fn get_proof(
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetProofOutput {
                     state_commitment,
+                    class_commitment,
                     contract_proof: ProofNodes(vec![]),
                     contract_data: None,
                 });
@@ -308,6 +355,7 @@ pub async fn get_proof(
         if contract_state_hash.is_none() {
             return Ok(GetProofOutput {
                 state_commitment,
+                class_commitment,
                 contract_proof,
                 contract_data: None,
             });
@@ -363,6 +411,7 @@ pub async fn get_proof(
 
         Ok(GetProofOutput {
             state_commitment,
+            class_commitment,
             contract_proof,
             contract_data: Some(contract_data),
         })
@@ -417,10 +466,16 @@ pub async fn get_class_proof(
                 // - or all leaves were removed resulting in an empty trie
                 // An empty proof is then a proof of non-membership in an empty block.
                 return Ok(GetClassProofOutput {
+                    class_commitment: None,
                     class_proof: ProofNodes(vec![]),
                 });
             }
         };
+
+        let class_commitment = tx
+            .class_trie_node_hash(class_root_idx)
+            .context("Querying class trie root")?
+            .map(ClassCommitment);
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
@@ -432,7 +487,10 @@ pub async fn get_class_proof(
 
         let class_proof = ProofNodes(class_proof);
 
-        Ok(GetClassProofOutput { class_proof })
+        Ok(GetClassProofOutput {
+            class_commitment,
+            class_proof,
+        })
     });
 
     jh.await.context("Database read panic or shutting down")?
@@ -446,6 +504,52 @@ mod tests {
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
     use super::*;
+
+    mod serialization {
+        use bitvec::prelude::*;
+
+        use super::*;
+        use crate::dto::SerializeForVersion;
+
+        #[test]
+        fn serialize_proof_nodes() {
+            let nodes = ProofNodes(vec![
+                TrieNode::Binary {
+                    left: Felt::from_u64(0),
+                    right: Felt::from_u64(1),
+                },
+                TrieNode::Edge {
+                    child: Felt::from_u64(2),
+                    path: bitvec::bitvec![u8, Msb0; 1, 1],
+                },
+            ]);
+            let actual = nodes
+                .serialize(crate::dto::Serializer {
+                    version: crate::RpcVersion::default(),
+                })
+                .unwrap();
+            let expected = serde_json::json!(
+                [
+                    {
+                        "binary": {
+                            "left": "0x0",
+                            "right": "0x1",
+                        }
+                    },
+                    {
+                        "edge": {
+                            "path": {
+                                "value": "0x3",
+                                "len": 2,
+                            },
+                            "child": "0x2",
+                        }
+                    },
+                ]
+            );
+            assert_eq!(actual, expected);
+        }
+    }
 
     mod get_proof {
         use super::*;
@@ -653,6 +757,7 @@ mod tests {
             assert_eq!(
                 output,
                 GetClassProofOutput {
+                    class_commitment: None,
                     class_proof: ProofNodes(vec![])
                 }
             );

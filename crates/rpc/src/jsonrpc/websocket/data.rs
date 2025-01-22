@@ -14,7 +14,7 @@ use serde::ser::Error;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::dto::serialize;
+use crate::dto::SerializeForVersion;
 use crate::jsonrpc::router::RpcResponses;
 use crate::jsonrpc::{RequestId, RpcError, RpcResponse};
 
@@ -53,29 +53,41 @@ pub(super) struct SubscriptionItem<T> {
     pub(super) item: T,
 }
 
-impl<T: serde::Serialize> serde::Serialize for SubscriptionItem<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        #[derive(serde::Serialize)]
-        struct ResultHelper<'a, U: serde::Serialize> {
-            subscription: u32,
-            result: &'a U,
-        }
+impl<T: SerializeForVersion> SerializeForVersion for SubscriptionItem<T> {
+    fn serialize(
+        &self,
+        base_serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = base_serializer.serialize_struct()?;
 
-        use serde::ser::SerializeMap;
-        let mut obj = serializer.serialize_map(Some(3))?;
-        obj.serialize_entry("jsonrpc", "2.0")?;
-        obj.serialize_entry("method", "pathfinder_subscription")?;
-        obj.serialize_entry(
+        serializer.serialize_field("jsonrpc", &"2.0")?;
+        serializer.serialize_field("method", &"pathfinder_subscription")?;
+        serializer.serialize_field(
             "result",
             &ResultHelper {
                 subscription: self.subscription_id,
                 result: &self.item,
             },
         )?;
-        obj.end()
+
+        serializer.end()
+    }
+}
+
+struct ResultHelper<'a, U: SerializeForVersion> {
+    subscription: u32,
+    result: &'a U,
+}
+
+impl<T: SerializeForVersion> SerializeForVersion for ResultHelper<'_, T> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut s = serializer.serialize_struct()?;
+        s.serialize_field("subscription", &self.subscription)?;
+        s.serialize_field("result", self.result)?;
+        s.end()
     }
 }
 
@@ -104,8 +116,7 @@ pub(super) enum ResponseEvent {
 }
 
 /// Describes an emitted event returned by starknet_getEvents
-#[serde_with::skip_serializing_none]
-#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EmittedEvent {
     pub data: Vec<EventData>,
     pub keys: Vec<EventKey>,
@@ -117,13 +128,43 @@ pub struct EmittedEvent {
     pub transaction_hash: TransactionHash,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+impl SerializeForVersion for EmittedEvent {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_iter("data", self.data.len(), &mut self.data.iter())?;
+        obj.serialize_iter("keys", self.keys.len(), &mut self.keys.iter())?;
+        obj.serialize_field("from_address", &self.from_address)?;
+        obj.serialize_optional("block_hash", self.block_hash)?;
+        obj.serialize_optional("block_number", self.block_number)?;
+        obj.serialize_field("transaction_hash", &self.transaction_hash)?;
+        obj.end()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TransactionStatusUpdate {
     Received = 0,
     Rejected = 1,
     Succeeded = 2,
     Reverted = 3,
+}
+
+impl crate::dto::SerializeForVersion for TransactionStatusUpdate {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        match self {
+            TransactionStatusUpdate::Received => "RECEIVED",
+            TransactionStatusUpdate::Rejected => "REJECTED",
+            TransactionStatusUpdate::Succeeded => "SUCCEEDED",
+            TransactionStatusUpdate::Reverted => "REVERTED",
+        }
+        .serialize(serializer)
+    }
 }
 
 impl ResponseEvent {
@@ -144,11 +185,11 @@ impl ResponseEvent {
     }
 }
 
-impl serialize::SerializeForVersion for ResponseEvent {
+impl crate::dto::SerializeForVersion for ResponseEvent {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             ResponseEvent::InvalidRequest(e) => {
                 RpcResponse::invalid_request(e.clone(), serializer.version).serialize(serializer)
@@ -161,18 +202,30 @@ impl serialize::SerializeForVersion for ResponseEvent {
                 RpcResponse::internal_error(request_id.clone(), e.to_string(), serializer.version)
                     .serialize(serializer)
             }
-            ResponseEvent::Header(header) => header.serialize(serializer),
-            ResponseEvent::Event(event) => event.serialize(serializer),
+            ResponseEvent::Header(header) => {
+                let si = SubscriptionItem {
+                    subscription_id: header.subscription_id,
+                    item: (*header.item).clone(),
+                };
+                si.serialize(serializer)
+            }
+            ResponseEvent::Event(event) => {
+                let si = SubscriptionItem {
+                    subscription_id: event.subscription_id,
+                    item: (*event.item).clone(),
+                };
+                si.serialize(serializer)
+            }
             ResponseEvent::Subscribed {
                 subscription_id,
                 request_id,
-            } => successful_response(&subscription_id, request_id.clone(), serializer.version)
+            } => successful_response(subscription_id, request_id.clone(), serializer.version)
                 .map_err(|_json_err| Error::custom("Payload serialization failed"))?
                 .serialize(serializer),
             ResponseEvent::Unsubscribed {
                 success,
                 request_id,
-            } => successful_response(&success, request_id.clone(), serializer.version)
+            } => successful_response(success, request_id.clone(), serializer.version)
                 .map_err(|_json_err| Error::custom("Payload serialization failed"))?
                 .serialize(serializer),
             ResponseEvent::SubscriptionClosed {
@@ -188,7 +241,13 @@ impl serialize::SerializeForVersion for ResponseEvent {
             }
             .serialize(serializer),
             ResponseEvent::Responses(responses) => responses.serialize(serializer),
-            ResponseEvent::TransactionStatus(status) => status.serialize(serializer),
+            ResponseEvent::TransactionStatus(status) => {
+                let si = SubscriptionItem {
+                    subscription_id: status.subscription_id,
+                    item: *status.item,
+                };
+                si.serialize(serializer)
+            }
             ResponseEvent::RpcError(error) => error.serialize(serializer),
         }
     }
@@ -200,9 +259,9 @@ pub(super) fn successful_response<P>(
     version: crate::RpcVersion,
 ) -> Result<RpcResponse, serde_json::Error>
 where
-    P: serde::Serialize,
+    P: SerializeForVersion,
 {
-    let payload = serde_json::to_value(payload)?;
+    let payload = payload.serialize(crate::dto::Serializer::new(version))?;
     Ok(RpcResponse {
         output: Ok(payload),
         id: request_id,
@@ -274,5 +333,37 @@ impl serde::Serialize for BlockHeader {
         map.serialize_entry("receipt_commitment", &receipt_commitment)?;
 
         map.end()
+    }
+}
+
+impl SerializeForVersion for BlockHeader {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+
+        let header = &self.0;
+        obj.serialize_field("hash", &header.hash)?;
+        obj.serialize_field("parent_hash", &header.parent_hash)?;
+        obj.serialize_field("number", &header.number)?;
+        obj.serialize_field("timestamp", &header.timestamp)?;
+        obj.serialize_field("eth_l1_gas_price", &header.eth_l1_gas_price)?;
+        obj.serialize_field("strk_l1_gas_price", &header.strk_l1_gas_price)?;
+        obj.serialize_field("eth_l1_data_gas_price", &header.eth_l1_data_gas_price)?;
+        obj.serialize_field("strk_l1_data_gas_price", &header.strk_l1_data_gas_price)?;
+        obj.serialize_field("eth_l2_gas_price", &header.eth_l2_gas_price)?;
+        obj.serialize_field("strk_l2_gas_price", &header.strk_l2_gas_price)?;
+        obj.serialize_field("sequencer_address", &header.sequencer_address)?;
+        obj.serialize_field("starknet_version", &header.starknet_version.to_string())?;
+        obj.serialize_field("event_commitment", &header.event_commitment)?;
+        obj.serialize_field("state_commitment", &header.state_commitment)?;
+        obj.serialize_field("transaction_commitment", &header.transaction_commitment)?;
+        obj.serialize_field("transaction_count", &header.transaction_count)?;
+        obj.serialize_field("event_count", &header.event_count)?;
+        obj.serialize_field("l1_da_mode", &header.l1_da_mode)?;
+        obj.serialize_field("receipt_commitment", &header.receipt_commitment)?;
+
+        obj.end()
     }
 }

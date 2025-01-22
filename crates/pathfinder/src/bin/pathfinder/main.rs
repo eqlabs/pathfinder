@@ -15,10 +15,9 @@ use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::monitoring::{self};
 use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
-use pathfinder_rpc::context::WebsocketContext;
+use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
-use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinError;
@@ -228,7 +227,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         execution_storage,
         sync_state.clone(),
         pathfinder_context.network_id,
-        pathfinder_context.l1_core_address,
+        pathfinder_context.contract_addresses,
         pathfinder_context.gateway.clone(),
         rx_pending.clone(),
         notifications.clone(),
@@ -248,6 +247,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let default_version = match config.rpc_root_version {
         config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
+        config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
     };
 
     let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
@@ -628,7 +628,7 @@ fn start_feeder_gateway_sync(
         ethereum: ethereum_client,
         chain: pathfinder_context.network,
         chain_id: pathfinder_context.network_id,
-        core_address: pathfinder_context.l1_core_address,
+        core_address: pathfinder_context.contract_addresses.l1_contract_address,
         sequencer: pathfinder_context.gateway,
         state: sync_state.clone(),
         head_poll_interval: config.poll_interval,
@@ -665,7 +665,7 @@ fn start_p2p_sync(
         storage,
         p2p: p2p_client,
         eth_client: ethereum_client,
-        eth_address: pathfinder_context.l1_core_address,
+        eth_address: pathfinder_context.contract_addresses.l1_contract_address,
         fgw_client: pathfinder_context.gateway,
         chain_id: pathfinder_context.network_id,
         public_key: gateway_public_key,
@@ -759,7 +759,7 @@ struct PathfinderContext {
     network_id: ChainId,
     gateway: starknet_gateway_client::Client,
     database: PathBuf,
-    l1_core_address: H160,
+    contract_addresses: EthContractAddresses,
 }
 
 /// Used to hide private fn's for [PathfinderContext].
@@ -770,7 +770,7 @@ mod pathfinder_context {
     use anyhow::Context;
     use pathfinder_common::{Chain, ChainId};
     use pathfinder_ethereum::core_addr;
-    use primitive_types::H160;
+    use pathfinder_rpc::context::EthContractAddresses;
     use reqwest::Url;
     use starknet_gateway_client::Client as GatewayClient;
 
@@ -790,14 +790,14 @@ mod pathfinder_context {
                     network_id: ChainId::MAINNET,
                     gateway: GatewayClient::mainnet(gateway_timeout).with_api_key(api_key),
                     database: data_directory.join("mainnet.sqlite"),
-                    l1_core_address: H160::from(core_addr::MAINNET),
+                    contract_addresses: EthContractAddresses::new_known(core_addr::MAINNET),
                 },
                 NetworkConfig::SepoliaTestnet => Self {
                     network: Chain::SepoliaTestnet,
                     network_id: ChainId::SEPOLIA_TESTNET,
                     gateway: GatewayClient::sepolia_testnet(gateway_timeout).with_api_key(api_key),
                     database: data_directory.join("testnet-sepolia.sqlite"),
-                    l1_core_address: H160::from(core_addr::SEPOLIA_TESTNET),
+                    contract_addresses: EthContractAddresses::new_known(core_addr::SEPOLIA_TESTNET),
                 },
                 NetworkConfig::SepoliaIntegration => Self {
                     network: Chain::SepoliaIntegration,
@@ -805,7 +805,9 @@ mod pathfinder_context {
                     gateway: GatewayClient::sepolia_integration(gateway_timeout)
                         .with_api_key(api_key),
                     database: data_directory.join("integration-sepolia.sqlite"),
-                    l1_core_address: H160::from(core_addr::SEPOLIA_INTEGRATION),
+                    contract_addresses: EthContractAddresses::new_known(
+                        core_addr::SEPOLIA_INTEGRATION,
+                    ),
                 },
                 NetworkConfig::Custom {
                     gateway,
@@ -848,12 +850,16 @@ mod pathfinder_context {
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);
 
-            let l1_core_address = gateway
+            let reply_contract_addresses = gateway
                 .eth_contract_addresses()
                 .await
-                .context("Downloading starknet L1 address from gateway for proxy check")?
-                .starknet
-                .0;
+                .context("Downloading starknet L1 address from gateway for proxy check")?;
+            let l1_core_address = reply_contract_addresses.starknet.0;
+            let contract_addresses = EthContractAddresses::new_custom(
+                l1_core_address,
+                reply_contract_addresses.eth_l2_token_address,
+                reply_contract_addresses.strk_l2_token_address,
+            )?;
 
             // Check for proxies by comparing the core address against those of the known
             // networks.
@@ -873,7 +879,7 @@ mod pathfinder_context {
                 network_id,
                 gateway,
                 database: data_directory.join("custom.sqlite"),
-                l1_core_address,
+                contract_addresses,
             };
 
             Ok(context)

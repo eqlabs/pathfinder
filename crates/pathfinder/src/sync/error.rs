@@ -26,6 +26,8 @@ pub(super) enum SyncError {
     ClassDefinitionsDeclarationsMismatch(PeerId),
     #[error("Class hash computation failed")]
     ClassHashComputationError(PeerId),
+    #[error("Contract's class is missing")]
+    ContractClassMissing(PeerId),
     #[error("Discontinuity in header chain")]
     Discontinuity(PeerId),
     #[error("Event commitment mismatch")]

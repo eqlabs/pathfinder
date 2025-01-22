@@ -3,17 +3,17 @@ name = "pathfinder-probe"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.73"
+rust-version = "1.82"
 
 [dependencies]
-anyhow = "1.0.81"
-axum = { version = "0.6.20", features = ["macros"] }
-futures = "0.3.30"
-metrics = "0.21.1"
-metrics-exporter-prometheus = "0.12.2"
-reqwest = { version = "0.11.27", features = ["json"] }
-serde = "1.0.197"
-serde_json = "1.0.115"
-tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros"] }
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+anyhow = "1.0.95"
+axum = { version = "0.7.9", features = ["macros"] }
+futures = "0.3.31"
+metrics = "0.24.1"
+metrics-exporter-prometheus = "0.16.1"
+reqwest = { version = "0.12.12", features = ["json"] }
+serde = "1.0.217"
+serde_json = "1.0.135"
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"

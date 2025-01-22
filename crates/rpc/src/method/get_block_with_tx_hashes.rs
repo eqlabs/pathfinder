@@ -87,22 +87,22 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
     .context("Joining blocking task")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Output::Pending {
                 header,
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::PendingBlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TxnHash),
+                    &mut transactions.iter(),
                 )?;
                 serializer.end()
             }
@@ -112,11 +112,11 @@ impl crate::dto::serialize::SerializeForVersion for Output {
                 l1_accepted,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(&crate::dto::BlockHeader(header))?;
+                serializer.flatten(header.as_ref())?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
-                    &mut transactions.iter().map(crate::dto::TxnHash),
+                    &mut transactions.iter(),
                 )?;
                 serializer.serialize_field(
                     "status",

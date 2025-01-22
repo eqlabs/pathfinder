@@ -46,10 +46,12 @@ async fn main() -> anyhow::Result<()> {
             );
 
             let blocks_missing = gw.block_number - pf.block_number;
-            metrics::gauge!("blocks_missing", blocks_missing as f64);
+            let blocks_missing_gauge = metrics::gauge!("blocks_missing");
+            blocks_missing_gauge.set(blocks_missing as f64);
 
             let blocks_delay = gw.block_timestamp - pf.block_timestamp;
-            metrics::gauge!("blocks_delay", blocks_delay as f64);
+            let blocks_delay_gauge = metrics::gauge!("blocks_delay");
+            blocks_delay_gauge.set(blocks_delay as f64);
 
             future::ready(())
         })
@@ -59,11 +61,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(server=?setup.listen_at, "pathfinder-probe running");
 
     let app = Router::new().route("/metrics", routing::get(|| async move { handle.render() }));
+    let listener = tokio::net::TcpListener::bind(&setup.listen_at).await?;
 
-    axum::Server::bind(&setup.listen_at)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    axum::serve(listener, app).await.unwrap();
 
     Ok(())
 }

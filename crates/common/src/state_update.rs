@@ -644,6 +644,14 @@ impl DeclaredClasses {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum StateUpdateError {
+    #[error("Contract class hash missing for contract {0}")]
+    ContractClassHashMissing(ContractAddress),
+    #[error(transparent)]
+    StorageError(#[from] anyhow::Error),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

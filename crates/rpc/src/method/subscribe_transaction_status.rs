@@ -49,11 +49,11 @@ pub enum FinalityStatus {
     Rejected { reason: Option<String> },
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         return match self {
             Notification::TransactionStatus(tx_hash, finality_status, execution_status) => {
                 let mut serializer = serializer.serialize_struct()?;
@@ -75,11 +75,11 @@ impl crate::dto::serialize::SerializeForVersion for Notification {
             execution_status: &'a Option<ExecutionStatus>,
         }
 
-        impl crate::dto::serialize::SerializeForVersion for TransactionStatus<'_> {
+        impl crate::dto::SerializeForVersion for TransactionStatus<'_> {
             fn serialize(
                 &self,
-                serializer: crate::dto::serialize::Serializer,
-            ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+                serializer: crate::dto::Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
                 let mut serializer = serializer.serialize_struct()?;
                 serializer.serialize_field(
                     "finality_status",
@@ -449,13 +449,12 @@ mod tests {
     use pathfinder_ethereum::{EthereumClient, EthereumStateUpdate};
     use pathfinder_storage::StorageBuilder;
     use pretty_assertions_sorted::assert_eq;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::{Block, PendingBlock};
     use tokio::sync::mpsc;
 
-    use crate::context::{RpcConfig, RpcContext};
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
@@ -1162,7 +1161,9 @@ mod tests {
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,

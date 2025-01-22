@@ -180,6 +180,10 @@ macros::i64_backed_u64::serdes!(TransactionIndex);
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct GasPrice(pub u128);
 
+/// A hex representation of a [GasPrice].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
+pub struct GasPriceHex(pub GasPrice);
+
 /// Starknet resource bound: amount.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct ResourceAmount(pub u64);
@@ -188,6 +192,10 @@ pub struct ResourceAmount(pub u64);
 // transactions in the mempool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]
 pub struct Tip(pub u64);
+
+// A hex representation of a [Tip].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Dummy)]
+pub struct TipHex(pub Tip);
 
 /// Starknet resource bound: price per unit.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Default, Dummy)]

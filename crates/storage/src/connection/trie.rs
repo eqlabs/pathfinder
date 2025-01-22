@@ -23,6 +23,20 @@ impl Transaction<'_> {
             .map_err(Into::into)
     }
 
+    pub fn class_root(&self, block_number: BlockNumber) -> anyhow::Result<Option<ClassCommitment>> {
+        self.inner()
+        .query_row(
+            r"SELECT hash FROM trie_class WHERE idx = (
+                SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number DESC LIMIT 1
+            )",
+            params![&block_number],
+            |row| row.get_optional_class_commitment(0),
+        )
+        .optional()
+        .map(|x| x.flatten())
+        .map_err(Into::into)
+    }
+
     pub fn class_root_exists(&self, block_number: BlockNumber) -> anyhow::Result<bool> {
         self.inner()
             .query_row(

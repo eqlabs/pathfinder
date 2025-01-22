@@ -11,7 +11,6 @@ pub use subscription::{handle_json_rpc_socket, CatchUp, RpcSubscriptionFlow, Sub
 use subscription::{split_ws, RpcSubscriptionEndpoint};
 
 use crate::context::RpcContext;
-use crate::dto::serialize;
 use crate::jsonrpc::error::RpcError;
 use crate::jsonrpc::request::RpcRequest;
 use crate::jsonrpc::response::RpcResponse;
@@ -174,7 +173,7 @@ fn is_utf8_encoded_json(headers: http::HeaderMap) -> bool {
 
     // `application/json` or `XXX+json` are allowed.
     let is_json = (mime.type_() == "application" && mime.subtype() == "json")
-        || mime.suffix().map_or(false, |name| name == "json");
+        || mime.suffix().is_some_and(|name| name == "json");
 
     is_json && valid_charset
 }
@@ -207,12 +206,12 @@ pub async fn rpc_handler(
                     RpcResponses::Empty => ().into_response(),
                     RpcResponses::Single(response) => response.into_response(),
                     RpcResponses::Multiple(responses) => {
-                        use serialize::SerializeForVersion;
+                        use crate::dto::SerializeForVersion;
                         let values = responses
                             .into_iter()
                             .map(|response| {
                                 response
-                                    .serialize(serialize::Serializer::new(state.version))
+                                    .serialize(crate::dto::Serializer::new(state.version))
                                     .unwrap()
                             })
                             .collect::<Vec<_>>();
@@ -249,13 +248,13 @@ pub(super) enum RpcResponses {
     Multiple(Vec<RpcResponse>),
 }
 
-impl serialize::SerializeForVersion for RpcResponses {
+impl crate::dto::SerializeForVersion for RpcResponses {
     fn serialize(
         &self,
-        serializer: serialize::Serializer,
-    ) -> Result<serialize::Ok, serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            Self::Empty => serializer.serialize(&()),
+            Self::Empty => serializer.serialize_unit(),
             Self::Single(response) => serializer.serialize(response),
             Self::Multiple(responses) => {
                 serializer.serialize_iter(responses.len(), &mut responses.iter())
@@ -486,6 +485,16 @@ mod tests {
                     Value::String("hello".to_owned()),
                     Value::Number(5.into()),
                 ]))
+            }
+
+            impl crate::dto::SerializeForVersion for GetDataOutput {
+                fn serialize(
+                    &self,
+                    serializer: crate::dto::Serializer,
+                ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                    let value = serde_json::to_value(&self.0).unwrap();
+                    serializer.serialize(&value)
+                }
             }
 
             RpcRouter::builder(RpcVersion::default())
