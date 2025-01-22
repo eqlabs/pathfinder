@@ -1,3 +1,61 @@
+//! Class hash computation for Cairo and Sierra contracts.
+//!
+//! This crate provides functionality to compute class hashes for both Cairo 0.x
+//! and Sierra (Cairo 1.x+) contracts in the Starknet ecosystem. The class hash
+//! is a unique identifier for a contract's code that is used throughout the
+//! Starknet protocol.
+//!
+//! # Class Hash Types
+//!
+//! There are two main types of class hashes:
+//!
+//! * Cairo 0.x class hashes - Computed for legacy Cairo contracts
+//! * Sierra class hashes - Computed for newer Cairo 1.x+ contracts using the
+//!   Sierra intermediate representation
+//!
+//! # Main Components
+//!
+//! * [`compute_class_hash`] - The main entry point for computing class hashes
+//!   for both Cairo and Sierra contracts
+//! * [`ComputedClassHash`] - An enum representing the computed hash for either
+//!   contract type
+//! * [`PreparedCairoContractDefinition`] - A prepared Cairo contract definition
+//!   ready for hashing
+//! * [`RawCairoContractDefinition`] - An unprepared Cairo contract definition
+//!
+//! # Implementation Details
+//!
+//! ## Cairo Class Hash
+//!
+//! The Cairo class hash computation follows these steps:
+//!
+//! 1. The contract definition is prepared by removing debug info and handling
+//!    special cases for Cairo 0.8+ attributes
+//! 2. The prepared definition is serialized to JSON with Python-compatible
+//!    formatting
+//! 3. A truncated Keccak hash is computed from the serialized JSON
+//! 4. Entry points, builtins, and bytecode are processed through hash chains
+//! 5. The final class hash is computed by combining all components
+//!
+//! ## Sierra Class Hash
+//!
+//! The Sierra class hash computation is simpler:
+//!
+//! 1. The contract version is validated
+//! 2. Entry points are processed in order
+//! 3. The ABI string is hashed
+//! 4. The Sierra program is hashed
+//! 5. All components are combined into the final hash
+//!
+//! # Compatibility
+//!
+//! This crate maintains compatibility with the official Starknet implementation
+//! and includes extensive test vectors to ensure hash computation matches the
+//! network's expectations.
+//!
+//! See the [official Starknet documentation](https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/)
+//! for more details on class hash computation.
+
 use anyhow::{Context, Error, Result};
 use pathfinder_common::class_definition::EntryPointType::*;
 use pathfinder_common::{felt_bytes, ClassHash};
@@ -6,6 +64,7 @@ use pathfinder_crypto::Felt;
 use serde::Serialize;
 use sha3::Digest;
 
+/// Computed class hash
 #[derive(Debug, PartialEq)]
 pub enum ComputedClassHash {
     Cairo(ClassHash),
@@ -34,17 +93,46 @@ pub fn compute_class_hash(contract_definition_dump: &[u8]) -> Result<ComputedCla
         json::ContractDefinition::Sierra(definition) => compute_sierra_class_hash(definition)
             .map(ComputedClassHash::Sierra)
             .context("Compute class hash"),
-        json::ContractDefinition::Cairo(definition) => compute_cairo_class_hash(definition)
+        json::ContractDefinition::Cairo(definition) => compute_cairo_class_hash(definition.into())
             .map(ComputedClassHash::Cairo)
             .context("Compute class hash"),
     }
+}
+
+/// Compute class hash for a Cairo contract definition
+pub fn compute_cairo_hinted_class_hash(
+    contract_definition: &PreparedCairoContractDefinition<'_>,
+) -> Result<Felt> {
+    use std::io::Write;
+
+    // It's less efficient than tweaking the formatter to emit the encoding but I
+    // don't know how and this is an emergency issue (mainnt nodes stuck).
+    let mut string_buffer = vec![];
+
+    let mut ser =
+        serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
+
+    contract_definition
+        .0
+        .serialize(&mut ser)
+        .context("Serializing contract_definition for Keccak256")?;
+
+    let raw_json_output = String::from_utf8(string_buffer).expect("Invalid UTF-8");
+
+    let mut keccak_writer = KeccakWriter::default();
+    keccak_writer
+        .write_all(raw_json_output.as_bytes())
+        .expect("Failed to write to KeccakWriter");
+
+    let KeccakWriter(hash) = keccak_writer;
+    Ok(truncated_keccak(<[u8; 32]>::from(hash.finalize())))
 }
 
 /// Parse either a Sierra or a Cairo contract definition.
 ///
 /// Due to an issue in serde_json we can't use an untagged enum and simply
 /// derive a Deserialize implementation: <https://github.com/serde-rs/json/issues/559>
-fn parse_contract_definition(
+pub fn parse_contract_definition(
     contract_definition_dump: &[u8],
 ) -> serde_json::Result<json::ContractDefinition<'_>> {
     serde_json::from_slice::<json::SierraContractDefinition<'_>>(contract_definition_dump)
@@ -55,6 +143,8 @@ fn parse_contract_definition(
         })
 }
 
+/// Helpers to compute class hashes from the parts that compose a Cairo or
+/// Sierra contract
 pub mod from_parts {
     use std::collections::HashMap;
 
@@ -69,6 +159,7 @@ pub mod from_parts {
 
     use super::json;
 
+    /// Compute class hash from the parts that compose a Cairo contract
     pub fn compute_cairo_class_hash(
         abi: &[u8],
         program: &[u8],
@@ -87,9 +178,10 @@ pub mod from_parts {
             entry_points_by_type,
         };
 
-        super::compute_cairo_class_hash(contract_definition)
+        super::compute_cairo_class_hash(contract_definition.into())
     }
 
+    /// Compute class hash from the parts that compose a Sierra contract
     pub fn compute_sierra_class_hash(
         abi: &str,
         sierra_program: Vec<Felt>,
@@ -109,6 +201,74 @@ pub mod from_parts {
         };
 
         super::compute_sierra_class_hash(contract_definition)
+    }
+}
+
+/// An unprepared Cairo contract definition.
+///
+/// This type represents a raw, unmodified Cairo contract definition before any
+/// preprocessing for class hash computation. It serves as a type-safe way to
+/// ensure contract definitions go through the proper preparation process.
+///
+/// # Type Safety
+///
+/// This type works together with [`PreparedCairoContractDefinition`] to provide
+/// compile-time guarantees that contract definitions are properly prepared
+/// before being used in class hash computation.
+///
+/// # Implementation
+///
+/// Internally wraps a [`json::CairoContractDefinition`] and can be created from
+/// one using the [`From`] implementation.
+pub struct RawCairoContractDefinition<'a>(json::CairoContractDefinition<'a>);
+
+impl<'a> From<json::CairoContractDefinition<'a>> for RawCairoContractDefinition<'a> {
+    fn from(value: json::CairoContractDefinition<'a>) -> Self {
+        RawCairoContractDefinition(value)
+    }
+}
+
+impl<'a> RawCairoContractDefinition<'a> {
+    /// Get the inner contract definition
+    pub fn inner(&self) -> &json::CairoContractDefinition<'a> {
+        &self.0
+    }
+}
+
+/// A prepared Cairo contract definition ready for class hash computation.
+///
+/// This type represents a Cairo contract definition that has been preprocessed
+/// and is ready for class hash computation. The preparation process includes:
+/// - Removal of debug information
+/// - Handling of Cairo 0.8+ specific attributes
+/// - Proper formatting of named tuple types
+///
+/// # Type Safety
+///
+/// This type works together with [`RawCairoContractDefinition`] to provide
+/// compile-time guarantees that contract definitions are properly prepared
+/// before being used in class hash computation.
+///
+/// # Creation
+///
+/// This type can be created from a [`json::CairoContractDefinition`] using
+/// [`TryFrom`], which internally uses [`prepare_json_contract_definition`] to
+/// ensure all necessary preprocessing steps are applied. The conversion may
+/// fail if the contract definition is invalid or cannot be properly prepared.
+pub struct PreparedCairoContractDefinition<'a>(json::CairoContractDefinition<'a>);
+
+impl<'a> TryFrom<json::CairoContractDefinition<'a>> for PreparedCairoContractDefinition<'a> {
+    type Error = Error;
+
+    fn try_from(value: json::CairoContractDefinition<'a>) -> Result<Self, Self::Error> {
+        prepare_json_contract_definition(RawCairoContractDefinition::from(value))
+    }
+}
+
+impl<'a> PreparedCairoContractDefinition<'a> {
+    /// Get the inner contract definition
+    pub fn inner(&self) -> &json::CairoContractDefinition<'a> {
+        &self.0
     }
 }
 
@@ -138,10 +298,122 @@ pub mod from_parts {
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py
 /// [cairo-contract]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contracts.cairo#L76-L118
 /// [py-sortkeys]: https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/core/os/contract_hash.py#L58-L71
-fn compute_cairo_class_hash(
-    mut contract_definition: json::CairoContractDefinition<'_>,
+pub fn compute_cairo_class_hash(
+    contract_definition: RawCairoContractDefinition<'_>,
 ) -> Result<ClassHash> {
-    // the other modification is handled by skipping if the attributes vec is empty
+    // Prepare the contract definition for class hash computation
+    let contract_definition = prepare_json_contract_definition(contract_definition)?;
+
+    // Compute the truncated Keccak hash of the prepared contract definition
+    let truncated_keccak = compute_cairo_hinted_class_hash(&contract_definition)?;
+
+    const API_VERSION: Felt = Felt::ZERO;
+
+    let mut outer = HashChain::default();
+
+    // This wasn't in the docs, but similarly to contract_state hash, we start with
+    // this 0, so this will yield outer == H(0, 0); However, dissimilarly to
+    // contract_state hash, we do include the number of items in this
+    // class_hash.
+    outer.update(API_VERSION);
+
+    // It is important to process the different entrypoint hashchains in correct
+    // order. Each of the entrypoint lists gets updated into the `outer`
+    // hashchain.
+    //
+    // This implementation doesn't preparse the strings, which makes it a bit more
+    // noisy. Late parsing is made in an attempt to lean on the one big string
+    // allocation we've already got, but these three hash chains could be
+    // constructed at deserialization time.
+    [External, L1Handler, Constructor]
+        .iter()
+        .map(|key| {
+            contract_definition
+                .0
+                .entry_points_by_type
+                .get(key)
+                .unwrap_or(&Vec::new())
+                .iter()
+                // flatten each entry point to get a list of (selector, offset, selector, offset,
+                // ...)
+                .flat_map(|x| [x.selector.0, x.offset.0].into_iter())
+                .fold(HashChain::default(), |mut hc, next| {
+                    hc.update(next);
+                    hc
+                })
+        })
+        .for_each(|x| outer.update(x.finalize()));
+
+    fn update_hash_chain(mut hc: HashChain, next: Result<Felt, Error>) -> Result<HashChain, Error> {
+        hc.update(next?);
+        Result::<_, Error>::Ok(hc)
+    }
+
+    let builtins = contract_definition
+        .0
+        .program
+        .builtins
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (i, s.as_bytes()))
+        .map(|(i, s)| {
+            Felt::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
+        })
+        .try_fold(HashChain::default(), update_hash_chain)
+        .context("Failed to process contract_definition.program.builtins")?;
+
+    outer.update(builtins.finalize());
+
+    outer.update(truncated_keccak);
+
+    let bytecodes = contract_definition
+        .0
+        .program
+        .data
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            Felt::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
+        })
+        .try_fold(HashChain::default(), update_hash_chain)
+        .context("Failed to process contract_definition.program.data")?;
+
+    outer.update(bytecodes.finalize());
+
+    Ok(ClassHash(outer.finalize()))
+}
+
+/// Prepares a Cairo contract definition for class hash computation by applying
+/// necessary transformations.
+///
+/// This function performs several modifications to ensure compatibility with
+/// Starknet's class hash computation:
+///
+/// 1. Removes the `debug_info` field from the program
+/// 2. Handles Cairo 0.8+ specific attribute fields:
+///    - Removes empty `accessible_scopes` arrays
+///    - Removes `null` `flow_tracking_data` values
+/// 3. Ensures proper spacing in named tuple type definitions for older Cairo
+///    versions
+///
+/// # Arguments
+///
+/// * `contract_definition` - A raw Cairo contract definition to be prepared
+///
+/// # Returns
+///
+/// Returns a `Result` containing the prepared contract definition ready for
+/// class hash computation, or an error if the preparation process fails.
+///
+/// # Note
+///
+/// This preparation step is crucial for maintaining compatibility with the
+/// official Starknet implementation and ensuring consistent class hash
+/// computation across different Cairo versions.
+pub fn prepare_json_contract_definition(
+    contract_definition: RawCairoContractDefinition<'_>,
+) -> Result<PreparedCairoContractDefinition<'_>, Error> {
+    let mut contract_definition = contract_definition.0;
     contract_definition.program.debug_info = None;
 
     // Cairo 0.8 added "accessible_scopes" and "flow_tracking_data" attribute
@@ -234,106 +506,7 @@ fn compute_cairo_class_hash(
         add_extra_space_to_cairo_named_tuples(&mut contract_definition.program.reference_manager);
     }
 
-    let truncated_keccak = {
-        use std::io::Write;
-
-        // It's less efficient than tweaking the formatter to emit the encoding but I
-        // don't know how and this is an emergency issue (mainnt nodes stuck).
-        let mut string_buffer = vec![];
-
-        let mut ser =
-            serde_json::Serializer::with_formatter(&mut string_buffer, PythonDefaultFormatter);
-        contract_definition
-            .serialize(&mut ser)
-            .context("Serializing contract_definition for Keccak256")?;
-
-        let raw_json_output = unsafe {
-            // We never emit invalid UTF-8.
-            String::from_utf8_unchecked(string_buffer)
-        };
-
-        let mut keccak_writer = KeccakWriter::default();
-        keccak_writer
-            .write_all(raw_json_output.as_bytes())
-            .expect("writing to KeccakWriter never fails");
-
-        let KeccakWriter(hash) = keccak_writer;
-        truncated_keccak(<[u8; 32]>::from(hash.finalize()))
-    };
-
-    // what follows is defined over at the contract.cairo
-
-    const API_VERSION: Felt = Felt::ZERO;
-
-    let mut outer = HashChain::default();
-
-    // This wasn't in the docs, but similarly to contract_state hash, we start with
-    // this 0, so this will yield outer == H(0, 0); However, dissimilarly to
-    // contract_state hash, we do include the number of items in this
-    // class_hash.
-    outer.update(API_VERSION);
-
-    // It is important to process the different entrypoint hashchains in correct
-    // order. Each of the entrypoint lists gets updated into the `outer`
-    // hashchain.
-    //
-    // This implementation doesn't preparse the strings, which makes it a bit more
-    // noisy. Late parsing is made in an attempt to lean on the one big string
-    // allocation we've already got, but these three hash chains could be
-    // constructed at deserialization time.
-    [External, L1Handler, Constructor]
-        .iter()
-        .map(|key| {
-            contract_definition
-                .entry_points_by_type
-                .get(key)
-                .unwrap_or(&Vec::new())
-                .iter()
-                // flatten each entry point to get a list of (selector, offset, selector, offset,
-                // ...)
-                .flat_map(|x| [x.selector.0, x.offset.0].into_iter())
-                .fold(HashChain::default(), |mut hc, next| {
-                    hc.update(next);
-                    hc
-                })
-        })
-        .for_each(|x| outer.update(x.finalize()));
-
-    fn update_hash_chain(mut hc: HashChain, next: Result<Felt, Error>) -> Result<HashChain, Error> {
-        hc.update(next?);
-        Result::<_, Error>::Ok(hc)
-    }
-
-    let builtins = contract_definition
-        .program
-        .builtins
-        .iter()
-        .enumerate()
-        .map(|(i, s)| (i, s.as_bytes()))
-        .map(|(i, s)| {
-            Felt::from_be_slice(s).with_context(|| format!("Invalid builtin at index {i}"))
-        })
-        .try_fold(HashChain::default(), update_hash_chain)
-        .context("Failed to process contract_definition.program.builtins")?;
-
-    outer.update(builtins.finalize());
-
-    outer.update(truncated_keccak);
-
-    let bytecodes = contract_definition
-        .program
-        .data
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            Felt::from_hex_str(s).with_context(|| format!("Invalid bytecode at index {i}"))
-        })
-        .try_fold(HashChain::default(), update_hash_chain)
-        .context("Failed to process contract_definition.program.data")?;
-
-    outer.update(bytecodes.finalize());
-
-    Ok(ClassHash(outer.finalize()))
+    Ok(PreparedCairoContractDefinition(contract_definition))
 }
 
 /// Computes the class hash for a Sierra class definition.
@@ -348,7 +521,7 @@ fn compute_cairo_class_hash(
 ///
 /// [starknet-doc]: https://docs.starknet.io/documentation/architecture_and_concepts/Contracts/class-hash/
 /// [cairo-compute]: https://github.com/starkware-libs/cairo-lang/blob/12ca9e91bbdc8a423c63280949c7e34382792067/src/starkware/starknet/core/os/contract_class/contract_class.cairo#L42
-fn compute_sierra_class_hash(
+pub fn compute_sierra_class_hash(
     contract_definition: json::SierraContractDefinition<'_>,
 ) -> Result<ClassHash> {
     if contract_definition.contract_class_version != "0.1.0" {
@@ -408,9 +581,27 @@ fn compute_sierra_class_hash(
     Ok(ClassHash(hash.finish().into()))
 }
 
-/// See:
-/// <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
-pub(crate) fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
+/// Computes a truncated Keccak hash compatible with Starknet's field element
+/// representation.
+///
+/// This function takes a 32-byte Keccak hash and truncates it to ensure it fits
+/// within Starknet's field element size (251 bits) by masking the most
+/// significant bits.
+///
+/// # Arguments
+///
+/// * `plain` - A 32-byte array containing the full Keccak hash
+///
+/// # Returns
+///
+/// Returns a `Felt` containing the truncated hash value.
+///
+/// # Implementation Note
+///
+/// The implementation masks the first byte with 0x03 to ensure the result is
+/// less than the Starknet prime field modulus. This matches the official Cairo
+/// implementation: <https://github.com/starkware-libs/cairo-lang/blob/64a7f6aed9757d3d8d6c28bd972df73272b0cb0a/src/starkware/starknet/public/abi.py#L21-L26>
+pub fn truncated_keccak(mut plain: [u8; 32]) -> Felt {
     // python code masks with (2**250 - 1) which starts 0x03 and is followed by 31
     // 0xff in be truncation is needed not to overflow the field element.
     plain[0] &= 0x03;
@@ -496,7 +687,9 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
     }
 }
 
-mod json {
+/// Helpers to parse and serialize the parts that compose a Cairo or Sierra
+/// contract
+pub mod json {
     use std::borrow::Cow;
     use std::collections::{BTreeMap, HashMap};
 
@@ -511,6 +704,7 @@ mod json {
         Sierra(SierraContractDefinition<'a>),
     }
 
+    /// A Sierra contract definition
     #[derive(serde::Deserialize)]
     #[serde(deny_unknown_fields)]
     pub struct SierraContractDefinition<'a> {
@@ -564,6 +758,7 @@ mod json {
         pub entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>>,
     }
 
+    /// A Cairo program definition
     // It's important that this is ordered alphabetically because the fields need to
     // be in sorted order for the keccak hashed representation.
     #[derive(serde::Deserialize, serde::Serialize)]

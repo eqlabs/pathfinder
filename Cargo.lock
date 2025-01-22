@@ -7575,6 +7575,7 @@ dependencies = [
  "p2p",
  "p2p_proto",
  "pathfinder-block-hashes",
+ "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-crypto",
@@ -7623,6 +7624,28 @@ version = "0.15.3"
 dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
+]
+
+[[package]]
+name = "pathfinder-class-hash"
+version = "0.15.3"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "fake",
+ "pathfinder-common",
+ "pathfinder-crypto",
+ "pathfinder-serde",
+ "primitive-types",
+ "rand",
+ "rstest",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha3",
+ "starknet-gateway-test-fixtures",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -7777,6 +7800,7 @@ dependencies = [
  "hyper 1.5.0",
  "metrics",
  "mime",
+ "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-crypto",
@@ -7843,6 +7867,7 @@ dependencies = [
  "hex",
  "metrics",
  "paste",
+ "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-ethereum",
@@ -9784,6 +9809,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "fake",
+ "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-serde",

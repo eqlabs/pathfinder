@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
 
 use fake::{Fake, Faker};
+use pathfinder_class_hash::compute_class_hash;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
@@ -39,7 +40,6 @@ use pathfinder_crypto::signature::SignatureError;
 use pathfinder_crypto::Felt;
 use rand::seq::IteratorRandom;
 use rand::Rng;
-use starknet_gateway_types::class_hash::compute_class_hash;
 
 use crate::{Storage, StorageBuilder};
 
