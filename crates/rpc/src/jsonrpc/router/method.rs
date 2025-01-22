@@ -96,7 +96,7 @@ pub async fn handle_json_rpc_body(
     }
 }
 
-/// ```
+/// ```ignore
 /// async fn example(RpcContext, impl DeserializeForVersion, RpcVersion) -> Result<Output, Into<RpcError>>
 /// ```
 impl<F, Input, Output, Error, Fut>
@@ -145,7 +145,7 @@ where
     }
 }
 
-/// ```
+/// ```ignore
 /// async fn example(RpcContext, impl Deserialize) -> Result<Output, Into<RpcError>>
 /// ```
 impl<F, Input, Output, Error, Fut> IntoRpcEndpoint<((), Input), ((), Output), ((), RpcContext)>
@@ -194,7 +194,7 @@ where
     }
 }
 
-/// ```
+/// ```ignore
 /// async fn example(impl Deserialize) -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
@@ -243,7 +243,7 @@ where
     }
 }
 
-/// ```
+/// ```ignore
 /// async fn example(RpcContext) -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
@@ -294,7 +294,7 @@ where
     }
 }
 
-/// ```
+/// ```ignore
 /// async fn example() -> Result<Output, Into<RpcError>>
 /// ```
 #[async_trait]
@@ -345,7 +345,7 @@ where
     }
 }
 
-/// ```
+/// ```ignore
 /// fn example() -> &'static str
 /// ```
 #[async_trait]
