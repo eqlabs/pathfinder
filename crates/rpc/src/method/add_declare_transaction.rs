@@ -154,6 +154,122 @@ pub struct Input {
     token: Option<String>,
 }
 
+impl Input {
+    pub fn is_v3_transaction(&self) -> bool {
+        matches!(
+            self.declare_transaction,
+            Transaction::Declare(BroadcastedDeclareTransaction::V3(_))
+        )
+    }
+}
+
+#[cfg(test)]
+impl Input {
+    pub(crate) fn for_test_with_v0_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V0(
+                crate::types::request::BroadcastedDeclareTransactionV0 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::ZERO,
+                    signature: Default::default(),
+                    contract_class: crate::types::CairoContractClass {
+                        program: Default::default(),
+                        entry_points_by_type: crate::types::ContractEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v1_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V1(
+                crate::types::request::BroadcastedDeclareTransactionV1 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::ONE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    contract_class: crate::types::CairoContractClass {
+                        program: Default::default(),
+                        entry_points_by_type: crate::types::ContractEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v2_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V2(
+                crate::types::request::BroadcastedDeclareTransactionV2 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::TWO,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    compiled_class_hash: Default::default(),
+                    contract_class: crate::types::SierraContractClass {
+                        sierra_program: Default::default(),
+                        contract_class_version: Default::default(),
+                        entry_points_by_type: crate::types::SierraEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v3_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V3(
+                crate::types::request::BroadcastedDeclareTransactionV3 {
+                    version: pathfinder_common::TransactionVersion::THREE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    resource_bounds: Default::default(),
+                    tip: Default::default(),
+                    paymaster_data: Default::default(),
+                    account_deployment_data: Default::default(),
+                    nonce_data_availability_mode: Default::default(),
+                    fee_data_availability_mode: Default::default(),
+                    compiled_class_hash: Default::default(),
+                    contract_class: crate::types::SierraContractClass {
+                        sierra_program: Default::default(),
+                        contract_class_version: Default::default(),
+                        entry_points_by_type: crate::types::SierraEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+}
+
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {

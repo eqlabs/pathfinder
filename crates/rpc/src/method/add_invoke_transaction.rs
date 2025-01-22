@@ -28,6 +28,68 @@ pub struct Input {
     invoke_transaction: Transaction,
 }
 
+impl Input {
+    pub fn is_v3_transaction(&self) -> bool {
+        matches!(
+            self.invoke_transaction,
+            Transaction::Invoke(BroadcastedInvokeTransaction::V3(_))
+        )
+    }
+}
+
+#[cfg(test)]
+impl Input {
+    pub(crate) fn for_test_with_v0_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V0(
+                crate::types::request::BroadcastedInvokeTransactionV0 {
+                    version: pathfinder_common::TransactionVersion::ZERO,
+                    max_fee: Default::default(),
+                    signature: Default::default(),
+                    contract_address: Default::default(),
+                    entry_point_selector: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
+
+    pub(crate) fn for_test_with_v1_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(
+                crate::types::request::BroadcastedInvokeTransactionV1 {
+                    version: pathfinder_common::TransactionVersion::ONE,
+                    max_fee: Default::default(),
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    sender_address: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
+
+    pub(crate) fn for_test_with_v3_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V3(
+                crate::types::request::BroadcastedInvokeTransactionV3 {
+                    version: pathfinder_common::TransactionVersion::THREE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    resource_bounds: Default::default(),
+                    tip: Default::default(),
+                    paymaster_data: Default::default(),
+                    account_deployment_data: Default::default(),
+                    nonce_data_availability_mode: Default::default(),
+                    fee_data_availability_mode: Default::default(),
+                    sender_address: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
+}
+
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
