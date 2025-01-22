@@ -43,7 +43,7 @@ To update to the latest version:
       -p 9545:9545 \
       --user "$(id -u):$(id -g)" \
       -e RUST_LOG=info \
-      -e PATHFINDER_ETHEREUM_API_URL="https://sepolia.infura.io/v3/<project-id>" \
+      -e PATHFINDER_ETHEREUM_API_URL="wss://sepolia.infura.io/ws/v3/<project-id>" \
       -v $HOME/pathfinder:/usr/share/pathfinder/data \
       eqlabs/pathfinder
     ``` 

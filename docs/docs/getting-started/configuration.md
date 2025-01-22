@@ -23,7 +23,7 @@ docker run \
   -p 9545:9545 \
   --user "$(id -u):$(id -g)" \
   -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://mainnet.infura.io/v3/<project-id>" \
+  -e PATHFINDER_ETHEREUM_API_URL="wss://sepolia.infura.io/ws/v3/<project-id>" \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder:latest \
   --network mainnet \
@@ -163,7 +163,7 @@ sudo docker run \
   --detach \
   -p 9545:9545 \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
-  -e "PATHFINDER_ETHEREUM_API_URL=https://sepolia.infura.io/v3/<project-id>" \
+  -e "PATHFINDER_ETHEREUM_API_URL=wss://sepolia.infura.io/ws/v3/<project-id>" \
   -e "PATHFINDER_NETWORK=sepolia-testnet" \
   -e "RUST_LOG=debug" \
   eqlabs/pathfinder:latest

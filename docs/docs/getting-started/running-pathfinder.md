@@ -18,9 +18,13 @@ The simplest way to run Pathfinder is using Docker. This method is recommended f
 
 Follow the official [Docker installation guide](https://docs.docker.com/get-docker/) for your operating system. 
 
+### Setting Up the Ethereum API URL
+
+Pathfinder requires an Ethereum Websocket API URL to verify Starknet state proofs by communicating with the Ethereum blockchain. You can obtain this URL from services like [Infura](https://www.infura.io/) or [Alchemy](https://www.alchemy.com/). After signing up, create a new project on your desired Ethereum network to receive your WebSocket (wss://) endpoint.
+
 ### Running Pathfinder with Docker
 
-Once Docker is installed, you can run Pathfinder using the following commands:
+With Docker installed and your endpoint ready, you can run Pathfinder using the following commands:
 
 ```bash
 mkdir -p $HOME/pathfinder
@@ -31,7 +35,7 @@ docker run \
   -p 9545:9545 \
   --user "$(id -u):$(id -g)" \
   -e RUST_LOG=info \
-  -e PATHFINDER_ETHEREUM_API_URL="https://sepolia.infura.io/v3/<project-id>" \
+  -e PATHFINDER_ETHEREUM_API_URL="wss://sepolia.infura.io/ws/v3/<project-id>" \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder
 ```
