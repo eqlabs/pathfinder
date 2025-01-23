@@ -1081,8 +1081,8 @@ async fn l2_reorg(
         }
 
         transaction
-            .reset()
-            .context("Resetting local DB state after reorg")?;
+            .reset_in_memory_state(head)
+            .context("Resetting in-memory DB state after reorg")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;

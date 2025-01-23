@@ -187,6 +187,16 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
+
+    let shutdown_storage = storage_manager
+        .create_pool(NonZeroU32::new(1).unwrap())
+        .context(
+            r"Creating database connection pool for graceful shutdown
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
+
     info!(location=?pathfinder_context.database, "Database migrated.");
     verify_database(
         &sync_storage,
@@ -293,7 +303,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
-            sync_storage.clone(),
+            sync_storage,
             pathfinder_context,
             ethereum.client,
             sync_state.clone(),
@@ -364,11 +374,26 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
     }
 
+    let jh = tokio::task::spawn_blocking(|| -> anyhow::Result<Storage> {
+        shutdown_storage
+            .connection()
+            .context("Creating database connection for graceful shutdown")?
+            .transaction()
+            .context("Creating database transaction for graceful shutdown")?
+            .store_in_memory_state()
+            .context("Storing in-memory DB state on shutdown")?;
+
+        Ok(shutdown_storage)
+    });
+
+    // Wait for the shutdown storage task to finish.
+    let shutdown_storage = jh.await.context("Running shutdown storage task")??;
+
     // If a RO db connection pool remains after all RW connection pools have been
     // dropped, WAL & SHM files are never cleaned up. To avoid this, we make sure
     // that all RO pools and all but one RW pools are dropped when task tracker
     // finishes waiting, and then we drop the last RW pool.
-    main_result.map(|_| sync_storage)
+    main_result.map(|_| shutdown_storage)
 }
 
 #[cfg(feature = "tokio-console")]

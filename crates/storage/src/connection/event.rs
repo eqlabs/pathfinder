@@ -72,10 +72,33 @@ pub struct PageOfEvents {
 }
 
 impl Transaction<'_> {
-    pub fn rebuild_running_event_filter(&self) -> anyhow::Result<()> {
-        let event_filter = rebuild_running_event_filter(self.inner())?;
-        let mut running_event_filter = self.running_event_filter.lock().unwrap();
-        *running_event_filter = event_filter;
+    pub fn store_running_event_filter(self) -> anyhow::Result<Self> {
+        let running_event_filter = self.running_event_filter.lock().unwrap();
+
+        self.inner().execute(
+            r"
+            UPDATE running_event_filter
+            SET from_block = ?, to_block = ?, bitmap = ?, next_block = ?
+            WHERE id = 1
+            ",
+            params![
+                &running_event_filter.filter.from_block,
+                &running_event_filter.filter.to_block,
+                &running_event_filter.filter.compress_bitmap(),
+                &running_event_filter.next_block,
+            ],
+        )?;
+
+        drop(running_event_filter);
+
+        Ok(self)
+    }
+
+    pub fn rebuild_running_event_filter(&self, head: BlockNumber) -> anyhow::Result<()> {
+        let rebuilt = RunningEventFilter::rebuild(self.inner(), head)?;
+
+        let mut running = self.running_event_filter.lock().unwrap();
+        *running = rebuilt;
 
         Ok(())
     }
@@ -554,90 +577,129 @@ impl BloomFilter {
 }
 
 pub(crate) struct RunningEventFilter {
-    filter: AggregateBloom,
-    next_block: BlockNumber,
+    pub(crate) filter: AggregateBloom,
+    pub(crate) next_block: BlockNumber,
 }
 
-/// Rebuild the [event filter](RunningEventFilter) for the range of blocks
-/// between the last stored `to_block` in the event filter table and the last
-/// overall block in the database. This is needed because the aggregate event
-/// filter for each [block range](crate::bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
-/// is stored once the range is complete, before that it is kept in memory and
-/// can be lost upon shutdown.
-pub(crate) fn rebuild_running_event_filter(
-    tx: &rusqlite::Transaction<'_>,
-) -> anyhow::Result<RunningEventFilter> {
-    use super::transaction;
-
-    let mut latest_stmt = tx.prepare(
-        r"
-        SELECT number 
-        FROM canonical_blocks 
-        ORDER BY number 
-        DESC LIMIT 1
-        ",
-    )?;
-    let mut last_to_block_stmt = tx.prepare(
-        r"
-        SELECT to_block
-        FROM event_filters
-        ORDER BY from_block DESC LIMIT 1
-        ",
-    )?;
-    let mut load_events_stmt = tx.prepare(
-        r"
-        SELECT events
-        FROM transactions
-        WHERE block_number >= :first_running_event_filter_block
-        ",
-    )?;
-
-    let Some(latest) = latest_stmt
-        .query_row([], |row| row.get_block_number(0))
-        .optional()
-        .context("Querying latest block number")?
-    else {
-        // Empty DB, there is nothing to rebuild.
-        return Ok(RunningEventFilter {
-            filter: AggregateBloom::new(BlockNumber::GENESIS),
-            next_block: BlockNumber::GENESIS,
-        });
-    };
-    let last_to_block = last_to_block_stmt
-        .query_row([], |row| row.get::<_, u64>(0))
-        .optional()
-        .context("Querying last stored event filter to_block")?;
-
-    let first_running_event_filter_block = match last_to_block {
-        // Last stored block was at the end of the running event filter range, no need
-        // to rebuild.
-        Some(last_to_block) if last_to_block == latest.get() => {
-            let next_block = latest + 1;
-
-            return Ok(RunningEventFilter {
-                filter: AggregateBloom::new(next_block),
-                next_block,
+impl RunningEventFilter {
+    /// Load the [running event filter](RunningEventFilter) from the database if
+    /// it was stored during graceful shutdown. Otherwise, rebuild it from
+    /// events.
+    pub(crate) fn load(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Self> {
+        let Some(latest) = tx
+            .query_row(
+                "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                [],
+                |row| row.get_block_number(0),
+            )
+            .optional()?
+        else {
+            // No blocks in the database, create an event filter starting from the Genesis
+            // block.
+            return Ok(Self {
+                filter: AggregateBloom::new(BlockNumber::GENESIS),
+                next_block: BlockNumber::GENESIS,
             });
-        }
-        Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
-        // Event filter table is empty, rebuild running filter from the genesis block.
-        None => BlockNumber::GENESIS,
-    };
+        };
 
-    let total_blocks_to_cover = latest.get() - first_running_event_filter_block.get();
-    let mut covered_blocks = 0;
-    let mut last_progress_report = Instant::now();
+        let (filter, next_block) = tx
+            .query_row(
+                r"
+                SELECT from_block, to_block, bitmap, next_block
+                FROM running_event_filter
+                WHERE id = 1
+                ",
+                [],
+                |row| {
+                    let from_block = row.get_block_number(0)?;
+                    let to_block = row.get_block_number(1)?;
+                    let compressed_bitmap: Vec<u8> = row.get(2)?;
+                    let next_block = row.get_block_number(3)?;
 
-    tracing::info!(
-        "Rebuilding running event filter: 0.00% (0/{}) blocks covered",
-        total_blocks_to_cover
-    );
-    let rebuilt_filters: Vec<Option<BloomFilter>> = load_events_stmt
-        .query_and_then(
+                    let filter = AggregateBloom::from_existing_compressed(
+                        from_block,
+                        to_block,
+                        compressed_bitmap,
+                    );
+
+                    Ok((filter, next_block))
+                },
+            )
+            .context("Querying running event filter")?;
+
+        // Check whether the running event filter was stored during graceful shutdown.
+        let running_event_filter = if next_block == latest + 1 {
+            Self { filter, next_block }
+        } else {
+            tracing::info!("Running event filter was not stored during last shutdown, rebuilding.");
+            Self::rebuild(tx, latest)?
+        };
+
+        Ok(running_event_filter)
+    }
+
+    /// Rebuild the [event filter](RunningEventFilter) for the range of blocks
+    /// between the last stored `to_block` in the event filter table and the
+    /// last overall block in the database. Under normal circumstances, this
+    /// won't be needed because the running event filter is stored during
+    /// graceful shutdown. Needed only when pathfinder shuts down unexpectedly,
+    /// skipping the shutdown procedure.
+    pub(crate) fn rebuild(
+        tx: &rusqlite::Transaction<'_>,
+        latest: BlockNumber,
+    ) -> anyhow::Result<Self> {
+        use super::transaction;
+
+        let mut last_to_block_stmt = tx.prepare(
+            r"
+            SELECT to_block
+            FROM event_filters
+            ORDER BY from_block DESC LIMIT 1
+            ",
+        )?;
+        let mut load_events_stmt = tx.prepare(
+            r"
+            SELECT events
+            FROM transactions
+            WHERE block_number >= :first_running_event_filter_block
+            ",
+        )?;
+
+        let last_to_block = last_to_block_stmt
+            .query_row([], |row| row.get::<_, u64>(0))
+            .optional()
+            .context("Querying last stored event filter to_block")?;
+
+        let first_running_event_filter_block = match last_to_block {
+            // Last stored block was at the end of the running event filter range, no need
+            // to rebuild.
+            Some(last_to_block) if last_to_block == latest.get() => {
+                let next_block = latest + 1;
+
+                return Ok(RunningEventFilter {
+                    filter: AggregateBloom::new(next_block),
+                    next_block,
+                });
+            }
+            Some(last_to_block) => BlockNumber::new_or_panic(last_to_block + 1),
+            // Event filter table is empty, rebuild running filter from the genesis block.
+            None => BlockNumber::GENESIS,
+        };
+
+        let total_blocks_to_cover = latest.get() - first_running_event_filter_block.get();
+        let mut covered_blocks = 0;
+        let mut last_progress_report = Instant::now();
+
+        tracing::trace!(
+            "Rebuilding running event filter: 0.00% (0/{}) blocks covered",
+            total_blocks_to_cover
+        );
+        let rebuilt_filters: Vec<Option<BloomFilter>> = load_events_stmt
+            .query_and_then(
             named_params![":first_running_event_filter_block": &first_running_event_filter_block],
             |row| {
                 if last_progress_report.elapsed().as_secs() >= 3 {
-                    tracing::info!(
+                    tracing::trace!(
                         "Rebuilding running event filter: {:.2}% ({}/{}) blocks covered",
                         covered_blocks as f64 / total_blocks_to_cover as f64 * 100.0,
                         covered_blocks,
@@ -683,27 +745,28 @@ pub(crate) fn rebuild_running_event_filter(
         )
         .context("Querying events to rebuild")?
         .collect::<anyhow::Result<_>>()?;
-    tracing::info!(
-        "Rebuilding running event filter: 100.00% ({total}/{total}) blocks covered",
-        total = total_blocks_to_cover,
-    );
+        tracing::trace!(
+            "Rebuilding running event filter: 100.00% ({total}/{total}) blocks covered",
+            total = total_blocks_to_cover,
+        );
 
-    let mut filter = AggregateBloom::new(first_running_event_filter_block);
+        let mut filter = AggregateBloom::new(first_running_event_filter_block);
 
-    for (block, block_bloom_filter) in rebuilt_filters.iter().enumerate() {
-        let Some(bloom) = block_bloom_filter else {
-            // Reached the end of P2P (checkpoint) synced events.
-            break;
-        };
+        for (block, block_bloom_filter) in rebuilt_filters.iter().enumerate() {
+            let Some(bloom) = block_bloom_filter else {
+                // Reached the end of P2P (checkpoint) synced events.
+                break;
+            };
 
-        let block_number = first_running_event_filter_block + block as u64;
-        filter.insert(bloom, block_number);
+            let block_number = first_running_event_filter_block + block as u64;
+            filter.insert(bloom, block_number);
+        }
+
+        Ok(Self {
+            filter,
+            next_block: first_running_event_filter_block + rebuilt_filters.len() as u64,
+        })
     }
-
-    Ok(RunningEventFilter {
-        filter,
-        next_block: first_running_event_filter_block + rebuilt_filters.len() as u64,
-    })
 }
 
 fn continuation_token(

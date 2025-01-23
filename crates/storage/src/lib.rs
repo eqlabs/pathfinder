@@ -313,8 +313,8 @@ impl StorageBuilder {
             tracing::info!("Merkle trie pruning disabled");
         }
 
-        let running_event_filter = event::rebuild_running_event_filter(&connection.transaction()?)
-            .context("Rebuilding running event filter")?;
+        let running_event_filter = event::RunningEventFilter::load(&connection.transaction()?)
+            .context("Loading running event filter")?;
 
         connection
             .close()

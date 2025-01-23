@@ -117,11 +117,16 @@ impl Transaction<'_> {
         matches!(self.trie_prune_mode, TriePruneMode::Prune { .. })
     }
 
-    /// Resets the [`Storage`](crate::Storage) state. Required after each reorg.
-    pub fn reset(&self) -> anyhow::Result<()> {
-        self.rebuild_running_event_filter()?;
-        self.event_filter_cache.reset();
+    /// Store the in-memory [`Storage`](crate::Storage) state in the database.
+    /// To be performed on shutdown.
+    pub fn store_in_memory_state(self) -> anyhow::Result<()> {
+        self.store_running_event_filter()?.commit()
+    }
 
-        Ok(())
+    /// Resets the in-memory [`Storage`](crate::Storage) state. Required after
+    /// each reorg.
+    pub fn reset_in_memory_state(&self, head: BlockNumber) -> anyhow::Result<()> {
+        self.event_filter_cache.reset();
+        self.rebuild_running_event_filter(head)
     }
 }

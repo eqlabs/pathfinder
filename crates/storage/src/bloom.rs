@@ -373,8 +373,6 @@ impl AggregateBloomCache {
         from_block: BlockNumber,
         to_block: BlockNumber,
     ) -> Vec<Arc<AggregateBloom>> {
-        let mut cache = self.0.lock().unwrap();
-
         let from_block = from_block.get();
         let to_block = to_block.get();
 
@@ -385,6 +383,8 @@ impl AggregateBloomCache {
         let to_block_aligned = to_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN
             - (to_block % AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
             - 1;
+
+        let mut cache = self.0.lock().unwrap();
 
         (from_block_aligned..=to_block_aligned)
             .step_by(AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize)
@@ -408,6 +408,7 @@ impl AggregateBloomCache {
     /// Store the given filters in the cache.
     pub fn set_many(&self, filters: &[Arc<AggregateBloom>]) {
         let mut cache = self.0.lock().unwrap();
+
         filters.iter().for_each(|filter| {
             let k = CacheKey {
                 from_block: filter.from_block,
