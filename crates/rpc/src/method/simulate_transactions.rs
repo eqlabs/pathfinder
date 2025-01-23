@@ -1350,7 +1350,7 @@ pub(crate) mod tests {
                     ],
                     computation_resources: universal_deployer_execute_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                        l1_gas: 2,
+                        l1_gas: 7,
                         l2_gas: 0,
                     },
                     is_reverted: false,
@@ -1699,7 +1699,7 @@ pub(crate) mod tests {
                     result: vec![test_storage_value.0],
                     computation_resources: invoke_execute_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                        l1_gas: 2,
+                        l1_gas: 3,
                         l2_gas: 0,
                     },
                     is_reverted: false,
