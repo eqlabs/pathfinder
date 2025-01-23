@@ -14,6 +14,7 @@ use pathfinder_common::{
 use pathfinder_crypto::Felt;
 use starknet_api::block::{BlockInfo, FeeType};
 use starknet_api::execution_resources::GasVector;
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::felt::IntoFelt;
 
@@ -404,15 +405,22 @@ impl FunctionInvocation {
         let message_gas_cost = message_resources.to_gas_vector();
 
         // Event costs
-        let archival_gas_costs = &versioned_constants.deprecated_l2_resource_gas_costs;
-        let event_gas_cost = GasVector::from_l1_gas(
-            (archival_gas_costs.gas_per_data_felt
-                * (archival_gas_costs.event_key_factor
-                    * execution_summary.event_summary.total_event_keys
-                    + execution_summary.event_summary.total_event_data_size))
-                .to_integer()
-                .into(),
-        );
+        let archival_gas_costs = match gas_vector_computation_mode {
+            GasVectorComputationMode::All => &versioned_constants.archival_data_gas_costs,
+            GasVectorComputationMode::NoL2Gas => {
+                &versioned_constants.deprecated_l2_resource_gas_costs
+            }
+        };
+        let event_gas_amount = (archival_gas_costs.gas_per_data_felt
+            * (archival_gas_costs.event_key_factor
+                * execution_summary.event_summary.total_event_keys
+                + execution_summary.event_summary.total_event_data_size))
+            .to_integer()
+            .into();
+        let event_gas_cost = match gas_vector_computation_mode {
+            GasVectorComputationMode::All => GasVector::from_l2_gas(event_gas_amount),
+            GasVectorComputationMode::NoL2Gas => GasVector::from_l1_gas(event_gas_amount),
+        };
 
         // Computation costs
         let computation_resources = blockifier::fee::resources::ComputationResources {
