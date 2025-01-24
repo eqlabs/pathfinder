@@ -29,7 +29,12 @@ dep-sort:
 doc:
     cargo doc --no-deps --document-private-items
 
+release version:
+    chmod +x scripts/release.sh
+    scripts/release.sh {{version}}
+
 alias b := build 
 alias t := test 
 alias c := check 
 alias f := fmt 
+alias r := release
