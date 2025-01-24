@@ -8,9 +8,9 @@ rust-version = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-pathfinder-common = { version = "0.15.3", path = "../common" }
-pathfinder-crypto = { version = "0.15.3", path = "../crypto" }
-pathfinder-serde = { version = "0.15.3", path = "../serde" }
+pathfinder-common = { version = "0.15.4", path = "../common" }
+pathfinder-crypto = { version = "0.15.4", path = "../crypto" }
+pathfinder-serde = { version = "0.15.4", path = "../serde" }
 primitive-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
