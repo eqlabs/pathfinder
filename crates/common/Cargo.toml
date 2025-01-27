@@ -27,8 +27,8 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-pathfinder-tagged = { path = "../tagged" }
-pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
+pathfinder-tagged = { version = "0.0.1", path = "../tagged" }
+pathfinder-tagged-debug-derive = { version = "0.0.1", path = "../tagged-debug-derive" }
 thiserror = { workspace = true }
 
 [dev-dependencies]
