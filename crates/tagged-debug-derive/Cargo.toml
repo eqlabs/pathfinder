@@ -1,5 +1,5 @@
 [package]
-name = "tagged-debug-derive"
+name = "pathfinder-tagged-debug-derive"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }

@@ -46,8 +46,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 sha3 = { workspace = true }
-tagged = { path = "../tagged" }
-tagged-debug-derive = { path = "../tagged-debug-derive" }
+pathfinder-tagged = { path = "../tagged" }
+pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
@@ -62,8 +62,8 @@ clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 hex = { workspace = true }
 rand = { workspace = true }
 rstest = { workspace = true }
-tagged = { path = "../tagged" }
-tagged-debug-derive = { path = "../tagged-debug-derive" }
+pathfinder-tagged = { path = "../tagged" }
+pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
 test-log = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

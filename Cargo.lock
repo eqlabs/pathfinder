@@ -7352,6 +7352,8 @@ dependencies = [
  "p2p_stream",
  "pathfinder-common",
  "pathfinder-crypto",
+ "pathfinder-tagged",
+ "pathfinder-tagged-debug-derive",
  "pretty_assertions_sorted",
  "primitive-types",
  "prost 0.13.3",
@@ -7362,8 +7364,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
- "tagged",
- "tagged-debug-derive",
  "test-log",
  "tokio",
  "tokio-stream",
@@ -7385,6 +7385,8 @@ dependencies = [
  "p2p_proto_derive",
  "pathfinder-common",
  "pathfinder-crypto",
+ "pathfinder-tagged",
+ "pathfinder-tagged-debug-derive",
  "pretty_assertions_sorted",
  "primitive-types",
  "prost 0.13.3",
@@ -7392,8 +7394,6 @@ dependencies = [
  "prost-types 0.13.3",
  "rand",
  "serde_json",
- "tagged",
- "tagged-debug-derive",
 ]
 
 [[package]]
@@ -7662,6 +7662,8 @@ dependencies = [
  "num-traits",
  "paste",
  "pathfinder-crypto",
+ "pathfinder-tagged",
+ "pathfinder-tagged-debug-derive",
  "primitive-types",
  "rand",
  "rstest",
@@ -7669,8 +7671,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
- "tagged",
- "tagged-debug-derive",
  "thiserror",
  "vergen",
 ]
@@ -7893,6 +7893,25 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "zstd 0.13.2",
+]
+
+[[package]]
+name = "pathfinder-tagged"
+version = "0.15.3"
+dependencies = [
+ "fake",
+ "pathfinder-tagged-debug-derive",
+ "pretty_assertions_sorted",
+ "rand",
+]
+
+[[package]]
+name = "pathfinder-tagged-debug-derive"
+version = "0.15.3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -10059,25 +10078,6 @@ checksum = "a75fb188eb626b924683e3b95e3a48e63551fcfb51949de2f06a9d91dbee93c9"
 dependencies = [
  "core-foundation-sys",
  "libc",
-]
-
-[[package]]
-name = "tagged"
-version = "0.15.3"
-dependencies = [
- "fake",
- "pretty_assertions_sorted",
- "rand",
- "tagged-debug-derive",
-]
-
-[[package]]
-name = "tagged-debug-derive"
-version = "0.15.3"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
 ]
 
 [[package]]

@@ -33,8 +33,8 @@ use pathfinder_common::{
     TransactionIndex,
 };
 use rand::seq::SliceRandom;
-use tagged::Tagged;
-use tagged_debug_derive::TaggedDebug;
+use pathfinder_tagged::Tagged;
+use pathfinder_tagged_debug_derive::TaggedDebug;
 use tokio::sync::Mutex;
 
 use super::ClassDefinition;
@@ -95,7 +95,7 @@ impl TestTxn {
 }
 
 pub fn peer(tag: i32) -> TestPeer {
-    tagged::init();
+    pathfinder_tagged::init();
     Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random()))
         .unwrap()
         .data

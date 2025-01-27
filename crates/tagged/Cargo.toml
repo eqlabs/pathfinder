@@ -1,5 +1,5 @@
 [package]
-name = "tagged"
+name = "pathfinder-tagged"
 version = { workspace = true }
 authors = { workspace = true }
 edition = { workspace = true }
@@ -12,4 +12,4 @@ fake = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 pretty_assertions_sorted = { workspace = true }
 rand = { workspace = true }
-tagged-debug-derive = { path = "../tagged-debug-derive" }
+pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
