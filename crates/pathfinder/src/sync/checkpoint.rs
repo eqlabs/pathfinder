@@ -667,8 +667,8 @@ async fn rollback_to_anchor(
         }
 
         transaction
-            .reset()
-            .context("Resetting local DB state after reorg")?;
+            .reset_in_memory_state(head)
+            .context("Resetting in-memory DB state after reorg")?;
 
         transaction.commit().context("Committing transaction")?;
 

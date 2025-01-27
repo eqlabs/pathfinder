@@ -1031,7 +1031,7 @@ pub(crate) mod tests {
         // Need to avoid skipping blocks for `insert_transaction_data`
         // so that there is no gap in event filters.
         (0..619596)
-            .step_by(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize)
+            .step_by(usize::try_from(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN).unwrap())
             .for_each(|block: u64| {
                 let block = BlockNumber::new_or_panic(block.saturating_sub(1));
                 transaction
