@@ -14,6 +14,6 @@ categories = ["development-tools"]
 fake = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
 pretty_assertions_sorted = { workspace = true }
 rand = { workspace = true }
-pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }

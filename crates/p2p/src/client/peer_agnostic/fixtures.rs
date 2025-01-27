@@ -32,9 +32,9 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
-use rand::seq::SliceRandom;
 use pathfinder_tagged::Tagged;
 use pathfinder_tagged_debug_derive::TaggedDebug;
+use rand::seq::SliceRandom;
 use tokio::sync::Mutex;
 
 use super::ClassDefinition;
