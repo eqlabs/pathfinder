@@ -7897,7 +7897,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-tagged"
-version = "0.15.3"
+version = "0.1.0"
 dependencies = [
  "fake",
  "pathfinder-tagged-debug-derive",
@@ -7907,7 +7907,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-tagged-debug-derive"
-version = "0.15.3"
+version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
