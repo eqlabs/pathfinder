@@ -5,6 +5,10 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
+description = "Type tagging utilities for the Pathfinder Starknet node implementation"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "web3", "type-safety"]
+categories = ["development-tools"]
 
 [dependencies]
 fake = { workspace = true, features = ["derive"] }
