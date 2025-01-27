@@ -5,6 +5,10 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
+description = "Debug trait derive macro for pathfinder-tagged types"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "derive", "debug", "proc-macro"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true
