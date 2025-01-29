@@ -256,6 +256,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let default_version = match config.rpc_root_version {
+        config::RootRpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
         config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
         config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
     };
@@ -754,7 +755,7 @@ impl EthereumContext {
 
         let chain = client.get_chain().await.context(
             r"Determining Ethereum chain.
-                            
+
 Hint: Make sure the provided ethereum.url and ethereum.password are good.",
         )?;
 
@@ -949,9 +950,7 @@ async fn verify_database(
 
     if let Some(database_genesis) = db_genesis {
         use pathfinder_common::consts::{
-            MAINNET_GENESIS_HASH,
-            SEPOLIA_INTEGRATION_GENESIS_HASH,
-            SEPOLIA_TESTNET_GENESIS_HASH,
+            MAINNET_GENESIS_HASH, SEPOLIA_INTEGRATION_GENESIS_HASH, SEPOLIA_TESTNET_GENESIS_HASH,
         };
 
         let db_network = match database_genesis {

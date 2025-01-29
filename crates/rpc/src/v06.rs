@@ -6,6 +6,7 @@ pub(crate) mod types;
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V06)
+    /*
         .register("starknet_blockHashAndNumber"              , crate::method::block_hash_and_number)
         .register("starknet_blockNumber"                     , crate::method::block_number)
         .register("starknet_chainId"                         , crate::method::chain_id)
@@ -38,4 +39,5 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_traceTransaction"                , method::trace_transaction)
 
         .register("pathfinder_getProof"                      , crate::pathfinder::methods::get_proof)
+     */
 }
