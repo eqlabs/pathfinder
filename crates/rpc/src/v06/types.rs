@@ -8,11 +8,9 @@ use pathfinder_common::{
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
-    TransactionVersion,
 };
 use serde::Serialize;
 use serde_with::{serde_as, skip_serializing_none, DisplayFromStr};
-pub use transaction::TransactionWithHash;
 
 use crate::felt::RpcFelt;
 
@@ -62,26 +60,6 @@ impl From<pathfinder_common::BlockHeader> for BlockHeader {
     }
 }
 
-impl BlockHeader {
-    /// Constructs [BlockHeader] from [sequencer's pending block
-    /// representation](starknet_gateway_types::reply::PendingBlock)
-    pub fn from_sequencer_pending(pending: starknet_gateway_types::reply::PendingBlock) -> Self {
-        Self {
-            block_hash: None,
-            parent_hash: pending.parent_hash,
-            block_number: None,
-            new_root: None,
-            timestamp: pending.timestamp,
-            sequencer_address: pending.sequencer_address,
-            l1_gas_price: ResourcePrice {
-                price_in_fri: pending.l1_gas_price.price_in_fri,
-                price_in_wei: pending.l1_gas_price.price_in_wei,
-            },
-            starknet_version: pending.starknet_version,
-        }
-    }
-}
-
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub enum PriceUnit {
@@ -96,15 +74,6 @@ impl From<pathfinder_executor::types::PriceUnit> for PriceUnit {
         match value {
             pathfinder_executor::types::PriceUnit::Wei => Self::Wei,
             pathfinder_executor::types::PriceUnit::Fri => Self::Fri,
-        }
-    }
-}
-
-impl PriceUnit {
-    pub fn for_transaction_version(version: &TransactionVersion) -> Self {
-        match version.without_query_version() {
-            0..=2 => PriceUnit::Wei,
-            _ => PriceUnit::Fri,
         }
     }
 }
