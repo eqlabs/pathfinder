@@ -56,15 +56,9 @@ for crate in "${CRATES[@]}"; do
     do_sed "$file" "s/pathfinder-serde = { version = \"[^\"]*\"/pathfinder-serde = { version = \"${VERSION}\"/"
 done
 
-# Update Cargo.lock
-cargo_update_args=()
-for crate in "${CRATES[@]}"; do
-    cargo_update_args+=(-p "pathfinder-${crate}")
-done
-cargo update "${cargo_update_args[@]}"
-
-# Verify everything still builds
-cargo check --workspace
+# Update Cargo.lock and verify everything still builds
+cargo check --workspace --all-targets
+cargo check --workspace --all-targets --all-features
 
 # Create and checkout new release branch
 git checkout -b release/v${VERSION}
