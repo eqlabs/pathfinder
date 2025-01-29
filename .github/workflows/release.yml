@@ -9,6 +9,21 @@ on:
       - v[0-9]+.*
 
 jobs:
+    verify-crates:
+        name: Verify crates can be published
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v4
+          - uses: dtolnay/rust-toolchain@stable
+
+          # Verify each crate can be published
+          - name: Verify crates
+            run: |
+              for crate in crypto common serde class-hash; do
+                echo "Verifying pathfinder-$crate..."
+                cargo publish --dry-run -p pathfinder-$crate
+              done
+
     create-draft-release:
         runs-on: ubuntu-latest
         steps:

@@ -1,15 +1,19 @@
 [package]
-name = "tagged"
-version = { workspace = true }
+name = "pathfinder-tagged"
+version = "0.1.0"
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
+description = "Type tagging utilities for the Pathfinder Starknet node implementation"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "web3", "type-safety"]
+categories = ["development-tools"]
 
 [dependencies]
 fake = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
 pretty_assertions_sorted = { workspace = true }
 rand = { workspace = true }
-tagged-debug-derive = { path = "../tagged-debug-derive" }
