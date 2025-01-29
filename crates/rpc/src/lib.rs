@@ -198,8 +198,6 @@ impl RpcServer {
             router
                 .route("/ws", get(websocket_handler))
                 .with_state(default_router)
-                .route("/ws/rpc/v0_6", get(websocket_handler))
-                .with_state(v06_routes)
                 .route("/ws/rpc/v0_7", get(websocket_handler))
                 .with_state(v07_routes)
                 .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
