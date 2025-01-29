@@ -7639,7 +7639,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha3",
- "thiserror",
+ "thiserror 1.0.69",
  "vergen",
 ]
 
@@ -10056,6 +10056,12 @@ dependencies = [
  "core-foundation-sys",
  "libc",
 ]
+
+[[package]]
+name = "tagptr"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "tap"
