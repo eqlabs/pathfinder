@@ -1,6 +1,5 @@
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 
-pub(crate) mod method;
 pub(crate) mod types;
 
 #[rustfmt::skip]
