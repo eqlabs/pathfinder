@@ -94,12 +94,15 @@ pub fn simulate(
         let transaction_declared_deprecated_class_hash =
             transaction_declared_deprecated_class(&transaction);
         let fee_type = super::transaction::fee_type(&transaction);
+        let gas_vector_computation_mode =
+            super::transaction::gas_vector_computation_mode(&transaction);
+
         let minimal_l1_gas_amount_vector = match &transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     &block_context,
                     account_transaction,
-                    &GasVectorComputationMode::All,
+                    &gas_vector_computation_mode,
                 ))
             }
             Transaction::L1Handler(_) => None,
@@ -131,6 +134,8 @@ pub fn simulate(
                         tx_info,
                         state_diff,
                         block_context.versioned_constants(),
+                        &gas_vector_computation_mode,
+                        block_context.block_info().use_kzg_da,
                     ),
                 });
             }
@@ -182,10 +187,11 @@ pub fn trace(
     let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
         let hash = transaction_hash(&tx);
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
+        let _span = tracing::debug_span!("trace", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
 
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+        let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
 
         let mut tx_state = CachedState::<_>::create_transactional(&mut state);
         let tx_info = tx.execute(&mut tx_state, &block_context).map_err(|e| {
@@ -209,11 +215,15 @@ pub fn trace(
             })?;
         tx_state.commit();
 
+        tracing::trace!("Transaction tracing finished");
+
         let trace = to_trace(
             tx_type,
             tx_info,
             state_diff,
             block_context.versioned_constants(),
+            &gas_vector_computation_mode,
+            block_context.block_info().use_kzg_da,
         );
         traces.push((hash, trace));
     }
@@ -362,16 +372,33 @@ fn to_trace(
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
     versioned_constants: &VersionedConstants,
+    gas_vector_computation_mode: &GasVectorComputationMode,
+    use_kzg_da: bool,
 ) -> TransactionTrace {
-    let validate_invocation = execution_info
-        .validate_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
-    let maybe_function_invocation = execution_info
-        .execute_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
-    let fee_transfer_invocation = execution_info
-        .fee_transfer_call_info
-        .map(|call_info| FunctionInvocation::from_call_info(call_info, versioned_constants));
+    let validate_invocation = execution_info.validate_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+            use_kzg_da,
+        )
+    });
+    let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+            use_kzg_da,
+        )
+    });
+    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+            use_kzg_da,
+        )
+    });
 
     let computation_resources = validate_invocation
         .as_ref()

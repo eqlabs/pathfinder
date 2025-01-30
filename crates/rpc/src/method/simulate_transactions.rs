@@ -1322,7 +1322,7 @@ pub(crate) mod tests {
                                 pedersen_builtin_applications: 7,
                                 ..Default::default()
                             },
-                            execution_resources: pathfinder_executor::types::InnerCallExecutionResources { l1_gas: 4, l2_gas: 0 },
+                            execution_resources: pathfinder_executor::types::InnerCallExecutionResources { l1_gas: 5, l2_gas: 0 },
                             is_reverted: false,
                         }
                     ],
@@ -1350,7 +1350,7 @@ pub(crate) mod tests {
                     ],
                     computation_resources: universal_deployer_execute_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                        l1_gas: 6,
+                        l1_gas: 7,
                         l2_gas: 0,
                     },
                     is_reverted: false,
