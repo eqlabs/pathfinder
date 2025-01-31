@@ -198,6 +198,8 @@ impl RpcServer {
             router
                 .route("/ws", get(websocket_handler))
                 .with_state(default_router)
+                .route("/ws/rpc/v0_6", get(websocket_handler))
+                .with_state(v06_routes)
                 .route("/ws/rpc/v0_7", get(websocket_handler))
                 .with_state(v07_routes)
                 .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
@@ -1000,7 +1002,7 @@ mod tests {
     // #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
-    // #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+    #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
     #[case::pathfinder("/ws/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[], Api::WebsocketOnly)]
