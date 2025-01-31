@@ -964,19 +964,15 @@ mod tests {
         "/rpc/v0_6",
         "v06/starknet_api_openrpc.json",
         &[
-            "starknet_specVersion",
             "starknet_getBlockWithTxHashes",
             "starknet_getBlockWithTxs",
             "starknet_getStateUpdate",
             "starknet_getTransactionReceipt",
             "starknet_getTransactionStatus",
             "starknet_getClass",
-            "starknet_getClassHashAt",
             "starknet_getClassAt",
             "starknet_estimateFee",
             "starknet_estimateMessageFee",
-            "starknet_blockHashAndNumber",
-            "starknet_syncing",
             "starknet_getEvents",
             "starknet_call",
         ],
@@ -1003,7 +999,7 @@ mod tests {
         Api::HttpOnly)]
     // #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getProof", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
+    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     // #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
