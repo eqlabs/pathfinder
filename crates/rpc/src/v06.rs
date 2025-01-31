@@ -9,6 +9,8 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_blockNumber",                         crate::method::block_number)
         .register("starknet_blockHashAndNumber",                  crate::method::block_hash_and_number)
         .register("starknet_chainId",                             crate::method::chain_id)
+        .register("starknet_getClass",                            crate::method::get_class)
+        .register("starknet_getClassAt",                          crate::method::get_class_at)
         .register("starknet_getBlockTransactionCount",            crate::method::get_block_transaction_count)
         .register("starknet_getBlockWithTxHashes",                crate::method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs",                     crate::method::get_block_with_txs)
