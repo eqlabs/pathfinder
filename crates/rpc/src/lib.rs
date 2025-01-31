@@ -966,12 +966,10 @@ mod tests {
         "/rpc/v0_6",
         "v06/starknet_api_openrpc.json",
         &[
-            "starknet_getStateUpdate",
             "starknet_getTransactionReceipt",
             "starknet_getTransactionStatus",
             "starknet_estimateFee",
             "starknet_estimateMessageFee",
-            "starknet_getEvents",
         ],
         Api::HttpOnly)]
     // #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
