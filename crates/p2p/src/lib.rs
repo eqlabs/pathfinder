@@ -216,3 +216,25 @@ pub enum TestEvent {
 }
 
 pub type EventReceiver = mpsc::Receiver<Event>;
+
+#[cfg(test)]
+mod sanity {
+    use futures::channel::mpsc;
+    use futures::sink::SinkExt;
+
+    #[tokio::test]
+    async fn errors_in_mpsc() {
+        let (mut tx, _rx) = mpsc::channel(1);
+        eprintln!("1 ...");
+        tx.send(1).await.unwrap();
+        eprintln!("1 done");
+        eprintln!("2 ...");
+        let result_2 = tx.try_send(2);
+        eprintln!("2 done: {result_2:?}");
+        assert!(result_2.is_ok());
+        eprintln!("3 ...");
+        let result_3 = tx.try_send(3);
+        eprintln!("3 done: {result_3:?}");
+        assert!(result_3.unwrap_err().is_full());
+    }
+}

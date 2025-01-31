@@ -149,11 +149,17 @@ where
         let request_id = self.next_inbound_request_id();
         let mut sender = self.inbound_sender.clone();
 
+        tracing::trace!(%request_id, "01 on_fully_negotiated_inbound");
+
         let recv_request_then_fwd_outgoing_responses = async move {
             let (rs_send, mut rs_recv) = mpsc::channel(0);
 
+            tracing::trace!(%request_id, "01a recv_request_then_fwd_outgoing_responses, read_request from wire...");
+
             let read = codec.read_request(&protocol, &mut stream);
             let request = read.await?;
+
+            tracing::trace!(%request_id, "01b recv_request_then_fwd_outgoing_responses, read_request from wire done");
 
             sender
                 .send((request_id, request, rs_send))
@@ -161,13 +167,20 @@ where
                 .expect("`ConnectionHandler` owns both ends of the channel");
             drop(sender);
 
+            tracing::trace!(%request_id, "01c recv_request_then_fwd_outgoing_responses, request sent to loop, writing responses to wire...");
+
             // Keep on forwarding until the channel is closed
             while let Some(response) = rs_recv.next().await {
                 let write = codec.write_response(&protocol, &mut stream, response);
-                write.await?;
+                write.await.inspect_err(|error| {
+                    tracing::trace!(%request_id, %error,
+                "01e recv_request_then_fwd_outgoing_responses, writing response to wire failed")
+                })?;
             }
 
             stream.close().await?;
+
+            tracing::trace!(%request_id, "01e recv_request_then_fwd_outgoing_responses, stream closed");
 
             Ok(Event::OutboundResponseStreamClosed(request_id))
         };
@@ -182,6 +195,8 @@ where
         {
             tracing::warn!("Dropping inbound stream because we are at capacity")
         }
+
+        tracing::trace!(%request_id, "01 on_fully_negotiated_inbound, pushed fut into worker_streams");
     }
 
     fn on_fully_negotiated_outbound(
@@ -440,7 +455,15 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<ConnectionHandlerEvent<Protocol<TCodec::Protocol>, (), Self::ToBehaviour>> {
         match self.worker_streams.poll_unpin(cx) {
-            Poll::Ready((_, Ok(Ok(event)))) => {
+            Poll::Ready((id, Ok(Ok(event)))) => {
+                match id {
+                    RequestId::Inbound(inbound_request_id) => {
+                        tracing::trace!(id=%inbound_request_id, ?event, worker_streams_len=%self.worker_streams.len(),
+                        "02 poll, poll_unpin worker_streams, notify behaviour")
+                    }
+                    _ => {}
+                }
+
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
             }
             Poll::Ready((RequestId::Inbound(id), Ok(Err(e)))) => {
@@ -481,6 +504,7 @@ where
 
         // Check for inbound requests.
         if let Poll::Ready(Some((id, rq, rs_sender))) = self.inbound_receiver.poll_next_unpin(cx) {
+            tracing::trace!(%id, worker_streams_len=%self.worker_streams.len(), "03 poll, inbound_receiver, notify behaviour");
             // We received an inbound request.
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                 Event::InboundRequest {
