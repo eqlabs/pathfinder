@@ -1,4 +1,5 @@
 use anyhow::Context;
+use fake::{Fake, Faker};
 use futures::SinkExt;
 use p2p::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
@@ -61,11 +62,19 @@ pub async fn get_state_diffs(
 }
 
 pub async fn get_transactions(
-    storage: Storage,
-    request: TransactionsRequest,
-    tx: futures::channel::mpsc::Sender<TransactionsResponse>,
+    _storage: Storage,
+    _request: TransactionsRequest,
+    mut tx: futures::channel::mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
-    spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
+    // TEST
+    // spawn_blocking_get(request, storage, blocking::get_transactions,
+    // tx).await
+    for _ in 0..400 {
+        tx.send(TransactionsResponse::TransactionWithReceipt(Faker.fake()))
+            .await?;
+    }
+
+    Ok(())
 }
 
 pub async fn get_events(

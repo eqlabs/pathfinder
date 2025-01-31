@@ -131,31 +131,21 @@ where
 #[derive(Debug, Default)]
 pub struct Gossiper {
     #[cfg(feature = "p2p")]
-    p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    _p2p_client: Option<p2p::client::peer_agnostic::Client>,
 }
 
 impl Gossiper {
     #[cfg(feature = "p2p")]
     pub fn new(p2p_client: p2p::client::peer_agnostic::Client) -> Self {
         Self {
-            p2p_client: Some(p2p_client),
+            _p2p_client: Some(p2p_client),
         }
     }
 
     async fn propagate_head(&self, _block_number: BlockNumber, _block_hash: BlockHash) {
         #[cfg(feature = "p2p")]
         {
-            use p2p_proto::common::{BlockId, Hash};
-
-            if let Some(p2p_client) = &self.p2p_client {
-                _ = p2p_client
-                    .propagate_new_head(BlockId {
-                        number: _block_number.get(),
-                        hash: Hash(_block_hash.0),
-                    })
-                    .await
-                    .map_err(|error| tracing::warn!(%error, "Propagating head failed"));
-            }
+            // TODO removed for now
         }
     }
 }

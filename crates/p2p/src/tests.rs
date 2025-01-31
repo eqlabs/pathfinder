@@ -800,6 +800,8 @@ async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
     assert_eq!(providers, [peer1.peer_id].into());
 }
 
+// TODO removed
+/*
 #[rstest]
 #[case::server_to_client(server_to_client().await)]
 #[case::client_to_server(client_to_server().await)]
@@ -830,6 +832,7 @@ async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
 
     assert_eq!(msg, expected);
 }
+*/
 
 mod successful_sync {
     use super::*;

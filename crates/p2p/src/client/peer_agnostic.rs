@@ -70,34 +70,15 @@ use crate::peer_data::PeerData;
 #[derive(Clone, Debug)]
 pub struct Client {
     inner: peer_aware::Client,
-    block_propagation_topic: Arc<String>,
     peers: Arc<RwLock<Decaying<HashSet<PeerId>>>>,
 }
 
 impl Client {
-    pub fn new(inner: peer_aware::Client, block_propagation_topic: String) -> Self {
+    pub fn new(inner: peer_aware::Client) -> Self {
         Self {
             inner,
-            block_propagation_topic: Arc::new(block_propagation_topic),
             peers: Default::default(),
         }
-    }
-
-    // Propagate new L2 head head
-    pub async fn propagate_new_head(
-        &self,
-        block_id: p2p_proto::common::BlockId,
-    ) -> anyhow::Result<()> {
-        tracing::debug!(number=%block_id.number, hash=%block_id.hash.0, topic=%self.block_propagation_topic,
-            "Propagating head"
-        );
-
-        self.inner
-            .publish(
-                &self.block_propagation_topic,
-                p2p_proto::header::NewBlock::Id(block_id),
-            )
-            .await
     }
 
     async fn get_random_peers(&self) -> Vec<PeerId> {

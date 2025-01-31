@@ -194,10 +194,6 @@ pub enum Event {
         request: EventsRequest,
         channel: ResponseSender<EventsResponse>,
     },
-    BlockPropagation {
-        from: PeerId,
-        new_block: NewBlock,
-    },
     /// For testing purposes only
     Test(TestEvent),
 }

@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use libp2p::identity::Keypair;
@@ -60,7 +61,9 @@ impl Builder {
             local_peer_id,
             swarm::Config::with_tokio_executor()
                 .with_idle_connection_timeout(Duration::from_secs(60))
-                .with_per_connection_event_buffer_size(7 * max_concurrent_streams),
+                .with_notify_handler_buffer_size(NonZeroUsize::new(32 * 100).unwrap())
+                .with_per_connection_event_buffer_size(7 * 10000),
+            // .with_per_connection_event_buffer_size(7 * max_concurrent_streams),
         );
 
         let (event_sender, event_receiver) = mpsc::channel(1);

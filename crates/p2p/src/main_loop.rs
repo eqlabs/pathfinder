@@ -307,13 +307,7 @@ impl MainLoop {
                                     new_block,
                                     message.data.len()
                                 );
-                                self.event_sender
-                                    .send(Event::BlockPropagation {
-                                        from: peer_id,
-                                        new_block,
-                                    })
-                                    .await
-                                    .expect("Event receiver not to be dropped");
+                                // TODO remove it all?
                             }
                             Err(error) => {
                                 tracing::error!(from=%peer_id, %error, "Gossipsub Message")

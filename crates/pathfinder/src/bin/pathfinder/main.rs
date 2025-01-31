@@ -537,8 +537,7 @@ async fn start_p2p(
         predefined_peers: config.predefined_peers,
     };
 
-    let (p2p_client, _head_receiver, p2p_handle) =
-        pathfinder_lib::p2p_network::start(context).await?;
+    let (p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(context).await?;
 
     Ok((
         p2p_handle,
