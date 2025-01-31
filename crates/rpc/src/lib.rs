@@ -966,8 +966,6 @@ mod tests {
         "/rpc/v0_6",
         "v06/starknet_api_openrpc.json",
         &[
-            "starknet_getBlockWithTxHashes",
-            "starknet_getBlockWithTxs",
             "starknet_getStateUpdate",
             "starknet_getTransactionReceipt",
             "starknet_getTransactionStatus",
