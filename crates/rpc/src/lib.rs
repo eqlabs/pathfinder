@@ -968,8 +968,6 @@ mod tests {
             "starknet_getBlockWithTxHashes",
             "starknet_getBlockWithTxs",
             "starknet_getStateUpdate",
-            "starknet_getTransactionByHash",
-            "starknet_getTransactionByBlockIdAndIndex",
             "starknet_getTransactionReceipt",
             "starknet_getTransactionStatus",
             "starknet_getClass",
