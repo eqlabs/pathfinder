@@ -969,8 +969,6 @@ mod tests {
             "starknet_getStateUpdate",
             "starknet_getTransactionReceipt",
             "starknet_getTransactionStatus",
-            "starknet_getClass",
-            "starknet_getClassAt",
             "starknet_estimateFee",
             "starknet_estimateMessageFee",
             "starknet_getEvents",
