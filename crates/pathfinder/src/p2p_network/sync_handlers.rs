@@ -71,7 +71,8 @@ pub async fn get_transactions(
     // tx).await
     for _ in 0..400 {
         tx.send(TransactionsResponse::TransactionWithReceipt(Faker.fake()))
-            .await?;
+            .await
+            .context("send failed in get_transactions")?;
     }
 
     Ok(())

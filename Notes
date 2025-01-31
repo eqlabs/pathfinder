@@ -1,0 +1,8 @@
+1. if with_per_connection_event_buffer_size is the default (7), the stalling is severe:
+- the swarm halts and does not recover,
+2. even if with_per_connection_event_buffer_size is very large (e.g. 7000), the stalling still happens:
+- but now it's the other peers that try to connect that cannot connect until the heave connection is dropped
+3. stalling does not seem to be dependent on the length of the streams:
+- 4 responses per stream stalls the same way as 40 or 400
+- even only 1 response per stream stalls the same way
+4. TODO: check if the same happens with request-response
