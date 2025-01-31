@@ -30,7 +30,10 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
-                serializer.serialize_field("execution_resources", &trace.execution_resources)?;
+                if serializer.version > RpcVersion::V06 {
+                    serializer
+                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                }
             }
             pathfinder_executor::types::TransactionTrace::DeployAccount(trace) => {
                 serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
@@ -50,7 +53,10 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
-                serializer.serialize_field("execution_resources", &trace.execution_resources)?;
+                if serializer.version > RpcVersion::V06 {
+                    serializer
+                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                }
             }
             pathfinder_executor::types::TransactionTrace::Invoke(trace) => {
                 serializer.serialize_field("type", &"INVOKE")?;
@@ -65,7 +71,10 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
-                serializer.serialize_field("execution_resources", &trace.execution_resources)?;
+                if serializer.version > RpcVersion::V06 {
+                    serializer
+                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                }
             }
             pathfinder_executor::types::TransactionTrace::L1Handler(trace) => {
                 serializer.serialize_field("type", &"L1_HANDLER")?;
@@ -78,7 +87,10 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
-                serializer.serialize_field("execution_resources", &trace.execution_resources)?;
+                if serializer.version > RpcVersion::V06 {
+                    serializer
+                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                }
             }
         }
         serializer.end()

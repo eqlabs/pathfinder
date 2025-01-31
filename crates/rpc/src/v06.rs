@@ -20,6 +20,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getStorageAt",                        crate::method::get_storage_at)
         .register("starknet_getTransactionByHash",                crate::method::get_transaction_by_hash)
         .register("starknet_getTransactionByBlockIdAndIndex",     crate::method::get_transaction_by_block_id_and_index)
+        .register("starknet_simulateTransactions",                crate::method::simulate_transactions)
         .register("starknet_specVersion",                         || "0.6.0")
         .register("starknet_syncing",                             crate::method::syncing)
         .register("pathfinder_getProof",                          crate::pathfinder::methods::get_proof)

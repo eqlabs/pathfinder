@@ -980,7 +980,6 @@ mod tests {
         "v06/starknet_trace_api_openrpc.json",
         &[
             "starknet_traceTransaction",
-            "starknet_simulateTransactions",
             "starknet_traceBlockTransactions",
         ],
         Api::HttpOnly)]
