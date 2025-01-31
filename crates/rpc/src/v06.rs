@@ -3,6 +3,9 @@ use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V06)
+        .register("starknet_addDeclareTransaction",               crate::method::add_declare_transaction)
+        .register("starknet_addDeployAccountTransaction",         crate::method::add_deploy_account_transaction)
+        .register("starknet_addInvokeTransaction",                crate::method::add_invoke_transaction)
         .register("starknet_blockNumber",                         crate::method::block_number)
         .register("starknet_blockHashAndNumber",                  crate::method::block_hash_and_number)
         .register("starknet_chainId",                             crate::method::chain_id)
