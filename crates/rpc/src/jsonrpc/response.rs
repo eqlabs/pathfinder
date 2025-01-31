@@ -155,7 +155,7 @@ mod tests {
         let expected = json!({
             "jsonrpc": "2.0",
             "error": {
-                "code": parsing_err.code(),
+                "code": parsing_err.code(RpcVersion::V07),
                 "message": parsing_err.message(RpcVersion::V07),
                 "data": parsing_err.data(RpcVersion::V07),
             },
