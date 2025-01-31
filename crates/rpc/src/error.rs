@@ -187,8 +187,9 @@ impl ApplicationError {
                 }
             }
             ApplicationError::InsufficientResourcesForValidate => match version {
-                RpcVersion::V07 => "Max fee is smaller than the minimal transaction cost \
-                                    (validation plus fee transfer)"
+                RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
+                                                      transaction cost (validation plus fee \
+                                                      transfer)"
                     .to_string(),
                 _ => self.to_string(),
             },
@@ -220,7 +221,7 @@ impl ApplicationError {
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
             ApplicationError::CompilationFailed { data } => match version {
-                RpcVersion::V07 => None,
+                RpcVersion::V06 | RpcVersion::V07 => None,
                 _ => Some(json!(data)),
             },
             ApplicationError::ContractClassSizeIsTooLarge => None,
