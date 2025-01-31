@@ -921,12 +921,12 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api("/", "v06/starknet_api_openrpc.json",       &[], Api::HttpOnly)]
-    #[case::root_api_websocket("/ws", "v06/starknet_api_openrpc.json",       &[], Api::WebsocketOnly)]
-    #[case::root_trace("/", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
-    #[case::root_trace_websocket("/ws", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
-    #[case::root_write("/", "v06/starknet_write_api.json",         &[], Api::HttpOnly)]
-    #[case::root_write_websocket("/ws", "v06/starknet_write_api.json",         &[], Api::WebsocketOnly)]
+    #[case::root_api("/", "v07/starknet_api_openrpc.json",       &[], Api::HttpOnly)]
+    #[case::root_api_websocket("/ws", "v07/starknet_api_openrpc.json",       &[], Api::WebsocketOnly)]
+    #[case::root_trace("/", "v07/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::root_trace_websocket("/ws", "v07/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::root_write("/", "v07/starknet_write_api.json",         &[], Api::HttpOnly)]
+    #[case::root_write_websocket("/ws", "v07/starknet_write_api.json",         &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
@@ -959,6 +959,54 @@ mod tests {
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+
+    #[case::v0_6_api(
+        "/rpc/v0_6",
+        "v06/starknet_api_openrpc.json",
+        &[
+            "starknet_specVersion",
+            "starknet_getBlockWithTxHashes",
+            "starknet_getBlockWithTxs",
+            "starknet_getStateUpdate",
+            "starknet_getTransactionByHash",
+            "starknet_getTransactionByBlockIdAndIndex",
+            "starknet_getTransactionReceipt",
+            "starknet_getTransactionStatus",
+            "starknet_getClass",
+            "starknet_getClassHashAt",
+            "starknet_getClassAt",
+            "starknet_estimateFee",
+            "starknet_estimateMessageFee",
+            "starknet_blockHashAndNumber",
+            "starknet_syncing",
+            "starknet_getEvents",
+            "starknet_call",
+        ],
+        Api::HttpOnly)]
+    // #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_6_trace(
+        "/rpc/v0_6",
+        "v06/starknet_trace_api_openrpc.json",
+        &[
+            "starknet_traceTransaction",
+            "starknet_simulateTransactions",
+            "starknet_traceBlockTransactions",
+        ],
+        Api::HttpOnly)]
+    // #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::v0_6_write(
+        "/rpc/v0_6",
+        "v06/starknet_write_api.json",
+        &[
+            "starknet_addInvokeTransaction",
+            "starknet_addDeclareTransaction",
+            "starknet_addDeployAccountTransaction",
+        ],
+        Api::HttpOnly)]
+    // #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getProof", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
+    // #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
     #[case::pathfinder("/ws/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[], Api::WebsocketOnly)]
