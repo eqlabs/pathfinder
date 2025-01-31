@@ -972,7 +972,6 @@ mod tests {
             "starknet_estimateFee",
             "starknet_estimateMessageFee",
             "starknet_getEvents",
-            "starknet_call",
         ],
         Api::HttpOnly)]
     // #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
