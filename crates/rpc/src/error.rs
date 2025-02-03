@@ -120,14 +120,20 @@ pub enum ApplicationError {
 }
 
 impl ApplicationError {
-    pub fn code(&self) -> i32 {
+    pub fn code(&self, version: RpcVersion) -> i32 {
         match self {
             // Taken from the official starknet json rpc api.
             // https://github.com/starkware-libs/starknet-specs
             ApplicationError::FailedToReceiveTxn => 1,
             ApplicationError::NoTraceAvailable(_) => 10,
             ApplicationError::ContractNotFound => 20,
-            ApplicationError::EntrypointNotFound => 21,
+            ApplicationError::EntrypointNotFound => {
+                if version >= RpcVersion::V08 {
+                    21
+                } else {
+                    -32603 /* Custom - new code not available */
+                }
+            }
             ApplicationError::BlockNotFound => 24,
             ApplicationError::InvalidTxnHash => 25,
             ApplicationError::InvalidBlockHash => 26,
@@ -173,9 +179,17 @@ impl ApplicationError {
 
     pub fn message(&self, version: RpcVersion) -> String {
         match self {
+            ApplicationError::EntrypointNotFound => {
+                if version >= RpcVersion::V08 {
+                    self.to_string()
+                } else {
+                    "Invalid message selector".to_string()
+                }
+            }
             ApplicationError::InsufficientResourcesForValidate => match version {
-                RpcVersion::V07 => "Max fee is smaller than the minimal transaction cost \
-                                    (validation plus fee transfer)"
+                RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
+                                                      transaction cost (validation plus fee \
+                                                      transfer)"
                     .to_string(),
                 _ => self.to_string(),
             },
@@ -207,7 +221,7 @@ impl ApplicationError {
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
             ApplicationError::CompilationFailed { data } => match version {
-                RpcVersion::V07 => None,
+                RpcVersion::V06 | RpcVersion::V07 => None,
                 _ => Some(json!(data)),
             },
             ApplicationError::ContractClassSizeIsTooLarge => None,

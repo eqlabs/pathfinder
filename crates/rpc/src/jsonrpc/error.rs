@@ -28,7 +28,7 @@ impl PartialEq for RpcError {
 }
 
 impl RpcError {
-    pub fn code(&self) -> i32 {
+    pub fn code(&self, version: RpcVersion) -> i32 {
         // From the json-rpc specification: https://www.jsonrpc.org/specification#error_object
         match self {
             RpcError::ParseError(..) => -32700,
@@ -36,7 +36,7 @@ impl RpcError {
             RpcError::MethodNotFound { .. } => -32601,
             RpcError::InvalidParams(..) => -32602,
             RpcError::InternalError(_) => -32603,
-            RpcError::ApplicationError(err) => err.code(),
+            RpcError::ApplicationError(err) => err.code(version),
             RpcError::WebsocketSubscriptionClosed { .. } => -32099,
         }
     }
@@ -80,7 +80,7 @@ impl crate::dto::SerializeForVersion for RpcError {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut obj = serializer.serialize_struct()?;
-        obj.serialize_field("code", &self.code())?;
+        obj.serialize_field("code", &self.code(serializer.version))?;
         obj.serialize_field("message", &self.message(serializer.version).as_ref())?;
 
         if let Some(data) = self.data(serializer.version) {
