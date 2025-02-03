@@ -515,7 +515,7 @@ pub(crate) mod types {
         use crate::RpcVersion;
 
         #[test]
-        fn receipt() {
+        fn state_update() {
             let state_update = StateUpdate {
                 block_hash: Some(block_hash!("0xdeadbeef")),
                 new_root: Some(state_commitment!("0x1")),
@@ -549,8 +549,10 @@ pub(crate) mod types {
             };
             let data = vec![
                 state_update.clone(),
+                // a pending update
                 StateUpdate {
                     block_hash: None,
+                    new_root: None,
                     ..state_update
                 },
             ];
