@@ -978,10 +978,7 @@ mod tests {
     #[case::v0_6_trace(
         "/rpc/v0_6",
         "v06/starknet_trace_api_openrpc.json",
-        &[
-            "starknet_traceTransaction",
-            "starknet_traceBlockTransactions",
-        ],
+        &[],
         Api::HttpOnly)]
     // #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
     #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::HttpOnly)]
