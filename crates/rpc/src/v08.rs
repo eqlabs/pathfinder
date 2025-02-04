@@ -19,7 +19,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_call",                                crate::method::call)
         .register("starknet_chainId",                             crate::method::chain_id)
         .register("starknet_estimateFee",                         crate::method::estimate_fee)
-        .register("starknet_estimateMessageFee",                  crate::method::estimate_fee)
+        .register("starknet_estimateMessageFee",                  crate::method::estimate_message_fee)
         .register("starknet_getBlockTransactionCount",            crate::method::get_block_transaction_count)
         .register("starknet_getBlockWithTxHashes",                crate::method::get_block_with_tx_hashes)
         .register("starknet_getBlockWithTxs",                     crate::method::get_block_with_txs)
