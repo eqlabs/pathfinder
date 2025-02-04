@@ -256,6 +256,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
 
     let default_version = match config.rpc_root_version {
+        config::RootRpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
         config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
         config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
     };
