@@ -3,8 +3,8 @@ use pathfinder_common::TransactionHash;
 use serde::de::Error;
 
 use super::{DeserializeForVersion, U128Hex, U64Hex};
-use crate::dto;
 use crate::dto::{SerializeForVersion, Serializer};
+use crate::{dto, RpcVersion};
 
 pub struct TransactionWithHash<'a>(pub &'a pathfinder_common::transaction::Transaction);
 
@@ -196,6 +196,11 @@ impl SerializeForVersion for pathfinder_common::transaction::ResourceBounds {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("l1_gas", &self.l1_gas)?;
         s.serialize_field("l2_gas", &self.l2_gas)?;
+        if let Some(l1_data_gas) = self.l1_data_gas {
+            if serializer.version >= RpcVersion::V08 {
+                s.serialize_field("l1_data_gas", &l1_data_gas)?;
+            }
+        }
         s.end()
     }
 }
@@ -226,5 +231,86 @@ impl DeserializeForVersion for pathfinder_common::TransactionIndex {
     fn deserialize(value: dto::Value) -> Result<Self, serde_json::Error> {
         let idx = value.deserialize()?;
         Self::new(idx).ok_or_else(|| serde_json::Error::custom("Invalid transaction index"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
+    use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
+    use serde_json::json;
+    use starknet_api::transaction::fields::Resource;
+
+    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
+
+    #[test]
+    fn resource_bounds() {
+        let resource_bounds = ResourceBounds {
+            l1_gas: ResourceBound {
+                max_amount: ResourceAmount(1),
+                max_price_per_unit: ResourcePricePerUnit(2),
+            },
+            l2_gas: ResourceBound {
+                max_amount: ResourceAmount(3),
+                max_price_per_unit: ResourcePricePerUnit(4),
+            },
+            l1_data_gas: Some(ResourceBound {
+                max_amount: ResourceAmount(5),
+                max_price_per_unit: ResourcePricePerUnit(6),
+            }),
+        };
+
+        pretty_assertions_sorted::assert_eq!(
+            resource_bounds
+                .serialize(Serializer::new(RpcVersion::V06))
+                .unwrap(),
+            json!({
+                "l1_gas": {
+                    "max_amount": "0x1",
+                    "max_price_per_unit": "0x2",
+                },
+                "l2_gas": {
+                    "max_amount": "0x3",
+                    "max_price_per_unit": "0x4",
+                },
+            })
+        );
+
+        pretty_assertions_sorted::assert_eq!(
+            resource_bounds
+                .serialize(Serializer::new(RpcVersion::V07))
+                .unwrap(),
+            json!({
+                "l1_gas": {
+                    "max_amount": "0x1",
+                    "max_price_per_unit": "0x2",
+                },
+                "l2_gas": {
+                    "max_amount": "0x3",
+                    "max_price_per_unit": "0x4",
+                },
+            })
+        );
+
+        pretty_assertions_sorted::assert_eq!(
+            resource_bounds
+                .serialize(Serializer::new(RpcVersion::V08))
+                .unwrap(),
+            json!({
+                "l1_gas": {
+                    "max_amount": "0x1",
+                    "max_price_per_unit": "0x2",
+                },
+                "l2_gas": {
+                    "max_amount": "0x3",
+                    "max_price_per_unit": "0x4",
+                },
+                "l1_data_gas": {
+                    "max_amount": "0x5",
+                    "max_price_per_unit": "0x6",
+                },
+            })
+        );
     }
 }
