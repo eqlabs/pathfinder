@@ -377,10 +377,12 @@ impl SerializeForVersion for ExecutionResources<'_> {
 
         if serializer.version < RpcVersion::V08 {
             serializer.flatten(&ComputationResources(self.0))?;
-            serializer.serialize_field(
-                "data_availability",
-                &DataAvailability(&self.0.data_availability),
-            )?;
+            if serializer.version > RpcVersion::V06 {
+                serializer.serialize_field(
+                    "data_availability",
+                    &DataAvailability(&self.0.data_availability),
+                )?;
+            }
         } else {
             serializer.serialize_field("l1_gas", &self.0.total_gas_consumed.l1_gas)?;
             serializer.serialize_field("l1_data_gas", &self.0.total_gas_consumed.l1_data_gas)?;
