@@ -18,6 +18,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_getClassHashAt",                      crate::method::get_class_hash_at)
         .register("starknet_getEvents",                           crate::method::get_events)
         .register("starknet_estimateFee",                         crate::method::estimate_fee)
+        .register("starknet_estimateMessageFee",                  crate::method::estimate_message_fee)
         .register("starknet_getNonce",                            crate::method::get_nonce)
         .register("starknet_getStateUpdate",                      crate::method::get_state_update)
         .register("starknet_getStorageAt",                        crate::method::get_storage_at)
