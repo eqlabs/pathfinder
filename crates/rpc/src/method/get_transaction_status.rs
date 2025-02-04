@@ -168,8 +168,7 @@ impl crate::dto::SerializeForVersion for Output {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("finality_status", &self.finality_status())?;
         serializer.serialize_optional("execution_status", self.execution_status())?;
-        // Delete check once rustc gives you a friendly reminder
-        if serializer.version != RpcVersion::V07 {
+        if serializer.version > RpcVersion::V07 {
             serializer.serialize_optional("failure_reason", self.failure_reason())?;
         }
         serializer.end()
@@ -314,5 +313,42 @@ mod tests {
             .unwrap_err();
 
         assert_matches!(err, Error::TxnHashNotFound);
+    }
+
+    #[test]
+    fn test_v06_serialization() {
+        use crate::dto::SerializeForVersion;
+
+        let cases = [
+            (Output::Received, json!({"finality_status": "RECEIVED"})),
+            (
+                Output::Rejected {
+                    error_message: Some("error".to_string()),
+                },
+                json!({"finality_status": "REJECTED"}),
+            ),
+            (
+                Output::AcceptedOnL1(TxnExecutionStatus::Succeeded),
+                json!({
+                    "finality_status": "ACCEPTED_ON_L1",
+                    "execution_status": "SUCCEEDED"
+                }),
+            ),
+            (
+                Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
+                    reason: Some("error".to_string()),
+                }),
+                json!({
+                    "finality_status": "ACCEPTED_ON_L2",
+                    "execution_status": "REVERTED"
+                }),
+            ),
+        ];
+
+        for (output, expected) in cases {
+            let serializer = crate::dto::Serializer::new(crate::RpcVersion::V06);
+            let encoded = output.serialize(serializer).unwrap();
+            assert_eq!(encoded, expected);
+        }
     }
 }

@@ -966,9 +966,6 @@ mod tests {
         "/rpc/v0_6",
         "v06/starknet_api_openrpc.json",
         &[
-            "starknet_getTransactionReceipt",
-            "starknet_getTransactionStatus",
-            "starknet_estimateFee",
             "starknet_estimateMessageFee",
         ],
         Api::HttpOnly)]
