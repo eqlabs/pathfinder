@@ -187,7 +187,8 @@ pub fn trace(
     let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
         let hash = transaction_hash(&tx);
-        let _span = tracing::debug_span!("trace", transaction_hash=%super::transaction::transaction_hash(&tx), %transaction_idx).entered();
+        let _span =
+            tracing::debug_span!("trace", transaction_hash=%hash, %transaction_idx).entered();
 
         let tx_type = transaction_type(&tx);
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
