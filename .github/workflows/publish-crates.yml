@@ -2,11 +2,8 @@ name: Publish Crates
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to publish (without v prefix)'
-        required: true
-        type: string
+  release:
+    types: [published]
 
 permissions:
   contents: read
