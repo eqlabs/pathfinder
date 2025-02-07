@@ -1,10 +1,4 @@
-# Template taken from : https://github.com/actions/starter-workflows/blob/main/pages/mdbook.yml
-
-# Sample workflow for building and deploying a mdBook site to GitHub Pages
-#
-# To get started with mdBook see: https://rust-lang.github.io/mdBook/index.html
-#
-name: Deploy mdBook site to Pages
+name: Deploy website site to Pages
 
 on:
   # Allows you to run this workflow manually from the Actions tab
@@ -30,13 +24,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup Pages
         id: pages
-        uses: actions/configure-pages@v3
+        uses: actions/configure-pages@v5
       - name: Install Docusaurus
         run: yarn
       - name: Build with Docusaurus
         run: yarn build
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs/build
 
@@ -50,4 +44,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
