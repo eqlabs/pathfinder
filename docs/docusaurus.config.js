@@ -9,19 +9,19 @@ import { themes as prismThemes } from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Pathfinder',
-  tagline: 'Dinosaurs are cool',
+  tagline: 'Giving you a safe view into Starknet.',
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://your-docusaurus-site.example.com',
+  url: 'https://eqlabs.github.io/',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
-  baseUrl: '/',
+  baseUrl: '/pathfinder/',
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'facebook', // Usually your GitHub org/user name.
-  projectName: 'docusaurus', // Usually your repo name.
+  organizationName: 'eqlabs', // Usually your GitHub org/user name.
+  projectName: 'pathfinder', // Usually your repo name.
 
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
@@ -104,12 +104,12 @@ const config = {
             ],
           },
         ],
-        copyright: `Pathfinder © ${new Date().getFullYear()}`,
+        copyright: `Equilibrium Labs © ${new Date().getFullYear()}`,
       },
       prism: {
         theme: prismThemes.github,
         darkTheme: prismThemes.dracula,
-        additionalLanguages: ['bash', 'json', 'go', 'rust'],
+        additionalLanguages: ['bash', 'json', 'rust'],
       },
     }),
 };

@@ -28,24 +28,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install mdBook
-        run: |
-          tag=$(curl 'https://api.github.com/repos/rust-lang/mdbook/releases/latest' | jq -r '.tag_name')
-          url="https://github.com/rust-lang/mdbook/releases/download/${tag}/mdbook-${tag}-x86_64-unknown-linux-gnu.tar.gz"
-          mkdir bin
-          curl -sSL $url | tar -xz --directory=bin
-          echo "$(pwd)/bin" >> $GITHUB_PATH
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v3
-      - name: Build with mdBook
-        run: mdbook build ./website
+      - name: Install Docusaurus
+        run: yarn
+      - name: Build with Docusaurus
+        run: yarn build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
         with:
-          path: ./website/book
+          path: ./docs/build
 
   # Deployment job
   deploy:

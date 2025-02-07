@@ -31,7 +31,7 @@ There are two main ways to download and use a snapshot with Pathfinder:
    ```
 3. Use `rclone` to copy the compressed SQLite file to your local directory:
    ```bash
-   rclone copy -P pathfinder-snapshots:pathfinder-snapshots/sepolia-testnet_0.14.0_209745_pruned.sqlite.zst .
+   rclone copy -P pathfinder-snapshots:pathfinder-snapshots/mainnet_0.15.0_1067473_pruned.sqlite.zst .
    ```
 
 :::tip 
@@ -43,7 +43,7 @@ Add `-P` to get a progress display that helps you track the download status.
 While HTTPS URLs are also provided, direct HTTPS downloads can sometimes be less reliable for very large files. If you must use HTTPS, verify you can resume downloads or maintain a stable connection. For example:
 
 ```bash
-wget --continue https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.14.0_751397_pruned.sqlite.zst
+wget --continue https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.15.0_1067473_pruned.sqlite.zst
 ```
 
 ## Extracting Snapshots and Checksums
@@ -79,5 +79,5 @@ The table below lists currently available snapshots, their block heights, and co
 | Sepolia testnet | 451735  | >= 0.15.0                   | archive | `sepolia-testnet_0.15.0_451735_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.15.0_451735_archive.sqlite.zst) | 32.21 GB        | `b143779c172eb55ee449f6d686c626c1df67c3b3c66545c869af8bf73e846c38` |
 
 :::info
-**Pruned** mode retains limited historical state tries, reducing storage size but limiting storage-proof queries. **Archive** mode is fully historic, storing all state tries since genesis.
+**Pruned** mode retains limited historical state tries, reducing storage size but limiting storage-proof queries. (All queries other than storage proofs are unaffected.) **Archive** mode is fully historic, storing all state tries since genesis.
 :::
