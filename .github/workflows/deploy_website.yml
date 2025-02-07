@@ -26,9 +26,13 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
       - name: Install Docusaurus
-        run: yarn
+        run: |
+          cd docs
+          yarn
       - name: Build with Docusaurus
-        run: yarn build
+        run: |
+          cd docs
+          yarn build
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
