@@ -776,8 +776,11 @@ pub(crate) mod tests {
         Ok((context, next_block_header, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_transactions(#[case] rpc_version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
@@ -792,33 +795,19 @@ pub(crate) mod tests {
             include_state_diffs: true,
         };
 
-        // V07
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
         );
 
-        // V08
-        pretty_assertions_sorted::assert_eq!(
-            output
-                .serialize(Serializer {
-                    version: RpcVersion::V08,
-                })
-                .unwrap(),
-            expected
-                .serialize(Serializer {
-                    version: RpcVersion::V08,
-                })
-                .unwrap(),
-        );
         Ok(())
     }
 
@@ -991,8 +980,13 @@ pub(crate) mod tests {
         Ok((context, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_pending_transactions(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         let input = TraceBlockTransactionsInput {
@@ -1011,12 +1005,12 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
         );

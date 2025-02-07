@@ -300,7 +300,7 @@ pub(crate) mod tests {
                     l1_data_gas_consumed: 0x160.into(),
                     l1_data_gas_price: 2.into(),
                     l2_gas_consumed: 0.into(),
-                    l2_gas_price: 0.into(),
+                    l2_gas_price: 1.into(),
                     overall_fee: 0x2d5.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
                 },
@@ -582,7 +582,7 @@ pub(crate) mod tests {
                     l1_data_gas_consumed: 128.into(),
                     l1_data_gas_price: 2.into(),
                     l2_gas_consumed: 0.into(),
-                    l2_gas_price: 0.into(),
+                    l2_gas_price: 1.into(),
                     overall_fee: OVERALL_FEE.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
                 }
@@ -782,7 +782,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -824,7 +824,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -840,7 +840,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 192,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 878,
                                 l1_data_gas: 192,
                                 l2_gas: 0,
                             },
@@ -860,7 +860,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -882,7 +882,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 192,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 878,
                                 l1_data_gas: 192,
                                 l2_gas: 0,
                             },
@@ -1041,7 +1041,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1097,7 +1097,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1128,7 +1128,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 19,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1150,7 +1150,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction)
                             .into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
@@ -1183,7 +1183,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 18,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1480,7 +1480,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1532,7 +1532,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1556,7 +1556,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 12,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1578,7 +1578,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: (INVOKE_OVERALL_FEE - overall_fee_correction).into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1609,7 +1609,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 13,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1836,7 +1836,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_V3_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
@@ -1868,7 +1868,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1888,7 +1888,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_V3_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
@@ -1912,7 +1912,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1934,7 +1934,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: (INVOKE_V3_OVERALL_FEE - gas_correction * 2).into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
@@ -1965,7 +1965,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 13,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -2007,8 +2007,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: invoke_fee_transfer_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
                     is_reverted: false,
                 }
             }
@@ -2063,8 +2065,11 @@ pub(crate) mod tests {
         }
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class() {
+    async fn declare_deploy_and_invoke_sierra_class(#[case] rpc_version: RpcVersion) {
         let (
             storage,
             last_block_header,
@@ -2090,7 +2095,7 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         let serializer = crate::dto::Serializer {
-            version: RpcVersion::V07,
+            version: rpc_version,
         };
 
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -2136,8 +2141,13 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(result_serialized, expected_serialized,);
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class_with_skip_fee_charge() {
+    async fn declare_deploy_and_invoke_sierra_class_with_skip_fee_charge(
+        #[case] rpc_version: RpcVersion,
+    ) {
         let (
             storage,
             last_block_header,
@@ -2185,19 +2195,24 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
         );
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class_with_skip_validate() {
+    async fn declare_deploy_and_invoke_sierra_class_with_skip_validate(
+        #[case] rpc_version: RpcVersion,
+    ) {
         let (
             storage,
             last_block_header,
@@ -2250,12 +2265,12 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
         );
