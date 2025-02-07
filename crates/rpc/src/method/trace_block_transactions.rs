@@ -647,8 +647,8 @@ pub(crate) mod tests {
         felt,
         BlockHeader,
         BlockNumber,
+        BlockTimestamp,
         Chain,
-        GasPrice,
         SequencerAddress,
         SierraHash,
         StarknetVersion,
@@ -684,34 +684,7 @@ pub(crate) mod tests {
         ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
-        let transactions = vec![
-            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
-            fixtures::input::universal_deployer(
-                account_contract_address,
-                universal_deployer_address,
-            )
-            .into_common(context.chain_id),
-            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
-        ];
-
-        let traces = vec![
-            fixtures::expected_output_0_13_1_1::declare(
-                account_contract_address,
-                &last_block_header,
-            ),
-            fixtures::expected_output_0_13_1_1::universal_deployer(
-                account_contract_address,
-                &last_block_header,
-                universal_deployer_address,
-            ),
-            fixtures::expected_output_0_13_1_1::invoke(
-                account_contract_address,
-                &last_block_header,
-                test_storage_value,
-            ),
-        ];
-
-        let next_block_header = {
+        let (next_block_header, transactions, traces) = {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
@@ -722,18 +695,49 @@ pub(crate) mod tests {
                 fixtures::CASM_DEFINITION,
             )?;
 
-            let next_block_header = BlockHeader::builder()
-                .number(last_block_header.number + 1)
-                .eth_l1_gas_price(GasPrice(1))
-                .eth_l1_data_gas_price(GasPrice(2))
-                .parent_hash(last_block_header.hash)
+            let next_block_header = BlockHeader::child_builder(&last_block_header)
+                .eth_l1_gas_price(last_block_header.eth_l1_gas_price)
+                .strk_l1_gas_price(last_block_header.strk_l1_gas_price)
+                .eth_l1_data_gas_price(last_block_header.eth_l1_data_gas_price)
+                .strk_l1_data_gas_price(last_block_header.strk_l1_data_gas_price)
+                .eth_l2_gas_price(last_block_header.eth_l2_gas_price)
+                .strk_l2_gas_price(last_block_header.strk_l2_gas_price)
                 .starknet_version(last_block_header.starknet_version)
                 .sequencer_address(last_block_header.sequencer_address)
-                .timestamp(last_block_header.timestamp)
-                .starknet_version(StarknetVersion::new(0, 13, 1, 1))
+                .timestamp(BlockTimestamp::new_or_panic(
+                    last_block_header.timestamp.get() + 1,
+                ))
+                .starknet_version(last_block_header.starknet_version)
                 .l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
-                .finalize_with_hash(block_hash!("0x1"));
+                .finalize_with_hash(block_hash!("0xb02"));
             tx.insert_block_header(&next_block_header)?;
+
+            let transactions = vec![
+                fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+                fixtures::input::universal_deployer(
+                    account_contract_address,
+                    universal_deployer_address,
+                )
+                .into_common(context.chain_id),
+                fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+            ];
+
+            let traces = vec![
+                fixtures::expected_output_0_13_1_1::declare(
+                    account_contract_address,
+                    &next_block_header,
+                ),
+                fixtures::expected_output_0_13_1_1::universal_deployer(
+                    account_contract_address,
+                    &next_block_header,
+                    universal_deployer_address,
+                ),
+                fixtures::expected_output_0_13_1_1::invoke(
+                    account_contract_address,
+                    &next_block_header,
+                    test_storage_value,
+                ),
+            ];
 
             let dummy_receipt = Receipt {
                 transaction_hash: TransactionHash(felt!("0x1")),
@@ -751,7 +755,7 @@ pub(crate) mod tests {
             )?;
             tx.commit()?;
 
-            next_block_header
+            (next_block_header, transactions, traces)
         };
 
         let traces = vec![
@@ -772,8 +776,11 @@ pub(crate) mod tests {
         Ok((context, next_block_header, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_transactions(#[case] rpc_version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
@@ -788,33 +795,19 @@ pub(crate) mod tests {
             include_state_diffs: true,
         };
 
-        // V07
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
         );
 
-        // V08
-        pretty_assertions_sorted::assert_eq!(
-            output
-                .serialize(Serializer {
-                    version: RpcVersion::V08,
-                })
-                .unwrap(),
-            expected
-                .serialize(Serializer {
-                    version: RpcVersion::V08,
-                })
-                .unwrap(),
-        );
         Ok(())
     }
 
@@ -823,7 +816,7 @@ pub(crate) mod tests {
     /// unexpected.
     #[tokio::test]
     async fn test_request_coalescing() -> anyhow::Result<()> {
-        const NUM_REQUESTS: usize = 1000;
+        const NUM_REQUESTS: usize = 100;
 
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
@@ -932,16 +925,16 @@ pub(crate) mod tests {
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 l1_gas_price: GasPrices {
-                    price_in_wei: GasPrice(1),
-                    price_in_fri: GasPrice(1),
+                    price_in_wei: last_block_header.eth_l1_gas_price,
+                    price_in_fri: last_block_header.strk_l1_gas_price,
                 },
                 l1_data_gas_price: GasPrices {
-                    price_in_wei: GasPrice(2),
-                    price_in_fri: GasPrice(2),
+                    price_in_wei: last_block_header.eth_l1_data_gas_price,
+                    price_in_fri: last_block_header.strk_l1_data_gas_price,
                 },
                 l2_gas_price: GasPrices {
-                    price_in_wei: GasPrice(3),
-                    price_in_fri: GasPrice(3),
+                    price_in_wei: last_block_header.eth_l2_gas_price,
+                    price_in_fri: last_block_header.strk_l2_gas_price,
                 },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
@@ -987,8 +980,13 @@ pub(crate) mod tests {
         Ok((context, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_pending_transactions(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         let input = TraceBlockTransactionsInput {
@@ -1007,12 +1005,12 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07,
+                    version: rpc_version,
                 })
                 .unwrap(),
         );

@@ -220,10 +220,7 @@ pub(crate) mod tests {
     };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::Storage;
-    use starknet_gateway_test_fixtures::class_definitions::{
-        DUMMY_ACCOUNT_CLASS_HASH,
-        ERC20_CONTRACT_DEFINITION_CLASS_HASH,
-    };
+    use starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
 
     use super::simulate_transactions;
     use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
@@ -279,10 +276,10 @@ pub(crate) mod tests {
                     "contract_address_salt": "0x46c0d4abf0192a788aca261e58d7031576f7d8ea5229f452b0f23e691dd5971",
                     "max_fee": "0x0",
                     "signature": [],
-                    "class_hash": DUMMY_ACCOUNT_CLASS_HASH,
+                    "class_hash": crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
                     "nonce": "0x0",
                     "version": TransactionVersion::ONE_WITH_QUERY_VERSION,
-                    "constructor_calldata": [],
+                    "constructor_calldata": ["0x1"],
                     "type": "DEPLOY_ACCOUNT"
                 }
             ],
@@ -292,16 +289,19 @@ pub(crate) mod tests {
         let value = crate::dto::Value::new(input_json, RpcVersion::V07);
         let input = SimulateTransactionInput::deserialize(value).unwrap();
 
+        const DEPLOYED_CONTRACT_ADDRESS: ContractAddress =
+            contract_address!("0xf3805e4f045a8b48e7e9e6cd5d910973a22360572207f3ae625c5cec2a3232");
+
         let expected = crate::method::simulate_transactions::Output(vec![
             pathfinder_executor::types::TransactionSimulation{
                 fee_estimation: pathfinder_executor::types::FeeEstimate {
-                    l1_gas_consumed: 19.into(),
+                    l1_gas_consumed: 0x15.into(),
                     l1_gas_price: 1.into(),
-                    l1_data_gas_consumed: 160.into(),
+                    l1_data_gas_consumed: 0x160.into(),
                     l1_data_gas_price: 2.into(),
                     l2_gas_consumed: 0.into(),
-                    l2_gas_price: 0.into(),
-                    overall_fee: 339.into(),
+                    l2_gas_price: 1.into(),
+                    overall_fee: 0x2d5.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
                 },
                 trace: pathfinder_executor::types::TransactionTrace::DeployAccount(
@@ -309,41 +309,58 @@ pub(crate) mod tests {
                         constructor_invocation: Some(pathfinder_executor::types::FunctionInvocation {
                                 call_type: pathfinder_executor::types::CallType::Call,
                                 caller_address: felt!("0x0"),
-                                class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                                 entry_point_type: pathfinder_executor::types::EntryPointType::Constructor,
-                                events: vec![],
-                                calldata: vec![],
-                                contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                events: vec![pathfinder_executor::types::Event {
+                                    order: 0,
+                                    data: vec![],
+                                    keys: vec![
+                                        felt!("0x38f6a5b87c23cee6e7294bcc3302e95019f70f81586ff3cac38581f5ca96381"),
+                                        felt!("0x1"),
+                                    ],
+                                }],
+                                calldata: vec![felt!("0x1")],
+                                contract_address: DEPLOYED_CONTRACT_ADDRESS,
                                 selector: entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194").0,
                                 messages: vec![],
                                 result: vec![],
                                 execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
                                 internal_calls: vec![],
-                                computation_resources: pathfinder_executor::types::ComputationResources::default(),
+                                computation_resources: pathfinder_executor::types::ComputationResources {
+                                    pedersen_builtin_applications: 2,
+                                    range_check_builtin_applications: 8,
+                                    steps: 312,
+                                    ..Default::default()
+                                },
                                 is_reverted: false,
                             }),
                         validate_invocation: Some(
                             pathfinder_executor::types::FunctionInvocation {
                                 call_type: pathfinder_executor::types::CallType::Call,
                                 caller_address: felt!("0x0"),
-                                class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                                class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                                 entry_point_type: pathfinder_executor::types::EntryPointType::External,
                                 events: vec![],
                                 calldata: vec![
-                                    DUMMY_ACCOUNT_CLASS_HASH.0,
+                                    crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0,
                                     call_param!("0x046C0D4ABF0192A788ACA261E58D7031576F7D8EA5229F452B0F23E691DD5971").0,
+                                    call_param!("0x1").0,
                                 ],
-                                contract_address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                contract_address: DEPLOYED_CONTRACT_ADDRESS,
                                 selector: entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895").0,
                                 messages: vec![],
-                                result: vec![],
+                                result: vec![
+                                    felt!("0x56414c4944")
+                                ],
                                 execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
                                     l1_gas: 0,
                                     l2_gas: 0,
                                 },
                                 internal_calls: vec![],
                                 computation_resources: pathfinder_executor::types::ComputationResources{
-                                    steps: 13,
+                                    memory_holes: 1,
+                                    range_check_builtin_applications: 2,
+                                    steps: 135,
                                     ..Default::default()
                                 },
                                 is_reverted: false,
@@ -351,24 +368,51 @@ pub(crate) mod tests {
                         ),
                         fee_transfer_invocation: None,
                         state_diff: pathfinder_executor::types::StateDiff {
-                            storage_diffs: BTreeMap::new(),
+                            storage_diffs: BTreeMap::from([
+                                (
+                                    DEPLOYED_CONTRACT_ADDRESS,
+                                    vec![
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x81ba5d1f84a6a8f0e7ae24720a20f43f81d9ee6eed98fd524ba8d53a49416b"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x1379ac0624b939ceb9dede92211d7db5ee174fe28be72245b0a1a2abd81c98f"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                        pathfinder_executor::types::StorageDiff {
+                                            key: storage_address!("0x7e79bbb6be5d418acd50c88b675e697f6f7094e203c9d7e29c6ad6731f931dd"),
+                                            value: storage_value!("0x1"),
+                                        },
+                                    ]
+                                )
+                            ]),
                             deprecated_declared_classes: HashSet::new(),
                             declared_classes: vec![],
                             deployed_contracts: vec![
                                 pathfinder_executor::types::DeployedContract {
-                                    address: contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
-                                    class_hash: DUMMY_ACCOUNT_CLASS_HASH
+                                    address: DEPLOYED_CONTRACT_ADDRESS,
+                                    class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH
                                 }
                             ],
                             replaced_classes: vec![],
                             nonces: BTreeMap::from([(
-                                contract_address!("0x00798C1BFDAF2077F4900E37C8815AFFA8D217D46DB8A84C3FBA1838C8BD4A65"),
+                                DEPLOYED_CONTRACT_ADDRESS,
                                 contract_nonce!("0x1"),
                             )]),
                         },
                         execution_resources: pathfinder_executor::types::ExecutionResources {
-                            computation_resources: pathfinder_executor::types::ComputationResources{steps:13, ..Default::default()},
-                            data_availability: pathfinder_executor::types::DataAvailabilityResources{l1_gas:0,l1_data_gas:160},
+                            computation_resources: pathfinder_executor::types::ComputationResources{
+                                memory_holes: 1,
+                                pedersen_builtin_applications: 2,
+                                range_check_builtin_applications: 10,
+                                steps:447,
+                                ..Default::default()
+                            },
+                            data_availability: pathfinder_executor::types::DataAvailabilityResources{
+                                l1_gas:0,
+                                l1_data_gas:352
+                            },
                             l1_gas: 0,
                             l1_data_gas: 160,
                             l2_gas: 0,
@@ -434,18 +478,20 @@ pub(crate) mod tests {
                         pathfinder_executor::types::FunctionInvocation {
                             call_type: pathfinder_executor::types::CallType::Call,
                             caller_address: felt!("0x0"),
-                            class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                            class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                             entry_point_type: pathfinder_executor::types::EntryPointType::External,
                             events: vec![],
                             contract_address: account_contract_address,
                             selector: EntryPoint::hashed(b"__validate_declare__").0,
                             calldata: vec![CAIRO0_HASH.0],
                             messages: vec![],
-                            result: vec![],
+                            result: vec![felt!("0x56414c4944")],
                             execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
                             internal_calls: vec![],
                             computation_resources: pathfinder_executor::types::ComputationResources{
-                                steps: 12,
+                                memory_holes: 1,
+                                range_check_builtin_applications: 4,
+                                steps: 203,
                                 ..Default::default()
                             },
                             is_reverted: false,
@@ -515,9 +561,9 @@ pub(crate) mod tests {
                     },
                     execution_resources: pathfinder_executor::types::ExecutionResources{
                         computation_resources: pathfinder_executor::types::ComputationResources{
-                            steps: 1366,
-                            memory_holes: 59,
-                            range_check_builtin_applications: 31,
+                            steps: 1557,
+                            memory_holes: 60,
+                            range_check_builtin_applications: 35,
                             pedersen_builtin_applications: 4,
                             ..Default::default()
                         },
@@ -536,7 +582,7 @@ pub(crate) mod tests {
                     l1_data_gas_consumed: 128.into(),
                     l1_data_gas_price: 2.into(),
                     l2_gas_consumed: 0.into(),
-                    l2_gas_price: 0.into(),
+                    l2_gas_price: 1.into(),
                     overall_fee: OVERALL_FEE.into(),
                     unit: pathfinder_executor::types::PriceUnit::Wei,
                 }
@@ -630,6 +676,8 @@ pub(crate) mod tests {
                         signature: vec![],
                         sender_address: account_contract_address,
                         calldata: vec![
+                            // Number of calls
+                            call_param!("0x1"),
                             CallParam(*universal_deployer_address.get()),
                             // Entry point selector for the called contract, i.e.
                             // AccountCallArray::selector
@@ -659,6 +707,8 @@ pub(crate) mod tests {
                         signature: vec![],
                         sender_address: account_contract_address,
                         calldata: vec![
+                            // Number of calls
+                            call_param!("0x1"),
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
                             // Entry point selector for the called contract, i.e.
                             // AccountCallArray::selector
@@ -695,6 +745,8 @@ pub(crate) mod tests {
                         fee_data_availability_mode: crate::types::DataAvailabilityMode::L1,
                         sender_address: account_contract_address,
                         calldata: vec![
+                            // Number of calls
+                            call_param!("0x1"),
                             CallParam(*DEPLOYED_CONTRACT_ADDRESS.get()),
                             // Entry point selector for the called contract, i.e.
                             // AccountCallArray::selector
@@ -730,7 +782,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -772,7 +824,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -788,7 +840,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 192,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 878,
                                 l1_data_gas: 192,
                                 l2_gas: 0,
                             },
@@ -808,7 +860,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: DECLARE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -830,7 +882,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 192,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 878,
                                 l1_data_gas: 192,
                                 l2_gas: 0,
                             },
@@ -842,7 +894,9 @@ pub(crate) mod tests {
             fn declare_validate_computation_resources(
             ) -> pathfinder_executor::types::ComputationResources {
                 pathfinder_executor::types::ComputationResources {
-                    steps: 12,
+                    memory_holes: 1,
+                    range_check_builtin_applications: 4,
+                    steps: 203,
                     ..Default::default()
                 }
             }
@@ -953,7 +1007,7 @@ pub(crate) mod tests {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
                     caller_address: felt!("0x0"),
-                    class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
                     events: vec![],
                     contract_address: account_contract_address,
@@ -961,7 +1015,7 @@ pub(crate) mod tests {
                     calldata: vec![SIERRA_HASH.0],
                     internal_calls: vec![],
                     messages: vec![],
-                    result: vec![],
+                    result: vec![felt!("0x56414c4944")],
                     computation_resources: declare_validate_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
                         l1_gas: 1,
@@ -971,8 +1025,8 @@ pub(crate) mod tests {
                 }
             }
 
-            const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 464;
-            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 16;
+            const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 467;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 19;
             const UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED: u64 = 224;
 
             pub fn universal_deployer(
@@ -987,7 +1041,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1007,10 +1061,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(universal_deployer_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                0,
                             )),
                             state_diff: universal_deployer_state_diff(
                                 account_contract_address,
-                                universal_deployer_fee_transfer_storage_diffs(),
+                                universal_deployer_fee_transfer_storage_diffs(0),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources:
@@ -1022,7 +1077,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 16,
+                                l1_gas: 19,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1042,7 +1097,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1073,7 +1128,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 19,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1087,15 +1142,17 @@ pub(crate) mod tests {
                 last_block_header: &BlockHeader,
                 universal_deployer_address: ContractAddress,
             ) -> pathfinder_executor::types::TransactionSimulation {
+                let overall_fee_correction = 1u64;
                 pathfinder_executor::types::TransactionSimulation {
                     fee_estimation: pathfinder_executor::types::FeeEstimate {
-                        l1_gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        l1_gas_consumed: (UNIVERSAL_DEPLOYER_GAS_CONSUMED - 1).into(),
                         l1_gas_price: 1.into(),
                         l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
-                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction)
+                            .into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
@@ -1111,10 +1168,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(universal_deployer_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                overall_fee_correction,
                             )),
                             state_diff: universal_deployer_state_diff(
                                 account_contract_address,
-                                universal_deployer_fee_transfer_storage_diffs(),
+                                universal_deployer_fee_transfer_storage_diffs(1),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources:
@@ -1125,7 +1183,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 224,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 18,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
                             },
@@ -1137,8 +1195,9 @@ pub(crate) mod tests {
             fn universal_deployer_validate_computation_resources(
             ) -> pathfinder_executor::types::ComputationResources {
                 pathfinder_executor::types::ComputationResources {
-                    steps: 21,
-                    range_check_builtin_applications: 1,
+                    memory_holes: 4,
+                    range_check_builtin_applications: 14,
+                    steps: 341,
                     ..Default::default()
                 }
             }
@@ -1146,9 +1205,9 @@ pub(crate) mod tests {
             fn universal_deployer_execute_computation_resources(
             ) -> pathfinder_executor::types::ComputationResources {
                 pathfinder_executor::types::ComputationResources {
-                    steps: 2061,
-                    memory_holes: 2,
-                    range_check_builtin_applications: 44,
+                    steps: 2574,
+                    memory_holes: 20,
+                    range_check_builtin_applications: 66,
                     pedersen_builtin_applications: 7,
                     ..Default::default()
                 }
@@ -1198,17 +1257,19 @@ pub(crate) mod tests {
                 }
             }
 
-            fn universal_deployer_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+            fn universal_deployer_fee_transfer_storage_diffs(
+                overall_fee_correction: u64,
+            ) -> Vec<StorageDiff> {
                 vec![StorageDiff {
                     address: ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff942")
+                            value: StorageValue((0xfffffffffffffffffffffffff93fu128 + u128::from(overall_fee_correction)).into()),
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
-                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE).into()),
+                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into()),
                         },
                     ],
                 }]
@@ -1221,13 +1282,14 @@ pub(crate) mod tests {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
                     caller_address: felt!("0x0"),
-                    class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
                     internal_calls: vec![],
                     events: vec![],
                     contract_address: account_contract_address,
                     selector: EntryPoint::hashed(b"__validate__").0,
                     calldata: vec![
+                        call_param!("0x1").0,
                         universal_deployer_address.0,
                         EntryPoint::hashed(b"deployContract").0,
                         // calldata_len
@@ -1242,7 +1304,7 @@ pub(crate) mod tests {
                         call_param!("0x0").0,
                     ],
                     messages: vec![],
-                    result: vec![],
+                    result: vec![felt!("0x56414c4944")],
                     computation_resources: universal_deployer_validate_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
                         l1_gas: 1,
@@ -1326,12 +1388,13 @@ pub(crate) mod tests {
                             is_reverted: false,
                         }
                     ],
-                    class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
                     events: vec![],
                     contract_address: account_contract_address,
                     selector: EntryPoint::hashed(b"__execute__").0,
                     calldata: vec![
+                        call_param!("0x1").0,
                         universal_deployer_address.0,
                         EntryPoint::hashed(b"deployContract").0,
                         call_param!("0x4").0,
@@ -1346,11 +1409,13 @@ pub(crate) mod tests {
                     ],
                     messages: vec![],
                     result: vec![
+                        felt!("0x1"),
+                        felt!("0x1"),
                         *DEPLOYED_CONTRACT_ADDRESS.get(),
                     ],
                     computation_resources: universal_deployer_execute_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                        l1_gas: 7,
+                        l1_gas: 8,
                         l2_gas: 0,
                     },
                     is_reverted: false,
@@ -1360,6 +1425,7 @@ pub(crate) mod tests {
             fn universal_deployer_fee_transfer(
                 account_contract_address: ContractAddress,
                 last_block_header: &BlockHeader,
+                overall_fee_correction: u64,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
@@ -1372,7 +1438,7 @@ pub(crate) mod tests {
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
-                            Felt::from_u64(UNIVERSAL_DEPLOYER_OVERALL_FEE),
+                            (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into(),
                             felt!("0x0"),
                         ],
                         keys: vec![felt!(
@@ -1381,7 +1447,7 @@ pub(crate) mod tests {
                     }],
                     calldata: vec![
                         last_block_header.sequencer_address.0,
-                        Felt::from_u64(UNIVERSAL_DEPLOYER_OVERALL_FEE),
+                        (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into(),
                         // calldata_len
                         call_param!("0x0").0,
                     ],
@@ -1398,8 +1464,8 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_OVERALL_FEE: u64 = 268;
-            const INVOKE_GAS_CONSUMED: u64 = 12;
+            const INVOKE_OVERALL_FEE: u64 = 270;
+            const INVOKE_GAS_CONSUMED: u64 = 14;
             const INVOKE_DATA_GAS_CONSUMED: u64 = 128;
 
             pub fn invoke(
@@ -1414,7 +1480,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1431,10 +1497,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(invoke_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                0,
                             )),
                             state_diff: invoke_state_diff(
                                 account_contract_address,
-                                invoke_fee_transfer_storage_diffs(),
+                                invoke_fee_transfer_storage_diffs(0),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources: invoke_validate_computation_resources()
@@ -1445,7 +1512,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 12,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1465,7 +1532,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
@@ -1489,7 +1556,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 12,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1503,15 +1570,16 @@ pub(crate) mod tests {
                 last_block_header: &BlockHeader,
                 test_storage_value: StorageValue,
             ) -> pathfinder_executor::types::TransactionSimulation {
+                let overall_fee_correction = 1u64;
                 pathfinder_executor::types::TransactionSimulation {
                     fee_estimation: pathfinder_executor::types::FeeEstimate {
-                        l1_gas_consumed: INVOKE_GAS_CONSUMED.into(),
+                        l1_gas_consumed: (INVOKE_GAS_CONSUMED - 1).into(),
                         l1_gas_price: 1.into(),
                         l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
-                        overall_fee: INVOKE_OVERALL_FEE.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: (INVOKE_OVERALL_FEE - overall_fee_correction).into(),
                         unit: pathfinder_executor::types::PriceUnit::Wei,
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
@@ -1527,10 +1595,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(invoke_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                overall_fee_correction,
                             )),
                             state_diff: invoke_state_diff(
                                 account_contract_address,
-                                invoke_fee_transfer_storage_diffs(),
+                                invoke_fee_transfer_storage_diffs(overall_fee_correction),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources: invoke_execute_computation_resources()
@@ -1540,7 +1609,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 13,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1552,8 +1621,9 @@ pub(crate) mod tests {
             fn invoke_validate_computation_resources(
             ) -> pathfinder_executor::types::ComputationResources {
                 pathfinder_executor::types::ComputationResources {
-                    steps: 21,
-                    range_check_builtin_applications: 1,
+                    steps: 341,
+                    range_check_builtin_applications: 14,
+                    memory_holes: 4,
                     ..Default::default()
                 }
             }
@@ -1561,8 +1631,9 @@ pub(crate) mod tests {
             fn invoke_execute_computation_resources(
             ) -> pathfinder_executor::types::ComputationResources {
                 pathfinder_executor::types::ComputationResources {
-                    steps: 964,
-                    range_check_builtin_applications: 24,
+                    steps: 1477,
+                    range_check_builtin_applications: 46,
+                    memory_holes: 18,
                     ..Default::default()
                 }
             }
@@ -1608,17 +1679,17 @@ pub(crate) mod tests {
                 }
             }
 
-            fn invoke_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiff> {
                 vec![StorageDiff {
                     address: ETH_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffff836")
+                            value: StorageValue((0xfffffffffffffffffffffffff831u128 + u128::from(2 * overall_fee_correction)).into()),
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
-                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE + INVOKE_OVERALL_FEE).into()),
+                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE + INVOKE_OVERALL_FEE - 2 * overall_fee_correction).into()),
                         },
                     ],
                 }]
@@ -1630,20 +1701,21 @@ pub(crate) mod tests {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
                     caller_address: felt!("0x0"),
-                    class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
                     internal_calls: vec![],
                     events: vec![],
                     contract_address: account_contract_address,
                     selector: EntryPoint::hashed(b"__validate__").0,
                     calldata: vec![
+                        call_param!("0x1").0,
                         DEPLOYED_CONTRACT_ADDRESS.0,
                         EntryPoint::hashed(b"get_data").0,
                         // calldata_len
                         call_param!("0x0").0,
                     ],
                     messages: vec![],
-                    result: vec![],
+                    result: vec![felt!("0x56414c4944")],
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
                         l1_gas: 1,
                         l2_gas: 0,
@@ -1684,22 +1756,23 @@ pub(crate) mod tests {
                             },
                         is_reverted: false,
                     }],
-                    class_hash: Some(DUMMY_ACCOUNT_CLASS_HASH.0),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
                     entry_point_type: pathfinder_executor::types::EntryPointType::External,
                     events: vec![],
                     contract_address: account_contract_address,
                     selector: EntryPoint::hashed(b"__execute__").0,
                     calldata: vec![
+                        call_param!("0x1").0,
                         DEPLOYED_CONTRACT_ADDRESS.0,
                         EntryPoint::hashed(b"get_data").0,
                         // calldata_len
                         call_param!("0x0").0,
                     ],
                     messages: vec![],
-                    result: vec![test_storage_value.0],
+                    result: vec![felt!("0x1"), felt!("0x1"), test_storage_value.0],
                     computation_resources: invoke_execute_computation_resources(),
                     execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
-                        l1_gas: 3,
+                        l1_gas: 4,
                         l2_gas: 0,
                     },
                     is_reverted: false,
@@ -1709,6 +1782,7 @@ pub(crate) mod tests {
             fn invoke_fee_transfer(
                 account_contract_address: ContractAddress,
                 last_block_header: &BlockHeader,
+                overall_fee_correction: u64,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
@@ -1721,7 +1795,7 @@ pub(crate) mod tests {
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
-                            Felt::from_u64(INVOKE_OVERALL_FEE),
+                            Felt::from_u64(INVOKE_OVERALL_FEE - overall_fee_correction),
                             felt!("0x0"),
                         ],
                         keys: vec![felt!(
@@ -1730,7 +1804,7 @@ pub(crate) mod tests {
                     }],
                     calldata: vec![
                         last_block_header.sequencer_address.0,
-                        Felt::from_u64(INVOKE_OVERALL_FEE),
+                        Felt::from_u64(INVOKE_OVERALL_FEE - overall_fee_correction),
                         call_param!("0x0").0,
                     ],
                     contract_address: ETH_FEE_TOKEN_ADDRESS,
@@ -1746,8 +1820,8 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_V3_OVERALL_FEE: u64 = 280;
-            const INVOKE_V3_GAS_CONSUMED: u64 = 12;
+            const INVOKE_V3_OVERALL_FEE: u64 = 284;
+            const INVOKE_V3_GAS_CONSUMED: u64 = 14;
             const INVOKE_V3_DATA_GAS_CONSUMED: u64 = 128;
 
             pub fn invoke_v3(
@@ -1762,7 +1836,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_V3_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
@@ -1779,10 +1853,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(invoke_v3_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                0,
                             )),
                             state_diff: invoke_v3_state_diff(
                                 account_contract_address,
-                                invoke_v3_fee_transfer_storage_diffs(),
+                                invoke_v3_fee_transfer_storage_diffs(0),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources: invoke_validate_computation_resources()
@@ -1793,7 +1868,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1813,7 +1888,7 @@ pub(crate) mod tests {
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
+                        l2_gas_price: 1.into(),
                         overall_fee: INVOKE_V3_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
@@ -1837,7 +1912,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1851,15 +1926,16 @@ pub(crate) mod tests {
                 last_block_header: &BlockHeader,
                 test_storage_value: StorageValue,
             ) -> pathfinder_executor::types::TransactionSimulation {
+                let gas_correction = 1u64;
                 pathfinder_executor::types::TransactionSimulation {
                     fee_estimation: pathfinder_executor::types::FeeEstimate {
-                        l1_gas_consumed: INVOKE_V3_GAS_CONSUMED.into(),
+                        l1_gas_consumed: (INVOKE_V3_GAS_CONSUMED - gas_correction).into(),
                         l1_gas_price: 2.into(),
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
                         l2_gas_consumed: 0.into(),
-                        l2_gas_price: 0.into(),
-                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: (INVOKE_V3_OVERALL_FEE - gas_correction * 2).into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
@@ -1875,10 +1951,11 @@ pub(crate) mod tests {
                             fee_transfer_invocation: Some(invoke_v3_fee_transfer(
                                 account_contract_address,
                                 last_block_header,
+                                gas_correction * 2,
                             )),
                             state_diff: invoke_v3_state_diff(
                                 account_contract_address,
-                                invoke_v3_fee_transfer_storage_diffs(),
+                                invoke_v3_fee_transfer_storage_diffs(2 * gas_correction),
                             ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources: invoke_execute_computation_resources()
@@ -1888,7 +1965,7 @@ pub(crate) mod tests {
                                         l1_gas: 0,
                                         l1_data_gas: 128,
                                     },
-                                l1_gas: 0,
+                                l1_gas: 13,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
                             },
@@ -1900,6 +1977,7 @@ pub(crate) mod tests {
             fn invoke_v3_fee_transfer(
                 account_contract_address: ContractAddress,
                 last_block_header: &BlockHeader,
+                overall_fee_correction: u64,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
                     call_type: pathfinder_executor::types::CallType::Call,
@@ -1912,7 +1990,7 @@ pub(crate) mod tests {
                         data: vec![
                             *account_contract_address.get(),
                             last_block_header.sequencer_address.0,
-                            Felt::from_u64(INVOKE_V3_OVERALL_FEE),
+                            Felt::from_u64(INVOKE_V3_OVERALL_FEE - overall_fee_correction),
                             felt!("0x0"),
                         ],
                         keys: vec![felt!(
@@ -1921,7 +1999,7 @@ pub(crate) mod tests {
                     }],
                     calldata: vec![
                         last_block_header.sequencer_address.0,
-                        Felt::from_u64(INVOKE_V3_OVERALL_FEE),
+                        Felt::from_u64(INVOKE_V3_OVERALL_FEE - overall_fee_correction),
                         felt!("0x0"),
                     ],
                     contract_address: STRK_FEE_TOKEN_ADDRESS,
@@ -1929,8 +2007,10 @@ pub(crate) mod tests {
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: invoke_fee_transfer_computation_resources(),
-                    execution_resources:
-                        pathfinder_executor::types::InnerCallExecutionResources::default(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
                     is_reverted: false,
                 }
             }
@@ -1965,17 +2045,19 @@ pub(crate) mod tests {
                 }
             }
 
-            fn invoke_v3_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+            fn invoke_v3_fee_transfer_storage_diffs(
+                overall_fee_correction: u64,
+            ) -> Vec<StorageDiff> {
                 vec![StorageDiff {
                     address: STRK_FEE_TOKEN_ADDRESS,
                     storage_entries: vec![
                         StorageEntry {
                             key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
-                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffee8")
+                            value: StorageValue((0xfffffffffffffffffffffffffee8u128 - u128::from(overall_fee_correction)).into()),
                         },
                         StorageEntry {
                             key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
-                            value: StorageValue((INVOKE_V3_OVERALL_FEE).into()),
+                            value: StorageValue((INVOKE_V3_OVERALL_FEE - overall_fee_correction).into()),
                         },
                     ],
                 }]
@@ -1983,8 +2065,11 @@ pub(crate) mod tests {
         }
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class() {
+    async fn declare_deploy_and_invoke_sierra_class(#[case] rpc_version: RpcVersion) {
         let (
             storage,
             last_block_header,
@@ -2010,7 +2095,7 @@ pub(crate) mod tests {
         let result = simulate_transactions(context, input).await.unwrap();
 
         let serializer = crate::dto::Serializer {
-            version: RpcVersion::V07,
+            version: rpc_version,
         };
 
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -2056,8 +2141,13 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(result_serialized, expected_serialized,);
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class_with_skip_fee_charge() {
+    async fn declare_deploy_and_invoke_sierra_class_with_skip_fee_charge(
+        #[case] rpc_version: RpcVersion,
+    ) {
         let (
             storage,
             last_block_header,
@@ -2105,19 +2195,24 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
         );
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class_with_skip_validate() {
+    async fn declare_deploy_and_invoke_sierra_class_with_skip_validate(
+        #[case] rpc_version: RpcVersion,
+    ) {
         let (
             storage,
             last_block_header,
@@ -2170,12 +2265,12 @@ pub(crate) mod tests {
         pretty_assertions_sorted::assert_eq!(
             result
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
             expected
                 .serialize(Serializer {
-                    version: RpcVersion::V07
+                    version: rpc_version
                 })
                 .unwrap(),
         );
