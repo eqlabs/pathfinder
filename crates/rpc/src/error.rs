@@ -161,12 +161,12 @@ impl ApplicationError {
             ApplicationError::UnsupportedTxVersion => 61,
             ApplicationError::UnsupportedContractClassVersion => 62,
             ApplicationError::UnexpectedError { .. } => 63,
-            // doc/rpc/pathfinder_rpc_api.json
+            // specs/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             ApplicationError::ProofMissing => 10001,
             ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
             ApplicationError::SubscriptionGatewayDown { .. } => 10030,
-            // doc/rpc/starknet_ws_api.json
+            // specs/rpc/starknet_ws_api.json
             ApplicationError::InvalidSubscriptionID => 66,
             ApplicationError::TooManyAddressesInFilter => 67,
             ApplicationError::CallOnPending => 69,

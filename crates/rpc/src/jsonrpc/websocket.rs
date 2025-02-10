@@ -2,7 +2,7 @@
 //! See also the [Infura Ethereum API spec](https://docs.infura.io/networks/ethereum/json-rpc-methods/subscription-methods/eth_subscribe)
 //! as well as the [Alchemy subscription API doc](https://docs.alchemy.com/reference/subscription-api)
 //!
-//! See the [OpenRPC](../../../doc/rpc/pathfinder_ws.json) spec for this
+//! See the [OpenRPC](../../../specs/rpc/pathfinder_ws.json) spec for this
 //! implementation.
 //!
 //! Requires the `--rpc.websocket.enabled` cli option.
