@@ -274,7 +274,7 @@ impl Client {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(timeout)
-                .user_agent(pathfinder_common::consts::USER_AGENT)
+                .user_agent(pathfinder_version::USER_AGENT)
                 .build()?,
             gateway,
             feeder_gateway,
@@ -562,7 +562,6 @@ mod tests {
     async fn client_user_agent() {
         use std::convert::Infallible;
 
-        use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
         use warp::Filter;
 
         let filter = warp::header::optional("user-agent").and_then(
@@ -571,7 +570,7 @@ mod tests {
                 let (name, version) = user_agent.split_once('/').unwrap();
 
                 assert_eq!(name, "starknet-pathfinder");
-                assert_eq!(version, VERGEN_GIT_DESCRIBE);
+                assert_eq!(version, pathfinder_version::VERSION);
 
                 Ok::<_, Infallible>(warp::reply::json(
                     &serde_json::json!({"block_hash": "0x0", "block_number": 0}),

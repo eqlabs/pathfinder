@@ -10,7 +10,6 @@ use clap::{ArgAction, CommandFactory, Parser};
 use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
-use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 use pathfinder_common::AllowedOrigins;
 use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
@@ -19,7 +18,7 @@ use reqwest::Url;
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
 #[command(author = "Equilibrium Labs")]
-#[command(version = VERGEN_GIT_DESCRIBE)]
+#[command(version = pathfinder_version::VERSION)]
 #[command(
     about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]

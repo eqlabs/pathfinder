@@ -9,7 +9,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
-use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
 use pathfinder_lib::monitoring::{self};
@@ -62,7 +61,7 @@ async fn async_main() -> anyhow::Result<Storage> {
 
     info!(
         // this is expected to be $(last_git_tag)-$(commits_since)-$(commit_hash)
-        version = VERGEN_GIT_DESCRIBE,
+        version = pathfinder_version::VERSION,
         "🏁 Starting node."
     );
 
@@ -714,7 +713,7 @@ async fn spawn_monitoring(
         .install_recorder()
         .context("Creating Prometheus recorder")?;
 
-    metrics::gauge!("pathfinder_build_info", 1.0, "version" => VERGEN_GIT_DESCRIBE);
+    metrics::gauge!("pathfinder_build_info", 1.0, "version" => pathfinder_version::VERSION);
 
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => metrics::gauge!("process_start_time_seconds", duration.as_secs() as f64),

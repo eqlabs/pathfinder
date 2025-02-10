@@ -1,0 +1,11 @@
+[package]
+name = "pathfinder-version"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+description = "Pathfinder version information"
+
+[build-dependencies]
+vergen = { workspace = true, features = ["git", "gitcl"] }

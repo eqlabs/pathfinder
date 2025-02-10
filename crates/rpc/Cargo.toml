@@ -28,6 +28,7 @@ pathfinder-executor = { path = "../executor" }
 pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+pathfinder-version = { path = "../version" }
 primitive-types = { workspace = true, features = ["serde"] }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

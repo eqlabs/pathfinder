@@ -5,6 +5,10 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
+description = "Starknet-specific serialization utilities for Pathfinder"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "serde", "serialization", "web3"]
+categories = ["encoding", "cryptography::cryptocurrencies", "development-tools", "web-programming"]
 
 [dependencies]
 anyhow = { workspace = true }

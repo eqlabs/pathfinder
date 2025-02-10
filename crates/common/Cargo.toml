@@ -5,6 +5,10 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
+description = "Common types and utilities for Pathfinder"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "blockchain", "web3", "types"]
+categories = ["cryptography::cryptocurrencies", "data-structures", "development-tools", "web-programming", "network-programming"]
 
 [features]
 full-serde = []

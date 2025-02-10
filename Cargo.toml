@@ -24,6 +24,7 @@ members = [
     "crates/tagged",
     "crates/tagged-debug-derive",
     "crates/util",
+    "crates/version",
 ]
 exclude = [
     "crates/load-test",
