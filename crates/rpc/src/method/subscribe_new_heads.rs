@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use axum::async_trait;
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockNumber;
 use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::error::ApplicationError;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::types::request::SubscriptionBlockId;
 use crate::Reorg;
 
 pub struct SubscribeNewHeads;
 
 #[derive(Debug, Clone)]
 pub struct Params {
-    block_id: Option<BlockId>,
+    block_id: Option<SubscriptionBlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -25,7 +25,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
         }
         value.deserialize_map(|value| {
             Ok(Some(Params {
-                block_id: value.deserialize_optional_serde("block_id")?,
+                block_id: value.deserialize_optional("block_id")?,
             }))
         })
     }
@@ -56,20 +56,11 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
     type Params = Option<Params>;
     type Notification = Notification;
 
-    fn validate_params(params: &Self::Params) -> Result<(), RpcError> {
-        if let Some(params) = params {
-            if let Some(BlockId::Pending) = params.block_id {
-                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
-            }
-        }
-        Ok(())
-    }
-
-    fn starting_block(params: &Self::Params) -> BlockId {
+    fn starting_block(params: &Self::Params) -> SubscriptionBlockId {
         params
             .as_ref()
             .and_then(|req| req.block_id)
-            .unwrap_or(BlockId::Latest)
+            .unwrap_or(SubscriptionBlockId::Latest)
     }
 
     async fn catch_up(
@@ -503,8 +494,11 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "error": {
-                    "code": 69,
-                    "message": "This method does not support being called on the pending block"
+                    "code": -32602,
+                    "message": "Invalid params",
+                    "data": {
+                        "reason": "Invalid block id"
+                    }
                 }
             })
         );

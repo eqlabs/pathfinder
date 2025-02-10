@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockNumber;
 use serde_json::value::RawValue;
 use tokio::sync::{mpsc, RwLock};
 use tracing::Instrument;
@@ -13,6 +13,7 @@ use crate::context::RpcContext;
 use crate::dto::{DeserializeForVersion, SerializeForVersion};
 use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
+use crate::types::request::SubscriptionBlockId;
 use crate::{RpcVersion, SubscriptionId};
 
 /// See [`RpcSubscriptionFlow`].
@@ -74,8 +75,8 @@ pub trait RpcSubscriptionFlow: Send + Sync {
 
     /// The block to start streaming from. If the subscription endpoint does not
     /// support catching up, leave this method unimplemented.
-    fn starting_block(_params: &Self::Params) -> BlockId {
-        BlockId::Latest
+    fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+        SubscriptionBlockId::Latest
     }
 
     /// Fetch historical data from the `from` block to the `to` block. The
@@ -163,17 +164,13 @@ where
         let first_block = T::starting_block(&params);
 
         let mut current_block = match first_block {
-            BlockId::Pending => {
-                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
-            }
-            BlockId::Latest => {
+            SubscriptionBlockId::Latest => {
                 // No need to catch up. The code below will subscribe to new blocks.
                 None
             }
-            first_block @ (BlockId::Number(_) | BlockId::Hash(_)) => {
+            first_block @ (SubscriptionBlockId::Number(_) | SubscriptionBlockId::Hash(_)) => {
                 // Load the first block number, return an error if it's invalid.
-                let first_block = pathfinder_storage::BlockId::try_from(first_block)
-                    .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+                let first_block = pathfinder_storage::BlockId::from(first_block);
                 let storage = router.context.storage.clone();
                 let current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
                     let mut conn = storage.connection().map_err(RpcError::InternalError)?;
@@ -800,7 +797,7 @@ mod tests {
 
     use axum::async_trait;
     use axum::extract::ws::Message;
-    use pathfinder_common::{BlockHash, BlockHeader, BlockId, BlockNumber, ChainId};
+    use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
@@ -818,6 +815,7 @@ mod tests {
         SubscriptionMessage,
     };
     use crate::pending::PendingWatcher;
+    use crate::types::request::SubscriptionBlockId;
     use crate::types::syncing::Syncing;
     use crate::{Notifications, SyncState};
 
@@ -830,8 +828,8 @@ mod tests {
             type Params = Params;
             type Notification = serde_json::Value;
 
-            fn starting_block(_params: &Self::Params) -> BlockId {
-                BlockId::Number(BlockNumber::GENESIS)
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
             }
 
             async fn catch_up(
@@ -907,8 +905,8 @@ mod tests {
             type Params = Params;
             type Notification = serde_json::Value;
 
-            fn starting_block(_params: &Self::Params) -> BlockId {
-                BlockId::Number(BlockNumber::GENESIS)
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
             }
 
             async fn catch_up(
