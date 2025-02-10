@@ -993,7 +993,7 @@ mod tests {
         let specification = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
-            .join("doc")
+            .join("specs")
             .join("rpc")
             .join(specification);
         let specification = std::fs::File::open(specification).unwrap();

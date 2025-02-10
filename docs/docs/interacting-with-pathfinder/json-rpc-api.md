@@ -80,5 +80,5 @@ For advanced use cases like verifying storage proofs or generating special debug
 ```
 /rpc/pathfinder/v0_1
 ```
-The complete specification for these JSON-only extension methods can be found in the [Pathfinder repository](https://github.com/eqlabs/pathfinder/blob/main/doc/rpc/pathfinder_rpc_api.json).
+The complete specification for these JSON-only extension methods can be found in the [Pathfinder repository](https://github.com/eqlabs/pathfinder/blob/main/specs/rpc/pathfinder_rpc_api.json).
 
