@@ -19,8 +19,8 @@ if git show-ref --verify --quiet "refs/heads/release/v${VERSION}" || \
 fi
 
 # Verify version format
-if ! echo "$VERSION" | grep -E "^[0-9]+\.[0-9]+\.[0-9]+$" > /dev/null; then
-    echo "Version must be in format X.Y.Z"
+if ! echo "$VERSION" | grep -E "^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+(\.[0-9]+)?)?$" > /dev/null; then
+    echo "Version must be in format X.Y.Z or X.Y.Z-SUFFIX[.N] (e.g., 1.2.3 or 1.2.3-beta.0)"
     exit 1
 fi
 
