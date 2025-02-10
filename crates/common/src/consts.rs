@@ -3,12 +3,6 @@
 use crate::macro_prelude::block_hash;
 use crate::BlockHash;
 
-/// Vergen string
-pub const VERGEN_GIT_DESCRIBE: &str = env!("VERGEN_GIT_DESCRIBE");
-
-/// User agent used in http clients
-pub const USER_AGENT: &str = concat!("starknet-pathfinder/", env!("VERGEN_GIT_DESCRIBE"));
-
 pub const MAINNET_GENESIS_HASH: BlockHash =
     block_hash!("047C3637B57C2B079B93C61539950C17E868A28F46CDEF28F88521067F21E943");
 

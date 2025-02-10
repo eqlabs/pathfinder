@@ -45,6 +45,7 @@ pathfinder-retry = { path = "../retry" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-serde = { path = "../serde" }
 pathfinder-storage = { path = "../storage" }
+pathfinder-version = { path = "../version" }
 primitive-types = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
