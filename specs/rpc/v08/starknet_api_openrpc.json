@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.8.0-rc.0",
+    "version": "0.8.0-rc3",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -3200,7 +3200,7 @@
           "offset": {
             "title": "Offset",
             "description": "The offset of the entry point in the program",
-            "type": "integer"
+            "$ref": "#/components/schemas/NUM_AS_HEX"
           },
           "selector": {
             "title": "Selector",

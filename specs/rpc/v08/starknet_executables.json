@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0",
     "info": {
-        "version": "0.8.0-rc.0",
+        "version": "0.8.0-rc3",
         "title": "API for getting Starknet executables from nodes that store compiled artifacts",
         "license": {}
     },
