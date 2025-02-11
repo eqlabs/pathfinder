@@ -157,6 +157,8 @@ impl crate::dto::DeserializeForVersion for DataAvailabilityMode {
 pub mod request {
     use pathfinder_common::{
         AccountDeploymentDataElem,
+        BlockHash,
+        BlockNumber,
         CallParam,
         CasmHash,
         ChainId,
@@ -177,6 +179,55 @@ pub mod request {
     use serde_with::serde_as;
 
     use crate::dto::U64Hex;
+
+    /// A way of identifying a block in a subscription request.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum SubscriptionBlockId {
+        Number(BlockNumber),
+        Hash(BlockHash),
+        Latest,
+    }
+
+    impl From<SubscriptionBlockId> for pathfinder_storage::BlockId {
+        fn from(value: SubscriptionBlockId) -> Self {
+            match value {
+                SubscriptionBlockId::Number(block_number) => {
+                    pathfinder_storage::BlockId::Number(block_number)
+                }
+                SubscriptionBlockId::Hash(block_hash) => {
+                    pathfinder_storage::BlockId::Hash(block_hash)
+                }
+                SubscriptionBlockId::Latest => pathfinder_storage::BlockId::Latest,
+            }
+        }
+    }
+
+    impl crate::dto::DeserializeForVersion for SubscriptionBlockId {
+        fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+            if value.is_string() {
+                let value: String = value.deserialize()?;
+                match value.as_str() {
+                    "latest" => Ok(Self::Latest),
+                    _ => Err(serde_json::Error::custom("Invalid block id")),
+                }
+            } else {
+                value.deserialize_map(|value| {
+                    if value.contains_key("block_number") {
+                        Ok(Self::Number(
+                            pathfinder_common::BlockNumber::new(value.deserialize("block_number")?)
+                                .ok_or_else(|| serde_json::Error::custom("Invalid block number"))?,
+                        ))
+                    } else if value.contains_key("block_hash") {
+                        Ok(Self::Hash(pathfinder_common::BlockHash(
+                            value.deserialize("block_hash")?,
+                        )))
+                    } else {
+                        Err(serde_json::Error::custom("Invalid block id"))
+                    }
+                })
+            }
+        }
+    }
 
     /// "Broadcasted" L2 transaction in requests the RPC API.
     ///
@@ -1403,6 +1454,7 @@ pub mod request {
             use pathfinder_common::macro_prelude::*;
             use pathfinder_common::{felt, ResourceAmount, ResourcePricePerUnit};
             use pretty_assertions_sorted::assert_eq;
+            use serde_json::json;
 
             use super::super::*;
             use crate::dto::DeserializeForVersion;
@@ -1416,6 +1468,38 @@ pub mod request {
                 SierraEntryPoint,
                 SierraEntryPoints,
             };
+
+            #[rstest::rstest]
+            #[case::number(json!({"block_number": 1}), SubscriptionBlockId::Number(BlockNumber::new_or_panic(1)))]
+            #[case::hash(json!({"block_hash": "0xdeadbeef"}), SubscriptionBlockId::Hash(block_hash!("0xdeadbeef")))]
+            #[case::latest(json!("latest"), SubscriptionBlockId::Latest)]
+            #[test]
+            fn subscription_block_id(
+                #[case] input: serde_json::Value,
+                #[case] expected: SubscriptionBlockId,
+            ) {
+                assert_eq!(
+                    SubscriptionBlockId::deserialize(crate::dto::Value::new(
+                        input,
+                        crate::RpcVersion::V08
+                    ))
+                    .unwrap(),
+                    expected
+                );
+            }
+
+            #[test]
+            fn subscription_block_id_deserialization_failure() {
+                assert_eq!(
+                    SubscriptionBlockId::deserialize(crate::dto::Value::new(
+                        json!("pending"),
+                        crate::RpcVersion::V08
+                    ))
+                    .unwrap_err()
+                    .to_string(),
+                    "Invalid block id"
+                );
+            }
 
             #[test]
             fn broadcasted_transaction() {
