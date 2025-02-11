@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.8.0-rc.0",
+    "version": "0.8.0-rc3",
     "title": "StarkNet Node Write API",
     "license": {}
   },
