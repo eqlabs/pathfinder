@@ -9,7 +9,7 @@ use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{identify, PeerId};
+use libp2p::{identify, request_response, PeerId};
 use p2p_proto::class::ClassesResponse;
 use p2p_proto::event::EventsResponse;
 use p2p_proto::header::BlockHeadersResponse;
@@ -38,6 +38,8 @@ pub struct MainLoop {
     // 2. update the sync head info of our peers using a different mechanism
     // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
+    pending_dummy_requests: HashMap<request_response::OutboundRequestId, oneshot::Sender<()>>,
+
     _pending_test_queries: TestQueries,
 }
 
@@ -84,6 +86,7 @@ impl MainLoop {
             pending_dials: Default::default(),
             pending_sync_requests: Default::default(),
             pending_queries: Default::default(),
+            pending_dummy_requests: Default::default(),
             _pending_test_queries: Default::default(),
         }
     }
@@ -461,6 +464,68 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
+            SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
+                request_response::Event::Message {
+                    peer,
+                    connection_id,
+                    message:
+                        request_response::Message::Request {
+                            request_id,
+                            request,
+                            channel,
+                        },
+                },
+            )) => {
+                tracing::debug!(?request, %peer, %request_id, "Received dummy request");
+
+                self.swarm
+                    .behaviour_mut()
+                    .request_response_mut()
+                    .send_response(channel, ())
+                    .unwrap();
+
+                // channel.send(Ok(())).expect("Receiver not to be dropped");
+
+                // self.event_sender
+                //     .send(Event::InboundHeadersSyncRequest {
+                //         from: peer,
+                //         request,
+                //         channel,
+                //     })
+                //     .await
+                //     .expect("Event receiver not to be dropped");
+            }
+            SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
+                request_response::Event::Message {
+                    peer,
+                    connection_id,
+                    message:
+                        request_response::Message::Response {
+                            request_id,
+                            response,
+                        },
+                },
+            )) => {
+                tracing::debug!(?response, %peer, %request_id, "Received dummy response");
+
+                let x = self
+                    .pending_dummy_requests
+                    .remove(&request_id)
+                    .expect("Dummy request still to be pending");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                x.send(()).expect("Sender not to be dropped");
+
+                // channel.send(Ok(())).expect("Receiver not to be dropped");
+
+                // self.event_sender
+                //     .send(Event::InboundHeadersSyncRequest {
+                //         from: peer,
+                //         request,
+                //         channel,
+                //     })
+                //     .await
+                //     .expect("Event receiver not to be dropped");
+            }
             SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
@@ -890,6 +955,18 @@ impl MainLoop {
             Command::NotUseful { peer_id, sender } => {
                 self.swarm.behaviour_mut().not_useful(peer_id);
                 let _ = sender.send(());
+            }
+            Command::SendDummyRequest {
+                peer_id,
+                request,
+                sender,
+            } => {
+                let request_id = self
+                    .swarm
+                    .behaviour_mut()
+                    .request_response_mut()
+                    .send_request(&peer_id, request);
+                self.pending_dummy_requests.insert(request_id, sender);
             }
             Command::_Test(command) => self.handle_test_command(command).await,
         };

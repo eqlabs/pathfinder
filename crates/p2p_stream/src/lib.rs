@@ -702,7 +702,7 @@ where
 
                     let len = connection.pending_inbound_response_streams.len();
 
-                    tracing::trace!(%request_id, %inserted, %len, "04 pending_inbound_response_streams");
+                    tracing::trace!(%request_id, %inserted, %len, ">>>> 04 pending_inbound_response_streams");
 
                     self.pending_events
                         .push_back(ToSwarm::GenerateEvent(Event::InboundRequest {

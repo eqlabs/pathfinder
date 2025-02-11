@@ -69,7 +69,7 @@ pub async fn get_transactions(
     // TEST
     // spawn_blocking_get(request, storage, blocking::get_transactions,
     // tx).await
-    for _ in 0..400 {
+    for _ in 0..1 {
         tx.send(TransactionsResponse::TransactionWithReceipt(Faker.fake()))
             .await
             .context("send failed in get_transactions")?;

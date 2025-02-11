@@ -7,7 +7,7 @@ use ipnet::IpNet;
 use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::{request_response, Multiaddr, PeerId};
 use main_loop::MainLoop;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -152,6 +152,11 @@ enum Command {
     },
     NotUseful {
         peer_id: PeerId,
+        sender: oneshot::Sender<()>,
+    },
+    SendDummyRequest {
+        peer_id: PeerId,
+        request: (),
         sender: oneshot::Sender<()>,
     },
     /// For testing purposes only

@@ -225,6 +225,20 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
+    pub async fn send_dummy_request(&self, peer_id: PeerId, request: ()) -> anyhow::Result<()> {
+        let (sender, receiver) = oneshot::channel();
+        self.sender
+            .send(Command::SendDummyRequest {
+                peer_id,
+                request,
+                sender,
+            })
+            .await
+            .expect("Command receiver not to be dropped");
+        let r = receiver.await.context("Dummy request failed")?;
+        Ok(r)
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(&self) -> test_utils::peer_aware::Client {
         test_utils::peer_aware::Client::new(self.sender.clone())

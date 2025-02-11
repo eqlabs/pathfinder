@@ -23,7 +23,18 @@ use libp2p::swarm::{
     THandlerOutEvent,
     ToSwarm,
 };
-use libp2p::{autonat, dcutr, identify, identity, ping, relay, Multiaddr, PeerId, StreamProtocol};
+use libp2p::{
+    autonat,
+    dcutr,
+    identify,
+    identity,
+    ping,
+    relay,
+    request_response,
+    Multiaddr,
+    PeerId,
+    StreamProtocol,
+};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -71,6 +82,7 @@ pub struct Inner {
     state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
     transaction_sync: p2p_stream::Behaviour<codec::Transactions>,
     event_sync: p2p_stream::Behaviour<codec::Events>,
+    request_response: request_response::json::Behaviour<(), ()>,
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -766,6 +778,10 @@ impl Behaviour {
         &mut self.inner.event_sync
     }
 
+    pub fn request_response_mut(&mut self) -> &mut request_response::json::Behaviour<(), ()> {
+        &mut self.inner.request_response
+    }
+
     pub fn peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers.iter()
     }
@@ -807,6 +823,7 @@ pub enum Event {
     StateDiffsSync(p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>),
     TransactionsSync(p2p_stream::Event<TransactionsRequest, TransactionsResponse>),
     EventsSync(p2p_stream::Event<EventsRequest, EventsResponse>),
+    RequestResponse(request_response::Event<(), ()>),
 }
 
 impl From<relay::client::Event> for Event {
@@ -878,6 +895,12 @@ impl From<p2p_stream::Event<TransactionsRequest, TransactionsResponse>> for Even
 impl From<p2p_stream::Event<EventsRequest, EventsResponse>> for Event {
     fn from(event: p2p_stream::Event<EventsRequest, EventsResponse>) -> Self {
         Event::EventsSync(event)
+    }
+}
+
+impl From<request_response::Event<(), ()>> for Event {
+    fn from(event: request_response::Event<(), ()>) -> Self {
+        Event::RequestResponse(event)
     }
 }
 

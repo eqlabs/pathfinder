@@ -6457,6 +6457,8 @@ dependencies = [
  "libp2p-identity 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "libp2p-swarm",
  "rand",
+ "serde",
+ "serde_json",
  "smallvec",
  "tracing",
 ]

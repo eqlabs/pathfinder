@@ -32,6 +32,7 @@ libp2p = { workspace = true, features = [
     "tcp",
     "tokio",
     "yamux",
+    "json",
 ] }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }

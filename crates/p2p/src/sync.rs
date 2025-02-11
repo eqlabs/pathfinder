@@ -222,8 +222,10 @@ pub(crate) mod codec {
         where
             T: AsyncWrite + Unpin + Send,
         {
+            tracing::trace!(">>>> Writing response START");
             let data = response.to_protobuf().encode_length_delimited_to_vec();
             io.write_all(&data).await?;
+            tracing::trace!(">>>> Writing response END");
             Ok(())
         }
     }

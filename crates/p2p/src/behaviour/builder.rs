@@ -3,7 +3,19 @@ use std::time::Duration;
 
 use libp2p::gossipsub::{MessageAuthenticity, MessageId};
 use libp2p::kad::store::MemoryStore;
-use libp2p::{autonat, dcutr, gossipsub, identify, identity, kad, ping, relay, StreamProtocol};
+use libp2p::request_response::ProtocolSupport;
+use libp2p::{
+    autonat,
+    dcutr,
+    gossipsub,
+    identify,
+    identity,
+    kad,
+    ping,
+    relay,
+    request_response,
+    StreamProtocol,
+};
 use pathfinder_common::ChainId;
 
 use super::{Behaviour, BehaviourWithRelayTransport};
@@ -170,6 +182,13 @@ impl Builder {
                     state_diff_sync,
                     transaction_sync,
                     event_sync,
+                    request_response: request_response::json::Behaviour::new(
+                        [(
+                            StreamProtocol::new("/json-request-response"),
+                            ProtocolSupport::Full,
+                        )],
+                        Default::default(),
+                    ),
                 },
                 pending_events: Default::default(),
             },

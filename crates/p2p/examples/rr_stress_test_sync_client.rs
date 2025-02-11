@@ -10,11 +10,9 @@ use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use p2p::RateLimit;
-use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
-use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::ChainId;
 
-const USAGE: &str = "Usage: stress_test_sync_client <server-multiaddr-with-peer-id> \
+const USAGE: &str = "Usage:rr_stress_test_sync_client <server-multiaddr-with-peer-id> \
                      <max-concurrent-request-streams>";
 
 #[tokio::main]
@@ -69,45 +67,24 @@ async fn main() -> anyhow::Result<()> {
 
     client.dial(server_peer_id, server_addr.clone()).await?;
 
-    let client_fut = futures::stream::iter(0..1_000u64).map(|start| {
-        let client = client.clone();
-        async move {
-            tracing::info!(%start, "Requesting transactions for");
-            match client
-                .send_transactions_sync_request(
-                    server_peer_id,
-                    TransactionsRequest {
-                        iteration: Iteration {
-                            start: BlockNumberOrHash::Number(start),
-                            direction: Direction::Forward,
-                            // Max allowed by pathfinder (as a server)
-                            limit: 100,
-                            step: 1.into(),
-                        },
-                    },
-                )
-                .await
-            {
-                Ok(mut rx) => {
-                    let mut txn_counter = 0;
-                    while let Some(response) = rx.next().await {
-                        match response {
-                            Ok(_) => {
-                                txn_counter += 1;
-                            }
-                            Err(error) => {
-                                tracing::warn!(%start, %error, "Failed to get response after {txn_counter} responses");
-                                return;
-                            }
-                        }
+    let client_fut = futures::stream::iter(0..1_000u64)
+        .map(|start| {
+            let client = client.clone();
+            async move {
+                tracing::info!(%start, "Requesting transactions for");
+                match client.send_dummy_request(server_peer_id, ()).await {
+                    Ok(mut response) => {
+                        let txn_counter = 0;
+                        tracing::info!(%start, "Received {txn_counter} transactions for");
                     }
-
-                    tracing::info!(%start, "Received {txn_counter} transactions for");
+                    Err(error) => {
+                        tracing::warn!(%start, %error, "Failed to get response stream for")
+                    }
                 }
-                Err(error) => tracing::warn!(%start, %error, "Failed to get response stream for"),
             }
-        }
-    }).buffer_unordered(max_concurrent_streams).fold((), |_, _| async {});
+        })
+        .buffer_unordered(max_concurrent_streams)
+        .fold((), |_, _| async {});
 
     tokio::select! {
         event = event_rx.recv() => {
