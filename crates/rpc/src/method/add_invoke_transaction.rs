@@ -232,20 +232,9 @@ pub(crate) async fn add_invoke_transaction_impl(
                     add_transaction::InvokeFunctionV3 {
                         signature: tx.signature,
                         nonce: tx.nonce,
-                        nonce_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.nonce_data_availability_mode,
-                            )
-                            .into(),
-                        fee_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.fee_data_availability_mode,
-                            )
-                            .into(),
-                        resource_bounds: pathfinder_common::transaction::ResourceBounds::from(
-                            tx.resource_bounds,
-                        )
-                        .into(),
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
                         paymaster_data: tx.paymaster_data,
                         sender_address: tx.sender_address,
@@ -272,11 +261,11 @@ impl crate::dto::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
     use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
 
     use super::*;
     use crate::types::request::BroadcastedInvokeTransactionV1;
-    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(

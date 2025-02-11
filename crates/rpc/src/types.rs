@@ -6,155 +6,10 @@ pub mod syncing;
 pub(crate) mod transaction;
 
 pub use class::*;
-use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
-use serde::de::Error;
-
-use crate::dto::{U128Hex, U64Hex};
-use crate::RpcVersion;
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResourceBounds {
-    pub l1_gas: ResourceBound,
-    pub l2_gas: ResourceBound,
-    pub l1_data_gas: Option<ResourceBound>,
-}
-
-impl From<ResourceBounds> for pathfinder_common::transaction::ResourceBounds {
-    fn from(resource_bounds: ResourceBounds) -> Self {
-        Self {
-            l1_gas: resource_bounds.l1_gas.into(),
-            l2_gas: resource_bounds.l2_gas.into(),
-            l1_data_gas: resource_bounds.l1_data_gas.map(|g| g.into()),
-        }
-    }
-}
-
-impl crate::dto::SerializeForVersion for ResourceBounds {
-    fn serialize(
-        &self,
-        serializer: crate::dto::Serializer,
-    ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("l1_gas", &self.l1_gas)?;
-        serializer.serialize_field("l2_gas", &self.l2_gas)?;
-        if serializer.version >= RpcVersion::V08 {
-            // `l1_data_gas` is serialized as (0, 0) in v0.8+ even if it's not set
-            // See https://github.com/eqlabs/pathfinder/issues/2571
-            serializer.serialize_field("l1_data_gas", &self.l1_data_gas.unwrap_or_default())?;
-        }
-        serializer.end()
-    }
-}
-
-impl crate::dto::DeserializeForVersion for ResourceBounds {
-    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let version = value.version;
-        value.deserialize_map(|value| {
-            Ok(Self {
-                l1_gas: value.deserialize("l1_gas")?,
-                l2_gas: value.deserialize("l2_gas")?,
-                l1_data_gas: if version >= RpcVersion::V08 {
-                    // `l1_data_gas` is *required* in v0.8+
-                    // See https://github.com/eqlabs/pathfinder/issues/2571
-                    Some(value.deserialize("l1_data_gas")?)
-                } else {
-                    None
-                },
-            })
-        })
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct ResourceBound {
-    pub max_amount: ResourceAmount,
-    pub max_price_per_unit: ResourcePricePerUnit,
-}
-
-impl From<ResourceBound> for pathfinder_common::transaction::ResourceBound {
-    fn from(resource_bound: ResourceBound) -> Self {
-        Self {
-            max_amount: resource_bound.max_amount,
-            max_price_per_unit: resource_bound.max_price_per_unit,
-        }
-    }
-}
-
-impl crate::dto::SerializeForVersion for ResourceBound {
-    fn serialize(
-        &self,
-        serializer: crate::dto::Serializer,
-    ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("max_amount", &self.max_amount)?;
-        serializer.serialize_field("max_price_per_unit", &self.max_price_per_unit)?;
-        serializer.end()
-    }
-}
-
-impl crate::dto::DeserializeForVersion for ResourceBound {
-    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        value.deserialize_map(|value| {
-            Ok(Self {
-                max_amount: ResourceAmount(value.deserialize::<U64Hex>("max_amount")?.0),
-                max_price_per_unit: ResourcePricePerUnit(
-                    value.deserialize::<U128Hex>("max_price_per_unit")?.0,
-                ),
-            })
-        })
-    }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub enum DataAvailabilityMode {
-    #[default]
-    L1,
-    L2,
-}
-
-impl From<DataAvailabilityMode> for pathfinder_common::transaction::DataAvailabilityMode {
-    fn from(data_availability_mode: DataAvailabilityMode) -> Self {
-        match data_availability_mode {
-            DataAvailabilityMode::L1 => Self::L1,
-            DataAvailabilityMode::L2 => Self::L2,
-        }
-    }
-}
-
-impl From<DataAvailabilityMode> for starknet_api::data_availability::DataAvailabilityMode {
-    fn from(value: DataAvailabilityMode) -> Self {
-        match value {
-            DataAvailabilityMode::L1 => Self::L1,
-            DataAvailabilityMode::L2 => Self::L2,
-        }
-    }
-}
-
-impl crate::dto::SerializeForVersion for DataAvailabilityMode {
-    fn serialize(
-        &self,
-        serializer: crate::dto::Serializer,
-    ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_str(match self {
-            DataAvailabilityMode::L1 => "L1",
-            DataAvailabilityMode::L2 => "L2",
-        })
-    }
-}
-
-impl crate::dto::DeserializeForVersion for DataAvailabilityMode {
-    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let value: String = value.deserialize()?;
-        match value.as_str() {
-            "L1" => Ok(Self::L1),
-            "L2" => Ok(Self::L2),
-            _ => Err(serde_json::Error::custom("invalid data availability mode")),
-        }
-    }
-}
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
     use pathfinder_common::{
         AccountDeploymentDataElem,
         BlockHash,
@@ -643,12 +498,12 @@ pub mod request {
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub resource_bounds: super::ResourceBounds,
+        pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
-        pub nonce_data_availability_mode: super::DataAvailabilityMode,
-        pub fee_data_availability_mode: super::DataAvailabilityMode,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
 
         pub compiled_class_hash: CasmHash,
         pub contract_class: super::SierraContractClass,
@@ -907,11 +762,11 @@ pub mod request {
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub resource_bounds: super::ResourceBounds,
+        pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
-        pub nonce_data_availability_mode: super::DataAvailabilityMode,
-        pub fee_data_availability_mode: super::DataAvailabilityMode,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
 
         pub contract_address_salt: ContractAddressSalt,
         pub constructor_calldata: Vec<CallParam>,
@@ -1240,12 +1095,12 @@ pub mod request {
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
-        pub resource_bounds: super::ResourceBounds,
+        pub resource_bounds: ResourceBounds,
         pub tip: Tip,
         pub paymaster_data: Vec<PaymasterDataElem>,
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
-        pub nonce_data_availability_mode: super::DataAvailabilityMode,
-        pub fee_data_availability_mode: super::DataAvailabilityMode,
+        pub nonce_data_availability_mode: DataAvailabilityMode,
+        pub fee_data_availability_mode: DataAvailabilityMode,
 
         pub sender_address: ContractAddress,
         pub calldata: Vec<CallParam>,
@@ -1354,9 +1209,9 @@ pub mod request {
                         sender_address: declare.sender_address,
                         signature: declare.signature,
                         compiled_class_hash: declare.compiled_class_hash,
-                        nonce_data_availability_mode: declare.nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: declare.fee_data_availability_mode.into(),
-                        resource_bounds: declare.resource_bounds.into(),
+                        nonce_data_availability_mode: declare.nonce_data_availability_mode,
+                        fee_data_availability_mode: declare.fee_data_availability_mode,
+                        resource_bounds: declare.resource_bounds,
                         tip: declare.tip,
                         paymaster_data: declare.paymaster_data,
                         account_deployment_data: declare.account_deployment_data,
@@ -1382,9 +1237,9 @@ pub mod request {
                     contract_address_salt: deploy.contract_address_salt,
                     constructor_calldata: deploy.constructor_calldata,
                     signature: deploy.signature,
-                    nonce_data_availability_mode: deploy.nonce_data_availability_mode.into(),
-                    fee_data_availability_mode: deploy.fee_data_availability_mode.into(),
-                    resource_bounds: deploy.resource_bounds.into(),
+                    nonce_data_availability_mode: deploy.nonce_data_availability_mode,
+                    fee_data_availability_mode: deploy.fee_data_availability_mode,
+                    resource_bounds: deploy.resource_bounds,
                     tip: deploy.tip,
                     paymaster_data: deploy.paymaster_data,
                 }),
@@ -1412,9 +1267,9 @@ pub mod request {
                         nonce: invoke.nonce,
                         sender_address: invoke.sender_address,
                         signature: invoke.signature,
-                        nonce_data_availability_mode: invoke.nonce_data_availability_mode.into(),
-                        fee_data_availability_mode: invoke.fee_data_availability_mode.into(),
-                        resource_bounds: invoke.resource_bounds.into(),
+                        nonce_data_availability_mode: invoke.nonce_data_availability_mode,
+                        fee_data_availability_mode: invoke.fee_data_availability_mode,
+                        resource_bounds: invoke.resource_bounds,
                         tip: invoke.tip,
                         paymaster_data: invoke.paymaster_data,
                         calldata: invoke.calldata,
@@ -1452,6 +1307,7 @@ pub mod request {
         ///   spec.
         mod serde {
             use pathfinder_common::macro_prelude::*;
+            use pathfinder_common::transaction::ResourceBound;
             use pathfinder_common::{felt, ResourceAmount, ResourcePricePerUnit};
             use pretty_assertions_sorted::assert_eq;
             use serde_json::json;
@@ -1461,9 +1317,6 @@ pub mod request {
             use crate::types::{
                 CairoContractClass,
                 ContractEntryPoints,
-                DataAvailabilityMode,
-                ResourceBound,
-                ResourceBounds,
                 SierraContractClass,
                 SierraEntryPoint,
                 SierraEntryPoints,
@@ -1771,12 +1624,13 @@ pub mod reply {
 
 #[cfg(test)]
 mod tests {
+    use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
     use pathfinder_common::{ResourceAmount, ResourcePricePerUnit};
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
 
-    use super::*;
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Value};
+    use crate::RpcVersion;
 
     #[test]
     fn resource_bounds_serde() {

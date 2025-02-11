@@ -193,6 +193,7 @@ impl crate::dto::SerializeForVersion for Output {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
     use pathfinder_common::{felt, BlockId, Tip};
     use pathfinder_executor::types::{FeeEstimate, PriceUnit};
     use pretty_assertions_sorted::assert_eq;
@@ -207,7 +208,7 @@ mod tests {
         BroadcastedInvokeTransactionV3,
         BroadcastedTransaction,
     };
-    use crate::types::{ContractClass, DataAvailabilityMode, ResourceBounds, SierraContractClass};
+    use crate::types::{ContractClass, SierraContractClass};
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
