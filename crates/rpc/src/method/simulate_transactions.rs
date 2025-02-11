@@ -624,6 +624,11 @@ pub(crate) mod tests {
 
         // The input transactions are the same as in v04.
         pub mod input {
+            use pathfinder_common::transaction::{
+                DataAvailabilityMode,
+                ResourceBound,
+                ResourceBounds,
+            };
             use pathfinder_common::{
                 CallParam,
                 EntryPoint,
@@ -640,7 +645,6 @@ pub(crate) mod tests {
                 BroadcastedInvokeTransactionV3,
                 BroadcastedTransaction,
             };
-            use crate::types::{ResourceBound, ResourceBounds};
 
             pub fn declare(account_contract_address: ContractAddress) -> BroadcastedTransaction {
                 let contract_class =
@@ -741,8 +745,8 @@ pub(crate) mod tests {
                         tip: Tip(0),
                         paymaster_data: vec![],
                         account_deployment_data: vec![],
-                        nonce_data_availability_mode: crate::types::DataAvailabilityMode::L1,
-                        fee_data_availability_mode: crate::types::DataAvailabilityMode::L1,
+                        nonce_data_availability_mode: DataAvailabilityMode::L1,
+                        fee_data_availability_mode: DataAvailabilityMode::L1,
                         sender_address: account_contract_address,
                         calldata: vec![
                             // Number of calls
@@ -784,8 +788,8 @@ pub(crate) mod tests {
                         tip: Tip(0),
                         paymaster_data: vec![],
                         account_deployment_data: vec![],
-                        nonce_data_availability_mode: crate::types::DataAvailabilityMode::L1,
-                        fee_data_availability_mode: crate::types::DataAvailabilityMode::L1,
+                        nonce_data_availability_mode: DataAvailabilityMode::L1,
+                        fee_data_availability_mode: DataAvailabilityMode::L1,
                         sender_address: account_contract_address,
                         calldata: vec![
                             // Number of calls

@@ -238,20 +238,9 @@ pub(crate) async fn add_deploy_account_transaction_impl(
                     add_transaction::DeployAccountV3 {
                         signature: tx.signature,
                         nonce: tx.nonce,
-                        nonce_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.nonce_data_availability_mode,
-                            )
-                            .into(),
-                        fee_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.fee_data_availability_mode,
-                            )
-                            .into(),
-                        resource_bounds: pathfinder_common::transaction::ResourceBounds::from(
-                            tx.resource_bounds,
-                        )
-                        .into(),
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
                         paymaster_data: tx.paymaster_data,
                         class_hash: tx.class_hash,
@@ -279,6 +268,7 @@ impl crate::dto::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
     use pathfinder_common::{
         ResourceAmount,
         ResourcePricePerUnit,
@@ -290,7 +280,6 @@ mod tests {
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::types::request::BroadcastedDeployAccountTransactionV3;
-    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     const INPUT_JSON: &str = r#"{
         "max_fee": "0xbf391377813",

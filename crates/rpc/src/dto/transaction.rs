@@ -192,25 +192,65 @@ impl SerializeForVersion for TransactionWithHash<'_> {
 }
 
 impl SerializeForVersion for pathfinder_common::transaction::ResourceBounds {
-    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
-        let mut s = serializer.serialize_struct()?;
-        s.serialize_field("l1_gas", &self.l1_gas)?;
-        s.serialize_field("l2_gas", &self.l2_gas)?;
-        if let Some(l1_data_gas) = self.l1_data_gas {
-            if serializer.version >= RpcVersion::V08 {
-                s.serialize_field("l1_data_gas", &l1_data_gas)?;
-            }
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("l1_gas", &self.l1_gas)?;
+        serializer.serialize_field("l2_gas", &self.l2_gas)?;
+        if serializer.version >= RpcVersion::V08 {
+            // `l1_data_gas` is serialized as (0, 0) in v0.8+ even if it's not set
+            // See https://github.com/eqlabs/pathfinder/issues/2571
+            serializer.serialize_field("l1_data_gas", &self.l1_data_gas.unwrap_or_default())?;
         }
-        s.end()
+        serializer.end()
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::transaction::ResourceBounds {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let version = value.version;
+        value.deserialize_map(|value| {
+            Ok(Self {
+                l1_gas: value.deserialize("l1_gas")?,
+                l2_gas: value.deserialize("l2_gas")?,
+                l1_data_gas: if version >= RpcVersion::V08 {
+                    // `l1_data_gas` is *required* in v0.8+
+                    // See https://github.com/eqlabs/pathfinder/issues/2571
+                    Some(value.deserialize("l1_data_gas")?)
+                } else {
+                    None
+                },
+            })
+        })
     }
 }
 
 impl SerializeForVersion for pathfinder_common::transaction::ResourceBound {
-    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
-        let mut s = serializer.serialize_struct()?;
-        s.serialize_field("max_amount", &U64Hex(self.max_amount.0))?;
-        s.serialize_field("max_price_per_unit", &U128Hex(self.max_price_per_unit.0))?;
-        s.end()
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("max_amount", &self.max_amount)?;
+        serializer.serialize_field("max_price_per_unit", &self.max_price_per_unit)?;
+        serializer.end()
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::transaction::ResourceBound {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                max_amount: pathfinder_common::ResourceAmount(
+                    value.deserialize::<U64Hex>("max_amount")?.0,
+                ),
+                max_price_per_unit: pathfinder_common::ResourcePricePerUnit(
+                    value.deserialize::<U128Hex>("max_price_per_unit")?.0,
+                ),
+            })
+        })
     }
 }
 
@@ -223,6 +263,17 @@ impl SerializeForVersion for pathfinder_common::transaction::DataAvailabilityMod
             pathfinder_common::transaction::DataAvailabilityMode::L2 => {
                 serializer.serialize_str("L2")
             }
+        }
+    }
+}
+
+impl DeserializeForVersion for pathfinder_common::transaction::DataAvailabilityMode {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let value: String = value.deserialize()?;
+        match value.as_str() {
+            "L1" => Ok(Self::L1),
+            "L2" => Ok(Self::L2),
+            _ => Err(serde_json::Error::custom("invalid data availability mode")),
         }
     }
 }
