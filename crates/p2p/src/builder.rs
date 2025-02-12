@@ -49,8 +49,6 @@ impl Builder {
         let (command_sender, command_receiver) = mpsc::channel(1);
         let client = Client::new(command_sender, local_peer_id);
 
-        let max_concurrent_streams = cfg.max_concurrent_streams;
-
         let (behaviour, relay_transport) = behaviour_builder
             .unwrap_or_else(|| Behaviour::builder(keypair.clone(), chain_id, cfg))
             .build();
@@ -63,7 +61,6 @@ impl Builder {
                 .with_idle_connection_timeout(Duration::from_secs(60))
                 .with_notify_handler_buffer_size(NonZeroUsize::new(32).unwrap())
                 .with_per_connection_event_buffer_size(7 * 10),
-            // .with_per_connection_event_buffer_size(7 * max_concurrent_streams),
         );
 
         let (event_sender, event_receiver) = mpsc::channel(1);

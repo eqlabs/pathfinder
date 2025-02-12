@@ -467,7 +467,7 @@ impl MainLoop {
             SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
                 request_response::Event::Message {
                     peer,
-                    connection_id,
+                    connection_id: _,
                     message:
                         request_response::Message::Request {
                             request_id,
@@ -498,7 +498,7 @@ impl MainLoop {
             SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
                 request_response::Event::Message {
                     peer,
-                    connection_id,
+                    connection_id: _,
                     message:
                         request_response::Message::Response {
                             request_id,

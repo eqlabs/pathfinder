@@ -33,7 +33,7 @@ pub mod protocol {
     ];
 }
 
-pub(crate) mod codec {
+pub mod codec {
     use std::marker::PhantomData;
 
     use async_trait::async_trait;

@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
                         }
                     }
 
-                    tracing::info!(%start, "Received {txn_counter} transactions for");
+                    tracing::info!(%start, "++++ Received {txn_counter} transactions for");
                 }
                 Err(error) => tracing::warn!(%start, %error, "Failed to get response stream for"),
             }
