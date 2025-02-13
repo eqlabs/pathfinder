@@ -61,7 +61,7 @@ pub fn estimate(
 }
 
 /// The margin for the binary search for the minimal L2 gas limit.
-const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(100);
+const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(1_000_000);
 
 /// Searches for the minimal L2 gas limit (within a certain margin) that allows
 /// the transaction to execute without running out of L2 gas. Uses this limit to
