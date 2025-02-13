@@ -29,7 +29,8 @@ impl From<BlockifierTransactionExecutionError> for CallError {
                 ConstructorEntryPointExecutionError::ExecutionError { error, .. },
             ) => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
@@ -38,7 +39,8 @@ impl From<BlockifierTransactionExecutionError> for CallError {
             },
             ExecutionError { error, .. } => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
@@ -47,7 +49,8 @@ impl From<BlockifierTransactionExecutionError> for CallError {
             },
             ValidateTransactionError { error, .. } => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),

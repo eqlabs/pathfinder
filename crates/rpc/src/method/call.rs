@@ -241,6 +241,7 @@ mod tests {
             ClassHash,
             ContractAddress,
             GasPrice,
+            StarknetVersion,
             StateUpdate,
             StorageAddress,
             StorageValue,
@@ -523,6 +524,82 @@ mod tests {
             };
             let result = call(context, input).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
+        }
+
+        #[tokio::test]
+        async fn call_sierra_1_7_class_with_invalid_entry_point() {
+            let (
+                storage,
+                _last_block_header,
+                account_contract_address,
+                _universal_deployer_address,
+                _test_storage_value,
+            ) = crate::method::simulate_transactions::tests::setup_storage_with_starknet_version(
+                StarknetVersion::new(0, 13, 4, 0),
+            )
+            .await;
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: account_contract_address,
+                    entry_point_selector: EntryPoint::hashed(b"bogus_entry_point"),
+                    calldata: vec![],
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let error = call(context, input).await;
+            assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
+        }
+
+        #[tokio::test]
+        async fn call_sierra_1_7_class_validate_invalid_params() {
+            let (
+                storage,
+                _last_block_header,
+                account_contract_address,
+                _universal_deployer_address,
+                _test_storage_value,
+            ) = crate::method::simulate_transactions::tests::setup_storage_with_starknet_version(
+                StarknetVersion::new(0, 13, 4, 0),
+            )
+            .await;
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            let validate_entry_point = EntryPoint::hashed(b"__validate__");
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: account_contract_address,
+                    entry_point_selector: validate_entry_point,
+                    calldata: vec![],
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let error = call(context, input).await;
+            // Expecting retdata with "Failed to deserialize param #1".
+            let expected_error_string =
+                "Failed with retdata: \
+                 Retdata([0x4661696c656420746f20646573657269616c697a6520706172616d202331])";
+            assert_matches::assert_matches!(error, Err(CallError::ContractError { revert_error, revert_error_stack }) => {
+                assert_eq!(revert_error, Some(format!("Execution error: {expected_error_string}")));
+                assert_eq!(revert_error_stack.0.len(), 2);
+                assert_matches::assert_matches!(&revert_error_stack.0[0], pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address,
+                    class_hash,
+                    selector,
+                }) => {
+                    assert_eq!(storage_address, &account_contract_address);
+                    assert_eq!(class_hash, &crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH);
+                    assert_matches::assert_matches!(selector, Some(entry_point) => assert_eq!(entry_point, &validate_entry_point));
+                });
+                assert_matches::assert_matches!(&revert_error_stack.0[1], pathfinder_executor::Frame::StringFrame(error_string) => {
+                    assert_eq!(error_string, expected_error_string);
+                });
+            });
         }
     }
 
