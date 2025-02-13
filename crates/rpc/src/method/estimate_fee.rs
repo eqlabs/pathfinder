@@ -202,6 +202,7 @@ mod tests {
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
+        BroadcastedDeclareTransactionV3,
         BroadcastedInvokeTransaction,
         BroadcastedInvokeTransactionV0,
         BroadcastedInvokeTransactionV1,
@@ -731,6 +732,172 @@ mod tests {
                 invoke_v0_expected,
                 invoke_v3_expected,
             ])
+        );
+    }
+
+    fn declare_v3_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
+        let sierra_definition = include_bytes!(
+            "../../fixtures/contracts/l2_gas_accounting/l2_gas_accounting_HelloStarknet.\
+             contract_class.json"
+        );
+        let sierra_hash =
+            class_hash!("0x04468CD91AB8BD74957307632CFC13C48B7B51C741B1BD3069796F3268A5F3D1");
+        // TODO:
+        let casm_hash =
+            casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+
+        let contract_class: SierraContractClass =
+            ContractClass::from_definition_bytes(sierra_definition)
+                .unwrap()
+                .as_sierra()
+                .unwrap();
+
+        self::assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
+
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(
+            BroadcastedDeclareTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                compiled_class_hash: casm_hash,
+                contract_class,
+                sender_address: account_contract_address,
+            },
+        ))
+    }
+
+    fn deploy_v3_transaction(
+        account_contract_address: ContractAddress,
+        universal_deployer_address: ContractAddress,
+    ) -> BroadcastedTransaction {
+        let sierra_hash =
+            class_hash!("0x04468CD91AB8BD74957307632CFC13C48B7B51C741B1BD3069796F3268A5F3D1");
+
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x1"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                sender_address: account_contract_address,
+                calldata: vec![
+                    CallParam(*universal_deployer_address.get()),
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
+                    CallParam(EntryPoint::hashed(b"deployContract").0),
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
+                    call_param!("4"),
+                    // classHash
+                    CallParam(sierra_hash.0),
+                    // salt
+                    call_param!("0x0"),
+                    // unique
+                    call_param!("0x0"),
+                    // calldata_len
+                    call_param!("0x0"),
+                ],
+            },
+        ))
+    }
+
+    fn invoke_v3_transaction2(account_contract_address: ContractAddress) -> BroadcastedTransaction {
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                sender_address: account_contract_address,
+                calldata: vec![
+                    // address of the deployed test contract
+                    CallParam(felt!(
+                        "0x0439479402A760C7368249703758241828EB7C838B536195079907F02D8CB838"
+                    )),
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
+                    CallParam(EntryPoint::hashed(b"test_redeposits").0),
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
+                    call_param!("1"),
+                    // Depth
+                    call_param!("100"),
+                ],
+                nonce: transaction_nonce!("0x2"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 4, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction2(account_contract_address);
+
+        let input = Input {
+            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+            simulation_flags: vec![],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await.unwrap();
+        let declare_expected = FeeEstimate {
+            l1_gas_consumed: 1617.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 192.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 3618.into(),
+            unit: PriceUnit::Fri,
+        };
+        let deploy_expected = FeeEstimate {
+            l1_gas_consumed: 19.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 224.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 486.into(),
+            unit: PriceUnit::Fri,
+        };
+        let invoke_expected = FeeEstimate {
+            l1_gas_consumed: 134.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 128.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 524.into(),
+            unit: PriceUnit::Fri,
+        };
+        self::assert_eq!(
+            result,
+            Output(vec![declare_expected, deploy_expected, invoke_expected,])
         );
     }
 }
