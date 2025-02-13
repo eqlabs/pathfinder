@@ -4,6 +4,7 @@ use blockifier::transaction::objects::TransactionExecutionInfo;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::execution_resources::GasAmount;
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -30,11 +31,12 @@ pub fn estimate(
             )
             .entered();
 
-            let tx_info = match fee_estimation_version(&tx) {
-                FeeEstimationVersion::WithoutL2Gas => {
+            let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
+            let tx_info = match gas_vector_computation_mode {
+                GasVectorComputationMode::NoL2Gas => {
                     execute_transaction(&tx, tx_index, &mut state, &block_context)
                 }
-                FeeEstimationVersion::WithL2Gas => find_l2_gas_limit_and_execute_transaction(
+                GasVectorComputationMode::All => find_l2_gas_limit_and_execute_transaction(
                     &mut tx,
                     tx_index,
                     &mut state,
@@ -51,6 +53,7 @@ pub fn estimate(
             Ok(FeeEstimate::from_tx_and_tx_info(
                 &tx,
                 &tx_info,
+                &gas_vector_computation_mode,
                 &block_context,
             ))
         })
@@ -237,17 +240,16 @@ impl FeeEstimate {
     fn from_tx_and_tx_info(
         transaction: &Transaction,
         tx_info: &TransactionExecutionInfo,
+        gas_vector_computation_mode: &GasVectorComputationMode,
         block_context: &blockifier::context::BlockContext,
     ) -> Self {
         let fee_type = super::transaction::fee_type(transaction);
-        let gas_vector_computation_mode =
-            super::transaction::gas_vector_computation_mode(&transaction);
         let minimal_gas_vector = match transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
                     block_context,
                     account_transaction,
-                    &gas_vector_computation_mode,
+                    gas_vector_computation_mode,
                 ))
             }
             Transaction::L1Handler(_) => None,
@@ -363,65 +365,6 @@ fn get_l2_gas_limit(tx: &Transaction) -> GasAmount {
     // here.
     tracing::debug!(transaction=?tx, "update_l2_gas_limit() called with a transaction that doesn't have L2 gas");
     unreachable!();
-}
-
-fn fee_estimation_version(transaction: &Transaction) -> FeeEstimationVersion {
-    fn fee_estimation_from_resource_bounds(
-        resource_bounds: &starknet_api::transaction::fields::ValidResourceBounds,
-    ) -> FeeEstimationVersion {
-        use starknet_api::transaction::fields::ValidResourceBounds;
-        match resource_bounds {
-            ValidResourceBounds::AllResources(_) => FeeEstimationVersion::WithL2Gas,
-            ValidResourceBounds::L1Gas(_) => FeeEstimationVersion::WithoutL2Gas,
-        }
-    }
-
-    match &transaction {
-        Transaction::Account(account_transaction) => {
-            use starknet_api::executable_transaction::AccountTransaction;
-            match &account_transaction.tx {
-                AccountTransaction::Declare(inner) => {
-                    use starknet_api::transaction::DeclareTransaction;
-                    match &inner.tx {
-                        DeclareTransaction::V3(tx) => {
-                            fee_estimation_from_resource_bounds(&tx.resource_bounds)
-                        }
-                        _ => FeeEstimationVersion::WithoutL2Gas,
-                    }
-                }
-                AccountTransaction::DeployAccount(inner) => {
-                    use starknet_api::transaction::DeployAccountTransaction;
-                    match &inner.tx {
-                        DeployAccountTransaction::V3(tx) => {
-                            fee_estimation_from_resource_bounds(&tx.resource_bounds)
-                        }
-                        _ => FeeEstimationVersion::WithoutL2Gas,
-                    }
-                }
-                AccountTransaction::Invoke(inner) => {
-                    use starknet_api::transaction::InvokeTransaction;
-                    match &inner.tx {
-                        InvokeTransaction::V3(tx) => {
-                            fee_estimation_from_resource_bounds(&tx.resource_bounds)
-                        }
-                        _ => FeeEstimationVersion::WithoutL2Gas,
-                    }
-                }
-            }
-        }
-        Transaction::L1Handler(_) => FeeEstimationVersion::WithoutL2Gas,
-    }
-}
-
-/// Fee estimation can currently take place in two ways - with or without L2
-/// gas.
-///
-/// For the transactions before Starknet 0.13.4, the fee estimation is done
-/// without L2 gas. For the ones after this version, the fee estimation is done
-/// with L2 gas.
-enum FeeEstimationVersion {
-    WithoutL2Gas,
-    WithL2Gas,
 }
 
 fn failed_with_insufficient_l2_gas(tx_info: &TransactionExecutionInfo) -> bool {
