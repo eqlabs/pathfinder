@@ -92,7 +92,9 @@ where
             return Err(error);
         }
         Err(TransactionSimulationError::OutOfGas) => {
-            unreachable!("Transaction should not run out of gas with MAX gas limit")
+            return Err(
+                anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded").into(),
+            );
         }
     };
 
