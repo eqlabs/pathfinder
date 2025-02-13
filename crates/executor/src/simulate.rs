@@ -25,7 +25,11 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
-use crate::transaction::transaction_hash;
+use crate::transaction::{
+    execute_transaction,
+    find_l2_gas_limit_and_execute_transaction,
+    transaction_hash,
+};
 use crate::types::{
     DataAvailabilityResources,
     DeclareTransactionTrace,
@@ -86,66 +90,54 @@ pub fn simulate(
 
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let mut simulations = Vec::with_capacity(transactions.len());
-    for (transaction_idx, transaction) in transactions.into_iter().enumerate() {
-        let _span = tracing::debug_span!("simulate", transaction_hash=%super::transaction::transaction_hash(&transaction), %block_number, %transaction_idx).entered();
+    transactions
+        .into_iter()
+        .enumerate()
+        .map(|(tx_index, mut tx)| {
+            let _span = tracing::debug_span!(
+                "simulate",
+                block_number = %block_number,
+                transaction_hash = %transaction_hash(&tx),
+                transaction_index = %tx_index
+            )
+            .entered();
 
-        let transaction_type = transaction_type(&transaction);
-        let transaction_declared_deprecated_class_hash =
-            transaction_declared_deprecated_class(&transaction);
-        let fee_type = super::transaction::fee_type(&transaction);
-        let gas_vector_computation_mode =
-            super::transaction::gas_vector_computation_mode(&transaction);
-
-        let minimal_l1_gas_amount_vector = match &transaction {
-            Transaction::Account(account_transaction) => {
-                Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
-                    &block_context,
-                    account_transaction,
-                    &gas_vector_computation_mode,
-                ))
-            }
-            Transaction::L1Handler(_) => None,
-        };
-
-        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = transaction.execute(&mut tx_state, &block_context);
-        let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class_hash)?;
-        tx_state.commit();
-
-        match tx_info {
-            Ok(tx_info) => {
-                if let Some(revert_error) = &tx_info.revert_error {
-                    let revert_string = revert_error.to_string();
-                    tracing::trace!(revert_error=%revert_string, "Transaction reverted");
+            let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
+            let mut tx_state = CachedState::<_>::create_transactional(&mut state);
+            let tx_info = match gas_vector_computation_mode {
+                GasVectorComputationMode::NoL2Gas => {
+                    execute_transaction(&tx, tx_index, &mut tx_state, &block_context)?
                 }
+                GasVectorComputationMode::All => find_l2_gas_limit_and_execute_transaction(
+                    &mut tx,
+                    tx_index,
+                    &mut tx_state,
+                    &block_context,
+                )?,
+            };
+            let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
+            tx_state.commit();
 
-                tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
+            tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
-                simulations.push(TransactionSimulation {
-                    fee_estimation: FeeEstimate::from_tx_info_and_gas_price(
-                        &tx_info,
-                        block_context.block_info(),
-                        fee_type,
-                        &minimal_l1_gas_amount_vector,
-                    ),
-                    trace: to_trace(
-                        transaction_type,
-                        tx_info,
-                        state_diff,
-                        block_context.versioned_constants(),
-                        &gas_vector_computation_mode,
-                        block_context.block_info().use_kzg_da,
-                    ),
-                });
-            }
-            Err(error) => {
-                tracing::debug!(%error, %transaction_idx, "Transaction simulation failed");
-                return Err(TransactionExecutionError::new(transaction_idx, error));
-            }
-        }
-    }
-    Ok(simulations)
+            Ok(TransactionSimulation {
+                fee_estimation: FeeEstimate::from_tx_and_tx_info(
+                    &tx,
+                    &tx_info,
+                    &gas_vector_computation_mode,
+                    &block_context,
+                ),
+                trace: to_trace(
+                    transaction_type(&tx),
+                    tx_info,
+                    state_diff,
+                    block_context.versioned_constants(),
+                    &gas_vector_computation_mode,
+                    block_context.block_info().use_kzg_da,
+                ),
+            })
+        })
+        .collect()
 }
 
 pub fn trace(
