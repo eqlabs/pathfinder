@@ -171,6 +171,7 @@ where
 
             // Keep on forwarding until the channel is closed
             while let Some(response) = rs_recv.next().await {
+                // if let Some(response) = rs_recv.next().await {
                 let write = codec.write_response(&protocol, &mut stream, response);
                 write.await.inspect_err(|error| {
                     tracing::trace!(%request_id, %error,

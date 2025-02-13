@@ -478,22 +478,13 @@ impl MainLoop {
             )) => {
                 tracing::debug!(?request, %peer, %request_id, "Received dummy request");
 
-                self.swarm
+                tokio::time::sleep(Duration::from_millis(100)).await;
+
+                let _ = self
+                    .swarm
                     .behaviour_mut()
                     .request_response_mut()
-                    .send_response(channel, ())
-                    .unwrap();
-
-                // channel.send(Ok(())).expect("Receiver not to be dropped");
-
-                // self.event_sender
-                //     .send(Event::InboundHeadersSyncRequest {
-                //         from: peer,
-                //         request,
-                //         channel,
-                //     })
-                //     .await
-                //     .expect("Event receiver not to be dropped");
+                    .send_response(channel, ());
             }
             SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
                 request_response::Event::Message {
@@ -508,11 +499,12 @@ impl MainLoop {
             )) => {
                 tracing::debug!(?response, %peer, %request_id, "Received dummy response");
 
+                // tokio::time::sleep(Duration::from_millis(100)).await;
+
                 let x = self
                     .pending_dummy_requests
                     .remove(&request_id)
                     .expect("Dummy request still to be pending");
-                tokio::time::sleep(Duration::from_millis(100)).await;
                 x.send(()).expect("Sender not to be dropped");
 
                 // channel.send(Ok(())).expect("Receiver not to be dropped");

@@ -15,7 +15,7 @@ use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::ChainId;
 
 const USAGE: &str = "Usage: stress_test_sync_client <server-multiaddr-with-peer-id> \
-                     <max-concurrent-request-streams>";
+                     <max-concurrent-request-streams> <num-requests> <initial-delay-ms>";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,6 +37,17 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or("1000".to_string())
         .parse::<usize>()
         .context(USAGE)?;
+    let num_requestes = args()
+        .nth(3)
+        .unwrap_or("1000".to_string())
+        .parse::<u64>()
+        .context(USAGE)?;
+    let initial_delay_ms = args()
+        .nth(4)
+        .unwrap_or("0".to_string())
+        .parse::<u64>()
+        .context(USAGE)?;
+    let initial_delay = Duration::from_millis(initial_delay_ms);
 
     let keypair = Keypair::generate_ed25519();
     let (client, mut event_rx, main_loop) = p2p::new(
@@ -69,7 +80,11 @@ async fn main() -> anyhow::Result<()> {
 
     client.dial(server_peer_id, server_addr.clone()).await?;
 
-    let client_fut = futures::stream::iter(0..1_000u64).map(|start| {
+    tracing::info!("Waiting to start sending requests...");
+
+    tokio::time::sleep(initial_delay).await;
+
+    let client_fut = futures::stream::iter(0..num_requestes).map(|start| {
         let client = client.clone();
         async move {
             tracing::info!(%start, "Requesting transactions for");
@@ -78,10 +93,10 @@ async fn main() -> anyhow::Result<()> {
                     server_peer_id,
                     TransactionsRequest {
                         iteration: Iteration {
-                            start: BlockNumberOrHash::Number(start),
+                            start: BlockNumberOrHash::Number(start * 1000),
                             direction: Direction::Forward,
                             // Max allowed by pathfinder (as a server)
-                            limit: 100,
+                            limit: 1000,
                             step: 1.into(),
                         },
                     },

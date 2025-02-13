@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 mod tests;
 
 #[cfg(not(test))]
-const MAX_BLOCKS_COUNT: u64 = 100;
+const MAX_BLOCKS_COUNT: u64 = 1000;
 
 #[cfg(test)]
 const MAX_COUNT_IN_TESTS: u64 = 10;
@@ -62,13 +62,12 @@ pub async fn get_state_diffs(
 }
 
 pub async fn get_transactions(
-    _storage: Storage,
-    _request: TransactionsRequest,
+    storage: Storage,
+    request: TransactionsRequest,
     mut tx: futures::channel::mpsc::Sender<TransactionsResponse>,
 ) -> anyhow::Result<()> {
     // TEST
-    // spawn_blocking_get(request, storage, blocking::get_transactions,
-    // tx).await
+    // spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
     for _ in 0..1 {
         tx.send(TransactionsResponse::TransactionWithReceipt(Faker.fake()))
             .await

@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
             async move {
                 tracing::info!(%start, "Requesting transactions for");
                 match client.send_dummy_request(server_peer_id, ()).await {
-                    Ok(mut response) => {
+                    Ok(_) => {
                         let txn_counter = 0;
                         tracing::info!(%start, "Received {txn_counter} transactions for");
                     }
