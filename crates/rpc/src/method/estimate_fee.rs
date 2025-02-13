@@ -907,14 +907,14 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 707881.into(),
+            l2_gas_consumed: 778635.into(),
             l2_gas_price: 1.into(),
-            overall_fee: 708137.into(),
+            overall_fee: 778891.into(),
             unit: PriceUnit::Fri,
         };
         self::assert_eq!(
             result,
-            Output(vec![declare_expected, deploy_expected, invoke_expected,])
+            Output(vec![declare_expected, deploy_expected, invoke_expected])
         );
     }
 
