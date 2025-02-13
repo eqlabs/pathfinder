@@ -176,7 +176,9 @@ where
 fn midpoint(a: GasAmount, b: GasAmount) -> GasAmount {
     let GasAmount(a) = a;
     let GasAmount(b) = b;
-    GasAmount(a + (b - a) / 2)
+    let diff = b.checked_sub(a).expect("b >= a");
+
+    GasAmount(a + diff / 2)
 }
 
 fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: GasAmount) -> bool {
