@@ -63,6 +63,7 @@ jobs:
           context: .
           platforms: |
             linux/amd64
+            linux/arm64
           file: ./Dockerfile
           build-args: |
             PATHFINDER_FORCE_VERSION=${{ steps.generate_version.outputs.pathfinder_version }}
