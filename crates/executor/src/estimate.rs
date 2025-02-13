@@ -6,7 +6,11 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::transaction::transaction_hash;
 use super::types::FeeEstimate;
-use crate::transaction::{execute_transaction, find_l2_gas_limit_and_execute_transaction};
+use crate::transaction::{
+    execute_transaction,
+    find_l2_gas_limit_and_execute_transaction,
+    l2_gas_accounting_enabled,
+};
 
 pub fn estimate(
     execution_state: ExecutionState<'_>,
@@ -29,16 +33,20 @@ pub fn estimate(
             .entered();
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-            let tx_info = match gas_vector_computation_mode {
-                GasVectorComputationMode::NoL2Gas => {
-                    execute_transaction(&tx, tx_index, &mut state, &block_context)?
-                }
-                GasVectorComputationMode::All => find_l2_gas_limit_and_execute_transaction(
+            let tx_info = if l2_gas_accounting_enabled(
+                &tx,
+                &state,
+                &block_context,
+                &gas_vector_computation_mode,
+            )? {
+                find_l2_gas_limit_and_execute_transaction(
                     &mut tx,
                     tx_index,
                     &mut state,
                     &block_context,
-                )?,
+                )?
+            } else {
+                execute_transaction(&tx, tx_index, &mut state, &block_context)?
             };
 
             tracing::trace!(

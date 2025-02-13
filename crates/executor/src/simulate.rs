@@ -28,6 +28,7 @@ use crate::error_stack::ErrorStack;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
+    l2_gas_accounting_enabled,
     transaction_hash,
 };
 use crate::types::{
@@ -104,16 +105,20 @@ pub fn simulate(
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
             let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-            let tx_info = match gas_vector_computation_mode {
-                GasVectorComputationMode::NoL2Gas => {
-                    execute_transaction(&tx, tx_index, &mut tx_state, &block_context)?
-                }
-                GasVectorComputationMode::All => find_l2_gas_limit_and_execute_transaction(
+            let tx_info = if l2_gas_accounting_enabled(
+                &tx,
+                &tx_state,
+                &block_context,
+                &gas_vector_computation_mode,
+            )? {
+                find_l2_gas_limit_and_execute_transaction(
                     &mut tx,
                     tx_index,
                     &mut tx_state,
                     &block_context,
-                )?,
+                )?
+            } else {
+                execute_transaction(&tx, tx_index, &mut tx_state, &block_context)?
             };
             let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
             tx_state.commit();

@@ -1,3 +1,4 @@
+use blockifier::execution::contract_class::TrackedResource;
 use blockifier::state::cached_state::CachedState;
 use blockifier::state::state_api::UpdatableState;
 use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
@@ -5,6 +6,7 @@ use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use pathfinder_common::TransactionHash;
 use starknet_api::block::FeeType;
+use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
@@ -77,6 +79,47 @@ pub fn gas_vector_computation_mode(transaction: &Transaction) -> GasVectorComput
         }
         Transaction::L1Handler(_) => GasVectorComputationMode::NoL2Gas,
     }
+}
+
+/// Starknet 0.13.4 introduced runtime L2 gas accounting but due to how
+/// `blockifier` handles execution resources, it is only enabled if both the
+/// caller and the "callee" contract classes were compiled as Seirra 1.7.
+///
+/// This function determines if the fee estimation should consider L2 gas
+/// accounting or not.
+pub(crate) fn l2_gas_accounting_enabled<S>(
+    tx: &Transaction,
+    state: &S,
+    block_context: &blockifier::context::BlockContext,
+    gas_vector_computation_mode: &GasVectorComputationMode,
+) -> blockifier::state::state_api::StateResult<bool>
+where
+    S: UpdatableState,
+{
+    let sender_class_hash = state.get_class_hash_at(tx.sender_address())?;
+    // Uninitialized class.
+    if sender_class_hash == ClassHash::default() {
+        return Ok(false);
+    }
+
+    let tracked_resource = state
+        .get_compiled_class(sender_class_hash)?
+        .tracked_resource(
+            &block_context
+                .versioned_constants()
+                .min_sierra_version_for_sierra_gas,
+            None,
+        );
+
+    // This is _not quite_ correct because only the sender contract class is
+    // checked, but it is close enough. The default fee estimation with L2 gas
+    // accounting (`l2_gas_consumed * 1.1`) will cover the case when the sender
+    // contract class Seirra version is >= 1.7 but the called contract class
+    // version is < 1.7.
+    Ok(
+        gas_vector_computation_mode == &GasVectorComputationMode::All
+            && tracked_resource == TrackedResource::SierraGas,
+    )
 }
 
 /// The margin for the binary search for the minimal L2 gas limit.
