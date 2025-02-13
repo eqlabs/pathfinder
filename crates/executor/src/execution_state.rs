@@ -46,9 +46,6 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3: &[u8] =
         include_bytes!("../resources/versioned_constants_0_13_3.json");
 
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_4.json");
-
     const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
     const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
@@ -91,11 +88,6 @@ mod versioned_constants {
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3).unwrap()
         });
 
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4).unwrap()
-        });
-
     pub(super) fn for_version(
         version: &StarknetVersion,
         custom_versioned_constants: Option<VersionedConstants>,
@@ -113,8 +105,6 @@ mod versioned_constants {
             Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1)
         } else if version < &STARKNET_VERSION_0_13_4 {
             Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3)
-        } else if version == &STARKNET_VERSION_0_13_4 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4)
         } else {
             custom_versioned_constants
                 .map(Cow::Owned)
