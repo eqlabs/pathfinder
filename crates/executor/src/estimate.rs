@@ -134,9 +134,15 @@ where
             final_limit=%current_l2_gas_limit,
             "Initial L2 gas limit exceeded"
         );
-        // Set the L2 gas limit to zero so that the transaction reverts.
+        // Set the L2 gas limit to zero so that the transaction reverts with a detailed
+        // `ExecutionError`.
         update_l2_gas_limit(tx, GasAmount::ZERO);
-        return execute_transaction(tx, tx_index, state, block_context);
+        match execute_transaction(tx, tx_index, state, block_context) {
+            Err(e @ TransactionExecutionError::ExecutionError { .. }) => {
+                return Err(e);
+            }
+            _ => unreachable!("Transaction should revert when gas limit is zero"),
+        }
     }
 
     // Finally, execute the transaction with the found L2 gas limit and set that
