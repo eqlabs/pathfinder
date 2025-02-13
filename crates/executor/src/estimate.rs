@@ -111,8 +111,21 @@ where
     // Run a binary search to find the minimal gas limit that still allows the
     // transaction to execute without running out of L2 gas.
     loop {
-        tracing::debug!(current_limit=%current_l2_gas_limit, "Searching for minimal L2 gas limit");
+        tracing::debug!(
+            "Searching for minimal L2 gas limit in range [{lower_bound}; {upper_bound}]. Current \
+             limit: {current_l2_gas_limit}"
+        );
         update_l2_gas_limit(tx, current_l2_gas_limit);
+
+        // Special case where the search would get stuck if `current_l2_gas_limit ==
+        // lower_bound` but the required amount is equal to the upper bound.
+        let bounds_diff = upper_bound
+            .checked_sub(lower_bound)
+            .expect("Upper bound >= lower bound");
+        if bounds_diff == GasAmount(1) && current_l2_gas_limit == lower_bound {
+            lower_bound = upper_bound;
+            current_l2_gas_limit = upper_bound;
+        }
 
         match simulate_transaction(tx, tx_index, state, block_context) {
             Ok(_) => {
