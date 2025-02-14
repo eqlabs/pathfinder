@@ -2632,8 +2632,8 @@ pub(crate) mod tests {
                 }
             }
 
-            const INVOKE_V3_OVERALL_FEE: u64 = 692846;
-            const INVOKE_V3_GAS_CONSUMED: u64 = 692590;
+            const INVOKE_V3_WITH_DATA_GAS_BOUNDS_OVERALL_FEE: u64 = 762105;
+            const INVOKE_V3_WITH_DATA_GAS_BOUNDS_GAS_CONSUMED: u64 = 761849;
             const INVOKE_V3_DATA_GAS_CONSUMED: u64 = 128;
 
             pub fn invoke_v3_with_data_gas_bounds(
@@ -2647,9 +2647,9 @@ pub(crate) mod tests {
                         l1_gas_price: 2.into(),
                         l1_data_gas_consumed: INVOKE_V3_DATA_GAS_CONSUMED.into(),
                         l1_data_gas_price: 2.into(),
-                        l2_gas_consumed: INVOKE_V3_GAS_CONSUMED.into(),
+                        l2_gas_consumed: INVOKE_V3_WITH_DATA_GAS_BOUNDS_GAS_CONSUMED.into(),
                         l2_gas_price: 1.into(),
-                        overall_fee: INVOKE_V3_OVERALL_FEE.into(),
+                        overall_fee: INVOKE_V3_WITH_DATA_GAS_BOUNDS_OVERALL_FEE.into(),
                         unit: pathfinder_executor::types::PriceUnit::Fri,
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
@@ -2682,7 +2682,7 @@ pub(crate) mod tests {
                                     },
                                 l1_gas: 0,
                                 l1_data_gas: 128,
-                                l2_gas: 692590,
+                                l2_gas: INVOKE_V3_WITH_DATA_GAS_BOUNDS_GAS_CONSUMED.into(),
                             },
                         },
                     ),
@@ -2803,6 +2803,8 @@ pub(crate) mod tests {
                     is_reverted: false,
                 }
             }
+
+            const INVOKE_V3_OVERALL_FEE: u64 = 692846;
 
             fn invoke_v3_fee_transfer(
                 account_contract_address: ContractAddress,

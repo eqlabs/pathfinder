@@ -193,8 +193,8 @@ impl crate::dto::SerializeForVersion for Output {
 mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::{felt, BlockId, Tip};
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
+    use pathfinder_common::{felt, BlockId, ResourceAmount, ResourcePricePerUnit, Tip};
     use pathfinder_executor::types::{FeeEstimate, PriceUnit};
     use pretty_assertions_sorted::assert_eq;
 
@@ -202,6 +202,7 @@ mod tests {
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
+        BroadcastedDeclareTransactionV3,
         BroadcastedInvokeTransaction,
         BroadcastedInvokeTransactionV0,
         BroadcastedInvokeTransactionV1,
@@ -732,5 +733,278 @@ mod tests {
                 invoke_v3_expected,
             ])
         );
+    }
+
+    fn declare_v3_transaction(sender_address: ContractAddress) -> BroadcastedTransaction {
+        let sierra_definition =
+            include_bytes!("../../fixtures/contracts/l2_gas_accounting/l2_gas_accounting.json");
+        let sierra_hash =
+            class_hash!("0x01A48FD3F75D0A7C2288AC23FB6ABA26CD375607BA63E4A3B3ED47FC8E99DC21");
+        let casm_hash =
+            casm_hash!("0x02F58B23F7D98FF076AE59C08125AAFFD6DECCF1A7E97378D1A303B1A4223989");
+
+        let contract_class: SierraContractClass =
+            ContractClass::from_definition_bytes(sierra_definition)
+                .unwrap()
+                .as_sierra()
+                .unwrap();
+
+        self::assert_eq!(contract_class.class_hash().unwrap().hash(), sierra_hash);
+
+        BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(
+            BroadcastedDeclareTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                compiled_class_hash: casm_hash,
+                contract_class,
+                sender_address,
+            },
+        ))
+    }
+
+    fn deploy_v3_transaction(
+        account_contract_address: ContractAddress,
+        universal_deployer_address: ContractAddress,
+    ) -> BroadcastedTransaction {
+        let sierra_hash =
+            class_hash!("0x01A48FD3F75D0A7C2288AC23FB6ABA26CD375607BA63E4A3B3ED47FC8E99DC21");
+
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x1"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                sender_address: account_contract_address,
+                calldata: vec![
+                    // Number of calls
+                    call_param!("0x1"),
+                    CallParam(*universal_deployer_address.get()),
+                    // Entry point selector for the called contract, i.e.
+                    // AccountCallArray::selector
+                    CallParam(EntryPoint::hashed(b"deployContract").0),
+                    // Length of the call data for the called contract, i.e.
+                    // AccountCallArray::data_len
+                    call_param!("4"),
+                    // classHash
+                    CallParam(sierra_hash.0),
+                    // salt
+                    call_param!("0x0"),
+                    // unique
+                    call_param!("0x0"),
+                    // calldata_len
+                    call_param!("0x0"),
+                ],
+            },
+        ))
+    }
+
+    /// Invokes a contract that calls a recursive function. Recursion depth can
+    /// be set with the `depth` parameter.
+    fn invoke_v3_transaction_with_data_gas(
+        sender_address: ContractAddress,
+        nonce: TransactionNonce,
+        depth: CallParam,
+    ) -> BroadcastedTransaction {
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                sender_address,
+                calldata: vec![
+                    // Number of calls
+                    call_param!("0x1"),
+                    // Address of the deployed test contract
+                    CallParam(felt!(
+                        "0x17c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b"
+                    )),
+                    // Entry point selector for the called contract, i.e.
+                    CallParam(EntryPoint::hashed(b"test_redeposits").0),
+                    // Length of the call data for the called contract, i.e.
+                    call_param!("1"),
+                    depth,
+                ],
+                nonce,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(50),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    },
+                    l1_data_gas: Some(ResourceBound {
+                        max_amount: ResourceAmount(100),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    }),
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(800_000),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    },
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L2,
+                fee_data_availability_mode: DataAvailabilityMode::L2,
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 4, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("7"),
+        );
+        // Invoke once more to test that the execution state updates properly with L2
+        // gas accounting aware code.
+        let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x3"),
+            call_param!("7"),
+        );
+
+        let input = Input {
+            request: vec![
+                declare_transaction,
+                deploy_transaction,
+                invoke_transaction,
+                invoke_transaction2,
+            ],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await.unwrap();
+        let declare_expected = FeeEstimate {
+            l1_gas_consumed: 1736.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 192.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 3856.into(),
+            unit: PriceUnit::Fri,
+        };
+        let deploy_expected = FeeEstimate {
+            l1_gas_consumed: 22.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 224.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 492.into(),
+            unit: PriceUnit::Fri,
+        };
+        let invoke_expected = FeeEstimate {
+            l1_gas_consumed: 0.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 128.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 778635.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 778891.into(),
+            unit: PriceUnit::Fri,
+        };
+        self::assert_eq!(
+            result,
+            Output(vec![
+                declare_expected,
+                deploy_expected,
+                invoke_expected,
+                invoke_expected,
+            ])
+        );
+    }
+
+    #[tokio::test]
+    async fn starknet_0_13_4_max_gas_exceeded() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 4, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("100000"),
+        );
+
+        let input = Input {
+            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await;
+        let expected_err = anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded");
+        assert_matches::assert_matches!(result, Err(EstimateFeeError::Internal(err)) if err.to_string() == expected_err.to_string());
+    }
+
+    #[tokio::test]
+    async fn starknet_0_13_4_user_provided_gas_limit_exceeded() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 4, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // Invoke deployed contract with large depth (it is a recursive function) such
+        // that the L2 gas required exceeds the user provided limit.
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("1000"),
+        );
+
+        let input = Input {
+            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let EstimateFeeError::TransactionExecutionError { error, .. } =
+            super::estimate_fee(context, input).await.unwrap_err()
+        else {
+            panic!("Expected TransactionExecutionError");
+        };
+
+        // This is currently the best way to check that the transaction was reverted due
+        // to insufficient gas. Leaving this test and the assert below to detect if
+        // anything in `blockifier` changes in the future.
+        assert!(error.contains("Out of gas"));
     }
 }
