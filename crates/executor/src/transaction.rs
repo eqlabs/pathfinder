@@ -183,8 +183,10 @@ where
                 // transaction to execute without running out of L2 gas.
                 let (tx_info, tx_state) = loop {
                     tracing::debug!(
-                        "Searching for minimal L2 gas limit in range [{lower_bound}; \
-                         {upper_bound}]. Current limit: {current_l2_gas_limit}"
+                        lower_bound=%lower_bound,
+                        upper_bound=%upper_bound,
+                        current=%current_l2_gas_limit,
+                        "Searching for minimal L2 gas limit"
                     );
                     set_l2_gas_limit(tx, current_l2_gas_limit);
 
