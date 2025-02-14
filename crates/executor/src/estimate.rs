@@ -55,12 +55,23 @@ pub fn estimate(
                 "Transaction estimation finished"
             );
 
-            Ok(FeeEstimate::from_tx_and_tx_info(
-                &tx,
-                &tx_info,
-                &gas_vector_computation_mode,
-                &block_context,
-            ))
+            if let Some(revert_error) = tx_info.revert_error {
+                let revert_string = revert_error.to_string();
+                tracing::debug!(revert_error=%revert_string, "Transaction reverted");
+
+                Err(TransactionExecutionError::ExecutionError {
+                    transaction_index: tx_index,
+                    error: revert_string,
+                    error_stack: revert_error.into(),
+                })
+            } else {
+                Ok(FeeEstimate::from_tx_and_tx_info(
+                    &tx,
+                    &tx_info,
+                    &gas_vector_computation_mode,
+                    &block_context,
+                ))
+            }
         })
         .collect()
 }
