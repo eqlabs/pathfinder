@@ -164,7 +164,7 @@ impl fmt::Display for OutboundFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
-            OutboundFailure::Timeout => write!(f, "Timeout while waiting for a response"),
+            OutboundFailure::Timeout => write!(f, "Opening outbound stream timed out"),
             OutboundFailure::ConnectionClosed => {
                 write!(f, "Connection was closed before a response was received")
             }
@@ -349,7 +349,7 @@ where
     /// connection is established.
     ///
     /// > **Note**: In order for such a dialing attempt to succeed,
-    /// > the `RequestResponse` protocol must be embedded
+    /// > the `p2p_stream` protocol must be embedded
     /// > in another `NetworkBehaviour` that provides peer and
     /// > address discovery.
     pub fn send_request(&mut self, peer: &PeerId, request: TCodec::Request) -> OutboundRequestId {
