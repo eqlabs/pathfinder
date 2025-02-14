@@ -74,8 +74,7 @@ impl Builder {
                 //
                 // We also add a base value of 7, which is the default size of this buffer, in case
                 // max_concurrent_streams is 1.
-                // .with_per_connection_event_buffer_size(7 + max_concurrent_streams * 4),
-                .with_per_connection_event_buffer_size(7),
+                .with_per_connection_event_buffer_size(7 + max_concurrent_streams * 4),
         );
 
         let (event_sender, event_receiver) = mpsc::channel(1);

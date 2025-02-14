@@ -49,7 +49,7 @@ pub use builder::Builder;
 use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer, PeerSet};
 use crate::secret::Secret;
 use crate::sync::codec;
-use crate::Config;
+use crate::{Config, RRRequest, RRResponse};
 
 /// The default kademlia protocol name for a given Starknet chain.
 pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
@@ -82,7 +82,7 @@ pub struct Inner {
     state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
     transaction_sync: p2p_stream::Behaviour<codec::Transactions>,
     event_sync: p2p_stream::Behaviour<codec::Events>,
-    request_response: request_response::json::Behaviour<(), ()>,
+    request_response: request_response::json::Behaviour<RRRequest, RRResponse>,
 }
 
 impl NetworkBehaviour for Behaviour {
@@ -778,7 +778,9 @@ impl Behaviour {
         &mut self.inner.event_sync
     }
 
-    pub fn request_response_mut(&mut self) -> &mut request_response::json::Behaviour<(), ()> {
+    pub fn request_response_mut(
+        &mut self,
+    ) -> &mut request_response::json::Behaviour<RRRequest, RRResponse> {
         &mut self.inner.request_response
     }
 
@@ -823,7 +825,7 @@ pub enum Event {
     StateDiffsSync(p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>),
     TransactionsSync(p2p_stream::Event<TransactionsRequest, TransactionsResponse>),
     EventsSync(p2p_stream::Event<EventsRequest, EventsResponse>),
-    RequestResponse(request_response::Event<(), ()>),
+    RequestResponse(request_response::Event<RRRequest, RRResponse>),
 }
 
 impl From<relay::client::Event> for Event {
@@ -898,8 +900,8 @@ impl From<p2p_stream::Event<EventsRequest, EventsResponse>> for Event {
     }
 }
 
-impl From<request_response::Event<(), ()>> for Event {
-    fn from(event: request_response::Event<(), ()>) -> Self {
+impl From<request_response::Event<RRRequest, RRResponse>> for Event {
+    fn from(event: request_response::Event<RRRequest, RRResponse>) -> Self {
         Event::RequestResponse(event)
     }
 }

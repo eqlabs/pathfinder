@@ -40,6 +40,16 @@ pub use libp2p;
 pub use peer_data::PeerData;
 pub use sync::protocol::PROTOCOLS;
 
+#[derive(Debug, serde::Serialize, serde::Deserialize, fake::Dummy)]
+pub struct RRRequest {
+    dummy: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, fake::Dummy)]
+pub struct RRResponse {
+    dummy: Vec<Vec<Vec<String>>>,
+}
+
 pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
     Builder::new(keypair, cfg, chain_id).build()
 }
@@ -156,7 +166,7 @@ enum Command {
     },
     SendDummyRequest {
         peer_id: PeerId,
-        request: (),
+        request: RRRequest,
         sender: oneshot::Sender<()>,
     },
     /// For testing purposes only

@@ -16,7 +16,7 @@ use tokio::sync::{mpsc, oneshot};
 
 #[cfg(test)]
 use crate::test_utils;
-use crate::Command;
+use crate::{Command, RRRequest};
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -225,7 +225,11 @@ impl Client {
         receiver.await.expect("Sender not to be dropped")
     }
 
-    pub async fn send_dummy_request(&self, peer_id: PeerId, request: ()) -> anyhow::Result<()> {
+    pub async fn send_dummy_request(
+        &self,
+        peer_id: PeerId,
+        request: RRRequest,
+    ) -> anyhow::Result<()> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::SendDummyRequest {

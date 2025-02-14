@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 
+use fake::{Fake, Faker};
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use futures::StreamExt;
 use libp2p::gossipsub::{self, IdentTopic};
@@ -484,7 +485,7 @@ impl MainLoop {
                     .swarm
                     .behaviour_mut()
                     .request_response_mut()
-                    .send_response(channel, ());
+                    .send_response(channel, Faker.fake());
             }
             SwarmEvent::Behaviour(behaviour::Event::RequestResponse(
                 request_response::Event::Message {
@@ -499,7 +500,7 @@ impl MainLoop {
             )) => {
                 tracing::debug!(?response, %peer, %request_id, "Received dummy response");
 
-                // tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
 
                 let x = self
                     .pending_dummy_requests

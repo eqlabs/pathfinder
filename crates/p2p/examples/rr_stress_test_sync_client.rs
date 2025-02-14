@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Context;
+use fake::{Fake, Faker};
 use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
@@ -72,7 +73,10 @@ async fn main() -> anyhow::Result<()> {
             let client = client.clone();
             async move {
                 tracing::info!(%start, "Requesting transactions for");
-                match client.send_dummy_request(server_peer_id, ()).await {
+                match client
+                    .send_dummy_request(server_peer_id, Faker.fake())
+                    .await
+                {
                     Ok(_) => {
                         let txn_counter = 0;
                         tracing::info!(%start, "Received {txn_counter} transactions for");
