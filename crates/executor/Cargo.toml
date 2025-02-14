@@ -12,6 +12,7 @@ blockifier = { workspace = true }
 cached = { workspace = true }
 cairo-lang-starknet-classes = { workspace = true }
 cairo-vm = { workspace = true }
+metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
