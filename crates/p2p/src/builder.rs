@@ -69,8 +69,10 @@ impl Builder {
                 // - 1x InboundRequest event
                 // - 1x OutboundResponseStreamClosed event, in case the older streams are closed and
                 //   immediately replaced by new ones from the very same client
-                // - ?x for other events, that could happen in the meantime from other
-                // behaviors: identify, kad, ping, gossipsub, etc.
+                // - ?x other events, that could happen in the meantime from other behaviors:
+                //   identify, kad, ping, gossipsub, etc.
+                //
+                // Stress tests show that 3x should be sufficient, so we're using 4x to be safe.
                 //
                 // We also add a base value of 7, which is the default size of this buffer, in case
                 // max_concurrent_streams is 1.
