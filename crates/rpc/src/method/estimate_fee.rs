@@ -815,6 +815,7 @@ mod tests {
     /// be set with the `depth` parameter.
     fn invoke_v3_transaction_with_data_gas(
         sender_address: ContractAddress,
+        nonce: TransactionNonce,
         depth: CallParam,
     ) -> BroadcastedTransaction {
         BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
@@ -835,7 +836,7 @@ mod tests {
                     call_param!("1"),
                     depth,
                 ],
-                nonce: transaction_nonce!("0x2"),
+                nonce,
                 resource_bounds: ResourceBounds {
                     l1_gas: ResourceBound {
                         max_amount: ResourceAmount(50),
@@ -873,11 +874,26 @@ mod tests {
         let deploy_transaction =
             deploy_v3_transaction(account_contract_address, universal_deployer_address);
         // invoke deployed contract
-        let invoke_transaction =
-            invoke_v3_transaction_with_data_gas(account_contract_address, call_param!("7"));
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("7"),
+        );
+        // Invoke once more to test that the execution state updates properly with L2
+        // gas accounting aware code.
+        let invoke_transaction2 = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x3"),
+            call_param!("7"),
+        );
 
         let input = Input {
-            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+            request: vec![
+                declare_transaction,
+                deploy_transaction,
+                invoke_transaction,
+                invoke_transaction2,
+            ],
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
@@ -914,7 +930,12 @@ mod tests {
         };
         self::assert_eq!(
             result,
-            Output(vec![declare_expected, deploy_expected, invoke_expected])
+            Output(vec![
+                declare_expected,
+                deploy_expected,
+                invoke_expected,
+                invoke_expected,
+            ])
         );
     }
 
@@ -933,8 +954,11 @@ mod tests {
             deploy_v3_transaction(account_contract_address, universal_deployer_address);
 
         // invoke deployed contract
-        let invoke_transaction =
-            invoke_v3_transaction_with_data_gas(account_contract_address, call_param!("100000"));
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("100000"),
+        );
 
         let input = Input {
             request: vec![declare_transaction, deploy_transaction, invoke_transaction],
@@ -961,8 +985,11 @@ mod tests {
             deploy_v3_transaction(account_contract_address, universal_deployer_address);
         // Invoke deployed contract with large depth (it is a recursive function) such
         // that the L2 gas required exceeds the user provided limit.
-        let invoke_transaction =
-            invoke_v3_transaction_with_data_gas(account_contract_address, call_param!("1000"));
+        let invoke_transaction = invoke_v3_transaction_with_data_gas(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("1000"),
+        );
 
         let input = Input {
             request: vec![declare_transaction, deploy_transaction, invoke_transaction],
