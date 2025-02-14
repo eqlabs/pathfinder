@@ -1,5 +1,7 @@
 use blockifier::execution::stack_trace::{
     gen_tx_execution_error_trace,
+    Cairo1RevertFrame,
+    Cairo1RevertSummary,
     ErrorStack as BlockifierErrorStack,
     ErrorStackSegment,
 };
@@ -36,6 +38,21 @@ impl From<RevertError> for ErrorStack {
     }
 }
 
+impl From<Cairo1RevertSummary> for ErrorStack {
+    fn from(value: Cairo1RevertSummary) -> Self {
+        let failure_reason =
+            starknet_api::execution_utils::format_panic_data(&value.last_retdata.0);
+        Self(
+            value
+                .stack
+                .into_iter()
+                .map(Into::into)
+                .chain(std::iter::once(Frame::StringFrame(failure_reason)))
+                .collect(),
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Frame {
     CallFrame(CallFrame),
@@ -56,6 +73,17 @@ impl From<ErrorStackSegment> for Frame {
             ErrorStackSegment::Vm(vm_exception) => Frame::StringFrame(String::from(&vm_exception)),
             ErrorStackSegment::StringFrame(string_frame) => Frame::StringFrame(string_frame),
         }
+    }
+}
+
+impl From<Cairo1RevertFrame> for Frame {
+    fn from(value: Cairo1RevertFrame) -> Self {
+        Self::CallFrame(CallFrame {
+            storage_address: ContractAddress(value.contract_address.0.into_felt()),
+            // FIXME: what should we do here if the frame has no class hash?
+            class_hash: ClassHash(value.class_hash.unwrap_or_default().0.into_felt()),
+            selector: Some(EntryPoint(value.selector.0.into_felt())),
+        })
     }
 }
 
