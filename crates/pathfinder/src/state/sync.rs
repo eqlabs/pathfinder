@@ -1043,10 +1043,6 @@ async fn l2_reorg(
             .context("Fetching last block hash")?
             .context("Expected last block hash to exist")?;
 
-        transaction
-            .increment_reorg_counter()
-            .context("Incrementing reorg counter")?;
-
         // Roll back Merkle trie updates.
         //
         // If we're rolling back genesis then there will be no blocks left so state will

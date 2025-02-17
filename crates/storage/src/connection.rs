@@ -5,7 +5,6 @@ mod class;
 mod ethereum;
 pub mod event;
 mod reference;
-mod reorg_counter;
 mod signature;
 mod state_update;
 pub(crate) mod transaction;
@@ -23,7 +22,6 @@ use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockNumber, TransactionHash};
-pub(crate) use reorg_counter::ReorgCounter;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};

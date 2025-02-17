@@ -316,14 +316,6 @@ pub trait RowExt {
         Ok(self.get_optional_felt(index)?.map(ClassHash))
     }
 
-    fn get_reorg_counter<Index: RowIndex>(
-        &self,
-        index: Index,
-    ) -> rusqlite::Result<crate::ReorgCounter> {
-        let num = self.get_i64(index)?;
-        Ok(crate::ReorgCounter::new(num))
-    }
-
     fn get_l1_da_mode<Index: RowIndex>(
         &self,
         index: Index,
