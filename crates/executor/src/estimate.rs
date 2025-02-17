@@ -1,6 +1,7 @@
-use blockifier::transaction::objects::TransactionExecutionInfo;
+use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
 use blockifier::transaction::transaction_execution::Transaction;
 use pathfinder_common::TransactionHash;
+use starknet_api::block::FeeType;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
@@ -84,7 +85,7 @@ impl FeeEstimate {
         gas_vector_computation_mode: &GasVectorComputationMode,
         block_context: &blockifier::context::BlockContext,
     ) -> Self {
-        let fee_type = super::transaction::fee_type(transaction);
+        let fee_type = fee_type(transaction);
         let minimal_gas_vector = match transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
@@ -102,5 +103,12 @@ impl FeeEstimate {
             fee_type,
             &minimal_gas_vector,
         )
+    }
+}
+
+pub fn fee_type(transaction: &Transaction) -> FeeType {
+    match transaction {
+        Transaction::Account(tx) => tx.fee_type(),
+        Transaction::L1Handler(tx) => tx.fee_type(),
     }
 }

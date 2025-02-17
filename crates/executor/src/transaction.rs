@@ -1,22 +1,14 @@
 use blockifier::execution::contract_class::TrackedResource;
 use blockifier::state::cached_state::{CachedState, MutRefState};
 use blockifier::state::state_api::UpdatableState;
-use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
+use blockifier::transaction::objects::TransactionExecutionInfo;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
-use starknet_api::block::FeeType;
 use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use crate::TransactionExecutionError;
-
-pub(crate) fn fee_type(transaction: &Transaction) -> FeeType {
-    match transaction {
-        Transaction::Account(tx) => tx.fee_type(),
-        Transaction::L1Handler(tx) => tx.fee_type(),
-    }
-}
 
 pub fn gas_vector_computation_mode(transaction: &Transaction) -> GasVectorComputationMode {
     match &transaction {
