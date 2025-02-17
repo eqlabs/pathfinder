@@ -28,4 +28,3 @@ pub use execution_state::{ExecutionState, L1BlobDataAvailability};
 pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, TraceCache};
 pub use starknet_api::contract_class::ClassInfo;
-pub use transaction::transaction_hash;

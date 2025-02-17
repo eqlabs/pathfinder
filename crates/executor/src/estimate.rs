@@ -1,16 +1,17 @@
 use blockifier::transaction::objects::TransactionExecutionInfo;
 use blockifier::transaction::transaction_execution::Transaction;
+use pathfinder_common::TransactionHash;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
-use super::transaction::transaction_hash;
 use super::types::FeeEstimate;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
     l2_gas_accounting_enabled,
 };
+use crate::IntoFelt;
 
 pub fn estimate(
     execution_state: ExecutionState<'_>,
@@ -27,7 +28,7 @@ pub fn estimate(
             let _span = tracing::debug_span!(
                 "estimate",
                 block_number = %block_number,
-                transaction_hash = %transaction_hash(&tx),
+                transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
                 transaction_index = %tx_index
             )
             .entered();
