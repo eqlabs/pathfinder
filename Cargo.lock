@@ -7712,6 +7712,7 @@ dependencies = [
  "cached",
  "cairo-lang-starknet-classes",
  "cairo-vm",
+ "metrics",
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-storage",
