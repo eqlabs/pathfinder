@@ -144,10 +144,8 @@ impl EthereumApi for EthereumClient {
         let core_contract = StarknetCoreContract::new(core_address, provider.clone());
 
         // Listen for state update events
-        let mut state_updates = provider
-            .subscribe_logs(&core_contract.LogStateUpdate_filter().filter)
-            .await?
-            .into_stream();
+        let filter = core_contract.LogStateUpdate_filter().filter;
+        let mut state_updates = provider.subscribe_logs(&filter).await?.into_stream();
 
         // Poll regularly for finalized block number
         let provider_clone = provider.clone();
@@ -180,22 +178,25 @@ impl EthereumApi for EthereumClient {
         loop {
             select! {
                 Some(state_update) = state_updates.next() => {
-                    // Decode the state update
-                    let eth_block = L1BlockNumber::new_or_panic(
-                        state_update.block_number.expect("missing eth block number")
-                    );
-                    let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
-                    let block_number = get_block_number(state_update.inner.blockNumber);
-                    // Add or remove to/from pending state updates accordingly
-                    if !state_update.removed {
-                        let state_update = EthereumStateUpdate {
-                            block_number,
-                            block_hash: get_block_hash(state_update.inner.blockHash),
-                            state_root: get_state_root(state_update.inner.globalRoot),
-                        };
-                        self.pending_state_updates.insert(eth_block, state_update);
-                    } else {
-                        self.pending_state_updates.remove(&eth_block);
+                    // one would expect this to always be true, but in fact it isn't...
+                    if filter.address.matches(&state_update.inner.address) {
+                        // Decode the state update
+                        let eth_block = L1BlockNumber::new_or_panic(
+                            state_update.block_number.expect("missing eth block number")
+                        );
+                        let state_update: Log<StarknetCoreContract::LogStateUpdate> = state_update.log_decode()?;
+                        let block_number = get_block_number(state_update.inner.blockNumber);
+                        // Add or remove to/from pending state updates accordingly
+                        if !state_update.removed {
+                            let state_update = EthereumStateUpdate {
+                                block_number,
+                                block_hash: get_block_hash(state_update.inner.blockHash),
+                                state_root: get_state_root(state_update.inner.globalRoot),
+                            };
+                            self.pending_state_updates.insert(eth_block, state_update);
+                        } else {
+                            self.pending_state_updates.remove(&eth_block);
+                        }
                     }
                 }
                 Some(block_number) = finalized_block_rx.recv() => {
