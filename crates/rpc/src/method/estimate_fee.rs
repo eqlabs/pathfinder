@@ -1029,19 +1029,18 @@ mod tests {
                     class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
                     selector: Some(EntryPoint::hashed(b"__execute__")),
                 }),
+                pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address: account_contract_address,
+                    class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                    selector: Some(EntryPoint::hashed(b"__execute__")),
+                }),
+                pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address: contract_address!("0x17c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b"),
+                    class_hash: class_hash!("0x01A48FD3F75D0A7C2288AC23FB6ABA26CD375607BA63E4A3B3ED47FC8E99DC21"),
+                    selector: Some(EntryPoint::hashed(b"bogus")),
+                }),
                 pathfinder_executor::Frame::StringFrame(
-                    "Cairo1RevertSummary { header: Execution, stack: \
-                    [Cairo1RevertFrame { \
-                      contract_address: ContractAddress(PatriciaKey(0xc01)), \
-                      class_hash: Some(ClassHash(0x19cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978)), \
-                      selector: EntryPointSelector(0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad) \
-                      }, \
-                    Cairo1RevertFrame { \
-                      contract_address: ContractAddress(PatriciaKey(0x17c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b)), \
-                      class_hash: Some(ClassHash(0x1a48fd3f75d0a7c2288ac23fb6aba26cd375607ba63e4a3b3ed47fc8e99dc21)), \
-                      selector: EntryPointSelector(0x2a1f595e2db7bf53e1a4bc9834eef6b86d3cd66ec9c8b3588c09253d0affc51) \
-                    }], \
-                    last_retdata: Retdata([0x454e545259504f494e545f4e4f545f464f554e44]) }".to_owned()
+                    "0x454e545259504f494e545f4e4f545f464f554e44 ('ENTRYPOINT_NOT_FOUND')".to_owned()
                 )
             ]));
         });
