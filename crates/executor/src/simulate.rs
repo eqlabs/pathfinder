@@ -29,6 +29,7 @@ use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
     l2_gas_accounting_enabled,
+    ExecutionBehaviorOnRevert,
 };
 use crate::types::{
     DataAvailabilityResources,
@@ -115,9 +116,10 @@ pub fn simulate(
                     tx_index,
                     &mut tx_state,
                     &block_context,
+                    ExecutionBehaviorOnRevert::Continue,
                 )?
             } else {
-                execute_transaction(&tx, tx_index, &mut tx_state, &block_context)?
+                execute_transaction(&tx, tx_index, &mut tx_state, &block_context, &ExecutionBehaviorOnRevert::Continue)?
             };
             let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
             tx_state.commit();
