@@ -133,6 +133,7 @@ impl Builder {
 
         let p2p_stream_cfg = p2p_stream::Config::default()
             .stream_timeout(cfg.stream_timeout)
+            .response_timeout(cfg.response_timeout)
             .max_concurrent_streams(cfg.max_concurrent_streams);
 
         let header_sync = header_sync

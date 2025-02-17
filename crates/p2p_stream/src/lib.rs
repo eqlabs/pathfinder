@@ -604,6 +604,7 @@ where
             self.protocols.clone(),
             self.codec.clone(),
             self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );
@@ -645,6 +646,7 @@ where
             self.protocols.clone(),
             self.codec.clone(),
             self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );
