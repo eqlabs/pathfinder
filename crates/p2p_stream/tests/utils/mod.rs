@@ -203,7 +203,7 @@ pub fn new_swarm_with_timeout(
     timeout: Duration,
 ) -> (PeerId, Swarm<p2p_stream::Behaviour<TestCodec>>) {
     let protocols = iter::once(StreamProtocol::new("/test/1"));
-    let cfg = p2p_stream::Config::default().request_timeout(timeout);
+    let cfg = p2p_stream::Config::default().stream_timeout(timeout);
 
     // SwarmExt::new_ephemeral uses async::std
     let swarm = new_ephemeral_with_tokio_executor(|_| {

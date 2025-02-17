@@ -44,6 +44,7 @@ impl Config {
             },
             kad_name: Default::default(),
             stream_timeout: Duration::from_secs(10),
+            response_timeout: Duration::from_secs(10),
             max_concurrent_streams: 100,
         }
     }
