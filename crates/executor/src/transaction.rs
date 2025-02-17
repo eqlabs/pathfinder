@@ -169,17 +169,13 @@ where
     let (l2_gas_limit, mut tx_info, tx_state) =
         match simulate_transaction(tx, tx_index, state, block_context) {
             Ok((tx_info, tx_state)) => {
-                metrics::increment_counter!(
-                    "l2_gas_accounting.gas_limit_search.without_binary_search"
-                );
+                metrics::increment_counter!("rpc_fee_estimation.without_binary_search");
                 // If 110% of the actual transaction gas fee is enough, we use that
                 // as the estimate and skip the binary search.
                 (l2_gas_adjusted, tx_info, tx_state)
             }
             Err(TransactionSimulationError::OutOfGas) => {
-                metrics::increment_counter!(
-                    "l2_gas_accounting.gas_limit_search.with_binary_search"
-                );
+                metrics::increment_counter!("rpc_fee_estimation.with_binary_search");
 
                 let mut lower_bound = GasAmount(l2_gas_consumed);
                 let mut upper_bound = GasAmount::MAX;
@@ -243,11 +239,11 @@ where
         };
 
     metrics::histogram!(
-        "l2_gas_accounting.gas_limit_search.gas_limit_vs_gas_consumed",
+        "rpc_fee_estimation.l2_gas_difference_between_limit_and_consumed",
         l2_gas_limit
             .0
             .checked_sub(l2_gas_consumed)
-            .expect("l2_gas_limit > l2_gas_conusmed") as f64
+            .expect("l2_gas_limit > l2_gas_consumed") as f64
     );
 
     if l2_gas_limit > initial_l2_gas_limit {
