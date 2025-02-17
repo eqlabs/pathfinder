@@ -226,10 +226,7 @@ where
                     }
                 };
 
-                metrics::histogram!(
-                    "l2_gas_accounting.gas_limit_search.steps_to_converge",
-                    steps as f64
-                );
+                metrics::histogram!("rpc_fee_estimation.steps_to_converge", steps as f64);
 
                 (current_l2_gas_limit, tx_info, tx_state)
             }
