@@ -11,18 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Support for Starknet 0.13.4.
+- Support for the JSON-RPC 0.8.0-rc3 API, including Websocket subscriptions.
 - Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
-- `storage_root` along `nonce` and `class_hash` in `contracts_proof/contract_leaves_data` for `starknet_getStorageProof`.
 
 ### Removed
 
 - `storage_commitment` and `class_commitment` fields from the `pathfinder_subscribe_newHeads` method response.
-- `class_commitment` from the `pathfinder_getProof` and `pathfinder_getClassProof` method responses.
 
 ### Fixed
 
 - `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.
-- `starknet_getStorageProof` returns `StorageProofNotSupported` (42) when Pathfinder is in `archive` mode and queried block's tries are empty.
 - `starknet_syncing` returns `u64::MAX` as the starting block number when starting from scratch.
 
 ### Changed
