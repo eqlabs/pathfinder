@@ -1,0 +1,13 @@
+[package]
+name = "caller"
+version = "0.1.0"
+edition = "2024_07"
+description = "A simple contract that calls other contracts."
+
+# See more keys and their definitions at https://docs.swmansion.com/scarb/docs/reference/manifest.html
+
+[dependencies]
+starknet = ">=2.9.2"
+
+[[target.starknet-contract]]
+casm = true

@@ -1,0 +1,1 @@
+{"version":1,"contracts":[{"id":"aesfg3aidc2s6","package_name":"caller","contract_name":"Caller","module_path":"caller::Caller","artifacts":{"sierra":"caller_Caller.contract_class.json","casm":"caller_Caller.compiled_contract_class.json"}}]}

@@ -6,6 +6,10 @@ use blockifier::execution::entry_point::{
     EntryPointExecutionContext,
     SierraGasRevertTracker,
 };
+use blockifier::execution::stack_trace::{
+    extract_trailing_cairo1_revert_trace,
+    Cairo1RevertHeader,
+};
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
@@ -73,13 +77,7 @@ pub fn call(
             )
         })?;
 
-    let error_stack_call_frame = crate::Frame::CallFrame(crate::CallFrame {
-        storage_address: contract_address,
-        class_hash: pathfinder_common::ClassHash(class_hash.0.into_felt()),
-        selector: Some(entry_point_selector),
-    });
-
-    // Sierra 1.7 classes can return a failure without reverting.
+    // In Starknet 0.13.4 calls return a failure which is not an error.
     if call_info.execution.failed {
         match call_info.execution.retdata.0.as_slice() {
             [error_code]
@@ -90,32 +88,13 @@ pub fn call(
             {
                 return Err(CallError::InvalidMessageSelector);
             }
-            [error_code]
-                if error_code.into_felt()
-                    == felt!(blockifier::execution::syscalls::hint_processor::OUT_OF_GAS_ERROR) =>
-            {
-                let error_message = "Out of gas";
-                let error_stack = crate::ErrorStack(vec![
-                    error_stack_call_frame,
-                    crate::Frame::StringFrame(error_message.to_owned()),
-                ]);
-
-                return Err(CallError::ContractError(
-                    anyhow::anyhow!(error_message),
-                    error_stack,
-                ));
-            }
             _ => {
-                let error_message =
-                    format!("Failed with retdata: {:?}", call_info.execution.retdata);
-                let error_stack = crate::ErrorStack(vec![
-                    error_stack_call_frame,
-                    crate::Frame::StringFrame(error_message.clone()),
-                ]);
+                let revert_trace =
+                    extract_trailing_cairo1_revert_trace(&call_info, Cairo1RevertHeader::Execution);
 
                 return Err(CallError::ContractError(
-                    anyhow::Error::msg(error_message),
-                    error_stack,
+                    anyhow::Error::msg(revert_trace.to_string()),
+                    revert_trace.into(),
                 ));
             }
         }
