@@ -7,7 +7,7 @@ use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::GasVectorComputationMode;
-use util::percentage::PercentageInt;
+use util::percentage::Percentage;
 
 use crate::TransactionExecutionError;
 
@@ -120,7 +120,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
     state: &mut S,
     block_context: &blockifier::context::BlockContext,
     revert_behavior: ExecutionBehaviorOnRevert,
-    epsilon: PercentageInt,
+    epsilon: Percentage,
 ) -> Result<TransactionExecutionInfo, TransactionExecutionError>
 where
     S: UpdatableState,

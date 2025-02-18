@@ -6,7 +6,7 @@ use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 use primitive_types::{H160, H256};
-use util::percentage::PercentageInt;
+use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::jsonrpc::Notifications;
@@ -69,7 +69,7 @@ pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
-    pub fee_estimation_epsilon: PercentageInt,
+    pub fee_estimation_epsilon: Percentage,
     pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
@@ -171,7 +171,7 @@ impl RpcContext {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
             get_events_max_uncached_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
-            fee_estimation_epsilon: PercentageInt::new(10),
+            fee_estimation_epsilon: Percentage::new(10),
             custom_versioned_constants: None,
         };
 

@@ -20,7 +20,7 @@ use pathfinder_common::{
     TransactionHash,
 };
 use starknet_api::transaction::fields::GasVectorComputationMode;
-use util::percentage::PercentageInt;
+use util::percentage::Percentage;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -87,7 +87,7 @@ impl Default for TraceCache {
 pub fn simulate(
     execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
-    epsilon: PercentageInt,
+    epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
