@@ -1,49 +1,27 @@
 use blockifier::execution::contract_class::TrackedResource;
 use blockifier::state::cached_state::{CachedState, MutRefState};
 use blockifier::state::state_api::UpdatableState;
-use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
+use blockifier::transaction::objects::TransactionExecutionInfo;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
-use pathfinder_common::TransactionHash;
-use starknet_api::block::FeeType;
 use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
-use super::felt::IntoFelt;
 use crate::TransactionExecutionError;
 
-// This workaround will not be necessary after the PR:
-// https://github.com/starkware-libs/blockifier/pull/927
-pub fn transaction_hash(transaction: &Transaction) -> TransactionHash {
-    TransactionHash(
-        match transaction {
-            Transaction::Account(outer) => match &outer.tx {
-                starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {
-                    inner.tx_hash
-                }
-                starknet_api::executable_transaction::AccountTransaction::DeployAccount(inner) => {
-                    inner.tx_hash()
-                }
-                starknet_api::executable_transaction::AccountTransaction::Invoke(inner) => {
-                    inner.tx_hash()
-                }
-            },
-            Transaction::L1Handler(outer) => outer.tx_hash,
-        }
-        .0
-        .into_felt(),
-    )
+pub enum ExecutionBehaviorOnRevert {
+    Fail,
+    Continue,
 }
 
-pub fn fee_type(transaction: &Transaction) -> FeeType {
-    match transaction {
-        Transaction::Account(tx) => tx.fee_type(),
-        Transaction::L1Handler(tx) => tx.fee_type(),
+impl ExecutionBehaviorOnRevert {
+    pub fn should_fail_on_revert(&self) -> bool {
+        matches!(self, Self::Fail)
     }
 }
 
-pub fn gas_vector_computation_mode(transaction: &Transaction) -> GasVectorComputationMode {
+pub(crate) fn gas_vector_computation_mode(transaction: &Transaction) -> GasVectorComputationMode {
     match &transaction {
         Transaction::Account(account_transaction) => {
             use starknet_api::executable_transaction::AccountTransaction;
@@ -140,6 +118,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
     tx_index: usize,
     state: &mut S,
     block_context: &blockifier::context::BlockContext,
+    revert_behavior: ExecutionBehaviorOnRevert,
 ) -> Result<TransactionExecutionInfo, TransactionExecutionError>
 where
     S: UpdatableState,
@@ -148,17 +127,18 @@ where
 
     // Start with MAX gas limit to get the consumed L2 gas.
     set_l2_gas_limit(tx, GasAmount::MAX);
-    let (tx_info, _) = match simulate_transaction(tx, tx_index, state, block_context) {
-        Ok(tx_info) => tx_info,
-        Err(TransactionSimulationError::ExecutionError(error)) => {
-            return Err(error);
-        }
-        Err(TransactionSimulationError::OutOfGas) => {
-            return Err(
-                anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded").into(),
-            );
-        }
-    };
+    let (tx_info, _) =
+        match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior) {
+            Ok(tx_info) => tx_info,
+            Err(TransactionSimulationError::ExecutionError(error)) => {
+                return Err(error);
+            }
+            Err(TransactionSimulationError::OutOfGas) => {
+                return Err(
+                    anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded").into(),
+                );
+            }
+        };
 
     let GasAmount(l2_gas_consumed) = tx_info.receipt.gas.l2_gas;
 
@@ -167,7 +147,7 @@ where
     set_l2_gas_limit(tx, l2_gas_adjusted);
 
     let (l2_gas_limit, mut tx_info, tx_state) =
-        match simulate_transaction(tx, tx_index, state, block_context) {
+        match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior) {
             Ok((tx_info, tx_state)) => {
                 metrics::increment_counter!("rpc_fee_estimation.without_binary_search");
                 // If 110% of the actual transaction gas fee is enough, we use that
@@ -207,7 +187,8 @@ where
                         current_l2_gas_limit = upper_bound;
                     }
 
-                    match simulate_transaction(tx, tx_index, state, block_context) {
+                    match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior)
+                    {
                         Ok((tx_info, tx_state)) => {
                             if search_done(lower_bound, upper_bound, L2_GAS_SEARCH_MARGIN) {
                                 break (tx_info, tx_state);
@@ -253,7 +234,7 @@ where
         // Set the L2 gas limit to zero so that the transaction reverts with a detailed
         // `ExecutionError`.
         set_l2_gas_limit(tx, GasAmount::ZERO);
-        match execute_transaction(tx, tx_index, state, block_context) {
+        match execute_transaction(tx, tx_index, state, block_context, &revert_behavior) {
             Err(e @ TransactionExecutionError::ExecutionError { .. }) => {
                 return Err(e);
             }
@@ -274,21 +255,24 @@ pub(crate) fn execute_transaction<S>(
     tx_index: usize,
     state: &mut S,
     block_context: &blockifier::context::BlockContext,
+    revert_behavior: &ExecutionBehaviorOnRevert,
 ) -> Result<TransactionExecutionInfo, TransactionExecutionError>
 where
     S: UpdatableState,
 {
     match tx.execute(state, block_context) {
         Ok(tx_info) => {
-            if let Some(revert_error) = tx_info.revert_error {
-                let revert_string = revert_error.to_string();
-                tracing::debug!(revert_error=%revert_string, "Transaction reverted");
+            if revert_behavior.should_fail_on_revert() {
+                if let Some(revert_error) = tx_info.revert_error {
+                    let revert_string = revert_error.to_string();
+                    tracing::debug!(revert_error=%revert_string, "Transaction reverted");
 
-                return Err(TransactionExecutionError::ExecutionError {
-                    transaction_index: tx_index,
-                    error: revert_string,
-                    error_stack: revert_error.into(),
-                });
+                    return Err(TransactionExecutionError::ExecutionError {
+                        transaction_index: tx_index,
+                        error: revert_string,
+                        error_stack: revert_error.into(),
+                    });
+                }
             }
 
             Ok(tx_info)
@@ -326,6 +310,7 @@ fn simulate_transaction<'state, S>(
     tx_index: usize,
     state: &'state mut S,
     block_context: &blockifier::context::BlockContext,
+    revert_behavior: &ExecutionBehaviorOnRevert,
 ) -> Result<
     (
         TransactionExecutionInfo,
@@ -341,7 +326,24 @@ where
         Ok(tx_info) if failed_with_insufficient_l2_gas(&tx_info) => {
             Err(TransactionSimulationError::OutOfGas)
         }
-        Ok(tx_info) => Ok((tx_info, tx_state)),
+        Ok(tx_info) => {
+            if revert_behavior.should_fail_on_revert() {
+                if let Some(revert_error) = tx_info.revert_error {
+                    let revert_string = revert_error.to_string();
+                    tracing::debug!(revert_error=%revert_string, "Transaction reverted");
+
+                    return Err(TransactionSimulationError::ExecutionError(
+                        TransactionExecutionError::ExecutionError {
+                            transaction_index: tx_index,
+                            error: revert_string,
+                            error_stack: revert_error.into(),
+                        },
+                    ));
+                }
+            }
+
+            Ok((tx_info, tx_state))
+        }
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction simulation failed");
             let error = TransactionExecutionError::new(tx_index, error);

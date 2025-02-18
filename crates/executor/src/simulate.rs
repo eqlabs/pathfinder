@@ -29,7 +29,7 @@ use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
     l2_gas_accounting_enabled,
-    transaction_hash,
+    ExecutionBehaviorOnRevert,
 };
 use crate::types::{
     DataAvailabilityResources,
@@ -98,7 +98,7 @@ pub fn simulate(
             let _span = tracing::debug_span!(
                 "simulate",
                 block_number = %block_number,
-                transaction_hash = %transaction_hash(&tx),
+                transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
                 transaction_index = %tx_index
             )
             .entered();
@@ -116,9 +116,10 @@ pub fn simulate(
                     tx_index,
                     &mut tx_state,
                     &block_context,
+                    ExecutionBehaviorOnRevert::Continue,
                 )?
             } else {
-                execute_transaction(&tx, tx_index, &mut tx_state, &block_context)?
+                execute_transaction(&tx, tx_index, &mut tx_state, &block_context, &ExecutionBehaviorOnRevert::Continue)?
             };
             let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
             tx_state.commit();
@@ -183,7 +184,7 @@ pub fn trace(
 
     let mut traces = Vec::with_capacity(transactions.len());
     for (transaction_idx, tx) in transactions.into_iter().enumerate() {
-        let hash = transaction_hash(&tx);
+        let hash = TransactionHash(Transaction::tx_hash(&tx).0.into_felt());
         let _span =
             tracing::debug_span!("trace", transaction_hash=%hash, %transaction_idx).entered();
 

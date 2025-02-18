@@ -939,6 +939,114 @@ mod tests {
         );
     }
 
+    /// Invokes the test contract with an invalid entry point so that
+    /// the transaction is expected to be reverted.
+    fn invoke_v3_transaction_with_invalid_entry_point(
+        sender_address: ContractAddress,
+        nonce: TransactionNonce,
+        depth: CallParam,
+    ) -> BroadcastedTransaction {
+        BroadcastedTransaction::Invoke(BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                sender_address,
+                calldata: vec![
+                    // Number of calls
+                    call_param!("0x1"),
+                    // Address of the deployed test contract
+                    CallParam(felt!(
+                        "0x17c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b"
+                    )),
+                    // Entry point selector for the called contract, i.e.
+                    CallParam(EntryPoint::hashed(b"bogus").0),
+                    // Length of the call data for the called contract, i.e.
+                    call_param!("1"),
+                    depth,
+                ],
+                nonce,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(50),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    },
+                    l1_data_gas: Some(ResourceBound {
+                        max_amount: ResourceAmount(100),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    }),
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(800_000),
+                        max_price_per_unit: ResourcePricePerUnit(1000),
+                    },
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L2,
+                fee_data_availability_mode: DataAvailabilityMode::L2,
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn declare_deploy_and_invoke_sierra_class_reverts_on_starknet_0_13_4() {
+        let (context, last_block_header, account_contract_address, universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
+                0, 13, 4, 0,
+            ))
+            .await;
+
+        // declare test class
+        let declare_transaction = declare_v3_transaction(account_contract_address);
+        // deploy with universal deployer contract
+        let deploy_transaction =
+            deploy_v3_transaction(account_contract_address, universal_deployer_address);
+        // invoke deployed contract
+        let invoke_transaction = invoke_v3_transaction_with_invalid_entry_point(
+            account_contract_address,
+            transaction_nonce!("0x2"),
+            call_param!("7"),
+        );
+
+        let input = Input {
+            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
+            simulation_flags: vec![SimulationFlag::SkipValidate],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let error = super::estimate_fee(context, input).await.unwrap_err();
+
+        assert_matches::assert_matches!(error, EstimateFeeError::TransactionExecutionError { transaction_index, error, error_stack } => {
+            assert_eq!(transaction_index, 2);
+            assert_eq!(error, "Transaction execution has failed:\n\
+                0: Error in the called contract (contract address: 0x0000000000000000000000000000000000000000000000000000000000000c01, class hash: 0x019cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978, selector: 0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad):\n\
+                Execution failed. Failure reason:\n\
+                Error in contract (contract address: 0x0000000000000000000000000000000000000000000000000000000000000c01, class hash: 0x019cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978, selector: 0x015d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad):\n\
+                Error in contract (contract address: 0x017c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b, class hash: 0x01a48fd3f75d0a7c2288ac23fb6aba26cd375607ba63e4a3b3ed47fc8e99dc21, selector: 0x02a1f595e2db7bf53e1a4bc9834eef6b86d3cd66ec9c8b3588c09253d0affc51):\n\
+                0x454e545259504f494e545f4e4f545f464f554e44 ('ENTRYPOINT_NOT_FOUND').\n");
+            assert_eq!(error_stack, pathfinder_executor::ErrorStack(vec![
+                pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address: account_contract_address,
+                    class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+                    selector: Some(EntryPoint::hashed(b"__execute__")),
+                }),
+                pathfinder_executor::Frame::StringFrame(
+                    "Cairo1RevertSummary { header: Execution, stack: \
+                    [Cairo1RevertFrame { \
+                      contract_address: ContractAddress(PatriciaKey(0xc01)), \
+                      class_hash: Some(ClassHash(0x19cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978)), \
+                      selector: EntryPointSelector(0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad) \
+                      }, \
+                    Cairo1RevertFrame { \
+                      contract_address: ContractAddress(PatriciaKey(0x17c54b787c2eccfb057cf6aa2f941d612249549fff74140adc20bb949eab74b)), \
+                      class_hash: Some(ClassHash(0x1a48fd3f75d0a7c2288ac23fb6aba26cd375607ba63e4a3b3ed47fc8e99dc21)), \
+                      selector: EntryPointSelector(0x2a1f595e2db7bf53e1a4bc9834eef6b86d3cd66ec9c8b3588c09253d0affc51) \
+                    }], \
+                    last_retdata: Retdata([0x454e545259504f494e545f4e4f545f464f554e44]) }".to_owned()
+                )
+            ]));
+        });
+    }
+
     #[tokio::test]
     async fn starknet_0_13_4_max_gas_exceeded() {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =

@@ -11,7 +11,7 @@ use pathfinder_common::{ClassHash, ContractAddress, EntryPoint};
 
 use crate::IntoFelt;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ErrorStack(pub Vec<Frame>);
 
 impl From<BlockifierErrorStack> for ErrorStack {
@@ -53,7 +53,7 @@ impl From<Cairo1RevertSummary> for ErrorStack {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Frame {
     CallFrame(CallFrame),
     StringFrame(String),
@@ -87,7 +87,7 @@ impl From<Cairo1RevertFrame> for Frame {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CallFrame {
     pub storage_address: ContractAddress,
     pub class_hash: ClassHash,
