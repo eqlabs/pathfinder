@@ -14,6 +14,7 @@ use pathfinder_common::AllowedOrigins;
 use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
+use util::percentage::PercentageInt;
 
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
@@ -324,6 +325,17 @@ This should only be enabled for debugging purposes as it adds substantial proces
         default_value = "10"
     )]
     shutdown_grace_period: std::num::NonZeroU64,
+
+    #[arg(
+        long = "rpc.fee-estimation-epsilon",
+        value_name = "Percentage",
+        long_help = "Acceptable overhead to add on top of consumed L2 gas (g) during fee estimation (`estimateFee` and `simulate` RPC methods). \
+            Setting a lower value  gives a more precise fee estimation (in terms of L2 gas) but runs a higher  risk of having to resort to a binary search if the initial L2 gas limit (`g  + (g * EPSILON/100)`) is insufficient.",
+        env = "PATHFINDER_RPC_FEE_ESTIMATION_EPSILON",
+        default_value = "10",
+        value_parser = parse_fee_estimation_epsilon
+    )]
+    fee_estimation_epsilon: PercentageInt,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -370,6 +382,14 @@ fn parse_state_tries(s: &str) -> Result<StateTries, String> {
             Ok(StateTries::Pruned(value))
         }
     }
+}
+
+fn parse_fee_estimation_epsilon(s: &str) -> Result<PercentageInt, String> {
+    let value: u8 = s
+        .parse()
+        .map_err(|_| "Expected a number between 0 and 100".to_string())?;
+
+    Ok(PercentageInt::new(value))
 }
 
 #[derive(clap::Args)]
@@ -735,6 +755,7 @@ pub struct Config {
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
     pub shutdown_grace_period: Duration,
+    pub fee_estimation_epsilon: PercentageInt,
 }
 
 pub struct Ethereum {
@@ -1030,6 +1051,7 @@ impl Config {
                 .map(parse_versioned_constants_or_exit),
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
+            fee_estimation_epsilon: cli.fee_estimation_epsilon,
         }
     }
 }

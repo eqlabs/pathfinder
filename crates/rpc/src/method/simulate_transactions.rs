@@ -100,7 +100,11 @@ pub async fn simulate_transactions(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let txs = pathfinder_executor::simulate(state, transactions)?;
+        let txs = pathfinder_executor::simulate(
+            state,
+            transactions,
+            context.config.fee_estimation_epsilon,
+        )?;
         Ok(Output(txs))
     })
     .await

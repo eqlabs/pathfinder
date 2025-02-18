@@ -120,6 +120,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
     state: &mut S,
     block_context: &blockifier::context::BlockContext,
     revert_behavior: ExecutionBehaviorOnRevert,
+    epsilon: PercentageInt,
 ) -> Result<TransactionExecutionInfo, TransactionExecutionError>
 where
     S: UpdatableState,
@@ -142,7 +143,6 @@ where
         };
 
     let GasAmount(l2_gas_consumed) = tx_info.receipt.gas.l2_gas;
-    let epsilon = PercentageInt::new(10);
 
     // Add a buffer (in terms of %) to the actual L2 gas fee.
     let l2_gas_adjusted = GasAmount(l2_gas_consumed.saturating_add(epsilon.of(l2_gas_consumed)));

@@ -104,7 +104,11 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let result = pathfinder_executor::estimate(state, transactions)?;
+        let result = pathfinder_executor::estimate(
+            state,
+            transactions,
+            context.config.fee_estimation_epsilon,
+        )?;
 
         Ok::<_, EstimateFeeError>(result)
     })
