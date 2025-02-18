@@ -388,7 +388,14 @@ fn parse_state_tries(s: &str) -> Result<StateTries, String> {
 fn parse_fee_estimation_epsilon(s: &str) -> Result<Percentage, String> {
     let value: u8 = s
         .parse()
-        .map_err(|_| "Expected a number between 0 and 100".to_string())?;
+        .map_err(|_| "Expected a number (u8)".to_string())
+        .and_then(|value| {
+            if value > 100 {
+                Err("Expected a number between 0 and 100".to_string())
+            } else {
+                Ok(value)
+            }
+        })?;
 
     Ok(Percentage::new(value))
 }
