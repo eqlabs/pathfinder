@@ -330,7 +330,8 @@ This should only be enabled for debugging purposes as it adds substantial proces
         long = "rpc.fee-estimation-epsilon",
         value_name = "Percentage",
         long_help = "Acceptable overhead to add on top of consumed L2 gas (g) during fee estimation (`estimateFee` and `simulate` RPC methods). \
-            Setting a lower value  gives a more precise fee estimation (in terms of L2 gas) but runs a higher  risk of having to resort to a binary search if the initial L2 gas limit (`g  + (g * EPSILON/100)`) is insufficient.",
+            Setting a lower value gives a more precise fee estimation (in terms of L2 gas) but runs a higher risk of having to resort to a binary \
+            search if the initial L2 gas limit (`g  + (g * EPSILON/100)`) is insufficient.",
         env = "PATHFINDER_RPC_FEE_ESTIMATION_EPSILON",
         default_value = "10",
         value_parser = parse_fee_estimation_epsilon
