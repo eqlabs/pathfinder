@@ -92,6 +92,7 @@
         },
         "builtin_gas_costs": {
             "range_check": 70,
+            "range_check96": 56,
             "keccak": 136189,
             "pedersen": 4050,
             "bitwise": 583,
