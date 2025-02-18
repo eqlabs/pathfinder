@@ -16,6 +16,7 @@ metrics = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-storage = { path = "../storage" }
+util = { path = "../util" }
 primitive-types = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
 starknet-gateway-types = { path = "../gateway-types" }

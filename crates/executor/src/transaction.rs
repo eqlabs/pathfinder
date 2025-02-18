@@ -7,6 +7,7 @@ use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::GasAmount;
 use starknet_api::transaction::fields::GasVectorComputationMode;
+use util::percentage::PercentageInt;
 
 use crate::TransactionExecutionError;
 
@@ -141,9 +142,10 @@ where
         };
 
     let GasAmount(l2_gas_consumed) = tx_info.receipt.gas.l2_gas;
+    let epsilon = PercentageInt::new(10);
 
-    // Add a 10% buffer to the actual L2 gas fee.
-    let l2_gas_adjusted = GasAmount(l2_gas_consumed.saturating_add(l2_gas_consumed / 10));
+    // Add a buffer (in terms of %) to the actual L2 gas fee.
+    let l2_gas_adjusted = GasAmount(l2_gas_consumed.saturating_add(epsilon.of(l2_gas_consumed)));
     set_l2_gas_limit(tx, l2_gas_adjusted);
 
     let (l2_gas_limit, mut tx_info, tx_state) =

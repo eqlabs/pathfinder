@@ -4,3 +4,4 @@
 pub mod error;
 pub mod make_stream;
 pub mod task;
+pub mod percentage;
