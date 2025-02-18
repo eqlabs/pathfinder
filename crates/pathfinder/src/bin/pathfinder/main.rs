@@ -226,6 +226,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         get_events_max_blocks_to_scan: config.get_events_max_blocks_to_scan,
         get_events_max_uncached_event_filters_to_load: config
             .get_events_max_uncached_event_filters_to_load,
+        fee_estimation_epsilon: config.fee_estimation_epsilon,
         custom_versioned_constants: config.custom_versioned_constants.take(),
     };
 

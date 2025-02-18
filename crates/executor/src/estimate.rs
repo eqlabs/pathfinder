@@ -3,6 +3,7 @@ use blockifier::transaction::transaction_execution::Transaction;
 use pathfinder_common::TransactionHash;
 use starknet_api::block::FeeType;
 use starknet_api::transaction::fields::GasVectorComputationMode;
+use util::percentage::Percentage;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
@@ -18,6 +19,7 @@ use crate::IntoFelt;
 pub fn estimate(
     execution_state: ExecutionState<'_>,
     transactions: Vec<Transaction>,
+    epsilon: Percentage,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
 
@@ -48,6 +50,7 @@ pub fn estimate(
                     &mut state,
                     &block_context,
                     ExecutionBehaviorOnRevert::Fail,
+                    epsilon,
                 )?
             } else {
                 execute_transaction(

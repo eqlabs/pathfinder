@@ -7723,6 +7723,7 @@ dependencies = [
  "starknet_api",
  "tokio",
  "tracing",
+ "util",
 ]
 
 [[package]]
@@ -10897,6 +10898,7 @@ name = "util"
 version = "0.15.3"
 dependencies = [
  "anyhow",
+ "num-traits",
  "tokio",
  "tokio-stream",
  "tokio-util",

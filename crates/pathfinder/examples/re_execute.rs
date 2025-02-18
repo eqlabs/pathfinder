@@ -8,6 +8,7 @@ use pathfinder_executor::ExecutionState;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::{BlockId, Storage};
 use rayon::prelude::*;
+use util::percentage::Percentage;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
 // a huge number of allocations. We get roughly two times better execution
@@ -157,7 +158,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::simulate(execution_state, transactions) {
+    match pathfinder_executor::simulate(execution_state, transactions, Percentage::new(10)) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()
