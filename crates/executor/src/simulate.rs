@@ -139,7 +139,6 @@ pub fn simulate(
                     state_diff,
                     block_context.versioned_constants(),
                     &gas_vector_computation_mode,
-                    block_context.block_info().use_kzg_da,
                 ),
             })
         })
@@ -222,7 +221,6 @@ pub fn trace(
             state_diff,
             block_context.versioned_constants(),
             &gas_vector_computation_mode,
-            block_context.block_info().use_kzg_da,
         );
         traces.push((hash, trace));
     }
@@ -372,14 +370,12 @@ fn to_trace(
     state_diff: StateDiff,
     versioned_constants: &VersionedConstants,
     gas_vector_computation_mode: &GasVectorComputationMode,
-    use_kzg_da: bool,
 ) -> TransactionTrace {
     let validate_invocation = execution_info.validate_call_info.map(|call_info| {
         FunctionInvocation::from_call_info(
             call_info,
             versioned_constants,
             gas_vector_computation_mode,
-            use_kzg_da,
         )
     });
     let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
@@ -387,7 +383,6 @@ fn to_trace(
             call_info,
             versioned_constants,
             gas_vector_computation_mode,
-            use_kzg_da,
         )
     });
     let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
@@ -395,7 +390,6 @@ fn to_trace(
             call_info,
             versioned_constants,
             gas_vector_computation_mode,
-            use_kzg_da,
         )
     });
 

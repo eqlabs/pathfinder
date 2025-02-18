@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::fee::resources::{StarknetResources, TransactionResources};
 use blockifier::transaction::objects::TransactionExecutionInfo;
 use pathfinder_common::{
     CasmHash,
@@ -314,55 +313,14 @@ pub struct DataAvailabilityResources {
 }
 
 impl FunctionInvocation {
-    // This estimation purposefully ignores some of the gas costs since we don't
-    // have all the necessary defails to compute them and those will be taken
-    // into account only when computing the transaction receipt.
-    // Ignored costs include state change costs, code size related costs for
-    // DECLARE, L1 handler payload size and Starknet OS overhead.
-    fn estimate_gas_consumed(
-        call_info: &blockifier::execution::call_info::CallInfo,
-        versioned_constants: &blockifier::versioned_constants::VersionedConstants,
-        gas_vector_computation_mode: &starknet_api::transaction::fields::GasVectorComputationMode,
-        use_kzg_da: bool,
-    ) -> GasVector {
-        let execution_summary = call_info.summarize(versioned_constants);
-        let sierra_gas = execution_summary.charged_resources.gas_consumed;
-        let vm_resources = execution_summary
-            .charged_resources
-            .vm_resources
-            .filter_unused_builtins();
-        let state_changes = blockifier::state::cached_state::StateChanges::default();
-        let state_resources = blockifier::fee::resources::StateResources::new(
-            &state_changes,
-            None,
-            Default::default(),
-        );
-        let starknet_resources =
-            StarknetResources::new(0, 0, 0, state_resources, None, execution_summary);
-        let tx_resources = TransactionResources {
-            starknet_resources,
-            computation: blockifier::fee::resources::ComputationResources {
-                vm_resources,
-                n_reverted_steps: 0,
-                sierra_gas,
-                reverted_sierra_gas: 0u64.into(),
-            },
-        };
-        tx_resources.to_gas_vector(versioned_constants, use_kzg_da, gas_vector_computation_mode)
-    }
-
     pub fn from_call_info(
         call_info: blockifier::execution::call_info::CallInfo,
         versioned_constants: &blockifier::versioned_constants::VersionedConstants,
         gas_vector_computation_mode: &starknet_api::transaction::fields::GasVectorComputationMode,
-        use_kzg_da: bool,
     ) -> Self {
-        let gas_consumed = Self::estimate_gas_consumed(
-            &call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-            use_kzg_da,
-        );
+        let gas_consumed = call_info
+            .summarize(versioned_constants)
+            .to_partial_gas_vector(versioned_constants, gas_vector_computation_mode);
 
         let messages = ordered_l2_to_l1_messages(&call_info);
 
@@ -370,12 +328,7 @@ impl FunctionInvocation {
             .inner_calls
             .into_iter()
             .map(|call_info| {
-                Self::from_call_info(
-                    call_info,
-                    versioned_constants,
-                    gas_vector_computation_mode,
-                    use_kzg_da,
-                )
+                Self::from_call_info(call_info, versioned_constants, gas_vector_computation_mode)
             })
             .collect();
 
