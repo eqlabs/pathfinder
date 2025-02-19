@@ -59,12 +59,15 @@ done
 # Update Cargo.lock and verify everything still builds
 cargo check --workspace --all-targets
 cargo check --workspace --all-targets --all-features
+pushd crates/load-test
+cargo check
+popd
 
 # Create and checkout new release branch
 git checkout -b release/v${VERSION}
 
 # Create git commit and tag
-git add Cargo.toml Cargo.lock crates/*/Cargo.toml CHANGELOG.md
+git add Cargo.toml Cargo.lock **/Cargo.toml **/Cargo.lock CHANGELOG.md
 git commit -m "chore: bump version to ${VERSION}"
 git tag -a "v${VERSION}" -m "Pathfinder v${VERSION}"
 
