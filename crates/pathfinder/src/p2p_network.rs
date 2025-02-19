@@ -137,27 +137,27 @@ async fn handle_p2p_event(
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
         } => {
-            get_headers(storage, request, channel).await?;
+            get_headers(storage, request, channel).await;
         }
         p2p::Event::InboundClassesSyncRequest {
             request, channel, ..
         } => {
-            get_classes(storage, request, channel).await?;
+            get_classes(storage, request, channel).await;
         }
         p2p::Event::InboundStateDiffsSyncRequest {
             request, channel, ..
         } => {
-            get_state_diffs(storage, request, channel).await?;
+            get_state_diffs(storage, request, channel).await;
         }
         p2p::Event::InboundTransactionsSyncRequest {
             request, channel, ..
         } => {
-            get_transactions(storage, request, channel).await?;
+            get_transactions(storage, request, channel).await;
         }
         p2p::Event::InboundEventsSyncRequest {
             request, channel, ..
         } => {
-            get_events(storage, request, channel).await?;
+            get_events(storage, request, channel).await;
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");
