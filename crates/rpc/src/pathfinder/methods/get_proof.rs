@@ -340,7 +340,7 @@ pub async fn get_proof(
             &tx,
             header.number,
             &input.contract_address,
-            storage_root_idx,
+            storage_root_idx.get(),
         )?
         .into_iter()
         .map(|(node, _)| node)
@@ -388,7 +388,7 @@ pub async fn get_proof(
                     input.contract_address,
                     header.number,
                     k.view_bits(),
-                    root,
+                    root.get(),
                 )?
                 .into_iter()
                 .map(|(node, _)| node)
@@ -479,11 +479,15 @@ pub async fn get_class_proof(
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
-        let class_proof =
-            ClassCommitmentTree::get_proof(&tx, header.number, input.class_hash, class_root_idx)?
-                .into_iter()
-                .map(|(node, _)| node)
-                .collect();
+        let class_proof = ClassCommitmentTree::get_proof(
+            &tx,
+            header.number,
+            input.class_hash,
+            class_root_idx,
+        )?
+        .into_iter()
+        .map(|(node, _)| node)
+        .collect();
 
         let class_proof = ProofNodes(class_proof);
 
@@ -502,6 +506,7 @@ mod tests {
 
     use pathfinder_common::macro_prelude::*;
     use pathfinder_merkle_tree::starknet_state::update_starknet_state;
+    use pathfinder_storage::storage_index::TrieStorageIndex;
 
     use super::*;
 
@@ -596,7 +601,9 @@ mod tests {
             tx.insert_storage_trie(
                 &pathfinder_storage::TrieUpdate {
                     nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
-                    nodes_removed: (0..100).collect(),
+                    nodes_removed: (0..100)
+                        .map(|value| TrieStorageIndex::new(value as u64))
+                        .collect(),
                     root_commitment: Felt::ZERO,
                 },
                 BlockNumber::GENESIS + 3,
