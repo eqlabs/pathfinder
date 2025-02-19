@@ -43,7 +43,6 @@ pretty_assertions_sorted = { workspace = true }
 primitive-types = { workspace = true }
 prost = { workspace = true }
 rand = { workspace = true }
-rayon = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

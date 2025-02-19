@@ -8,13 +8,17 @@ rust-version = { workspace = true }
 description = "Pathfinder's class hash computation and verification"
 repository = "https://github.com/eqlabs/pathfinder"
 keywords = ["starknet", "ethereum", "web3", "cryptography", "hash"]
-categories = ["cryptography", "cryptography::cryptocurrencies", "network-programming", "web-programming"]
+categories = [
+    "cryptography",
+    "cryptography::cryptocurrencies",
+    "network-programming",
+    "web-programming",
+]
 
 [dependencies]
 anyhow = { workspace = true }
 pathfinder-common = { version = "0.15.3", path = "../common" }
 pathfinder-crypto = { version = "0.15.3", path = "../crypto" }
-pathfinder-serde = { version = "0.15.3", path = "../serde" }
 primitive-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
@@ -27,9 +31,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-assert_matches = { workspace = true }
 fake = { workspace = true, features = ["serde_json"] }
 rand = { workspace = true }
-rstest = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 tokio = { workspace = true, features = ["macros", "test-util"] }

@@ -43,7 +43,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-starknet-gateway-types = { path = "../gateway-types" }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -51,7 +50,6 @@ tracing = { workspace = true }
 zstd = { workspace = true, features = ["experimental"] }
 
 [dev-dependencies]
-assert_matches = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
