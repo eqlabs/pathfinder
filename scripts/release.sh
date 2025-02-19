@@ -59,14 +59,17 @@ done
 # Update Cargo.lock and verify everything still builds
 cargo check --workspace --all-targets
 cargo check --workspace --all-targets --all-features
+# The `load-test` crate is excluded from the workspace but has a dependency on `pathfinder-common`.
+pushd crates/load-test
+cargo check
+popd
 
 # Create and checkout new release branch
 git checkout -b release/v${VERSION}
 
 # Create git commit and tag
-git add Cargo.toml Cargo.lock crates/*/Cargo.toml CHANGELOG.md
+git add Cargo.toml Cargo.lock **/Cargo.toml **/Cargo.lock CHANGELOG.md
 git commit -m "chore: bump version to ${VERSION}"
-git tag -a "v${VERSION}" -m "Pathfinder v${VERSION}"
 
 # Quik recap of what was done
 echo -e "\nChanges made:"
@@ -78,7 +81,7 @@ for crate in "${CRATES[@]}"; do
 done
 
 # Confirmation before pushing
-echo -e "\nPush these changes to \`release/v${VERSION}\` and create a tag \`v${VERSION}\`? (Y/n)"
+echo -e "\nPush these changes to \`release/v${VERSION}\`? (Y/n)"
 read -r answer
 if [[ "$answer" == "n" ]] || [[ "$answer" == "N" ]]; then
     echo "Aborting push. Changes are committed locally."
@@ -86,4 +89,4 @@ if [[ "$answer" == "n" ]] || [[ "$answer" == "N" ]]; then
 fi
 
 # Push changes
-git push --set-upstream origin release/v${VERSION} && git push origin "v${VERSION}"
+git push --set-upstream origin release/v${VERSION}
