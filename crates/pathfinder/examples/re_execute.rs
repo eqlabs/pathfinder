@@ -158,7 +158,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         }
     };
 
-    match pathfinder_executor::simulate(execution_state, transactions, Percentage::new(10)) {
+    match pathfinder_executor::simulate(execution_state, transactions, Percentage::new(0)) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()
@@ -183,7 +183,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
                 let estimate = &simulation.fee_estimation;
 
                 let actual_data_gas_consumed =
-                    receipt.execution_resources.data_availability.l1_data_gas;
+                    receipt.execution_resources.total_gas_consumed.l1_data_gas;
                 let actual_gas_consumed = receipt.execution_resources.total_gas_consumed.l1_gas;
                 let actual_l2_gas_consumed = receipt.execution_resources.l2_gas.0;
 
