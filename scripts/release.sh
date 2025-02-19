@@ -59,6 +59,7 @@ done
 # Update Cargo.lock and verify everything still builds
 cargo check --workspace --all-targets
 cargo check --workspace --all-targets --all-features
+# The `load-test` crate is excluded from the workspace but has a dependency on `pathfinder-common`.
 pushd crates/load-test
 cargo check
 popd
