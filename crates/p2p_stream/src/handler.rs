@@ -94,6 +94,8 @@ where
     inbound_request_id: Arc<AtomicU64>,
 
     worker_streams: futures_bounded::FuturesMap<RequestId, Result<Event<TCodec>, io::Error>>,
+
+    response_timeout: Duration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,6 +112,7 @@ where
         inbound_protocols: Vec<TCodec::Protocol>,
         codec: TCodec,
         substream_timeout: Duration,
+        response_timeout: Duration,
         inbound_request_id: Arc<AtomicU64>,
         max_concurrent_streams: usize,
     ) -> Self {
@@ -130,6 +133,7 @@ where
                 substream_timeout,
                 max_concurrent_streams,
             ),
+            response_timeout,
         }
     }
 
@@ -148,6 +152,7 @@ where
         let mut codec = self.codec.clone();
         let request_id = self.next_inbound_request_id();
         let mut sender = self.inbound_sender.clone();
+        let response_timeout = self.response_timeout;
 
         let recv_request_then_fwd_outgoing_responses = async move {
             let (rs_send, mut rs_recv) = mpsc::channel(0);
@@ -163,8 +168,17 @@ where
 
             // Keep on forwarding until the channel is closed
             while let Some(response) = rs_recv.next().await {
-                let write = codec.write_response(&protocol, &mut stream, response);
-                write.await?;
+                tokio::time::timeout(
+                    response_timeout,
+                    codec.write_response(&protocol, &mut stream, response),
+                )
+                .await
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("Timeout writing response to stream for request id {request_id}"),
+                    )
+                })??;
             }
 
             stream.close().await?;
@@ -202,6 +216,7 @@ where
         let (mut rs_send, rs_recv) = mpsc::channel(0);
 
         let mut sender = self.outbound_sender.clone();
+        let response_timeout = self.response_timeout;
 
         let send_req_then_fwd_incoming_responses = async move {
             let write = codec.write_request(&protocol, &mut stream, message.request);
@@ -217,17 +232,34 @@ where
 
             // Keep on forwarding until the channel is closed or error occurs
             loop {
-                match codec.read_response(&protocol, &mut stream).await {
-                    Ok(response) => {
+                match tokio::time::timeout(
+                    response_timeout,
+                    codec.read_response(&protocol, &mut stream),
+                )
+                .await
+                {
+                    Err(_) => {
+                        rs_send
+                            .send(Err(io::Error::new(
+                                io::ErrorKind::TimedOut,
+                                format!(
+                                    "Timeout reading response from stream for request id \
+                                     {request_id}"
+                                ),
+                            )))
+                            .await
+                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    }
+                    Ok(Ok(response)) => {
                         rs_send
                             .send(Ok(response))
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                     }
                     // The stream is closed, there's nothing more to receive
-                    Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => break,
+                    Ok(Err(error)) if error.kind() == io::ErrorKind::UnexpectedEof => break,
                     // An error occurred, propagate it
-                    Err(error) => {
+                    Ok(Err(error)) => {
                         let error_clone = io::Error::new(error.kind(), error.to_string());
                         rs_send
                             .send(Err(error_clone))
@@ -443,12 +475,26 @@ where
             Poll::Ready((_, Ok(Ok(event)))) => {
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
             }
+            Poll::Ready((RequestId::Inbound(id), Ok(Err(e))))
+                if e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                    Event::InboundTimeout(id),
+                ));
+            }
             Poll::Ready((RequestId::Inbound(id), Ok(Err(e)))) => {
                 return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                     Event::InboundStreamFailed {
                         request_id: id,
                         error: e,
                     },
+                ));
+            }
+            Poll::Ready((RequestId::Outbound(id), Ok(Err(e))))
+                if e.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
+                    Event::OutboundTimeout(id),
                 ));
             }
             Poll::Ready((RequestId::Outbound(id), Ok(Err(e)))) => {

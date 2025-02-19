@@ -9,7 +9,7 @@ pub mod utils;
 
 use utils::{
     new_swarm,
-    new_swarm_with_timeout,
+    new_swarm_with_timeouts,
     wait_inbound_failure,
     wait_inbound_request,
     wait_inbound_response_stream_closed,
@@ -123,10 +123,14 @@ async fn report_outbound_failure_on_write_request_failure() {
 }
 
 #[test_log::test(tokio::test)]
-async fn report_outbound_timeout_on_read_response_timeout() {
-    // `swarm1` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
-    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
+async fn report_outbound_timeout_on_response_stream_timeout() {
+    // `swarm1` needs to have a bigger stream timeout to avoid racing
+    // response timeouts are set to a larger value to make sure we trigger a
+    // stream timeout
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(200), Duration::from_millis(500));
+    let (peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(100), Duration::from_millis(500));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
@@ -157,6 +161,58 @@ async fn report_outbound_timeout_on_read_response_timeout() {
         assert_eq!(req_id_done, req_id);
 
         assert!(resp_rx.next().await.is_none());
+
+        let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, OutboundFailure::Timeout));
+    };
+
+    // Make sure both run to completion
+    tokio::join!(server_task, client_task);
+}
+
+#[test_log::test(tokio::test)]
+async fn report_outbound_timeout_on_read_response_timeout() {
+    // `swarm1` needs to have a bigger timeout to avoid racing
+    // stream timeouts are set to a larger value to make sure we trigger a response
+    // timeout
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(500), Duration::from_millis(200));
+    let (peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(500), Duration::from_millis(100));
+
+    swarm1.listen().with_memory_addr_external().await;
+    swarm2.connect(&mut swarm1).await;
+
+    let server_task = async move {
+        let (peer, req_id, action, mut resp_tx) = wait_inbound_request(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(action, Action::TimeoutOnReadResponse);
+
+        resp_tx.send(Action::TimeoutOnReadResponse).await.unwrap();
+
+        let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, InboundFailure::Timeout));
+    };
+
+    let client_task = async move {
+        let req_id = swarm2
+            .behaviour_mut()
+            .send_request(&peer1_id, Action::TimeoutOnReadResponse);
+
+        let (peer, req_id_done, mut resp_rx) =
+            wait_outbound_request_sent_awaiting_responses(&mut swarm2)
+                .await
+                .unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+
+        assert!(
+            matches!(resp_rx.next().await, Some(Err(error)) if error.kind() == io::ErrorKind::TimedOut)
+        );
 
         let (peer, req_id_done, error) = wait_outbound_failure(&mut swarm2).await.unwrap();
         assert_eq!(peer, peer1_id);
@@ -268,10 +324,70 @@ async fn report_inbound_failure_on_write_response_failure() {
 }
 
 #[test_log::test(tokio::test)]
+async fn report_inbound_timeout_on_response_stream_timeout() {
+    // `swarm2` needs to have a bigger timeout to avoid racing
+    // response timeouts are set to a larger value to make sure we trigger a
+    // stream timeout
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(100), Duration::from_millis(500));
+    let (peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(200), Duration::from_millis(500));
+
+    swarm1.listen().with_memory_addr_external().await;
+    swarm2.connect(&mut swarm1).await;
+
+    let server_task = async move {
+        let (peer, req_id, action, mut resp_channel) =
+            wait_inbound_request(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(action, Action::TimeoutOnWriteResponse);
+
+        resp_channel
+            .send(Action::TimeoutOnWriteResponse)
+            .await
+            .unwrap();
+
+        let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
+        assert_eq!(peer, peer2_id);
+        assert_eq!(req_id_done, req_id);
+        assert!(matches!(error, InboundFailure::Timeout));
+    };
+
+    let client_task = async move {
+        let req_id = swarm2
+            .behaviour_mut()
+            .send_request(&peer1_id, Action::TimeoutOnWriteResponse);
+
+        let (peer, req_id_done, mut resp_channel) =
+            wait_outbound_request_sent_awaiting_responses(&mut swarm2)
+                .await
+                .unwrap();
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+
+        assert!(resp_channel.next().await.is_none());
+
+        let (peer, req_id_done) = wait_inbound_response_stream_closed(&mut swarm2)
+            .await
+            .unwrap();
+
+        assert_eq!(peer, peer1_id);
+        assert_eq!(req_id_done, req_id);
+    };
+
+    // Make sure both run to completion
+    tokio::join!(client_task, server_task);
+}
+
+#[test_log::test(tokio::test)]
 async fn report_inbound_timeout_on_write_response_timeout() {
     // `swarm2` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(100));
-    let (peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(200));
+    // stream timeouts are set to a larger value to make sure we trigger a
+    // response timeout
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(500), Duration::from_millis(100));
+    let (peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(500), Duration::from_millis(200));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
@@ -322,8 +438,10 @@ async fn report_inbound_timeout_on_write_response_timeout() {
 #[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_write_request_timeout() {
     // `swarm1` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
-    let (_peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(200), Duration::from_millis(200));
+    let (_peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(100), Duration::from_millis(100));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;
@@ -357,8 +475,10 @@ async fn report_outbound_timeout_on_write_request_timeout() {
 #[test_log::test(tokio::test)]
 async fn report_outbound_timeout_on_read_request_timeout() {
     // `swarm2` needs to have a bigger timeout to avoid racing
-    let (peer1_id, mut swarm1) = new_swarm_with_timeout(Duration::from_millis(200));
-    let (_peer2_id, mut swarm2) = new_swarm_with_timeout(Duration::from_millis(100));
+    let (peer1_id, mut swarm1) =
+        new_swarm_with_timeouts(Duration::from_millis(200), Duration::from_millis(200));
+    let (_peer2_id, mut swarm2) =
+        new_swarm_with_timeouts(Duration::from_millis(100), Duration::from_millis(100));
 
     swarm1.listen().with_memory_addr_external().await;
     swarm2.connect(&mut swarm1).await;

@@ -238,23 +238,31 @@ impl fmt::Display for OutboundRequestId {
 /// The configuration for a `Behaviour` protocol.
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
-    request_timeout: Duration,
+    stream_timeout: Duration,
+    response_timeout: Duration,
     max_concurrent_streams: usize,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            request_timeout: Duration::from_secs(60),
+            stream_timeout: Duration::from_secs(60),
+            response_timeout: Duration::from_secs(10),
             max_concurrent_streams: 100,
         }
     }
 }
 
 impl Config {
-    /// Sets the timeout for inbound and outbound requests.
-    pub fn request_timeout(mut self, v: Duration) -> Self {
-        self.request_timeout = v;
+    /// Sets the timeout for the stream
+    pub fn stream_timeout(mut self, v: Duration) -> Self {
+        self.stream_timeout = v;
+        self
+    }
+
+    /// Sets the timeout for a single response
+    pub fn response_timeout(mut self, v: Duration) -> Self {
+        self.response_timeout = v;
         self
     }
 
@@ -595,7 +603,8 @@ where
         let mut handler = Handler::new(
             self.protocols.clone(),
             self.codec.clone(),
-            self.config.request_timeout,
+            self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );
@@ -636,7 +645,8 @@ where
         let mut handler = Handler::new(
             self.protocols.clone(),
             self.codec.clone(),
-            self.config.request_timeout,
+            self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );

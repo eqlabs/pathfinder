@@ -9,7 +9,7 @@ use rstest::rstest;
 pub mod utils;
 
 use utils::{
-    new_swarm_with_timeout,
+    new_swarm_with_timeouts,
     wait_inbound_request,
     wait_inbound_response_stream_closed,
     wait_outbound_request_sent_awaiting_responses,
@@ -35,8 +35,10 @@ struct Scenario {
 
 // peer1 is the server, peer2 is the client
 async fn setup() -> (PeerId, TestSwarm, PeerId, TestSwarm) {
-    let (srv_peer_id, mut srv_swarm) = new_swarm_with_timeout(Duration::from_secs(10));
-    let (cli_peer_id, mut cli_swarm) = new_swarm_with_timeout(Duration::from_secs(10));
+    let (srv_peer_id, mut srv_swarm) =
+        new_swarm_with_timeouts(Duration::from_secs(10), Duration::from_secs(10));
+    let (cli_peer_id, mut cli_swarm) =
+        new_swarm_with_timeouts(Duration::from_secs(10), Duration::from_secs(10));
 
     srv_swarm.listen().with_memory_addr_external().await;
     cli_swarm.connect(&mut srv_swarm).await;

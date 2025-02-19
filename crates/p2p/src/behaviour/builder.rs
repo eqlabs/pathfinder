@@ -132,7 +132,8 @@ impl Builder {
         let (relay_transport, relay) = relay::client::new(peer_id);
 
         let p2p_stream_cfg = p2p_stream::Config::default()
-            .request_timeout(cfg.stream_timeout)
+            .stream_timeout(cfg.stream_timeout)
+            .response_timeout(cfg.response_timeout)
             .max_concurrent_streams(cfg.max_concurrent_streams);
 
         let header_sync = header_sync
