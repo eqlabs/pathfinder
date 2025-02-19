@@ -15,7 +15,8 @@ use p2p_proto::transaction::TransactionsRequest;
 use pathfinder_common::ChainId;
 
 const USAGE: &str = "Usage: stress_test_sync_client <server-multiaddr-with-peer-id> \
-                     <max-concurrent-request-streams> <num-requests> <initial-delay-ms>";
+                     <max-concurrent-request-streams> <num-requests> <blocks-per-request> \
+                     <initial-delay-ms>";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,16 +35,21 @@ async fn main() -> anyhow::Result<()> {
         .context(USAGE)?;
     let max_concurrent_streams = args()
         .nth(2)
-        .unwrap_or("1000".to_string())
+        .unwrap_or("100".to_string())
         .parse::<usize>()
         .context(USAGE)?;
     let num_requests = args()
         .nth(3)
-        .unwrap_or("1000".to_string())
+        .unwrap_or("100".to_string())
+        .parse::<u64>()
+        .context(USAGE)?;
+    let blocks_per_request = args()
+        .nth(4)
+        .unwrap_or("100".to_string())
         .parse::<u64>()
         .context(USAGE)?;
     let initial_delay_ms = args()
-        .nth(4)
+        .nth(5)
         .unwrap_or("0".to_string())
         .parse::<u64>()
         .context(USAGE)?;
@@ -93,10 +99,10 @@ async fn main() -> anyhow::Result<()> {
                     server_peer_id,
                     TransactionsRequest {
                         iteration: Iteration {
-                            start: BlockNumberOrHash::Number(start * 1000),
+                            start: BlockNumberOrHash::Number(start * blocks_per_request),
                             direction: Direction::Forward,
                             // Max allowed by pathfinder (as a server)
-                            limit: 1000,
+                            limit: blocks_per_request,
                             step: 1.into(),
                         },
                     },
