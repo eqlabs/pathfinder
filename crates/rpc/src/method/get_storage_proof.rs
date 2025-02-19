@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use anyhow::Context;
 use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
@@ -378,7 +376,7 @@ fn get_class_proofs(
                 node_hash,
                 node: ProofNode(node),
             })
-            .collect::<HashSet<_>>()
+            .collect::<Vec<_>>()
             .into_iter()
             .collect();
     let classes_proof = NodeHashToNodeMappings(nodes);
@@ -423,7 +421,7 @@ fn get_contract_proofs(
                 node_hash,
                 node: ProofNode(node),
             })
-            .collect::<HashSet<_>>()
+            .collect::<Vec<_>>()
             .into_iter()
             .collect();
 
@@ -476,7 +474,7 @@ fn get_contract_storage_proofs(
                     .context("Querying contract root index")?;
 
                 if let Some(root) = root {
-                    let nodes: Vec<NodeHashToNodeMapping> = ContractsStorageTree::get_proofs(
+                    ContractsStorageTree::get_proofs(
                         &tx,
                         csk.contract_address,
                         block_number,
@@ -484,16 +482,16 @@ fn get_contract_storage_proofs(
                         root,
                     )?
                     .into_iter()
-                    .flatten()
-                    .map(|(node, node_hash)| NodeHashToNodeMapping {
-                        node_hash,
-                        node: ProofNode(node),
-                    })
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect();
-
-                    proofs.push(NodeHashToNodeMappings(nodes));
+                    .for_each(|vec_nodes| {
+                        let nodes = vec_nodes
+                            .into_iter()
+                            .map(|(node, node_hash)| NodeHashToNodeMapping {
+                                node_hash,
+                                node: ProofNode(node),
+                            })
+                            .collect::<Vec<_>>();
+                        proofs.push(NodeHashToNodeMappings(nodes));
+                    });
                 } else {
                     proofs.push(NodeHashToNodeMappings(vec![]));
                 }
