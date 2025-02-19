@@ -555,12 +555,21 @@ Example:
 
     #[arg(
         long = "p2p.experimental.stream-timeout",
-        long_help = "Timeout of the request/response-stream protocol.",
+        long_help = "Timeout of the entire stream in the request/response-stream protocol.",
         value_name = "SECONDS",
         default_value = "60",
         env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
     )]
     stream_timeout: u32,
+
+    #[arg(
+        long = "p2p.experimental.response-timeout",
+        long_help = "Timeout of a single response in the request/response-stream protocol.",
+        value_name = "SECONDS",
+        default_value = "10",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_RESPONSE_TIMEOUT"
+    )]
+    response_timeout: u32,
 
     #[arg(
         long = "p2p.experimental.max-concurrent-streams",
@@ -798,6 +807,7 @@ pub struct P2PConfig {
     pub kad_name: Option<String>,
     pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
+    pub response_timeout: Duration,
     pub max_concurrent_streams: usize,
     pub direct_connection_timeout: Duration,
     pub eviction_timeout: Duration,
@@ -948,6 +958,7 @@ impl P2PConfig {
             kad_name: args.kad_name,
             l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),
+            response_timeout: Duration::from_secs(args.response_timeout.into()),
             max_concurrent_streams: args.max_concurrent_streams,
             direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
             eviction_timeout: Duration::from_secs(args.eviction_timeout.into()),

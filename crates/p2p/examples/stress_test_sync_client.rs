@@ -73,6 +73,7 @@ async fn main() -> anyhow::Result<()> {
             },
             kad_name: None,
             stream_timeout: Duration::from_secs(60 * 60),
+            response_timeout: Duration::from_secs(60 * 60),
             max_concurrent_streams,
         },
         ChainId::SEPOLIA_TESTNET,
