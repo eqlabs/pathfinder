@@ -307,6 +307,12 @@ impl MainLoop {
                                     new_block,
                                     message.data.len()
                                 );
+
+                                // Record that this peer has gossiped a valid block
+                                self.swarm
+                                    .behaviour_mut()
+                                    .record_valid_block_gossip(peer_id);
+
                                 self.event_sender
                                     .send(Event::BlockPropagation {
                                         from: peer_id,

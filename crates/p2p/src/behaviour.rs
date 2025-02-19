@@ -173,6 +173,8 @@ impl NetworkBehaviour for Behaviour {
                             min_ping: None,
                             evicted: false,
                             useful: true,
+                            last_valid_transaction_gossip: None,
+                            last_valid_block_gossip: None,
                         },
                     );
                     self.pending_events.push_back(ToSwarm::CloseConnection {
@@ -202,6 +204,8 @@ impl NetworkBehaviour for Behaviour {
                         min_ping: None,
                         evicted: false,
                         useful: true,
+                        last_valid_transaction_gossip: None,
+                        last_valid_block_gossip: None,
                     },
                 );
             }
@@ -232,6 +236,8 @@ impl NetworkBehaviour for Behaviour {
                             keyed_network_group: None,
                             evicted: false,
                             useful: true,
+                            last_valid_transaction_gossip: None,
+                            last_valid_block_gossip: None,
                         },
                     );
                 }
@@ -433,6 +439,8 @@ impl NetworkBehaviour for Behaviour {
                         min_ping: None,
                         evicted: false,
                         useful: true,
+                        last_valid_transaction_gossip: None,
+                        last_valid_block_gossip: None,
                     },
                 );
             }
@@ -608,9 +616,28 @@ impl Behaviour {
             candidates.remove(peer_id);
         }
 
-        // TODO #1754: Save 4 nodes that have most recently gossiped valid transactions,
-        // and 8 nodes that have most recently gossiped a valid new head (or any
-        // other block if we are still syncing).
+        // Protect 4 peers that have most recently gossiped valid transactions
+        let mut transaction_times: Vec<_> = candidates
+            .iter()
+            .filter_map(|(&peer_id, peer)| {
+                peer.last_valid_transaction_gossip
+                    .map(|time| (peer_id, time))
+            })
+            .collect();
+        transaction_times.sort_by_key(|&(_, time)| cmp::Reverse(time));
+        for (peer_id, _) in transaction_times.iter().take(4) {
+            candidates.remove(peer_id);
+        }
+
+        // Protect 8 peers that have most recently gossiped valid blocks
+        let mut block_times: Vec<_> = candidates
+            .iter()
+            .filter_map(|(&peer_id, peer)| peer.last_valid_block_gossip.map(|time| (peer_id, time)))
+            .collect();
+        block_times.sort_by_key(|&(_, time)| cmp::Reverse(time));
+        for (peer_id, _) in block_times.iter().take(8) {
+            candidates.remove(peer_id);
+        }
 
         // Of the remaining nodes, protect half of them which have been connected
         // for the longest time.
@@ -789,6 +816,21 @@ impl Behaviour {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_connected() && peer.is_inbound() && peer.is_relayed())
+    }
+
+    /// Record that a peer has gossiped a valid transaction
+    #[allow(dead_code)]
+    pub fn record_valid_transaction_gossip(&mut self, peer_id: PeerId) {
+        self.peers.update(peer_id, |peer| {
+            peer.last_valid_transaction_gossip = Some(Instant::now());
+        });
+    }
+
+    /// Record that a peer has gossiped a valid block
+    pub fn record_valid_block_gossip(&mut self, peer_id: PeerId) {
+        self.peers.update(peer_id, |peer| {
+            peer.last_valid_block_gossip = Some(Instant::now());
+        });
     }
 }
 

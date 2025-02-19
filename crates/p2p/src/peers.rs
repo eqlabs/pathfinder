@@ -21,6 +21,10 @@ pub struct Peer {
     pub useful: bool,
     // TODO are we still able to maintain info about peers' sync heads?
     // sync_status: Option<p2p_proto_v0::sync::Status>,
+    /// When this peer last gossiped a valid transaction
+    pub last_valid_transaction_gossip: Option<Instant>,
+    /// When this peer last gossiped a valid block
+    pub last_valid_block_gossip: Option<Instant>,
 }
 
 impl Peer {
