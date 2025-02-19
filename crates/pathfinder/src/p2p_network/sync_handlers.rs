@@ -40,7 +40,7 @@ pub async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
     tx: futures::channel::mpsc::Sender<BlockHeadersResponse>,
-) -> anyhow::Result<()> {
+) {
     spawn_blocking_get(request, storage, blocking::get_headers, tx).await
 }
 
@@ -48,7 +48,7 @@ pub async fn get_classes(
     storage: Storage,
     request: ClassesRequest,
     tx: futures::channel::mpsc::Sender<ClassesResponse>,
-) -> anyhow::Result<()> {
+) {
     spawn_blocking_get(request, storage, blocking::get_classes, tx).await
 }
 
@@ -56,7 +56,7 @@ pub async fn get_state_diffs(
     storage: Storage,
     request: StateDiffsRequest,
     tx: futures::channel::mpsc::Sender<StateDiffsResponse>,
-) -> anyhow::Result<()> {
+) {
     spawn_blocking_get(request, storage, blocking::get_state_diffs, tx).await
 }
 
@@ -64,7 +64,7 @@ pub async fn get_transactions(
     storage: Storage,
     request: TransactionsRequest,
     tx: futures::channel::mpsc::Sender<TransactionsResponse>,
-) -> anyhow::Result<()> {
+) {
     spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
 }
 
@@ -72,7 +72,7 @@ pub async fn get_events(
     storage: Storage,
     request: EventsRequest,
     tx: futures::channel::mpsc::Sender<EventsResponse>,
-) -> anyhow::Result<()> {
+) {
     spawn_blocking_get(request, storage, blocking::get_events, tx).await
 }
 
@@ -399,16 +399,22 @@ fn get_start_block_number(
 }
 
 /// Spawns a blocking task and forwards the result to the given channel.
-/// Bails out early if the database operation fails or sending fails.
+/// **Does not wait for the DB operation to finish.**
 /// The `getter` function is expected to send partial results through the tokio
 /// channel as soon as possible, ideally after each database read operation.
+///
+/// ## Important
+///
+/// This function must detach the thread used to run the blocking DB operation
+/// otherwise the entire p2p swarm will be blocked.
+///
+/// Related issue: <https://github.com/eqlabs/pathfinder/issues/2351>
 async fn spawn_blocking_get<Request, Response, Getter>(
     request: Request,
     storage: Storage,
     getter: Getter,
     mut tx: futures::channel::mpsc::Sender<Response>,
-) -> anyhow::Result<()>
-where
+) where
     Request: Send + 'static,
     Response: Send + 'static,
     Getter: FnOnce(Transaction<'_>, Request, mpsc::Sender<Response>) -> anyhow::Result<()>
@@ -419,31 +425,25 @@ where
 
     let (sync_tx, mut rx) = mpsc::channel(1); // For backpressure
 
-    let db_fut = async {
-        util::task::spawn_blocking(move |_| {
-            let _g = span.enter();
-            let mut connection = storage
-                .connection()
-                .context("Opening database connection")?;
-            let db_tx = connection
-                .transaction()
-                .context("Creating database transaction")?;
-            getter(db_tx, request, sync_tx)
-        })
-        .await
-        .context("Database read panic or shutting down")?
-        .context("Database read")
-    };
-
-    let fwd_fut = async move {
+    // Detach so we can exit the function asap
+    util::task::spawn(async move {
         while let Some(x) = rx.recv().await {
             tx.send(x).await.context("Sending item")?;
         }
         Ok::<_, anyhow::Error>(())
-    };
-    // Bail out early, either when db fails or sending fails
-    tokio::try_join!(db_fut, fwd_fut)?;
-    Ok(())
+    });
+
+    // Detach so we can exit the function asap
+    util::task::spawn_blocking(move |_| {
+        let _g = span.enter();
+        let mut connection = storage
+            .connection()
+            .context("Opening database connection")?;
+        let db_tx = connection
+            .transaction()
+            .context("Creating database transaction")?;
+        getter(db_tx, request, sync_tx)
+    });
 }
 
 /// Returns next block number considering direction.

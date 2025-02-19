@@ -567,7 +567,7 @@ Example:
         long_help = "Maximum allowed number of concurrent streams per each \
                      request/response-stream protocol per connection.",
         value_name = "LIMIT",
-        default_value = "1",
+        default_value = "100",
         env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
     )]
     max_concurrent_streams: usize,
