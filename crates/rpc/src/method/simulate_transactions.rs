@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::BlockId;
 use pathfinder_executor::TransactionExecutionError;
@@ -85,6 +87,7 @@ pub async fn simulate_transactions(
             context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
+            Arc::clone(&context.native_class_cache),
         );
 
         let transactions = input

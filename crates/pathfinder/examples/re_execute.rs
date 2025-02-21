@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
-use pathfinder_executor::ExecutionState;
+use pathfinder_executor::{ExecutionState, NativeClassCache};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_storage::{BlockId, Storage};
 use rayon::prelude::*;
@@ -62,6 +63,8 @@ fn main() -> anyhow::Result<()> {
     let start_time = std::time::Instant::now();
     let mut num_transactions: usize = 0;
 
+    let native_class_cache = Arc::new(NativeClassCache::spawn());
+
     (first_block..=last_block)
         .map(|block_number| {
             let transaction = db.transaction().unwrap();
@@ -88,7 +91,12 @@ fn main() -> anyhow::Result<()> {
             }
         })
         .par_bridge()
-        .for_each_with(storage, |storage, block| execute(storage, chain_id, block));
+        .for_each_with(
+            (storage, native_class_cache),
+            |(storage, native_class_cache), block| {
+                execute(storage, chain_id, block, Arc::clone(native_class_cache))
+            },
+        );
 
     let elapsed = start_time.elapsed();
 
@@ -126,7 +134,12 @@ struct Work {
     receipts: Vec<Receipt>,
 }
 
-fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
+fn execute(
+    storage: &mut Storage,
+    chain_id: ChainId,
+    work: Work,
+    native_class_cache: Arc<NativeClassCache>,
+) {
     let start_time = std::time::Instant::now();
     let num_transactions = work.transactions.len();
 
@@ -142,6 +155,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         Default::default(),
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
+        native_class_cache,
     );
 
     let transactions = work

@@ -162,6 +162,7 @@ mod tests {
     use pathfinder_common::{felt, BlockHash, BlockHeader, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
+    use pathfinder_executor::NativeClassCache;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
@@ -538,6 +539,7 @@ mod tests {
         .unwrap();
         let (_, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
+        let native_class_cache = Arc::new(NativeClassCache::spawn());
         let ctx = RpcContext {
             cache: Default::default(),
             storage,
@@ -563,6 +565,7 @@ mod tests {
                 fee_estimation_epsilon: Default::default(),
                 versioned_constants_map: Default::default(),
             },
+            native_class_cache,
         };
         v08::register_routes().build(ctx)
     }
