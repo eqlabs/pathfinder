@@ -11,6 +11,7 @@ name = "pathfinder_lib"
 path = "src/lib.rs"
 
 [features]
+cairo-native = ["pathfinder-executor/cairo-native"]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
 
