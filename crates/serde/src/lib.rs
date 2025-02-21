@@ -384,7 +384,7 @@ fn bytes_from_hex_str<const N: usize>(hex_str: &str) -> Result<[u8; N], HexParse
 
     for (i, c) in chunks.enumerate() {
         // Indexing c[0] and c[1] are safe since chunk-size is 2.
-        buf[N - 1 - i] = parse_hex_digit(c[0])? << 4 | parse_hex_digit(c[1])?;
+        buf[N - 1 - i] = (parse_hex_digit(c[0])? << 4) | parse_hex_digit(c[1])?;
     }
 
     Ok(buf)

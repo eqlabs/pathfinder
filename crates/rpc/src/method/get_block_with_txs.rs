@@ -56,13 +56,7 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
                     .get(&transaction)
                     .context("Querying pending data")?;
 
-                let transactions = pending
-                    .block
-                    .transactions
-                    .iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect();
+                let transactions = pending.block.transactions.to_vec();
 
                 return Ok(Output::Pending {
                     header: pending.block,
@@ -84,7 +78,6 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
             .context("Reading transactions from database")?
             .context("Transaction data missing")?
             .into_iter()
-            .map(Into::into)
             .collect();
 
         Ok(Output::Full {

@@ -113,7 +113,7 @@ pub mod hex_str {
         while chunk < chunks {
             let lower = parse_hex_digit(bytes[bytes.len() - chunk * 2 - 1])?;
             let upper = parse_hex_digit(bytes[bytes.len() - chunk * 2 - 2])?;
-            buf[N - 1 - chunk] = upper << 4 | lower;
+            buf[N - 1 - chunk] = (upper << 4) | lower;
             chunk += 1;
         }
 

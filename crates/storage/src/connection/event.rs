@@ -495,7 +495,7 @@ impl Transaction<'_> {
         // don't cover the requested range.
         let should_include_running = event_filters
             .last()
-            .map_or(true, |last| end_block > last.to_block);
+            .is_none_or(|last| end_block > last.to_block);
 
         if should_include_running && !load_limit_reached {
             let running_event_filter = self.running_event_filter.lock().unwrap();

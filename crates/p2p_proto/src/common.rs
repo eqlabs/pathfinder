@@ -301,7 +301,7 @@ impl TryFromProtobuf<proto::common::Uint128> for u128 {
         input: proto::common::Uint128,
         _: &'static str,
     ) -> Result<Self, std::io::Error> {
-        Ok((input.high as u128) << 64 | input.low as u128)
+        Ok(((input.high as u128) << 64) | input.low as u128)
     }
 }
 

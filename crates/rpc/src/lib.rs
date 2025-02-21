@@ -748,8 +748,8 @@ pub mod test_utils {
             ),
         ];
 
-        let transactions = transactions.into_iter().map(Into::into).collect();
-        let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
+        let transactions = transactions.into_iter().collect();
+        let transaction_receipts = transaction_receipts.into_iter().collect();
 
         let contract1 = contract_address_bytes!(b"pending contract 1 address");
         let state_update = StateUpdate::default()
