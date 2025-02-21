@@ -16,8 +16,7 @@ use pathfinder_common::{
     StateDiffCommitment,
     TransactionCommitment,
 };
-use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr, H256AsNoLeadingZerosHexStr};
-use primitive_types::H256;
+use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
 pub use transaction::DataAvailabilityMode;
@@ -2185,11 +2184,9 @@ pub struct EthContractAddresses {
     #[serde_as(as = "EthereumAddressAsHexStr")]
     pub starknet: EthereumAddress,
 
-    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
-    pub strk_l2_token_address: H256,
+    pub strk_l2_token_address: Option<ContractAddress>,
 
-    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
-    pub eth_l2_token_address: H256,
+    pub eth_l2_token_address: Option<ContractAddress>,
 }
 
 pub mod add_transaction {
