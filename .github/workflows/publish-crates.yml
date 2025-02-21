@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
 
@@ -26,7 +26,7 @@ jobs:
             local package=$1
             local max_attempts=3
             local attempt=1
-            
+
             while [ $attempt -le $max_attempts ]; do
               echo "Attempting to publish $package (attempt $attempt/$max_attempts)"
               if cargo publish -p $package; then
@@ -41,14 +41,14 @@ jobs:
           # First publish crypto as it has no internal dependencies
           publish_with_retry pathfinder-crypto
           sleep 30
-          
+
           # Publish common which depends on crypto
           publish_with_retry pathfinder-common
           sleep 30
-          
+
           # Publish serde which depends on common and crypto
           publish_with_retry pathfinder-serde
           sleep 30
-          
+
           # Finally publish class-hash which depends on common, crypto and serde
           publish_with_retry pathfinder-class-hash
