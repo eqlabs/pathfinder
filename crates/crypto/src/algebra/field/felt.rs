@@ -370,7 +370,7 @@ impl Felt {
                 Ok(b) => b,
                 Err(e) => return Err(e),
             };
-            buf[31 - chunk] = upper << 4 | lower;
+            buf[31 - chunk] = (upper << 4) | lower;
             chunk += 1;
         }
 

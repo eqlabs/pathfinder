@@ -113,7 +113,6 @@ pub async fn trace_transaction(
                     .context("Fetching block transactions")?
                     .context("Block transactions missing")?
                     .into_iter()
-                    .map(Into::into)
                     .collect::<Vec<_>>();
 
                 (header, transactions.clone(), context.cache.clone())

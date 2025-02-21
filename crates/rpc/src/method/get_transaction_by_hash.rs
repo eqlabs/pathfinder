@@ -60,9 +60,7 @@ pub async fn get_transaction_by_hash(
             .map(Output)
     });
 
-    jh.await
-        .context("Database read panic or shutting down")?
-        .map_err(Into::into)
+    jh.await.context("Database read panic or shutting down")?
 }
 
 impl crate::dto::SerializeForVersion for Output {

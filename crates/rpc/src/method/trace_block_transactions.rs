@@ -79,7 +79,6 @@ pub async fn trace_block_transactions(
                     .transactions_for_block(block_id)?
                     .context("Transaction data missing")?
                     .into_iter()
-                    .map(Into::into)
                     .collect::<Vec<_>>();
 
                 (header, transactions, context.cache.clone())
@@ -941,7 +940,7 @@ pub(crate) mod tests {
                 status: starknet_gateway_types::reply::Status::Pending,
                 timestamp: last_block_header.timestamp,
                 transaction_receipts,
-                transactions: transactions.iter().cloned().map(Into::into).collect(),
+                transactions: transactions.to_vec(),
                 starknet_version: last_block_header.starknet_version,
                 l1_da_mode: L1DataAvailabilityMode::Blob,
             };

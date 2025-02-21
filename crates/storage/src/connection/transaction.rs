@@ -103,7 +103,7 @@ impl Transaction<'_> {
             self.upsert_block_event_filters(block_number, events.iter().flatten())
                 .context("Inserting events into Bloom filter")?;
         }
-        if transactions.is_empty() && events.map_or(true, |evts| evts.is_empty()) {
+        if transactions.is_empty() && events.is_none_or(|evts| evts.is_empty()) {
             return Ok(());
         }
 
@@ -1288,11 +1288,7 @@ pub(crate) mod dto {
             Self {
                 actual_fee: value.actual_fee,
                 execution_resources: value.execution_resources.map(Into::into),
-                l2_to_l1_messages: value
-                    .l2_to_l1_messages
-                    .into_iter()
-                    .map(Into::into)
-                    .collect(),
+                l2_to_l1_messages: value.l2_to_l1_messages.into_iter().collect(),
                 transaction_hash: value.transaction_hash,
                 transaction_index: value.transaction_index,
                 execution_status: value.execution_status,

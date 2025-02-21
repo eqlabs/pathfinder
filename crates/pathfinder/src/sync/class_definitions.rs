@@ -396,7 +396,6 @@ pub(super) fn expected_declarations_stream(
                 .declared_classes_at(start.into())
                 .context("Querying declared classes at block")
                 .and_then(|x| x.context("Block header not found"))
-                .map_err(Into::into)
                 .map(|x| (start, x.into_iter().collect::<HashSet<_>>()));
             drop(db);
             let is_err = res.is_err();

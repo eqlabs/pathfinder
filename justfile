@@ -20,8 +20,8 @@ check:
 fmt:
     cargo +nightly fmt --all
 
-clippy:
-    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+clippy *args="":
+    cargo clippy --workspace --all-targets --all-features --locked {{args}} -- -D warnings -D rust_2018_idioms
 
 dep-sort:
     cargo sort --check --workspace

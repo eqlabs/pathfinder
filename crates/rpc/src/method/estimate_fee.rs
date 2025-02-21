@@ -115,7 +115,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
     .await
     .context("Executing transaction")??;
 
-    Ok(Output(result.into_iter().map(Into::into).collect()))
+    Ok(Output(result.into_iter().collect()))
 }
 
 #[derive(Debug)]
