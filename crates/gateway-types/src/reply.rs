@@ -2185,11 +2185,11 @@ pub struct EthContractAddresses {
     #[serde_as(as = "EthereumAddressAsHexStr")]
     pub starknet: EthereumAddress,
 
-    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
-    pub strk_l2_token_address: H256,
+    #[serde_as(as = "Option<H256AsNoLeadingZerosHexStr>")]
+    pub strk_l2_token_address: Option<H256>,
 
-    #[serde_as(as = "H256AsNoLeadingZerosHexStr")]
-    pub eth_l2_token_address: H256,
+    #[serde_as(as = "Option<H256AsNoLeadingZerosHexStr>")]
+    pub eth_l2_token_address: Option<H256>,
 }
 
 pub mod add_transaction {

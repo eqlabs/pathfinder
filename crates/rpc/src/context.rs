@@ -43,24 +43,38 @@ impl EthContractAddresses {
 
     pub fn new_custom(
         contract_address: H160,
-        eth_l2_token_address: H256,
-        strk_l2_token_address: H256,
+        eth_l2_token_address: Option<H256>,
+        strk_l2_token_address: Option<H256>,
     ) -> anyhow::Result<Self> {
         let addresses = Self {
             l1_contract_address: contract_address,
-            eth_l2_token_address: Self::from_token_addr(eth_l2_token_address)?,
-            strk_l2_token_address: Self::from_token_addr(strk_l2_token_address)?,
+            eth_l2_token_address: Self::from_token_addr(
+                eth_l2_token_address,
+                &ETH_FEE_TOKEN_ADDRESS,
+            )?,
+            strk_l2_token_address: Self::from_token_addr(
+                strk_l2_token_address,
+                &STRK_FEE_TOKEN_ADDRESS,
+            )?,
         };
         Ok(addresses)
     }
 
-    fn from_token_addr(addr: H256) -> anyhow::Result<ContractAddress> {
+    fn from_token_addr(
+        address: Option<H256>,
+        default: &ContractAddress,
+    ) -> anyhow::Result<ContractAddress> {
         use pathfinder_crypto::Felt;
 
-        let felt = Felt::from_be_slice(addr.as_bytes())?;
-        let contract_addr = ContractAddress::new(felt)
-            .ok_or_else(|| anyhow::anyhow!("Cannot parse {} as token address", felt))?;
-        Ok(contract_addr)
+        if let Some(addr) = address {
+            let felt = Felt::from_be_slice(addr.as_bytes())?;
+            let contract_addr = ContractAddress::new(felt)
+                .ok_or_else(|| anyhow::anyhow!("Cannot parse {} as token address", felt))?;
+            Ok(contract_addr)
+        } else {
+            tracing::warn!("Contract address unspecified, using default");
+            Ok(*default)
+        }
     }
 }
 
