@@ -5,7 +5,7 @@ use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
-use primitive_types::{H160, H256};
+use primitive_types::H160;
 use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
@@ -43,37 +43,21 @@ impl EthContractAddresses {
 
     pub fn new_custom(
         contract_address: H160,
-        eth_l2_token_address: Option<H256>,
-        strk_l2_token_address: Option<H256>,
-    ) -> anyhow::Result<Self> {
-        let addresses = Self {
+        eth_l2_token_address: Option<ContractAddress>,
+        strk_l2_token_address: Option<ContractAddress>,
+    ) -> Self {
+        let eth_l2_token_address = eth_l2_token_address.unwrap_or_else(|| {
+            tracing::warn!("ETH address unspecified, using default");
+            ETH_FEE_TOKEN_ADDRESS
+        });
+        let strk_l2_token_address = strk_l2_token_address.unwrap_or_else(|| {
+            tracing::warn!("STRK address unspecified, using default");
+            STRK_FEE_TOKEN_ADDRESS
+        });
+        Self {
             l1_contract_address: contract_address,
-            eth_l2_token_address: Self::from_token_addr(
-                eth_l2_token_address,
-                &ETH_FEE_TOKEN_ADDRESS,
-            )?,
-            strk_l2_token_address: Self::from_token_addr(
-                strk_l2_token_address,
-                &STRK_FEE_TOKEN_ADDRESS,
-            )?,
-        };
-        Ok(addresses)
-    }
-
-    fn from_token_addr(
-        address: Option<H256>,
-        default: &ContractAddress,
-    ) -> anyhow::Result<ContractAddress> {
-        use pathfinder_crypto::Felt;
-
-        if let Some(addr) = address {
-            let felt = Felt::from_be_slice(addr.as_bytes())?;
-            let contract_addr = ContractAddress::new(felt)
-                .ok_or_else(|| anyhow::anyhow!("Cannot parse {} as token address", felt))?;
-            Ok(contract_addr)
-        } else {
-            tracing::warn!("Contract address unspecified, using default");
-            Ok(*default)
+            eth_l2_token_address,
+            strk_l2_token_address,
         }
     }
 }

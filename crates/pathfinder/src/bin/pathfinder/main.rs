@@ -886,7 +886,7 @@ mod pathfinder_context {
                 l1_core_address,
                 reply_contract_addresses.eth_l2_token_address,
                 reply_contract_addresses.strk_l2_token_address,
-            )?;
+            );
 
             // Check for proxies by comparing the core address against those of the known
             // networks.
