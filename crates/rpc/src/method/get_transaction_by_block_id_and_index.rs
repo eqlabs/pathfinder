@@ -1,8 +1,8 @@
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionIndex};
 
 use crate::context::RpcContext;
-use crate::types::transaction::TransactionWithHash;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -21,6 +21,9 @@ impl crate::dto::DeserializeForVersion for Input {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Output(Transaction);
+
 crate::error::generate_rpc_error_subset!(
     GetTransactionByBlockIdAndIndexError: BlockNotFound,
     InvalidTxnIndex
@@ -29,7 +32,7 @@ crate::error::generate_rpc_error_subset!(
 pub async fn get_transaction_by_block_id_and_index(
     context: RpcContext,
     input: Input,
-) -> Result<TransactionWithHash, GetTransactionByBlockIdAndIndexError> {
+) -> Result<Output, GetTransactionByBlockIdAndIndexError> {
     let index: usize = input
         .index
         .get()
@@ -57,7 +60,7 @@ pub async fn get_transaction_by_block_id_and_index(
                     .get(index)
                     .cloned()
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
-                return result.map(Into::into);
+                return result.map(Output);
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -67,7 +70,7 @@ pub async fn get_transaction_by_block_id_and_index(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(transaction.into()),
+            Some(transaction) => Ok(Output(transaction)),
             None => {
                 // We now need to check whether it was the block hash or transaction index which
                 // were invalid. We do this by checking if the block exists
@@ -86,6 +89,15 @@ pub async fn get_transaction_by_block_id_and_index(
     });
 
     jh.await.context("Database read panic or shutting down")?
+}
+
+impl crate::dto::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&crate::dto::TransactionWithHash(&self.0))
+    }
 }
 
 #[cfg(test)]

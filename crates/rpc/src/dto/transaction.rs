@@ -285,6 +285,51 @@ impl DeserializeForVersion for pathfinder_common::TransactionIndex {
     }
 }
 
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::CallParam> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::AccountDeploymentDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::TransactionSignatureElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::ConstructorParam> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
+impl crate::dto::SerializeForVersion for Vec<pathfinder_common::PaymasterDataElem> {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.len(), &mut self.iter())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::transaction::{ResourceBound, ResourceBounds};
@@ -294,6 +339,491 @@ mod tests {
 
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
+
+    mod transaction {
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::transaction::*;
+        use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip};
+        use pretty_assertions_sorted::assert_eq;
+        use serde_json::json;
+        use starknet_api::transaction_hash;
+
+        use super::*;
+        use crate::dto::{SerializeForVersion, Serializer};
+        use crate::RpcVersion;
+
+        #[test]
+        fn declare_v0() {
+            let uut = TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+                class_hash: class_hash!("0x123"),
+                max_fee: fee!("0x1111"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+            });
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DECLARE",
+                "version": "0x0",
+                "sender_address": "0xabc",
+                "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "class_hash": "0x123",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn declare_v1() {
+            let uut = TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
+                class_hash: class_hash!("0x123"),
+                max_fee: fee!("0x1111"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+            });
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DECLARE",
+                "version": "0x1",
+                "sender_address": "0xabc",
+                "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "class_hash": "0x123",
+                "nonce": "0xaabbcc",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn declare_v2() {
+            let uut: TransactionVariant = DeclareTransactionV2 {
+                class_hash: class_hash!("0x123"),
+                max_fee: fee!("0x1111"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                compiled_class_hash: casm_hash!("0xbbbbb"),
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DECLARE",
+                "version": "0x2",
+                "sender_address": "0xabc",
+                "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "class_hash": "0x123",
+                "nonce": "0xaabbcc",
+                "compiled_class_hash": "0xbbbbb",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn declare_v3() {
+            let uut: TransactionVariant = DeclareTransactionV3 {
+                class_hash: class_hash!("0x123"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                compiled_class_hash: casm_hash!("0xbbbbb"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DECLARE",
+                "version": "0x3",
+                "sender_address": "0xabc",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "class_hash": "0x123",
+                "nonce": "0xaabbcc",
+                "compiled_class_hash": "0xbbbbb",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
+                "account_deployment_data": [],
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn deploy() {
+            let uut: TransactionVariant = DeployTransactionV0 {
+                contract_address: contract_address!("0xabc"),
+                contract_address_salt: contract_address_salt!("0xeeee"),
+                class_hash: class_hash!("0x123"),
+                constructor_calldata: vec![
+                    constructor_param!("0xbbb0"),
+                    constructor_param!("0xbbb1"),
+                ],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DEPLOY",
+                "contract_address_salt": "0xeeee",
+                "class_hash": "0x123",
+                "constructor_calldata": ["0xbbb0","0xbbb1"],
+                "version": "0x0",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn deploy_account_v1() {
+            let uut: TransactionVariant = DeployAccountTransactionV1 {
+                contract_address: contract_address!("0xabc"),
+                max_fee: fee!("0x1111"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+                contract_address_salt: contract_address_salt!("0xeeee"),
+                constructor_calldata: vec![call_param!("0xbbb0"), call_param!("0xbbb1")],
+                class_hash: class_hash!("0x123"),
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DEPLOY_ACCOUNT",
+                "max_fee": "0x1111",
+                "version": "0x1",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+                "contract_address_salt": "0xeeee",
+                "constructor_calldata": ["0xbbb0","0xbbb1"],
+                "class_hash": "0x123",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn deploy_account_v3() {
+            let uut: TransactionVariant = DeployAccountTransactionV3 {
+                contract_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+                contract_address_salt: contract_address_salt!("0xeeee"),
+                constructor_calldata: vec![call_param!("0xbbb0"), call_param!("0xbbb1")],
+                class_hash: class_hash!("0x123"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "DEPLOY_ACCOUNT",
+                "version": "0x3",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+                "contract_address_salt": "0xeeee",
+                "constructor_calldata": ["0xbbb0","0xbbb1"],
+                "class_hash": "0x123",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn invoke_v0() {
+            let uut: TransactionVariant = InvokeTransactionV0 {
+                calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
+                sender_address: contract_address!("0xabc"),
+                entry_point_selector: entry_point!("0xdead"),
+                entry_point_type: Some(EntryPointType::External),
+                max_fee: fee!("0x1111"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "INVOKE",
+                "version": "0x0",
+                "calldata": ["0xfff1","0xfff0"],
+                "contract_address": "0xabc",
+                "entry_point_selector": "0xdead",
+                "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn invoke_v1() {
+            let uut: TransactionVariant = InvokeTransactionV1 {
+                calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
+                sender_address: contract_address!("0xabc"),
+                max_fee: fee!("0x1111"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "INVOKE",
+                "version": "0x1",
+                "calldata": ["0xfff1","0xfff0"],
+                "sender_address": "0xabc",
+                "max_fee": "0x1111",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn invoke_v3() {
+            let uut: TransactionVariant = InvokeTransactionV3 {
+                calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
+                sender_address: contract_address!("0xabc"),
+                signature: vec![
+                    transaction_signature_elem!("0xa1b1"),
+                    transaction_signature_elem!("0x1a1b"),
+                ],
+                nonce: transaction_nonce!("0xaabbcc"),
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(256),
+                        max_price_per_unit: ResourcePricePerUnit(10),
+                    },
+                    l2_gas: Default::default(),
+                    l1_data_gas: Default::default(),
+                },
+                tip: Tip(5),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "INVOKE",
+                "version": "0x3",
+                "calldata": ["0xfff1","0xfff0"],
+                "sender_address": "0xabc",
+                "signature": ["0xa1b1", "0x1a1b"],
+                "nonce": "0xaabbcc",
+                "nonce_data_availability_mode": "L1",
+                "fee_data_availability_mode": "L1",
+                "resource_bounds": {
+                    "l1_gas": {
+                        "max_amount": "0x100",
+                        "max_price_per_unit": "0xa",
+                    },
+                    "l2_gas": {
+                        "max_amount": "0x0",
+                        "max_price_per_unit": "0x0",
+                    }
+                },
+                "tip": "0x5",
+                "paymaster_data": [],
+                "account_deployment_data": [],
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+
+        #[test]
+        fn l1_handler() {
+            let uut: TransactionVariant = L1HandlerTransaction {
+                contract_address: contract_address!("0xabc"),
+                entry_point_selector: entry_point!("0xdead"),
+                nonce: transaction_nonce!("0xaabbcc"),
+                calldata: vec![call_param!("0xfff1"), call_param!("0xfff0")],
+            }
+            .into();
+            let uut = &Transaction {
+                variant: uut,
+                hash: transaction_hash!("0x123"),
+            };
+
+            let expected = json!({
+                "type": "L1_HANDLER",
+                "contract_address": "0xabc",
+                "entry_point_selector": "0xdead",
+                "nonce": "0xaabbcc",
+                "calldata": ["0xfff1","0xfff0"],
+                "version": "0x0",
+            });
+            let result = uut
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap();
+
+            assert_eq!(result, expected);
+        }
+    }
 
     #[test]
     fn resource_bounds() {
