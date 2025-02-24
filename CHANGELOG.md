@@ -7,6 +7,13 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Pathfinder does not return `transaction_hash` in `starknet_getBlockWithTxns` response.
+- Custom networks cannot be configured for pre-0.13.4 Starknet versions,
+
 ## [0.16.0] - 2025-02-19
 
 ### Added
