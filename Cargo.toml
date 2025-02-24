@@ -45,7 +45,7 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-version = "0.16.0"
+version = "0.16.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 rust-version = "1.83"
