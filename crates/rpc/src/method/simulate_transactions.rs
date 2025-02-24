@@ -96,6 +96,7 @@ pub async fn simulate_transactions(
                     context.chain_id,
                     skip_validate,
                     skip_fee_charge,
+                    false
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
