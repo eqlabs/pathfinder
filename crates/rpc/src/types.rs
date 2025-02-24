@@ -3,7 +3,6 @@
 pub(crate) mod class;
 pub(crate) mod receipt;
 pub mod syncing;
-pub(crate) mod transaction;
 
 pub use class::*;
 
