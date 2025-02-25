@@ -89,13 +89,19 @@ impl<'tx> PathfinderStateReader<'tx> {
                 // There's a CASM definition in storage, so this is a Sierra class. Extract
                 // class version from program.
                 let sierra_version = self.sierra_version_from_class(&class_definition)?;
+
                 #[cfg(feature = "cairo-native")]
-                let runnable_class = self.sierra_class_as_native(
-                    pathfinder_class_hash,
-                    sierra_version,
-                    class_definition,
-                    casm_definition,
-                )?;
+                let runnable_class = if sierra_version >= SierraVersion::new(1, 7, 0) {
+                    self.sierra_class_as_native(
+                        pathfinder_class_hash,
+                        sierra_version,
+                        class_definition,
+                        casm_definition,
+                    )?
+                } else {
+                    self.sierra_class_as_casm(sierra_version, casm_definition)?
+                };
+
                 #[cfg(not(feature = "cairo-native"))]
                 let runnable_class = self.sierra_class_as_casm(sierra_version, casm_definition)?;
 
@@ -205,7 +211,6 @@ impl<'tx> PathfinderStateReader<'tx> {
         Ok(runnable_class)
     }
 
-    #[cfg(not(feature = "cairo-native"))]
     fn sierra_class_as_casm(
         &self,
         sierra_version: SierraVersion,
