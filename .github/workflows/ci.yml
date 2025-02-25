@@ -45,7 +45,7 @@ jobs:
           key: https://apt.llvm.org/llvm-snapshot.gpg.key
       - uses: gerlero/apt-install@v1
         with:
-          packages: llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
+          packages: build-essential llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
       - name: Clear cache
         if: github.event_name =='schedule'
         run: |
