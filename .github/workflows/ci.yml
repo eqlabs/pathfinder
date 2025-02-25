@@ -24,10 +24,10 @@ jobs:
       TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
     steps:
       - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+        uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: "3072"
-          temp-reserve-mb: "16384"
+          root-reserve-mb: "16384"
+          temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
