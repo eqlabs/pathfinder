@@ -22,6 +22,7 @@ jobs:
       MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
       LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
       TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
+      TMPDIR: ${{ github.workspace }}/build
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
