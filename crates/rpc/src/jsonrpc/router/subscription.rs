@@ -3,20 +3,18 @@ use std::sync::Arc;
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockNumber;
 use serde_json::value::RawValue;
 use tokio::sync::{mpsc, RwLock};
 use tracing::Instrument;
 
 use super::{run_concurrently, RpcRouter};
 use crate::context::RpcContext;
-use crate::dto::serialize::{self, SerializeForVersion};
-use crate::dto::DeserializeForVersion;
+use crate::dto::{DeserializeForVersion, SerializeForVersion};
 use crate::error::ApplicationError;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
+use crate::types::request::SubscriptionBlockId;
 use crate::{RpcVersion, SubscriptionId};
-
-pub const CATCH_UP_BATCH_SIZE: u64 = 64;
 
 /// See [`RpcSubscriptionFlow`].
 #[axum::async_trait]
@@ -65,7 +63,9 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// `params` field of the subscription request.
     type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
     /// The notification type to be sent to the client.
-    type Notification: crate::dto::serialize::SerializeForVersion + Send + Sync + 'static;
+    type Notification: crate::dto::SerializeForVersion + Send + Sync + 'static;
+    /// The maximum number of blocks to catch up to in a single batch.
+    const CATCH_UP_BATCH_SIZE: u64 = 64;
 
     /// Validate the subscription parameters. If the parameters are invalid,
     /// return an error.
@@ -75,8 +75,8 @@ pub trait RpcSubscriptionFlow: Send + Sync {
 
     /// The block to start streaming from. If the subscription endpoint does not
     /// support catching up, leave this method unimplemented.
-    fn starting_block(_params: &Self::Params) -> BlockId {
-        BlockId::Latest
+    fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+        SubscriptionBlockId::Latest
     }
 
     /// Fetch historical data from the `from` block to the `to` block. The
@@ -164,19 +164,15 @@ where
         let first_block = T::starting_block(&params);
 
         let mut current_block = match first_block {
-            BlockId::Pending => {
-                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
-            }
-            BlockId::Latest => {
+            SubscriptionBlockId::Latest => {
                 // No need to catch up. The code below will subscribe to new blocks.
                 None
             }
-            first_block @ (BlockId::Number(_) | BlockId::Hash(_)) => {
+            first_block @ (SubscriptionBlockId::Number(_) | SubscriptionBlockId::Hash(_)) => {
                 // Load the first block number, return an error if it's invalid.
-                let first_block = pathfinder_storage::BlockId::try_from(first_block)
-                    .map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+                let first_block = pathfinder_storage::BlockId::from(first_block);
                 let storage = router.context.storage.clone();
-                let current_block = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+                let current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
                     let mut conn = storage.connection().map_err(RpcError::InternalError)?;
                     let db = conn.transaction().map_err(RpcError::InternalError)?;
                     db.block_number(first_block)
@@ -189,7 +185,7 @@ where
             }
         };
 
-        Ok(tokio::spawn(async move {
+        Ok(util::task::spawn(async move {
             let _subscription_guard = SubscriptionsGuard {
                 subscription_id,
                 subscriptions,
@@ -204,7 +200,7 @@ where
                     // -1 because the end is inclusive, otherwise we get batches of
                     // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
                     // matter, but it's misleading.
-                    let end = *current_block + CATCH_UP_BATCH_SIZE - 1;
+                    let end = *current_block + Self::CATCH_UP_BATCH_SIZE - 1;
                     let catch_up =
                         match T::catch_up(&router.context, &params, *current_block, end).await {
                             Ok(messages) => messages,
@@ -244,7 +240,7 @@ where
 
             // Subscribe to new blocks. Receive the first subscription message.
             let (tx1, mut rx1) = mpsc::channel::<SubscriptionMessage<T::Notification>>(1024);
-            tokio::spawn({
+            util::task::spawn({
                 let params = params.clone();
                 let context = router.context.clone();
                 let tx = tx.clone();
@@ -352,7 +348,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     let (mut ws_sender, mut ws_receiver) = ws.split();
     // Send messages to the websocket using an MPSC channel.
     let (sender_tx, mut sender_rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
-    tokio::spawn(async move {
+    util::task::spawn(async move {
         while let Some(msg) = sender_rx.recv().await {
             match msg {
                 Ok(msg) => {
@@ -364,7 +360,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
                     if ws_sender
                         .send(Message::Text(
                             serde_json::to_string(
-                                &e.serialize(serialize::Serializer::new(version)).unwrap(),
+                                &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
                             )
                             .unwrap(),
                         ))
@@ -379,7 +375,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     });
     // Receive messages from the websocket using an MPSC channel.
     let (receiver_tx, receiver_rx) = mpsc::channel::<Result<Message, axum::Error>>(1024);
-    tokio::spawn(async move {
+    util::task::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
             if receiver_tx.send(msg).await.is_err() {
                 break;
@@ -397,7 +393,7 @@ pub fn handle_json_rpc_socket(
     let subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>> =
         Default::default();
     // Read and handle messages from the websocket.
-    tokio::spawn(async move {
+    util::task::spawn(async move {
         loop {
             let request = match ws_rx.recv().await {
                 Some(Ok(Message::Text(msg))) => msg,
@@ -470,7 +466,7 @@ pub fn handle_json_rpc_socket(
                             .send(Ok(Message::Text(
                                 serde_json::to_string(
                                     &response
-                                        .serialize(serialize::Serializer::new(state.version))
+                                        .serialize(crate::dto::Serializer::new(state.version))
                                         .unwrap(),
                                 )
                                 .unwrap(),
@@ -553,7 +549,7 @@ pub fn handle_json_rpc_socket(
                     .into_iter()
                     .map(|response| {
                         response
-                            .serialize(serialize::Serializer::new(state.version))
+                            .serialize(crate::dto::Serializer::new(state.version))
                             .unwrap()
                     })
                     .collect::<Vec<_>>();
@@ -659,7 +655,9 @@ async fn handle_request(
                 panic!("subscription id overflow");
             }
             Ok(Some(RpcResponse {
-                output: Ok(serde_json::to_value(subscription_id).unwrap()),
+                output: Ok(subscription_id
+                    .serialize(crate::dto::Serializer::new(state.version))
+                    .unwrap()),
                 id: req_id,
                 version: state.version,
             }))
@@ -699,7 +697,7 @@ impl<T> Clone for SubscriptionSender<T> {
     }
 }
 
-impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
+impl<T: crate::dto::SerializeForVersion> SubscriptionSender<T> {
     pub async fn send(
         &self,
         value: T,
@@ -717,7 +715,7 @@ impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
                 result: value,
             },
         }
-        .serialize(crate::dto::serialize::Serializer::new(self.version))
+        .serialize(crate::dto::Serializer::new(self.version))
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
@@ -739,7 +737,7 @@ impl<T: crate::dto::serialize::SerializeForVersion> SubscriptionSender<T> {
                 result: err,
             },
         }
-        .serialize(crate::dto::serialize::Serializer::new(self.version))
+        .serialize(crate::dto::Serializer::new(self.version))
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
@@ -762,14 +760,14 @@ pub struct SubscriptionResult<T> {
     result: T,
 }
 
-impl<T> crate::dto::serialize::SerializeForVersion for RpcNotification<T>
+impl<T> crate::dto::SerializeForVersion for RpcNotification<T>
 where
-    T: crate::dto::serialize::SerializeForVersion,
+    T: crate::dto::SerializeForVersion,
 {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("jsonrpc", &self.jsonrpc)?;
         serializer.serialize_field("method", &self.method)?;
@@ -778,14 +776,14 @@ where
     }
 }
 
-impl<T> crate::dto::serialize::SerializeForVersion for SubscriptionResult<T>
+impl<T> crate::dto::SerializeForVersion for SubscriptionResult<T>
 where
-    T: crate::dto::serialize::SerializeForVersion,
+    T: crate::dto::SerializeForVersion,
 {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("subscription_id", &self.subscription_id)?;
         serializer.serialize_field("result", &self.result)?;
@@ -799,16 +797,15 @@ mod tests {
 
     use axum::async_trait;
     use axum::extract::ws::Message;
-    use pathfinder_common::{BlockHash, BlockHeader, BlockId, BlockNumber, ChainId};
+    use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
 
     use super::RpcSubscriptionEndpoint;
-    use crate::context::{RpcConfig, RpcContext};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
     use crate::dto::DeserializeForVersion;
     use crate::jsonrpc::{
         handle_json_rpc_socket,
@@ -818,6 +815,7 @@ mod tests {
         SubscriptionMessage,
     };
     use crate::pending::PendingWatcher;
+    use crate::types::request::SubscriptionBlockId;
     use crate::types::syncing::Syncing;
     use crate::{Notifications, SyncState};
 
@@ -830,8 +828,8 @@ mod tests {
             type Params = Params;
             type Notification = serde_json::Value;
 
-            fn starting_block(_params: &Self::Params) -> BlockId {
-                BlockId::Number(BlockNumber::GENESIS)
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
             }
 
             async fn catch_up(
@@ -907,8 +905,8 @@ mod tests {
             type Params = Params;
             type Notification = serde_json::Value;
 
-            fn starting_block(_params: &Self::Params) -> BlockId {
-                BlockId::Number(BlockNumber::GENESIS)
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
             }
 
             async fn catch_up(
@@ -1013,11 +1011,13 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
@@ -1026,9 +1026,8 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
-                #[cfg(feature = "aggregate_bloom")]
-                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
+                fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
         };

@@ -210,8 +210,9 @@ impl RpcServer {
 
         let router = router.layer(middleware);
 
-        let server_handle = tokio::spawn(async move {
+        let server_handle = util::task::spawn(async move {
             axum::serve(listener, router.into_make_service())
+                .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())
                 .await
                 .map_err(Into::into)
         });
@@ -234,18 +235,34 @@ pub struct SyncState {
 impl Default for SyncState {
     fn default() -> Self {
         Self {
-            status: RwLock::new(Syncing::False(false)),
+            status: RwLock::new(Syncing::False),
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize)]
 pub(crate) struct SubscriptionId(pub u32);
 
 impl SubscriptionId {
     pub fn next() -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl crate::dto::SerializeForVersion for SubscriptionId {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_u64(self.0 as u64)
+    }
+}
+
+impl crate::dto::DeserializeForVersion for SubscriptionId {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let id: u32 = value.deserialize()?;
+        Ok(Self(id))
     }
 }
 
@@ -379,9 +396,7 @@ pub mod test_utils {
             .unwrap();
         let header0 = BlockHeader::builder()
             .number(BlockNumber::GENESIS)
-            .storage_commitment(storage_commitment0)
-            .class_commitment(class_commitment0)
-            .calculated_state_commitment()
+            .calculated_state_commitment(storage_commitment0, class_commitment0)
             .finalize_with_hash(block_hash_bytes!(b"genesis"));
         db_txn.insert_block_header(&header0).unwrap();
         db_txn
@@ -421,9 +436,7 @@ pub mod test_utils {
         let header1 = header0
             .child_builder()
             .timestamp(BlockTimestamp::new_or_panic(1))
-            .storage_commitment(storage_commitment1)
-            .class_commitment(class_commitment1)
-            .calculated_state_commitment()
+            .calculated_state_commitment(storage_commitment1, class_commitment1)
             .eth_l1_gas_price(GasPrice::from(1))
             .sequencer_address(sequencer_address_bytes!(&[1u8]))
             .finalize_with_hash(block_hash_bytes!(b"block 1"));
@@ -507,9 +520,7 @@ pub mod test_utils {
         let header2 = header1
             .child_builder()
             .timestamp(BlockTimestamp::new_or_panic(2))
-            .storage_commitment(storage_commitment2)
-            .class_commitment(class_commitment2)
-            .calculated_state_commitment()
+            .calculated_state_commitment(storage_commitment2, class_commitment2)
             .eth_l1_gas_price(GasPrice::from(2))
             .sequencer_address(sequencer_address_bytes!(&[2u8]))
             .finalize_with_hash(block_hash_bytes!(b"latest"));
@@ -737,8 +748,8 @@ pub mod test_utils {
             ),
         ];
 
-        let transactions = transactions.into_iter().map(Into::into).collect();
-        let transaction_receipts = transaction_receipts.into_iter().map(Into::into).collect();
+        let transactions = transactions.into_iter().collect();
+        let transaction_receipts = transaction_receipts.into_iter().collect();
 
         let contract1 = contract_address_bytes!(b"pending contract 1 address");
         let state_update = StateUpdate::default()
@@ -825,6 +836,7 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod tests {
+    use dto::DeserializeForVersion;
     use serde_json::json;
 
     use super::*;
@@ -834,9 +846,7 @@ mod tests {
         use crate::types::syncing::{NumberedBlock, Status, Syncing};
 
         let examples = [
-            (line!(), "false", Syncing::False(false)),
-            // this shouldn't exist but it exists now
-            (line!(), "true", Syncing::False(true)),
+            (line!(), "false", Syncing::False),
             (
                 line!(),
                 r#"{"starting_block_hash":"0xa","starting_block_num":"0x1","current_block_hash":"0xb","current_block_num":"0x2","highest_block_hash":"0xc","highest_block_num":"0x3"}"#,
@@ -849,11 +859,12 @@ mod tests {
         ];
 
         for (line, input, expected) in examples {
-            let parsed = serde_json::from_str::<Syncing>(input).unwrap();
-            let output = serde_json::to_string(&parsed).unwrap();
-
+            let parsed = Syncing::deserialize(crate::dto::Value::new(
+                serde_json::from_str(input).unwrap(),
+                RpcVersion::V07,
+            ))
+            .unwrap();
             assert_eq!(parsed, expected, "example from line {line}");
-            assert_eq!(&output, input, "example from line {line}");
         }
     }
 
@@ -912,12 +923,12 @@ mod tests {
 
     #[rustfmt::skip]
     #[rstest::rstest]
-    #[case::root_api("/", "v06/starknet_api_openrpc.json",       &[], Api::HttpOnly)]
-    #[case::root_api_websocket("/ws", "v06/starknet_api_openrpc.json",       &[], Api::WebsocketOnly)]
-    #[case::root_trace("/", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
-    #[case::root_trace_websocket("/ws", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
-    #[case::root_write("/", "v06/starknet_write_api.json",         &[], Api::HttpOnly)]
-    #[case::root_write_websocket("/ws", "v06/starknet_write_api.json",         &[], Api::WebsocketOnly)]
+    #[case::root_api("/", "v07/starknet_api_openrpc.json",       &[], Api::HttpOnly)]
+    #[case::root_api_websocket("/ws", "v07/starknet_api_openrpc.json",       &[], Api::WebsocketOnly)]
+    #[case::root_trace("/", "v07/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::root_trace_websocket("/ws", "v07/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
+    #[case::root_write("/", "v07/starknet_write_api.json",         &[], Api::HttpOnly)]
+    #[case::root_write_websocket("/ws", "v07/starknet_write_api.json",         &[], Api::WebsocketOnly)]
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
@@ -951,9 +962,17 @@ mod tests {
     #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
 
-    #[case::v0_6_api("/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_6_api(
+        "/rpc/v0_6",
+        "v06/starknet_api_openrpc.json",
+        &[],
+        Api::HttpOnly)]
     #[case::v0_6_api_websocket("/ws/rpc/v0_6", "v06/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
-    #[case::v0_6_trace("/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::HttpOnly)]
+    #[case::v0_6_trace(
+        "/rpc/v0_6",
+        "v06/starknet_trace_api_openrpc.json",
+        &[],
+        Api::HttpOnly)]
     #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
     #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::HttpOnly)]
     #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
@@ -974,7 +993,7 @@ mod tests {
         let specification = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
-            .join("doc")
+            .join("specs")
             .join("rpc")
             .join(specification);
         let specification = std::fs::File::open(specification).unwrap();

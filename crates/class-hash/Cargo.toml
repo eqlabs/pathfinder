@@ -1,0 +1,37 @@
+[package]
+name = "pathfinder-class-hash"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+description = "Pathfinder's class hash computation and verification"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "web3", "cryptography", "hash"]
+categories = [
+    "cryptography",
+    "cryptography::cryptocurrencies",
+    "network-programming",
+    "web-programming",
+]
+
+[dependencies]
+anyhow = { workspace = true }
+pathfinder-common = { version = "0.16.1", path = "../common" }
+pathfinder-crypto = { version = "0.16.1", path = "../crypto" }
+primitive-types = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = [
+    "arbitrary_precision",
+    "raw_value",
+] }
+serde_with = { workspace = true }
+sha3 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+fake = { workspace = true, features = ["serde_json"] }
+rand = { workspace = true }
+starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
+tokio = { workspace = true, features = ["macros", "test-util"] }

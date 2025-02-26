@@ -1,11 +1,12 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use pathfinder_common::ChainId;
+use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::jsonrpc::Notifications;
@@ -15,13 +16,58 @@ use crate::SyncState;
 type SequencerClient = starknet_gateway_client::Client;
 use tokio::sync::watch as tokio_watch;
 
+// NOTE: these are the same for all _non-custom_ networks
+pub const ETH_FEE_TOKEN_ADDRESS: ContractAddress =
+    contract_address!("0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7");
+pub const STRK_FEE_TOKEN_ADDRESS: ContractAddress =
+    contract_address!("0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d");
+
+/// Addresses from get_contract_addresses.
+#[derive(Debug, Copy, Clone)]
+pub struct EthContractAddresses {
+    pub l1_contract_address: H160,
+
+    pub eth_l2_token_address: ContractAddress,
+
+    pub strk_l2_token_address: ContractAddress,
+}
+
+impl EthContractAddresses {
+    pub fn new_known(contract_address: [u8; 20]) -> Self {
+        Self {
+            l1_contract_address: H160::from(contract_address),
+            eth_l2_token_address: ETH_FEE_TOKEN_ADDRESS,
+            strk_l2_token_address: STRK_FEE_TOKEN_ADDRESS,
+        }
+    }
+
+    pub fn new_custom(
+        contract_address: H160,
+        eth_l2_token_address: Option<ContractAddress>,
+        strk_l2_token_address: Option<ContractAddress>,
+    ) -> Self {
+        let eth_l2_token_address = eth_l2_token_address.unwrap_or_else(|| {
+            tracing::warn!("ETH address unspecified, using default");
+            ETH_FEE_TOKEN_ADDRESS
+        });
+        let strk_l2_token_address = strk_l2_token_address.unwrap_or_else(|| {
+            tracing::warn!("STRK address unspecified, using default");
+            STRK_FEE_TOKEN_ADDRESS
+        });
+        Self {
+            l1_contract_address: contract_address,
+            eth_l2_token_address,
+            strk_l2_token_address,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    #[cfg(feature = "aggregate_bloom")]
-    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
+    pub fee_estimation_epsilon: Percentage,
     pub custom_versioned_constants: Option<VersionedConstants>,
 }
 
@@ -33,7 +79,7 @@ pub struct RpcContext {
     pub pending_data: PendingWatcher,
     pub sync_status: Arc<SyncState>,
     pub chain_id: ChainId,
-    pub core_contract_address: H160,
+    pub contract_addresses: EthContractAddresses,
     pub sequencer: SequencerClient,
     pub websocket: Option<WebsocketContext>,
     pub notifications: Notifications,
@@ -48,7 +94,7 @@ impl RpcContext {
         execution_storage: Storage,
         sync_status: Arc<SyncState>,
         chain_id: ChainId,
-        core_contract_address: H160,
+        contract_addresses: EthContractAddresses,
         sequencer: SequencerClient,
         pending_data: tokio_watch::Receiver<PendingData>,
         notifications: Notifications,
@@ -62,7 +108,7 @@ impl RpcContext {
             execution_storage,
             sync_status,
             chain_id,
-            core_contract_address,
+            contract_addresses,
             pending_data,
             sequencer,
             websocket: None,
@@ -99,17 +145,17 @@ impl RpcContext {
         let (chain_id, core_contract_address, sequencer) = match chain {
             Chain::Mainnet => (
                 ChainId::MAINNET,
-                H160::from(core_addr::MAINNET),
+                core_addr::MAINNET,
                 SequencerClient::mainnet(GATEWAY_TIMEOUT),
             ),
             Chain::SepoliaTestnet => (
                 ChainId::SEPOLIA_TESTNET,
-                H160::from(core_addr::SEPOLIA_TESTNET),
+                core_addr::SEPOLIA_TESTNET,
                 SequencerClient::sepolia_testnet(GATEWAY_TIMEOUT),
             ),
             Chain::SepoliaIntegration => (
                 ChainId::SEPOLIA_INTEGRATION,
-                H160::from(core_addr::SEPOLIA_INTEGRATION),
+                core_addr::SEPOLIA_INTEGRATION,
                 SequencerClient::sepolia_integration(GATEWAY_TIMEOUT),
             ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
@@ -122,9 +168,8 @@ impl RpcContext {
         let config = RpcConfig {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
-            get_events_max_uncached_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
-            #[cfg(feature = "aggregate_bloom")]
-            get_events_max_bloom_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            get_events_max_uncached_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
+            fee_estimation_epsilon: Percentage::new(10),
             custom_versioned_constants: None,
         };
 
@@ -136,7 +181,7 @@ impl RpcContext {
             storage,
             sync_state,
             chain_id,
-            core_contract_address,
+            EthContractAddresses::new_known(core_contract_address),
             sequencer.disable_retry_for_tests(),
             rx,
             Notifications::default(),

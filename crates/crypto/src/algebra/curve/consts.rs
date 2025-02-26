@@ -3,7 +3,7 @@ use crate::algebra::curve::AffinePoint;
 pub const G_CONSTS_BITS: usize = 4;
 
 #[rustfmt::skip]
-pub const G_CONSTS: [AffinePoint; 945] = [
+pub static G_CONSTS: [AffinePoint; 945] = [
     AffinePoint::from_raw(
         [14484022957141291997,5884444832209845738,299981207024966779,232005955912912577],
         [6241159653446987914,664812301889158119,18147424675297964973,405578048423154473]

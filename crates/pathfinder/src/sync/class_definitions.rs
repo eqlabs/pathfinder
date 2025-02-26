@@ -9,6 +9,7 @@ use p2p::client::types::ClassDefinition as P2PClassDefinition;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use p2p_proto::transaction;
+use pathfinder_class_hash::from_parts::{compute_cairo_class_hash, compute_sierra_class_hash};
 use pathfinder_common::class_definition::{Cairo, ClassDefinition as GwClassDefinition, Sierra};
 use pathfinder_common::state_update::DeclaredClasses;
 use pathfinder_common::{BlockNumber, CasmHash, ClassHash, SierraHash};
@@ -16,15 +17,10 @@ use pathfinder_storage::{Storage, Transaction};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::de;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::class_hash::from_parts::{
-    compute_cairo_class_hash,
-    compute_sierra_class_hash,
-};
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::call;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::{oneshot, Mutex};
-use tokio::task::spawn_blocking;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::storage_adapters;
@@ -75,7 +71,7 @@ pub(super) async fn next_missing(
     storage: Storage,
     head: BlockNumber,
 ) -> anyhow::Result<Option<BlockNumber>> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -286,7 +282,7 @@ pub(super) fn verify_declared_at(
     >,
     mut classes: BoxStream<'static, Result<Vec<PeerData<Class>>, SyncError>>,
 ) -> impl futures::Stream<Item = Result<PeerData<Class>, SyncError>> {
-    make_stream::from_future(move |tx| async move {
+    util::make_stream::from_future(move |tx| async move {
         let mut dechunker = ClassDechunker::new();
 
         while let Some(expected) = expected_declarations.next().await {
@@ -375,7 +371,7 @@ pub(super) fn expected_declarations_stream(
     mut start: BlockNumber,
     stop: BlockNumber,
 ) -> impl futures::Stream<Item = anyhow::Result<(BlockNumber, HashSet<ClassHash>)>> {
-    make_stream::from_blocking(move |tx| {
+    util::make_stream::from_blocking(move |cancellation_token, tx| {
         let mut db = match storage.connection().context("Creating database connection") {
             Ok(x) => x,
             Err(e) => {
@@ -385,6 +381,10 @@ pub(super) fn expected_declarations_stream(
         };
 
         while start <= stop {
+            if cancellation_token.is_cancelled() {
+                return;
+            }
+
             let db = match db.transaction().context("Creating database transaction") {
                 Ok(x) => x,
                 Err(e) => {
@@ -396,7 +396,6 @@ pub(super) fn expected_declarations_stream(
                 .declared_classes_at(start.into())
                 .context("Querying declared classes at block")
                 .and_then(|x| x.context("Block header not found"))
-                .map_err(Into::into)
                 .map(|x| (start, x.into_iter().collect::<HashSet<_>>()));
             drop(db);
             let is_err = res.is_err();
@@ -541,7 +540,7 @@ pub(super) async fn persist(
     storage: Storage,
     classes: Vec<PeerData<CompiledClass>>,
 ) -> Result<BlockNumber, SyncError> {
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;

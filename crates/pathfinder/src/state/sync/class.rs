@@ -19,7 +19,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
     class_hash: ClassHash,
     fetch_casm_from_fgw: bool,
 ) -> Result<DownloadedClass, anyhow::Error> {
-    use starknet_gateway_types::class_hash::compute_class_hash;
+    use pathfinder_class_hash::compute_class_hash;
 
     let definition = sequencer
         .pending_class_by_hash(class_hash)
@@ -27,16 +27,15 @@ pub async fn download_class<SequencerClient: GatewayApi>(
         .with_context(|| format!("Downloading class {}", class_hash.0))?
         .to_vec();
 
-    let (hash, definition) = tokio::task::spawn_blocking(move || -> (anyhow::Result<_>, _) {
-        (
-            compute_class_hash(&definition).context("Computing class hash"),
-            definition,
-        )
-    })
-    .await?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    rayon::spawn(move || {
+        let computed_hash = compute_class_hash(&definition).context("Computing class hash");
+        let _ = tx.send((computed_hash, definition));
+    });
+    let (hash, definition) = rx.await.context("Panic on rayon thread")?;
     let hash = hash?;
 
-    use starknet_gateway_types::class_hash::ComputedClassHash;
+    use pathfinder_class_hash::ComputedClassHash;
     match hash {
         ComputedClassHash::Cairo(hash) => {
             if class_hash != hash {
@@ -45,7 +44,7 @@ pub async fn download_class<SequencerClient: GatewayApi>(
 
             Ok(DownloadedClass::Cairo { definition, hash })
         }
-        starknet_gateway_types::class_hash::ComputedClassHash::Sierra(hash) => {
+        ComputedClassHash::Sierra(hash) => {
             anyhow::ensure!(
                 class_hash == hash,
                 "Class hash mismatch, {} instead of {}",

@@ -1,7 +1,7 @@
 use pathfinder_common::{ContractAddress, EventData, EventKey};
 
 use crate::dto;
-use crate::dto::serialize::{self, SerializeForVersion, Serializer};
+use crate::dto::{SerializeForVersion, Serializer};
 
 pub struct Event<'a> {
     pub address: &'a ContractAddress,
@@ -15,10 +15,10 @@ pub struct EventContext<'a> {
 }
 
 impl SerializeForVersion for Event<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("from_address", &dto::Address(self.address))?;
+        serializer.serialize_field("from_address", self.address)?;
         serializer.flatten(&EventContext {
             keys: self.keys,
             data: self.data,
@@ -29,19 +29,11 @@ impl SerializeForVersion for Event<'_> {
 }
 
 impl SerializeForVersion for EventContext<'_> {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_iter(
-            "keys",
-            self.keys.len(),
-            &mut self.keys.iter().map(|x| dto::Felt(&x.0)),
-        )?;
-        serializer.serialize_iter(
-            "data",
-            self.data.len(),
-            &mut self.data.iter().map(|x| dto::Felt(&x.0)),
-        )?;
+        serializer.serialize_iter("keys", self.keys.len(), &mut self.keys.iter().map(|x| x.0))?;
+        serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|x| x.0))?;
 
         serializer.end()
     }

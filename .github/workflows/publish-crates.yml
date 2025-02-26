@@ -1,0 +1,54 @@
+name: Publish Crates
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-crates:
+    name: Publish crates to crates.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Login to crates.io
+        run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
+
+      # Publish crates in dependency order with retries
+      - name: Publish crates
+        run: |
+          publish_with_retry() {
+            local package=$1
+            local max_attempts=3
+            local attempt=1
+
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempting to publish $package (attempt $attempt/$max_attempts)"
+              if cargo publish -p $package; then
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              [ $attempt -le $max_attempts ] && sleep 30
+            done
+            return 1
+          }
+
+          # First publish crypto as it has no internal dependencies
+          publish_with_retry pathfinder-crypto
+          sleep 30
+
+          # Publish common which depends on crypto
+          publish_with_retry pathfinder-common
+          sleep 30
+
+          # Publish serde which depends on common and crypto
+          publish_with_retry pathfinder-serde
+          sleep 30
+
+          # Finally publish class-hash which depends on common, crypto and serde
+          publish_with_retry pathfinder-class-hash

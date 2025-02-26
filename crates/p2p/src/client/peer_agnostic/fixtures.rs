@@ -32,8 +32,9 @@ use pathfinder_common::{
     TransactionHash,
     TransactionIndex,
 };
-use tagged::Tagged;
-use tagged_debug_derive::TaggedDebug;
+use pathfinder_tagged::Tagged;
+use pathfinder_tagged_debug_derive::TaggedDebug;
+use rand::seq::SliceRandom;
 use tokio::sync::Mutex;
 
 use super::ClassDefinition;
@@ -94,7 +95,7 @@ impl TestTxn {
 }
 
 pub fn peer(tag: i32) -> TestPeer {
-    tagged::init();
+    pathfinder_tagged::init();
     Tagged::<TestPeer>::get(format!("peer {tag}"), || TestPeer(PeerId::random()))
         .unwrap()
         .data
@@ -149,9 +150,6 @@ pub fn hdr(tag: i32) -> SignedBlockHeader {
     Tagged::get(format!("header {tag}"), || SignedBlockHeader {
         header: BlockHeader {
             number: BlockNumber::new_or_panic(tag as u64),
-            // TODO Set storage and class commitment
-            storage_commitment: Default::default(),
-            class_commitment: Default::default(),
             ..Faker.fake()
         },
         ..Faker.fake()
@@ -252,6 +250,7 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
         Some(x) => ([].into(), [(SierraHash(Faker.fake()), x)].into()),
         None => ([ClassHash(Faker.fake())].into(), [].into()),
     };
+
     let (contract_updates, system_contract_updates) = if Faker.fake() {
         (
             [(
@@ -266,8 +265,18 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
             [].into(),
         )
     } else {
-        ([].into(), [(ContractAddress::ONE, Faker.fake())].into())
+        (
+            [].into(),
+            [(
+                *ContractAddress::SYSTEM
+                    .choose(&mut rand::thread_rng())
+                    .unwrap(),
+                Faker.fake(),
+            )]
+            .into(),
+        )
     };
+
     Tagged::get(format!("state diff {tag}"), || StateUpdateData {
         contract_updates,
         system_contract_updates,

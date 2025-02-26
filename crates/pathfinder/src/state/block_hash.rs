@@ -206,8 +206,8 @@ impl BlockHeaderData {
             strk_l1_gas_price: block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
             receipt_commitment: block.receipt_commitment.unwrap_or_default(),
             l1_da_mode: block.l1_da_mode.into(),
         })
@@ -821,7 +821,7 @@ mod tests {
         TransactionHash,
     };
     use pathfinder_crypto::Felt;
-    use starknet_gateway_test_fixtures::v0_13_2;
+    use starknet_gateway_test_fixtures::{v0_13_2, v0_13_4};
     use starknet_gateway_types::reply::StateUpdate;
 
     use super::*;
@@ -1247,6 +1247,42 @@ mod tests {
 
         let state_update: StateUpdate =
             serde_json::from_str(v0_13_2::state_update::SEPOLIA_INTEGRATION_35748).unwrap();
+        let state_update: pathfinder_common::StateUpdate = state_update.into();
+        let state_diff_length = state_update.state_diff_length();
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
+
+        assert_eq!(state_diff_length, block.state_diff_length.unwrap());
+        assert_eq!(state_diff_commitment, block.state_diff_commitment.unwrap());
+
+        let receipts: Vec<_> = block
+            .transaction_receipts
+            .iter()
+            .map(|(receipt, _)| receipt.clone())
+            .collect();
+        assert_eq!(
+            calculate_receipt_commitment(&receipts).unwrap(),
+            block.receipt_commitment.unwrap()
+        );
+
+        let block_header_data = BlockHeaderData::from_gateway_block(
+            &block,
+            block.state_diff_commitment.unwrap(),
+            block.state_diff_length.unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(compute_final_hash(&block_header_data), expected_hash);
+    }
+
+    // Source
+    // https://integration-sepolia.starknet.io/feeder_gateway/get_block?blockNumber=63881
+    #[test]
+    fn test_block_hash_0_13_4_first_integration_block() {
+        let block: Block = serde_json::from_str(v0_13_4::block::SEPOLIA_INTEGRATION_63881).unwrap();
+        let expected_hash = block.block_hash;
+
+        let state_update: StateUpdate =
+            serde_json::from_str(v0_13_4::state_update::SEPOLIA_INTEGRATION_63881).unwrap();
         let state_update: pathfinder_common::StateUpdate = state_update.into();
         let state_diff_length = state_update.state_diff_length();
         let state_diff_commitment = state_update.compute_state_diff_commitment();

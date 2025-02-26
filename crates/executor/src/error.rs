@@ -3,7 +3,7 @@ use blockifier::execution::errors::{
     EntryPointExecutionError as BlockifierEntryPointExecutionError,
     PreExecutionError,
 };
-use blockifier::execution::stack_trace::gen_transaction_execution_error_trace;
+use blockifier::execution::stack_trace::gen_tx_execution_error_trace;
 use blockifier::state::errors::StateError;
 use blockifier::transaction::errors::TransactionExecutionError as BlockifierTransactionExecutionError;
 
@@ -22,14 +22,15 @@ impl From<BlockifierTransactionExecutionError> for CallError {
     fn from(value: BlockifierTransactionExecutionError) -> Self {
         use BlockifierTransactionExecutionError::*;
 
-        let error_stack = gen_transaction_execution_error_trace(&value);
+        let error_stack = gen_tx_execution_error_trace(&value);
 
         match value {
             ContractConstructorExecutionFailed(
                 ConstructorEntryPointExecutionError::ExecutionError { error, .. },
             ) => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
@@ -38,7 +39,8 @@ impl From<BlockifierTransactionExecutionError> for CallError {
             },
             ExecutionError { error, .. } => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
@@ -47,7 +49,8 @@ impl From<BlockifierTransactionExecutionError> for CallError {
             },
             ValidateTransactionError { error, .. } => match error {
                 BlockifierEntryPointExecutionError::PreExecutionError(
-                    PreExecutionError::EntryPointNotFound(_),
+                    PreExecutionError::EntryPointNotFound(_)
+                    | PreExecutionError::NoEntryPointOfTypeFound(_),
                 ) => Self::InvalidMessageSelector,
                 BlockifierEntryPointExecutionError::PreExecutionError(
                     PreExecutionError::UninitializedStorageAddress(_),
@@ -131,7 +134,7 @@ impl From<anyhow::Error> for TransactionExecutionError {
 
 impl TransactionExecutionError {
     pub fn new(transaction_index: usize, error: BlockifierTransactionExecutionError) -> Self {
-        let error_stack = gen_transaction_execution_error_trace(&error);
+        let error_stack = gen_tx_execution_error_trace(&error);
 
         Self::ExecutionError {
             transaction_index,

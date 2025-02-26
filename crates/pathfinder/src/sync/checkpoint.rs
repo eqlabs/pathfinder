@@ -38,7 +38,6 @@ use primitive_types::H160;
 use serde_json::de;
 use starknet_gateway_client::{Client, GatewayApi};
 use tokio::sync::Mutex;
-use tokio::task::spawn_blocking;
 use tracing::Instrument;
 
 use crate::state::block_hash::calculate_transaction_commitment;
@@ -279,29 +278,10 @@ where
     #[tracing::instrument(level = "debug", skip(self))]
     async fn sync_events(&self, stop: BlockNumber) -> Result<(), SyncError> {
         let Some(start) = events::next_missing(self.storage.clone(), stop)
-            .await
             .context("Finding next block with missing events")?
         else {
             return Ok(());
         };
-
-        // TODO:
-        // Replace `start` with the code below once individual aggregate filters
-        // are removed.
-        #[cfg(feature = "aggregate_bloom")]
-        {
-            if let Some(start_aggregate) =
-                events::next_missing_aggregate(self.storage.clone(), stop)?
-            {
-                if start_aggregate != start {
-                    tracing::error!(
-                        "Running event filter block mismatch. Expected: {}, got: {}",
-                        start,
-                        start_aggregate
-                    );
-                }
-            }
-        }
 
         let event_stream = self.p2p.clone().event_stream(
             start,
@@ -626,7 +606,7 @@ struct LocalState {
 impl LocalState {
     async fn from_db(storage: Storage, checkpoint: EthereumStateUpdate) -> anyhow::Result<Self> {
         // TODO: this should include header gaps.
-        spawn_blocking(move || {
+        util::task::spawn_blocking(move |_| {
             let mut db = storage
                 .connection()
                 .context("Creating database connection")?;
@@ -660,7 +640,7 @@ async fn rollback_to_anchor(
     local: BlockNumber,
     anchor: Option<BlockNumber>,
 ) -> anyhow::Result<()> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         tracing::info!(%local, ?anchor, "Rolling back storage to anchor point");
 
         let last_block_to_remove = anchor.map(|n| n + 1).unwrap_or_default();
@@ -686,10 +666,11 @@ async fn rollback_to_anchor(
             head -= 1;
         }
 
-        #[cfg(feature = "aggregate_bloom")]
         transaction
-            .reconstruct_running_event_filter()
-            .context("Reconstructing running aggregate bloom")?;
+            .reset_in_memory_state(head)
+            .context("Resetting in-memory DB state after reorg")?;
+
+        transaction.commit().context("Committing transaction")?;
 
         Ok(())
     })
@@ -698,7 +679,7 @@ async fn rollback_to_anchor(
 }
 
 async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow::Result<()> {
-    spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let mut db = storage
             .connection()
             .context("Creating database connection")?;
@@ -717,6 +698,8 @@ async fn persist_anchor(storage: Storage, anchor: EthereumStateUpdate) -> anyhow
 
 #[cfg(test)]
 mod tests {
+    use tokio::task::spawn_blocking;
+
     use super::*;
 
     mod handle_header_stream {
@@ -805,8 +788,6 @@ mod tests {
                         eth_l2_gas_price: GasPrice(0),
                         strk_l2_gas_price: GasPrice(0),
                         l1_da_mode: L1DataAvailabilityMode::Calldata,
-                        class_commitment: ClassCommitment::ZERO,
-                        storage_commitment: StorageCommitment::ZERO,
                     },
                     signature: BlockCommitmentSignature {
                         r: dto.signature[0],
@@ -1236,12 +1217,12 @@ mod tests {
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
         use pathfinder_crypto::Felt;
+        use pathfinder_merkle_tree::starknet_state::update_starknet_state;
         use pathfinder_storage::fake::{self as fake_storage, Block, Config};
         use pathfinder_storage::StorageBuilder;
 
         use super::super::handle_state_diff_stream;
         use super::*;
-        use crate::state::update_starknet_state;
 
         struct Setup {
             pub streamed_state_diffs: Vec<StreamItem<(StateUpdateData, BlockNumber)>>,

@@ -15,8 +15,7 @@ use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::{self, SerializeForVersion, Serializer};
-use crate::dto::{self};
+use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::PendingData;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
@@ -91,7 +90,7 @@ impl crate::dto::DeserializeForVersion for EventFilter {
                         value.deserialize_array(|value| value.deserialize().map(EventKey))
                     })?
                     .unwrap_or_default(),
-                chunk_size: value.deserialize_serde("chunk_size")?,
+                chunk_size: value.deserialize("chunk_size")?,
                 continuation_token: value.deserialize_optional_serde("continuation_token")?,
             })
         })
@@ -156,7 +155,7 @@ pub async fn get_events(
 
     // blocking task to perform database event query
     let span = tracing::Span::current();
-    let db_events: JoinHandle<Result<_, GetEventsError>> = tokio::task::spawn_blocking(move || {
+    let db_events: JoinHandle<Result<_, GetEventsError>> = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut connection = storage
             .connection()
@@ -208,7 +207,7 @@ pub async fn get_events(
             None => (from_block, 0),
         };
 
-        let filter = pathfinder_storage::EventFilter {
+        let constraints = pathfinder_storage::EventConstraints {
             from_block,
             to_block,
             contract_address: request.address,
@@ -217,65 +216,16 @@ pub async fn get_events(
             offset: requested_offset,
         };
 
-        // TODO:
-        // Instrumentation and `AggregateBloom` version of fetching events
-        // for the given `EventFilter` are under a feature flag for now and
-        // we do not execute them during testing because they would only
-        // slow the tests down and would not have any impact on their outcome.
-        // Follow-up PR will use the `AggregateBloom` logic to create the output,
-        // then the conditions will be removed.
-
-        #[cfg(all(feature = "aggregate_bloom", not(test)))]
-        let start = std::time::Instant::now();
-
         let page = transaction
             .events(
-                &filter,
+                &constraints,
                 context.config.get_events_max_blocks_to_scan,
-                context.config.get_events_max_uncached_bloom_filters_to_load,
+                context.config.get_events_max_uncached_event_filters_to_load,
             )
             .map_err(|e| match e {
                 EventFilterError::Internal(e) => GetEventsError::Internal(e),
                 EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
             })?;
-
-        #[cfg(all(feature = "aggregate_bloom", not(test)))]
-        {
-            let elapsed = start.elapsed();
-
-            tracing::info!(
-                "Getting events (individual Bloom filters) took {:?}",
-                elapsed
-            );
-
-            let start = std::time::Instant::now();
-            let page_from_aggregate = transaction
-                .events_from_aggregate(
-                    &filter,
-                    context.config.get_events_max_blocks_to_scan,
-                    context.config.get_events_max_bloom_filters_to_load,
-                )
-                .map_err(|e| match e {
-                    EventFilterError::Internal(e) => GetEventsError::Internal(e),
-                    EventFilterError::PageSizeTooSmall => GetEventsError::Custom(e.into()),
-                })?;
-            let elapsed = start.elapsed();
-
-            tracing::info!(
-                "Getting events (aggregate Bloom filters) took {:?}",
-                elapsed
-            );
-
-            if page != page_from_aggregate {
-                tracing::error!(
-                    "Page of events from individual and aggregate bloom filters does not match!"
-                );
-                tracing::error!("Individual: {:?}", page);
-                tracing::error!("Aggregate: {:?}", page_from_aggregate);
-            } else {
-                tracing::info!("Page of events from individual and aggregate bloom filters match!");
-            }
-        }
 
         let mut events = GetEventsResult {
             events: page.events.into_iter().map(|e| e.into()).collect(),
@@ -622,33 +572,32 @@ pub struct GetEventsResult {
 }
 
 impl SerializeForVersion for EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("data", self.data.len(), &mut self.data.iter().map(|d| d.0))?;
         serializer.serialize_iter("keys", self.keys.len(), &mut self.keys.iter().map(|d| d.0))?;
-        serializer.serialize_field("from_address", &dto::Address(&self.from_address))?;
-        serializer
-            .serialize_optional("block_hash", self.block_hash.as_ref().map(dto::BlockHash))?;
-        serializer.serialize_optional("block_number", self.block_number.map(dto::BlockNumber))?;
-        serializer.serialize_field("transaction_hash", &dto::TxnHash(&self.transaction_hash))?;
+        serializer.serialize_field("from_address", &self.from_address)?;
+        serializer.serialize_optional("block_hash", self.block_hash)?;
+        serializer.serialize_optional("block_number", self.block_number)?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
 
         serializer.end()
     }
 }
 
 impl SerializeForVersion for &'_ EmittedEvent {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         (*self).serialize(serializer)
     }
 }
 
 impl SerializeForVersion for GetEventsResult {
-    fn serialize(&self, serializer: Serializer) -> Result<serialize::Ok, serialize::Error> {
+    fn serialize(&self, serializer: Serializer) -> Result<dto::Ok, dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;
-        serializer.serialize_optional("continuation_token", self.continuation_token.as_ref())?;
+        serializer.serialize_optional("continuation_token", self.continuation_token.clone())?;
 
         serializer.end()
     }

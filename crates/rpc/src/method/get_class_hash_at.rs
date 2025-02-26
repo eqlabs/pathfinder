@@ -27,7 +27,7 @@ pub struct Output(ClassHash);
 
 pub async fn get_class_hash_at(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    tokio::task::spawn_blocking(move || {
+    util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage
@@ -69,12 +69,12 @@ pub async fn get_class_hash_at(context: RpcContext, input: Input) -> Result<Outp
     .context("Joining blocking task")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize(&crate::dto::Felt(&self.0 .0))
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&self.0)
     }
 }
 

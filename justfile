@@ -20,8 +20,8 @@ check:
 fmt:
     cargo +nightly fmt --all
 
-clippy:
-    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
+clippy *args="":
+    cargo clippy --workspace --all-targets --all-features --locked {{args}} -- -D warnings -D rust_2018_idioms
 
 dep-sort:
     cargo sort --check --workspace
@@ -29,7 +29,11 @@ dep-sort:
 doc:
     cargo doc --no-deps --document-private-items
 
+release version:
+    scripts/release.sh {{version}}
+
 alias b := build 
 alias t := test 
 alias c := check 
 alias f := fmt 
+alias r := release

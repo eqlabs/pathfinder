@@ -13,7 +13,11 @@ mod sync_handlers;
 use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_transactions};
 
 // Silence clippy
-pub type P2PNetworkHandle = (peer_agnostic::Client, HeadRx, tokio::task::JoinHandle<()>);
+pub type P2PNetworkHandle = (
+    peer_agnostic::Client,
+    HeadRx,
+    tokio::task::JoinHandle<anyhow::Result<()>>,
+);
 
 pub struct P2PContext {
     pub cfg: p2p::Config,
@@ -46,7 +50,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");
-        tokio::task::spawn(p2p_main_loop.run().instrument(span))
+        util::task::spawn(p2p_main_loop.run().instrument(span))
     };
 
     for addr in listen_on {
@@ -96,13 +100,13 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     let (mut tx, rx) = tokio::sync::watch::channel(None);
 
     let join_handle = {
-        tokio::task::spawn(
+        util::task::spawn(
             async move {
                 loop {
                     tokio::select! {
                         _ = &mut main_loop_handle => {
                             tracing::error!("p2p task ended unexpectedly");
-                            break;
+                            anyhow::bail!("p2p task ended unexpectedly");
                         }
                         Some(event) = p2p_events.recv() => {
                             match handle_p2p_event(event, storage.clone(), &mut tx).await {
@@ -133,27 +137,27 @@ async fn handle_p2p_event(
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
         } => {
-            get_headers(storage, request, channel).await?;
+            get_headers(storage, request, channel).await;
         }
         p2p::Event::InboundClassesSyncRequest {
             request, channel, ..
         } => {
-            get_classes(storage, request, channel).await?;
+            get_classes(storage, request, channel).await;
         }
         p2p::Event::InboundStateDiffsSyncRequest {
             request, channel, ..
         } => {
-            get_state_diffs(storage, request, channel).await?;
+            get_state_diffs(storage, request, channel).await;
         }
         p2p::Event::InboundTransactionsSyncRequest {
             request, channel, ..
         } => {
-            get_transactions(storage, request, channel).await?;
+            get_transactions(storage, request, channel).await;
         }
         p2p::Event::InboundEventsSyncRequest {
             request, channel, ..
         } => {
-            get_events(storage, request, channel).await?;
+            get_events(storage, request, channel).await;
         }
         p2p::Event::BlockPropagation { from, new_block } => {
             tracing::info!(%from, ?new_block, "Block Propagation");

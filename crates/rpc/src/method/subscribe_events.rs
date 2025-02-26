@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::async_trait;
-use pathfinder_common::{BlockId, BlockNumber, ContractAddress, EventKey};
-use pathfinder_storage::EVENT_KEY_FILTER_LIMIT;
+use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
+use pathfinder_storage::{AGGREGATE_BLOOM_BLOCK_RANGE_LEN, EVENT_KEY_FILTER_LIMIT};
 use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
@@ -10,6 +10,7 @@ use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::method::get_events::EmittedEvent;
+use crate::types::request::SubscriptionBlockId;
 use crate::Reorg;
 
 pub struct SubscribeEvents;
@@ -18,7 +19,7 @@ pub struct SubscribeEvents;
 pub struct Params {
     from_address: Option<ContractAddress>,
     keys: Option<Vec<Vec<EventKey>>>,
-    block_id: Option<BlockId>,
+    block_id: Option<SubscriptionBlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -35,7 +36,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                 keys: value.deserialize_optional_array("keys", |value| {
                     value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
                 })?,
-                block_id: value.deserialize_optional_serde("block_id")?,
+                block_id: value.deserialize_optional("block_id")?,
             }))
         })
     }
@@ -47,11 +48,11 @@ pub enum Notification {
     Reorg(Arc<Reorg>),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Notification::EmittedEvent(event) => event.serialize(serializer),
             Notification::Reorg(reorg) => reorg.serialize(serializer),
@@ -65,12 +66,10 @@ const SUBSCRIPTION_NAME: &str = "starknet_subscriptionEvents";
 impl RpcSubscriptionFlow for SubscribeEvents {
     type Params = Option<Params>;
     type Notification = Notification;
+    const CATCH_UP_BATCH_SIZE: u64 = AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
     fn validate_params(params: &Self::Params) -> Result<(), RpcError> {
         if let Some(params) = params {
-            if let Some(BlockId::Pending) = params.block_id {
-                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
-            }
             if let Some(keys) = &params.keys {
                 if keys.len() > EVENT_KEY_FILTER_LIMIT {
                     return Err(RpcError::ApplicationError(
@@ -85,11 +84,11 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         Ok(())
     }
 
-    fn starting_block(params: &Self::Params) -> BlockId {
+    fn starting_block(params: &Self::Params) -> SubscriptionBlockId {
         params
             .as_ref()
             .and_then(|req| req.block_id)
-            .unwrap_or(BlockId::Latest)
+            .unwrap_or(SubscriptionBlockId::Latest)
     }
 
     async fn catch_up(
@@ -100,7 +99,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let params = params.clone().unwrap_or_default();
         let storage = state.storage.clone();
-        let (events, last_block) = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+        let (events, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             let events = db
@@ -108,32 +107,9 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                     from,
                     to,
                     params.from_address,
-                    #[cfg(feature = "aggregate_bloom")]
-                    params.keys.clone().unwrap_or_default(),
-                    #[cfg(not(feature = "aggregate_bloom"))]
                     params.keys.unwrap_or_default(),
                 )
                 .map_err(RpcError::InternalError)?;
-
-            #[cfg(feature = "aggregate_bloom")]
-            {
-                let events_from_aggregate = db
-                    .events_in_range_aggregate(
-                        from,
-                        to,
-                        params.from_address,
-                        params.keys.unwrap_or_default(),
-                    )
-                    .unwrap();
-
-                assert_eq!(events.0.len(), events_from_aggregate.0.len());
-                for (event, event_from_aggregate) in
-                    events.0.iter().zip(events_from_aggregate.0.iter())
-                {
-                    assert_eq!(event, event_from_aggregate);
-                }
-                assert_eq!(events.1, events_from_aggregate.1);
-            }
 
             Ok(events)
         })
@@ -273,20 +249,20 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::Block;
     use tokio::sync::mpsc;
 
-    use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, CATCH_UP_BATCH_SIZE};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, RpcSubscriptionFlow};
+    use crate::method::subscribe_events::SubscribeEvents;
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SyncState};
 
     #[tokio::test]
     async fn no_filtering() {
-        let num_blocks = 2000;
+        let num_blocks = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
         let router = setup(num_blocks).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -348,7 +324,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -414,7 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_keys() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -480,7 +456,7 @@ mod tests {
 
     #[tokio::test]
     async fn filter_from_address_and_keys() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -547,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn too_many_keys_filter() {
-        let router = setup(2000).await;
+        let router = setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -706,15 +682,18 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "error": {
-                    "code": 69,
-                    "message": "This method does not support being called on the pending block"
+                    "code": -32602,
+                    "message": "Invalid params",
+                    "data": {
+                        "reason": "Invalid block id"
+                    }
                 }
             })
         );
     }
 
     async fn setup(num_blocks: u64) -> RpcRouter {
-        assert!(num_blocks == 0 || num_blocks > CATCH_UP_BATCH_SIZE);
+        assert!(num_blocks == 0 || num_blocks > SubscribeEvents::CATCH_UP_BATCH_SIZE);
 
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
@@ -748,11 +727,13 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
@@ -761,9 +742,8 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 64.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1024.try_into().unwrap(),
-                get_events_max_uncached_bloom_filters_to_load: 1024.try_into().unwrap(),
-                #[cfg(feature = "aggregate_bloom")]
-                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
+                fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
         };

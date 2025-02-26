@@ -6,6 +6,7 @@ exclude = [
 ]
 members = [
     "crates/block-hashes",
+    "crates/class-hash",
     "crates/common",
     "crates/compiler",
     "crates/crypto",
@@ -15,7 +16,6 @@ members = [
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
     "crates/gateway-types",
-    "crates/make-stream",
     "crates/merkle-tree",
     "crates/p2p",
     "crates/p2p_proto",
@@ -43,10 +43,10 @@ lto = true
 opt-level = 3
 
 [workspace.package]
-version = "0.15.2"
+version = "0.16.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.80"
+rust-version = "1.83"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
@@ -58,17 +58,18 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "cartridge/pathfinder-patch-fork" }
+blockifier = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch", features = [ "node_api" ] }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
-cairo-lang-starknet-classes = "=2.7.0"
 # This one needs to match the version used by blockifier
-cairo-vm = "=1.0.1"
-casm-compiler-v1_0_0-alpha6 = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
-casm-compiler-v1_0_0-rc0 = { git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
-casm-compiler-v1_1_1 = "=1.1.1"
-casm-compiler-v2 = "=2.7.0"
+cairo-lang-starknet-classes = "=2.10.0"
+# This one needs to match the version used by blockifier
+cairo-vm = "=1.0.2"
+casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
+casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
+casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.10.0" }
 clap = "4.1.13"
 console-subscriber = "0.1.10"
 const-decoder = "0.3.0"
@@ -87,16 +88,16 @@ httpmock = "0.7.0-rc.1"
 hyper = "1.0.0"
 ipnet = "2.9.0"
 jemallocator = "0.5.4"
-keccak-hash = "0.10.0"
-libp2p = { version = "0.54.1", default-features = false }
+libp2p = { version = "0.55.0", default-features = false }
 libp2p-identity = "0.2.2"
-libp2p-plaintext = "0.42.0"
-libp2p-swarm-test = "0.4.0"
+libp2p-plaintext = "0.43.0"
+libp2p-swarm-test = "0.5.0"
 metrics = "0.20.1"
 metrics-exporter-prometheus = "0.11.0"
 mime = "0.3"
 mockall = "0.11.4"
 num-bigint = "0.4.4"
+num-traits = "0.2.19"
 paste = "1.0.14"
 pretty_assertions_sorted = "1.2.3"
 primitive-types = "0.12.1"
@@ -121,10 +122,10 @@ serde_with = "3.7.0"
 sha2 = "0.10.7"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-# starknet_api = "=0.13.0-rc.1"
-starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "cartridge/pathfinder-patch-fork" }
+# starknet_api = "0.14.0-rc.1"
+starknet_api = { git = "https://github.com/cartridge-gg/sequencer", branch = "pathfinder-patch" }
 # This one needs to match the version used by blockifier
-starknet-types-core = "=0.1.5"
+starknet-types-core = "=0.1.7"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
@@ -134,6 +135,7 @@ tokio = "1.37.0"
 tokio-retry = "0.3.0"
 tokio-stream = "0.1.14"
 tokio-tungstenite = "0.21"
+tokio-util = { version = "0.7.13", features = ["rt"] }
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
 tracing = "0.1.37"

@@ -10,9 +10,23 @@ use crate::executor::{
     ExecutionStateError,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
-use crate::v06::method::trace_block_transactions as v06;
 
-pub struct Output {
+#[derive(Debug, Clone)]
+pub struct TraceBlockTransactionsInput {
+    pub block_id: BlockId,
+}
+
+impl crate::dto::DeserializeForVersion for TraceBlockTransactionsInput {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                block_id: value.deserialize("block_id")?,
+            })
+        })
+    }
+}
+
+pub struct TraceBlockTransactionsOutput {
     traces: Vec<(
         pathfinder_common::TransactionHash,
         pathfinder_executor::types::TransactionTrace,
@@ -22,17 +36,17 @@ pub struct Output {
 
 pub async fn trace_block_transactions(
     context: RpcContext,
-    input: v06::TraceBlockTransactionsInput,
-) -> Result<Output, TraceBlockTransactionsError> {
+    input: TraceBlockTransactionsInput,
+) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     enum LocalExecution {
-        Success(Output),
+        Success(TraceBlockTransactionsOutput),
         Unsupported(Vec<pathfinder_common::transaction::Transaction>),
     }
 
     let span = tracing::Span::current();
 
     let storage = context.execution_storage.clone();
-    let traces = tokio::task::spawn_blocking(move || {
+    let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = storage.connection()?;
@@ -65,7 +79,6 @@ pub async fn trace_block_transactions(
                     .transactions_for_block(block_id)?
                     .context("Transaction data missing")?
                     .into_iter()
-                    .map(Into::into)
                     .collect::<Vec<_>>();
 
                 (header, transactions, context.cache.clone())
@@ -101,6 +114,8 @@ pub async fn trace_block_transactions(
             header,
             None,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
         let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
             Ok(traces) => traces,
@@ -115,7 +130,7 @@ pub async fn trace_block_transactions(
             .map(|(hash, trace)| Ok((hash, trace)))
             .collect::<Result<Vec<_>, TraceBlockTransactionsError>>()?;
 
-        Ok(LocalExecution::Success(Output {
+        Ok(LocalExecution::Success(TraceBlockTransactionsOutput {
             traces,
             include_state_diffs: true,
         }))
@@ -135,7 +150,7 @@ pub async fn trace_block_transactions(
         .context("Forwarding to feeder gateway")
         .map_err(TraceBlockTransactionsError::from)
         .map(|trace| {
-            Ok(Output {
+            Ok(TraceBlockTransactionsOutput {
                 traces: trace
                     .traces
                     .into_iter()
@@ -297,13 +312,28 @@ pub(crate) fn map_gateway_trace(
             .total_gas_consumed
             .unwrap_or_default()
             .l1_data_gas;
+    let l2_gas = validate_invocation_resources
+        .total_gas_consumed
+        .unwrap_or_default()
+        .l2_gas
+        .unwrap_or_default()
+        + function_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default()
+        + fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default();
     let execution_resources = pathfinder_executor::types::ExecutionResources {
         computation_resources,
         // These values are not available in the gateway trace.
         data_availability: Default::default(),
         l1_gas,
         l1_data_gas,
-        l2_gas: 0,
+        l2_gas,
     };
 
     use pathfinder_common::transaction::TransactionVariant;
@@ -395,6 +425,10 @@ pub(crate) fn map_gateway_trace(
 fn map_gateway_function_invocation(
     invocation: starknet_gateway_types::trace::FunctionInvocation,
 ) -> anyhow::Result<pathfinder_executor::types::FunctionInvocation> {
+    let gas_consumed = invocation
+        .execution_resources
+        .total_gas_consumed
+        .unwrap_or_default();
     Ok(pathfinder_executor::types::FunctionInvocation {
         calldata: invocation.calldata,
         contract_address: invocation.contract_address,
@@ -455,14 +489,12 @@ fn map_gateway_function_invocation(
         result: invocation.result,
         computation_resources: map_gateway_computation_resources(invocation.execution_resources),
         execution_resources: InnerCallExecutionResources {
-            l1_gas: invocation
-                .execution_resources
-                .total_gas_consumed
-                .map(|gas| gas.l1_gas)
-                .unwrap_or_default(),
-            // TODO: Use proper l1_gas value for Starknet 0.13.3
-            l2_gas: 0,
+            l1_gas: gas_consumed.l1_gas,
+            l2_gas: gas_consumed.l2_gas.unwrap_or_default(),
         },
+        // Pre-0.13.4 failures in individual calls are not possible -- the whole TX is reverted in
+        // that case.
+        is_reverted: false,
     })
 }
 
@@ -515,11 +547,11 @@ fn map_gateway_computation_resources(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for TraceBlockTransactionsOutput {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(
             self.traces.len(),
             &mut self.traces.iter().map(|(hash, trace)| Trace {
@@ -532,25 +564,22 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 }
 
 struct Trace<'a> {
-    transaction_hash: &'a pathfinder_common::TransactionHash,
-    transaction_trace: &'a pathfinder_executor::types::TransactionTrace,
-    include_state_diff: bool,
+    pub transaction_hash: &'a pathfinder_common::TransactionHash,
+    pub transaction_trace: &'a pathfinder_executor::types::TransactionTrace,
+    pub include_state_diff: bool,
 }
 
-impl crate::dto::serialize::SerializeForVersion for Trace<'_> {
+impl crate::dto::SerializeForVersion for Trace<'_> {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::TxnHash(self.transaction_hash),
-        )?;
+        serializer.serialize_field("transaction_hash", self.transaction_hash)?;
         serializer.serialize_field(
             "trace_root",
             &crate::dto::TransactionTrace {
-                trace: self.transaction_trace,
+                trace: self.transaction_trace.clone(),
                 include_state_diff: self.include_state_diff,
             },
         )?;
@@ -614,27 +643,36 @@ pub(crate) mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::{
         block_hash,
-        transaction_hash,
+        felt,
         BlockHeader,
-        BlockId,
-        GasPrice,
-        L1DataAvailabilityMode,
+        BlockNumber,
+        BlockTimestamp,
+        Chain,
+        SequencerAddress,
         SierraHash,
         StarknetVersion,
+        TransactionHash,
         TransactionIndex,
     };
-    use starknet_gateway_types::reply::GasPrices;
-    use tokio::task::JoinSet;
+    use pathfinder_crypto::Felt;
+    use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
-    use super::v06::{Trace, TraceBlockTransactionsInput, TraceBlockTransactionsOutput};
-    use super::{trace_block_transactions, RpcContext};
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
-    use crate::v06::method::simulate_transactions::tests::setup_storage_with_starknet_version;
+    use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
+
+    #[derive(Debug)]
+    pub struct Trace {
+        pub transaction_hash: TransactionHash,
+        pub trace_root: pathfinder_executor::types::TransactionTrace,
+    }
 
     pub(crate) async fn setup_multi_tx_trace_test(
     ) -> anyhow::Result<(RpcContext, BlockHeader, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -645,37 +683,7 @@ pub(crate) mod tests {
         ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 1, 1)).await;
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
-        let transactions = vec![
-            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
-            fixtures::input::universal_deployer(
-                account_contract_address,
-                universal_deployer_address,
-            )
-            .into_common(context.chain_id),
-            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
-        ];
-
-        let traces = vec![
-            fixtures::expected_output_0_13_1_1::declare(
-                account_contract_address,
-                &last_block_header,
-            )
-            .transaction_trace,
-            fixtures::expected_output_0_13_1_1::universal_deployer(
-                account_contract_address,
-                &last_block_header,
-                universal_deployer_address,
-            )
-            .transaction_trace,
-            fixtures::expected_output_0_13_1_1::invoke(
-                account_contract_address,
-                &last_block_header,
-                test_storage_value,
-            )
-            .transaction_trace,
-        ];
-
-        let next_block_header = {
+        let (next_block_header, transactions, traces) = {
             let mut db = storage.connection()?;
             let tx = db.transaction()?;
 
@@ -686,21 +694,52 @@ pub(crate) mod tests {
                 fixtures::CASM_DEFINITION,
             )?;
 
-            let next_block_header = BlockHeader::builder()
-                .number(last_block_header.number + 1)
-                .eth_l1_gas_price(GasPrice(1))
-                .eth_l1_data_gas_price(GasPrice(2))
-                .parent_hash(last_block_header.hash)
+            let next_block_header = BlockHeader::child_builder(&last_block_header)
+                .eth_l1_gas_price(last_block_header.eth_l1_gas_price)
+                .strk_l1_gas_price(last_block_header.strk_l1_gas_price)
+                .eth_l1_data_gas_price(last_block_header.eth_l1_data_gas_price)
+                .strk_l1_data_gas_price(last_block_header.strk_l1_data_gas_price)
+                .eth_l2_gas_price(last_block_header.eth_l2_gas_price)
+                .strk_l2_gas_price(last_block_header.strk_l2_gas_price)
                 .starknet_version(last_block_header.starknet_version)
                 .sequencer_address(last_block_header.sequencer_address)
-                .timestamp(last_block_header.timestamp)
-                .starknet_version(StarknetVersion::new(0, 13, 1, 1))
-                .l1_da_mode(L1DataAvailabilityMode::Blob)
-                .finalize_with_hash(block_hash!("0x1"));
+                .timestamp(BlockTimestamp::new_or_panic(
+                    last_block_header.timestamp.get() + 1,
+                ))
+                .starknet_version(last_block_header.starknet_version)
+                .l1_da_mode(pathfinder_common::L1DataAvailabilityMode::Blob)
+                .finalize_with_hash(block_hash!("0xb02"));
             tx.insert_block_header(&next_block_header)?;
 
+            let transactions = vec![
+                fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+                fixtures::input::universal_deployer(
+                    account_contract_address,
+                    universal_deployer_address,
+                )
+                .into_common(context.chain_id),
+                fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+            ];
+
+            let traces = vec![
+                fixtures::expected_output_0_13_1_1::declare(
+                    account_contract_address,
+                    &next_block_header,
+                ),
+                fixtures::expected_output_0_13_1_1::universal_deployer(
+                    account_contract_address,
+                    &next_block_header,
+                    universal_deployer_address,
+                ),
+                fixtures::expected_output_0_13_1_1::invoke(
+                    account_contract_address,
+                    &next_block_header,
+                    test_storage_value,
+                ),
+            ];
+
             let dummy_receipt = Receipt {
-                transaction_hash: transaction_hash!("0x1"),
+                transaction_hash: TransactionHash(felt!("0x1")),
                 transaction_index: TransactionIndex::new_or_panic(0),
                 ..Default::default()
             };
@@ -715,45 +754,59 @@ pub(crate) mod tests {
             )?;
             tx.commit()?;
 
-            next_block_header
+            (next_block_header, transactions, traces)
         };
 
         let traces = vec![
             Trace {
                 transaction_hash: transactions[0].hash,
-                trace_root: traces[0].clone(),
+                trace_root: traces[0].trace.clone(),
             },
             Trace {
                 transaction_hash: transactions[1].hash,
-                trace_root: traces[1].clone(),
+                trace_root: traces[1].trace.clone(),
             },
             Trace {
                 transaction_hash: transactions[2].hash,
-                trace_root: traces[2].clone(),
+                trace_root: traces[2].trace.clone(),
             },
         ];
 
         Ok((context, next_block_header, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_transactions(#[case] rpc_version: RpcVersion) -> anyhow::Result<()> {
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
         };
         let output = trace_block_transactions(context, input).await.unwrap();
-        let expected = TraceBlockTransactionsOutput(traces);
+        let expected = TraceBlockTransactionsOutput {
+            traces: traces
+                .into_iter()
+                .map(|t| (t.transaction_hash, t.trace_root))
+                .collect(),
+            include_state_diffs: true,
+        };
 
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V06,
+                    version: rpc_version,
                 })
                 .unwrap(),
-            serde_json::to_value(expected).unwrap()
+            expected
+                .serialize(Serializer {
+                    version: rpc_version,
+                })
+                .unwrap(),
         );
+
         Ok(())
     }
 
@@ -762,14 +815,14 @@ pub(crate) mod tests {
     /// unexpected.
     #[tokio::test]
     async fn test_request_coalescing() -> anyhow::Result<()> {
-        const NUM_REQUESTS: usize = 1000;
+        const NUM_REQUESTS: usize = 100;
 
         let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
         };
-        let mut joins = JoinSet::new();
+        let mut joins = tokio::task::JoinSet::new();
         for _ in 0..NUM_REQUESTS {
             let input = input.clone();
             let context = context.clone();
@@ -781,15 +834,26 @@ pub(crate) mod tests {
                 output
                     .unwrap()
                     .serialize(Serializer {
-                        version: RpcVersion::V06,
+                        version: RpcVersion::V07,
                     })
                     .unwrap(),
             );
         }
         let mut expected = Vec::new();
         for _ in 0..NUM_REQUESTS {
-            expected
-                .push(serde_json::to_value(TraceBlockTransactionsOutput(traces.clone())).unwrap());
+            expected.push(
+                TraceBlockTransactionsOutput {
+                    traces: traces
+                        .iter()
+                        .map(|t| (t.transaction_hash, t.trace_root.clone()))
+                        .collect(),
+                    include_state_diffs: true,
+                }
+                .serialize(Serializer {
+                    version: RpcVersion::V07,
+                })
+                .unwrap(),
+            );
         }
 
         pretty_assertions_sorted::assert_eq!(outputs, expected);
@@ -798,7 +862,10 @@ pub(crate) mod tests {
 
     pub(crate) async fn setup_multi_tx_trace_pending_test(
     ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
-        use super::super::simulate_transactions::tests::fixtures;
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
 
         let (
             storage,
@@ -823,20 +890,17 @@ pub(crate) mod tests {
             fixtures::expected_output_0_13_1_1::declare(
                 account_contract_address,
                 &last_block_header,
-            )
-            .transaction_trace,
+            ),
             fixtures::expected_output_0_13_1_1::universal_deployer(
                 account_contract_address,
                 &last_block_header,
                 universal_deployer_address,
-            )
-            .transaction_trace,
+            ),
             fixtures::expected_output_0_13_1_1::invoke(
                 account_contract_address,
                 &last_block_header,
                 test_storage_value,
-            )
-            .transaction_trace,
+            ),
         ];
 
         let pending_block = {
@@ -851,7 +915,7 @@ pub(crate) mod tests {
             )?;
 
             let dummy_receipt = Receipt {
-                transaction_hash: transaction_hash!("0x1"),
+                transaction_hash: TransactionHash(felt!("0x1")),
                 transaction_index: TransactionIndex::new_or_panic(0),
                 ..Default::default()
             };
@@ -860,25 +924,25 @@ pub(crate) mod tests {
 
             let pending_block = starknet_gateway_types::reply::PendingBlock {
                 l1_gas_price: GasPrices {
-                    price_in_wei: GasPrice(1),
-                    price_in_fri: GasPrice(1),
+                    price_in_wei: last_block_header.eth_l1_gas_price,
+                    price_in_fri: last_block_header.strk_l1_gas_price,
                 },
                 l1_data_gas_price: GasPrices {
-                    price_in_wei: GasPrice(2),
-                    price_in_fri: GasPrice(2),
+                    price_in_wei: last_block_header.eth_l1_data_gas_price,
+                    price_in_fri: last_block_header.strk_l1_data_gas_price,
                 },
                 l2_gas_price: GasPrices {
-                    price_in_wei: GasPrice(3),
-                    price_in_fri: GasPrice(3),
+                    price_in_wei: last_block_header.eth_l2_gas_price,
+                    price_in_fri: last_block_header.strk_l2_gas_price,
                 },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
                 status: starknet_gateway_types::reply::Status::Pending,
                 timestamp: last_block_header.timestamp,
                 transaction_receipts,
-                transactions: transactions.iter().cloned().map(Into::into).collect(),
+                transactions: transactions.to_vec(),
                 starknet_version: last_block_header.starknet_version,
-                l1_da_mode: starknet_gateway_types::reply::L1DataAvailabilityMode::Blob,
+                l1_da_mode: L1DataAvailabilityMode::Blob,
             };
 
             tx.commit()?;
@@ -900,39 +964,146 @@ pub(crate) mod tests {
         let traces = vec![
             Trace {
                 transaction_hash: transactions[0].hash,
-                trace_root: traces[0].clone(),
+                trace_root: traces[0].trace.clone(),
             },
             Trace {
                 transaction_hash: transactions[1].hash,
-                trace_root: traces[1].clone(),
+                trace_root: traces[1].trace.clone(),
             },
             Trace {
                 transaction_hash: transactions[2].hash,
-                trace_root: traces[2].clone(),
+                trace_root: traces[2].trace.clone(),
             },
         ];
 
         Ok((context, traces))
     }
 
+    #[rstest::rstest]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
+    async fn test_multiple_pending_transactions(
+        #[case] rpc_version: RpcVersion,
+    ) -> anyhow::Result<()> {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         let input = TraceBlockTransactionsInput {
             block_id: BlockId::Pending,
         };
         let output = trace_block_transactions(context, input).await.unwrap();
-        let expected = TraceBlockTransactionsOutput(traces);
+
+        let expected = TraceBlockTransactionsOutput {
+            traces: traces
+                .into_iter()
+                .map(|t| (t.transaction_hash, t.trace_root))
+                .collect(),
+            include_state_diffs: true,
+        };
 
         pretty_assertions_sorted::assert_eq!(
             output
                 .serialize(Serializer {
-                    version: RpcVersion::V06,
+                    version: rpc_version,
                 })
                 .unwrap(),
-            serde_json::to_value(expected).unwrap()
+            expected
+                .serialize(Serializer {
+                    version: rpc_version,
+                })
+                .unwrap(),
         );
+
         Ok(())
+    }
+
+    /// Test that tracing succeeds for a block that is not backwards-compatible
+    /// with blockifier.
+    #[tokio::test]
+    async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
+        let context = RpcContext::for_tests_on(Chain::Mainnet);
+        let mut connection = context.storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`
+        // so that there is no gap in event filters.
+        (0..619596)
+            .step_by(usize::try_from(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN).unwrap())
+            .for_each(|block: u64| {
+                let block = BlockNumber::new_or_panic(block.saturating_sub(1));
+                transaction
+                    .insert_transaction_data(block, &[], Some(&[]))
+                    .unwrap();
+            });
+
+        let block: starknet_gateway_types::reply::Block =
+            serde_json::from_str(include_str!("../../fixtures/mainnet-619596.json")).unwrap();
+        let transaction_count = block.transactions.len();
+        let event_count = block
+            .transaction_receipts
+            .iter()
+            .map(|(_, events)| events.len())
+            .sum();
+        let header = BlockHeader {
+            hash: block.block_hash,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
+            timestamp: block.timestamp,
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(SequencerAddress(Felt::ZERO)),
+            starknet_version: block.starknet_version,
+            event_commitment: Default::default(),
+            state_commitment: Default::default(),
+            transaction_commitment: Default::default(),
+            transaction_count,
+            event_count,
+            l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: 0,
+        };
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 1,
+                hash: block.parent_block_hash,
+                ..header.clone()
+            })
+            .unwrap();
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 10,
+                hash: block_hash!("0x1"),
+                ..header.clone()
+            })
+            .unwrap();
+        transaction.insert_block_header(&header).unwrap();
+        let (transactions_data, events_data) = block
+            .transactions
+            .into_iter()
+            .zip(block.transaction_receipts.into_iter())
+            .map(|(tx, (receipt, events))| ((tx, receipt), events))
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+        transaction
+            .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(connection);
+
+        // The tracing succeeds.
+        trace_block_transactions(
+            context.clone(),
+            TraceBlockTransactionsInput {
+                block_id: BlockId::Number(block.block_number),
+            },
+        )
+        .await
+        .unwrap();
     }
 }

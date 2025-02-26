@@ -1,12 +1,15 @@
 //! Create fake blockchain storage for test purposes
 use std::collections::{HashMap, HashSet};
+use std::ops::RangeInclusive;
 
 use fake::{Fake, Faker};
+use pathfinder_class_hash::compute_class_hash;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
     ContractClassUpdate,
     ContractUpdate,
+    StateUpdateError,
     StateUpdateRef,
     SystemContractUpdate,
 };
@@ -37,7 +40,6 @@ use pathfinder_crypto::signature::SignatureError;
 use pathfinder_crypto::Felt;
 use rand::seq::IteratorRandom;
 use rand::Rng;
-use starknet_gateway_types::class_hash::compute_class_hash;
 
 use crate::{Storage, StorageBuilder};
 
@@ -69,7 +71,7 @@ pub type UpdateTriesFn = Box<
         bool,
         BlockNumber,
         Storage,
-    ) -> anyhow::Result<(StorageCommitment, ClassCommitment)>,
+    ) -> Result<(StorageCommitment, ClassCommitment), StateUpdateError>,
 >;
 
 pub struct Config {
@@ -79,6 +81,16 @@ pub struct Config {
     pub calculate_receipt_commitment: ReceiptCommitmentFn,
     pub calculate_event_commitment: EventCommitmentFn,
     pub update_tries: UpdateTriesFn,
+    pub occurrence: OccurrencePerBlock,
+}
+
+pub struct OccurrencePerBlock {
+    pub cairo: RangeInclusive<usize>,
+    pub sierra: RangeInclusive<usize>,
+    pub storage: RangeInclusive<usize>,
+    pub nonce: RangeInclusive<usize>,
+    /// Ranges longer than `0..=1` will be truncated to `0..=1`
+    pub system_storage: RangeInclusive<usize>,
 }
 
 impl Default for Config {
@@ -90,6 +102,19 @@ impl Default for Config {
             calculate_receipt_commitment: Box::new(|_| Ok(Faker.fake())),
             calculate_event_commitment: Box::new(|_, _| Ok(Faker.fake())),
             update_tries: Box::new(|_, _, _, _, _| Ok((Faker.fake(), Faker.fake()))),
+            occurrence: Default::default(),
+        }
+    }
+}
+
+impl Default for OccurrencePerBlock {
+    fn default() -> Self {
+        Self {
+            cairo: 0..=10,
+            sierra: 0..=10,
+            storage: 0..=10,
+            nonce: 0..=10,
+            system_storage: 0..=1,
         }
     }
 }
@@ -225,6 +250,7 @@ pub mod generate {
             calculate_receipt_commitment,
             calculate_event_commitment,
             update_tries,
+            occurrence: min_per_block,
         } = config;
 
         let mut blocks = generate_inner(
@@ -233,6 +259,7 @@ pub mod generate {
             calculate_transaction_commitment,
             calculate_receipt_commitment,
             calculate_event_commitment,
+            min_per_block,
         );
 
         update_commitments(&mut blocks, update_tries);
@@ -246,6 +273,7 @@ pub mod generate {
         calculate_transaction_commitment: TransactionCommitmentFn,
         calculate_receipt_commitment: ReceiptCommitmentFn,
         calculate_event_commitment: EventCommitmentFn,
+        occurrence: OccurrencePerBlock,
     ) -> Vec<Block> {
         let mut init = Vec::with_capacity(n);
         let mut declared_classes_accum = HashSet::new();
@@ -315,8 +343,8 @@ pub mod generate {
                 .map(|(_, _, events)| events.len())
                 .sum();
 
-            let num_cairo_classes = rng.gen_range(0..=0);
-            let num_sierra_classes = rng.gen_range(0..=10);
+            let num_cairo_classes = rng.gen_range(occurrence.cairo.clone());
+            let num_sierra_classes = rng.gen_range(occurrence.sierra.clone());
 
             let cairo_defs = (0..num_cairo_classes)
                 .map(|_| {
@@ -352,6 +380,22 @@ pub mod generate {
                 .chain(declared_sierra_classes.keys().map(|x| ClassHash(x.0)))
                 .collect::<HashSet<_>>();
 
+            let storage_updates = rng.gen_range(occurrence.storage.clone());
+            let nonce_updates = rng.gen_range(occurrence.nonce.clone());
+
+            let num_contract_updates = storage_updates.max(nonce_updates);
+
+            let mut do_storage_update = vec![false; num_contract_updates];
+            (0..num_contract_updates)
+                .choose_multiple(rng, storage_updates)
+                .into_iter()
+                .for_each(|i| do_storage_update[i] = true);
+            let mut do_nonce_update = vec![false; num_contract_updates];
+            (0..num_contract_updates)
+                .choose_multiple(rng, nonce_updates)
+                .into_iter()
+                .for_each(|i| do_nonce_update[i] = true);
+
             init.push(Block {
                 header: SignedBlockHeader {
                     header,
@@ -367,29 +411,49 @@ pub mod generate {
                     parent_state_commitment: StateCommitment::ZERO,
                     declared_cairo_classes,
                     declared_sierra_classes,
-                    system_contract_updates: HashMap::from([(
-                        ContractAddress::ONE,
-                        SystemContractUpdate {
-                            storage: fake_non_empty_with_rng(rng),
-                        },
-                    )]),
+                    system_contract_updates: if occurrence.system_storage.contains(&1) {
+                        [
+                            (
+                                ContractAddress::ONE,
+                                SystemContractUpdate {
+                                    storage: fake_non_empty_with_rng(rng),
+                                },
+                            ),
+                            (
+                                ContractAddress::TWO,
+                                SystemContractUpdate {
+                                    storage: fake_non_empty_with_rng(rng),
+                                },
+                            ),
+                        ]
+                        .into_iter()
+                        .collect()
+                    } else {
+                        Default::default()
+                    },
                     contract_updates: {
                         // We can only deploy what was declared so far in the chain
                         if declared_classes_accum.is_empty() {
                             Default::default()
                         } else {
-                            Faker
-                                .fake_with_rng::<Vec<ContractAddress>, _>(rng)
-                                .into_iter()
-                                .map(|contract_address| {
+                            (0..num_contract_updates)
+                                .map(|i| {
                                     (
-                                        contract_address,
+                                        Faker.fake_with_rng::<ContractAddress, _>(rng),
                                         ContractUpdate {
                                             class: Some(ContractClassUpdate::Deploy(
                                                 *declared_classes_accum.iter().choose(rng).unwrap(),
                                             )),
-                                            storage: fake_non_empty_with_rng(rng),
-                                            nonce: Faker.fake(),
+                                            storage: if do_storage_update[i] {
+                                                fake_non_empty_with_rng(rng)
+                                            } else {
+                                                Default::default()
+                                            },
+                                            nonce: if do_nonce_update[i] {
+                                                Faker.fake()
+                                            } else {
+                                                Default::default()
+                                            },
                                         },
                                     )
                                 })
@@ -469,8 +533,6 @@ pub mod generate {
             )
             .unwrap();
             let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-            header.header.storage_commitment = storage_commitment;
-            header.header.class_commitment = class_commitment;
             header.header.state_commitment = state_commitment;
             state_update.state_commitment = state_commitment;
         }

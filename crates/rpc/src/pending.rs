@@ -30,16 +30,14 @@ impl PendingData {
             strk_l1_gas_price: self.block.l1_gas_price.price_in_fri,
             eth_l1_data_gas_price: self.block.l1_data_gas_price.price_in_wei,
             strk_l1_data_gas_price: self.block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: 0.into(), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: self.block.l2_gas_price.price_in_wei,
+            strk_l2_gas_price: self.block.l2_gas_price.price_in_fri,
             sequencer_address: self.block.sequencer_address,
             starknet_version: self.block.starknet_version,
             // Pending block does not know what these are yet.
             hash: Default::default(),
-            class_commitment: Default::default(),
             event_commitment: Default::default(),
             state_commitment: Default::default(),
-            storage_commitment: Default::default(),
             transaction_commitment: Default::default(),
             transaction_count: Default::default(),
             event_count: Default::default(),

@@ -13,8 +13,7 @@ crate::error::generate_rpc_error_subset!(Error: NoBlocks);
 /// Get the latest block hash and number.
 pub async fn block_hash_and_number(context: RpcContext) -> Result<Output, Error> {
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = context
             .storage
@@ -31,14 +30,14 @@ pub async fn block_hash_and_number(context: RpcContext) -> Result<Output, Error>
     jh.await.context("Database read panic or shutting down")?
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("block_hash", &crate::dto::BlockHash(&self.hash))?;
-        serializer.serialize_field("block_number", &crate::dto::BlockNumber(self.number))?;
+        serializer.serialize_field("block_hash", &self.hash)?;
+        serializer.serialize_field("block_number", &self.number)?;
         serializer.end()
     }
 }

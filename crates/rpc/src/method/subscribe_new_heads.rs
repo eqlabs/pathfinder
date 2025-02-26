@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use axum::async_trait;
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockNumber;
 use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
-use crate::error::ApplicationError;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::types::request::SubscriptionBlockId;
 use crate::Reorg;
 
 pub struct SubscribeNewHeads;
 
 #[derive(Debug, Clone)]
 pub struct Params {
-    block_id: Option<BlockId>,
+    block_id: Option<SubscriptionBlockId>,
 }
 
 impl crate::dto::DeserializeForVersion for Option<Params> {
@@ -25,7 +25,7 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
         }
         value.deserialize_map(|value| {
             Ok(Some(Params {
-                block_id: value.deserialize_optional_serde("block_id")?,
+                block_id: value.deserialize_optional("block_id")?,
             }))
         })
     }
@@ -37,13 +37,13 @@ pub enum Notification {
     Reorg(Arc<Reorg>),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            Self::BlockHeader(header) => crate::dto::BlockHeader(header).serialize(serializer),
+            Self::BlockHeader(header) => header.serialize(serializer),
             Self::Reorg(reorg) => reorg.serialize(serializer),
         }
     }
@@ -56,20 +56,11 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
     type Params = Option<Params>;
     type Notification = Notification;
 
-    fn validate_params(params: &Self::Params) -> Result<(), RpcError> {
-        if let Some(params) = params {
-            if let Some(BlockId::Pending) = params.block_id {
-                return Err(RpcError::ApplicationError(ApplicationError::CallOnPending));
-            }
-        }
-        Ok(())
-    }
-
-    fn starting_block(params: &Self::Params) -> BlockId {
+    fn starting_block(params: &Self::Params) -> SubscriptionBlockId {
         params
             .as_ref()
             .and_then(|req| req.block_id)
-            .unwrap_or(BlockId::Latest)
+            .unwrap_or(SubscriptionBlockId::Latest)
     }
 
     async fn catch_up(
@@ -79,7 +70,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
         to: BlockNumber,
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let storage = state.storage.clone();
-        let headers = tokio::task::spawn_blocking(move || -> Result<_, RpcError> {
+        let headers = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
             db.block_range(from, to).map_err(RpcError::InternalError)
@@ -172,31 +163,31 @@ mod tests {
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
 
-    use crate::context::{RpcConfig, RpcContext};
-    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter, CATCH_UP_BATCH_SIZE};
+    use super::*;
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
+    use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
     use crate::{v08, Notifications, Reorg, SubscriptionId, SyncState};
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks() {
-        happy_path_test(2000).await;
+        happy_path_test(SubscribeNewHeads::CATCH_UP_BATCH_SIZE + 10).await;
     }
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_no_batching() {
-        happy_path_test(CATCH_UP_BATCH_SIZE - 5).await;
+        happy_path_test(SubscribeNewHeads::CATCH_UP_BATCH_SIZE - 5).await;
     }
 
     #[tokio::test]
     async fn happy_path_with_historic_blocks_batching_edge_cases() {
-        happy_path_test(2 * CATCH_UP_BATCH_SIZE).await;
-        happy_path_test(2 * (CATCH_UP_BATCH_SIZE - 1)).await;
-        happy_path_test(2 * (CATCH_UP_BATCH_SIZE + 1)).await;
+        happy_path_test(2 * SubscribeNewHeads::CATCH_UP_BATCH_SIZE).await;
+        happy_path_test(2 * (SubscribeNewHeads::CATCH_UP_BATCH_SIZE - 1)).await;
+        happy_path_test(2 * (SubscribeNewHeads::CATCH_UP_BATCH_SIZE + 1)).await;
     }
 
     #[tokio::test]
@@ -503,8 +494,11 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 1,
                 "error": {
-                    "code": 69,
-                    "message": "This method does not support being called on the pending block"
+                    "code": -32602,
+                    "message": "Invalid params",
+                    "data": {
+                        "reason": "Invalid block id"
+                    }
                 }
             })
         );
@@ -534,11 +528,13 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
@@ -547,9 +543,8 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
-                #[cfg(feature = "aggregate_bloom")]
-                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
+                fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
         };

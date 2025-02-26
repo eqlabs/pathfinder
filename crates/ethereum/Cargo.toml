@@ -18,7 +18,6 @@ async-trait = { workspace = true }
 const-decoder = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
-keccak-hash = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 primitive-types = { workspace = true }
@@ -26,4 +25,4 @@ reqwest = { workspace = true, features = ["json"] }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
 tracing = { workspace = true }
-
+util = { path = "../util" }

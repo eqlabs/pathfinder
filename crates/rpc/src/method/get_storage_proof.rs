@@ -5,18 +5,20 @@ use pathfinder_common::trie::TrieNode;
 use pathfinder_common::{
     BlockHash,
     BlockId,
+    BlockNumber,
     ClassHash,
     ContractAddress,
     ContractNonce,
+    ContractRoot,
     StorageAddress,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;
 use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
+use pathfinder_storage::Transaction;
 
 use crate::context::RpcContext;
-use crate::dto::serialize::SerializeForVersion;
-use crate::dto::DeserializeForVersion;
+use crate::dto::{DeserializeForVersion, SerializeForVersion};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContractStorageKeys {
@@ -116,8 +118,8 @@ struct ProofNode(TrieNode);
 impl SerializeForVersion for ProofNode {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         match &self.0 {
             TrieNode::Binary { left, right } => {
@@ -146,8 +148,8 @@ struct NodeHashToNodeMapping {
 impl SerializeForVersion for &NodeHashToNodeMapping {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("node_hash", &self.node_hash)?;
         s.serialize_field("node", &self.node)?;
@@ -155,37 +157,39 @@ impl SerializeForVersion for &NodeHashToNodeMapping {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct NodeHashToNodeMappings(Vec<NodeHashToNodeMapping>);
 
 impl SerializeForVersion for &NodeHashToNodeMappings {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct ContractLeafData {
     nonce: ContractNonce,
     class_hash: ClassHash,
+    storage_root: ContractRoot,
 }
 
 impl SerializeForVersion for &ContractLeafData {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("nonce", &self.nonce)?;
         s.serialize_field("class_hash", &self.class_hash)?;
+        s.serialize_field("storage_root", &self.storage_root)?;
         s.end()
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct ContractsProof {
     nodes: NodeHashToNodeMappings,
     contract_leaves_data: Vec<ContractLeafData>,
@@ -194,8 +198,8 @@ struct ContractsProof {
 impl SerializeForVersion for ContractsProof {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_iter("nodes", self.nodes.0.len(), &mut self.nodes.0.iter())?;
         s.serialize_iter(
@@ -207,7 +211,7 @@ impl SerializeForVersion for ContractsProof {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 struct GlobalRoots {
     contracts_tree_root: Felt,
     classes_tree_root: Felt,
@@ -217,8 +221,8 @@ struct GlobalRoots {
 impl SerializeForVersion for GlobalRoots {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_field("contracts_tree_root", &self.contracts_tree_root)?;
         s.serialize_field("classes_tree_root", &self.classes_tree_root)?;
@@ -227,7 +231,7 @@ impl SerializeForVersion for GlobalRoots {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Output {
     classes_proof: NodeHashToNodeMappings,
     contracts_proof: ContractsProof,
@@ -238,8 +242,8 @@ pub struct Output {
 impl SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut s = serializer.serialize_struct()?;
         s.serialize_iter(
             "classes_proof",
@@ -290,8 +294,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
     };
 
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context
@@ -309,130 +312,12 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             .context("Fetching block header")?
             .ok_or(Error::BlockNotFound)?;
 
-        let class_root_idx = tx
-            .class_root_index(header.number)
-            .context("Querying class root index")?
-            .ok_or(Error::StorageProofNotSupported)?;
-
-        let class_root_hash = match tx
-            .class_trie_node_hash(class_root_idx)
-            .context("Querying class root hash")?
-        {
-            None if input.class_hashes.is_some() => return Err(Error::StorageProofNotSupported),
-            None => Felt::default(),
-            Some(hash) => hash,
-        };
-
-        let classes_proof = if let Some(class_hashes) = input.class_hashes {
-            let nodes: Vec<NodeHashToNodeMapping> =
-                ClassCommitmentTree::get_proofs(&tx, header.number, &class_hashes, class_root_idx)?
-                    .into_iter()
-                    .flatten()
-                    .map(|(node, node_hash)| NodeHashToNodeMapping {
-                        node_hash,
-                        node: ProofNode(node),
-                    })
-                    .collect::<HashSet<_>>()
-                    .into_iter()
-                    .collect();
-
-            NodeHashToNodeMappings(nodes)
-        } else {
-            NodeHashToNodeMappings(vec![])
-        };
-
-        let storage_root_idx = tx
-            .storage_root_index(header.number)
-            .context("Querying storage root index")?
-            .ok_or(Error::StorageProofNotSupported)?;
-
-        let storage_root_hash = match tx
-            .storage_trie_node_hash(storage_root_idx)
-            .context("Querying class root hash")?
-        {
-            None if input.contract_addresses.is_some() => {
-                return Err(Error::StorageProofNotSupported)
-            }
-            None => Felt::default(),
-            Some(hash) => hash,
-        };
-
-        let (contract_proof_nodes, contract_leaves_data) =
-            if let Some(contract_addresses) = input.contract_addresses {
-                let nodes = StorageCommitmentTree::get_proofs(
-                    &tx,
-                    header.number,
-                    &contract_addresses,
-                    storage_root_idx,
-                )?
-                .into_iter()
-                .flatten()
-                .map(|(node, node_hash)| NodeHashToNodeMapping {
-                    node_hash,
-                    node: ProofNode(node),
-                })
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect();
-
-                let contract_leaves_data = contract_addresses
-                    .iter()
-                    .map(|&address| {
-                        let class_hash = tx
-                            .contract_class_hash(header.number.into(), address)
-                            .context("Querying contract's class hash")?
-                            .unwrap_or_default();
-
-                        let nonce = tx
-                            .contract_nonce(address, header.number.into())
-                            .context("Querying contract's nonce")?
-                            .unwrap_or_default();
-
-                        Ok(ContractLeafData { nonce, class_hash })
-                    })
-                    .collect::<Result<Vec<_>, Error>>()?;
-
-                (NodeHashToNodeMappings(nodes), contract_leaves_data)
-            } else {
-                (NodeHashToNodeMappings(vec![]), vec![])
-            };
-
-        let contracts_storage_proofs = match input.contracts_storage_keys {
-            None => vec![],
-            Some(contracts_storage_keys) => {
-                let mut proofs = vec![];
-                for csk in contracts_storage_keys {
-                    let root = tx
-                        .contract_root_index(header.number, csk.contract_address)
-                        .context("Querying contract root index")?;
-
-                    if let Some(root) = root {
-                        let nodes: Vec<NodeHashToNodeMapping> = ContractsStorageTree::get_proofs(
-                            &tx,
-                            csk.contract_address,
-                            header.number,
-                            &csk.storage_keys,
-                            root,
-                        )?
-                        .into_iter()
-                        .flatten()
-                        .map(|(node, node_hash)| NodeHashToNodeMapping {
-                            node_hash,
-                            node: ProofNode(node),
-                        })
-                        .collect::<HashSet<_>>()
-                        .into_iter()
-                        .collect();
-
-                        proofs.push(NodeHashToNodeMappings(nodes));
-                    } else {
-                        proofs.push(NodeHashToNodeMappings(vec![]));
-                    }
-                }
-
-                proofs
-            }
-        };
+        let (class_root_hash, classes_proof) =
+            get_class_proofs(&tx, header.number, &input.class_hashes)?;
+        let (storage_root_hash, contract_proof_nodes, contract_leaves_data) =
+            get_contract_proofs(&tx, header.number, &input.contract_addresses)?;
+        let contracts_storage_proofs =
+            get_contract_storage_proofs(tx, &input.contracts_storage_keys, header.number)?;
 
         let contracts_proof = ContractsProof {
             nodes: contract_proof_nodes,
@@ -456,13 +341,180 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
     jh.await.context("Database read panic or shutting down")?
 }
 
+fn get_class_proofs(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    class_hashes: &Option<Vec<ClassHash>>,
+) -> Result<(Felt, NodeHashToNodeMappings), Error> {
+    let Some(class_root_idx) = tx
+        .class_root_index(block_number)
+        .context("Querying class root index")?
+    else {
+        if tx.trie_pruning_enabled() {
+            return Err(Error::StorageProofNotSupported);
+        } else {
+            // Either:
+            // - the chain is empty (no declared classes) up to and including this block
+            // - or all leaves were removed resulting in an empty trie
+            // An empty proof is then a proof of non-membership in an empty block.
+            return Ok((Felt::default(), NodeHashToNodeMappings(vec![])));
+        }
+    };
+
+    let class_root_hash = tx
+        .class_trie_node_hash(class_root_idx)
+        .context("Querying class root hash")?
+        .context("Class root hash missing")?;
+
+    let Some(class_hashes) = class_hashes.as_ref() else {
+        return Ok((class_root_hash, NodeHashToNodeMappings(vec![])));
+    };
+
+    let nodes: Vec<NodeHashToNodeMapping> =
+        ClassCommitmentTree::get_proofs(tx, block_number, class_hashes, class_root_idx)?
+            .into_iter()
+            .flatten()
+            .map(|(node, node_hash)| NodeHashToNodeMapping {
+                node_hash,
+                node: ProofNode(node),
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+    let classes_proof = NodeHashToNodeMappings(nodes);
+
+    Ok((class_root_hash, classes_proof))
+}
+
+fn get_contract_proofs(
+    tx: &Transaction<'_>,
+    block_number: BlockNumber,
+    contract_addresses: &Option<Vec<ContractAddress>>,
+) -> Result<(Felt, NodeHashToNodeMappings, Vec<ContractLeafData>), Error> {
+    let Some(storage_root_idx) = tx
+        .storage_root_index(block_number)
+        .context("Querying storage root index")?
+    else {
+        if tx.trie_pruning_enabled() {
+            return Err(Error::StorageProofNotSupported);
+        } else {
+            // Either:
+            // - the chain is empty (no contract updates) up to and including this block
+            // - or all leaves were removed resulting in an empty trie
+            // An empty proof is then a proof of non-membership in an empty block.
+            return Ok((Felt::default(), NodeHashToNodeMappings(vec![]), vec![]));
+        }
+    };
+
+    let storage_root_hash = tx
+        .storage_trie_node_hash(storage_root_idx)
+        .context("Querying storage root hash")?
+        .context("Storage root hash missing")?;
+
+    let Some(contract_addresses) = contract_addresses.as_ref() else {
+        return Ok((storage_root_hash, NodeHashToNodeMappings(vec![]), vec![]));
+    };
+
+    let nodes =
+        StorageCommitmentTree::get_proofs(tx, block_number, contract_addresses, storage_root_idx)?
+            .into_iter()
+            .flatten()
+            .map(|(node, node_hash)| NodeHashToNodeMapping {
+                node_hash,
+                node: ProofNode(node),
+            })
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+    let contract_proof_nodes = NodeHashToNodeMappings(nodes);
+
+    let contract_leaves_data = contract_addresses
+        .iter()
+        .map(|&address| {
+            let class_hash = tx
+                .contract_class_hash(block_number.into(), address)
+                .context("Querying contract's class hash")?
+                .unwrap_or_default();
+
+            let nonce = tx
+                .contract_nonce(address, block_number.into())
+                .context("Querying contract's nonce")?
+                .unwrap_or_default();
+
+            let storage_root = tx
+                .contract_root(block_number, address)
+                .context("Querying contract's storage root")?
+                .unwrap_or_default();
+
+            Ok(ContractLeafData {
+                nonce,
+                class_hash,
+                storage_root,
+            })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    Ok((
+        storage_root_hash,
+        contract_proof_nodes,
+        contract_leaves_data,
+    ))
+}
+
+fn get_contract_storage_proofs(
+    tx: Transaction<'_>,
+    contracts_storage_keys: &Option<Vec<ContractStorageKeys>>,
+    block_number: BlockNumber,
+) -> Result<Vec<NodeHashToNodeMappings>, Error> {
+    Ok(match contracts_storage_keys {
+        None => vec![],
+        Some(contracts_storage_keys) => {
+            let mut proofs = vec![];
+            for csk in contracts_storage_keys {
+                let root = tx
+                    .contract_root_index(block_number, csk.contract_address)
+                    .context("Querying contract root index")?;
+
+                if let Some(root) = root {
+                    let nodes: Vec<NodeHashToNodeMapping> = ContractsStorageTree::get_proofs(
+                        &tx,
+                        csk.contract_address,
+                        block_number,
+                        &csk.storage_keys,
+                        root,
+                    )?
+                    .into_iter()
+                    .flatten()
+                    .map(|(node, node_hash)| NodeHashToNodeMapping {
+                        node_hash,
+                        node: ProofNode(node),
+                    })
+                    .collect::<HashSet<_>>()
+                    .into_iter()
+                    .collect();
+
+                    proofs.push(NodeHashToNodeMappings(nodes));
+                } else {
+                    proofs.push(NodeHashToNodeMappings(vec![]));
+                }
+            }
+
+            proofs
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::*;
+    use pathfinder_merkle_tree::starknet_state::update_starknet_state;
+    use pathfinder_storage::fake::{Block, Config, OccurrencePerBlock};
 
     use super::*;
-    use crate::dto::serialize::SerializeForVersion;
+    use crate::dto::SerializeForVersion;
 
     mod serialization {
         use bitvec::bitvec;
@@ -630,6 +682,7 @@ mod tests {
                     contract_leaves_data: vec![ContractLeafData {
                         nonce: ContractNonce::ZERO,
                         class_hash: ClassHash(Felt::from_hex_str("0x123").unwrap()),
+                        storage_root: ContractRoot(Felt::from_hex_str("0x234").unwrap()),
                     }],
                 },
                 contracts_storage_proofs: vec![NodeHashToNodeMappings(vec![NodeHashToNodeMapping {
@@ -662,14 +715,15 @@ mod tests {
                             "node": {
                                 "child": "0x123",
                                 "length": 8,
-                                "path": "0x0",
+                                "path": "0x0"
                             }
                         }
                     ],
                     "contract_leaves_data": [
                         {
                             "nonce": "0x0",
-                            "class_hash": "0x123"
+                            "class_hash": "0x123",
+                            "storage_root": "0x234"
                         }
                     ]
                 },
@@ -692,11 +746,9 @@ mod tests {
             }),
         )]
         fn serialization_output(#[case] output: Output, #[case] expected: serde_json::Value) {
-            let output = output
-                .serialize(crate::dto::serialize::Serializer::default())
-                .unwrap();
+            let output = output.serialize(crate::dto::Serializer::default()).unwrap();
 
-            assert_eq!(output, expected);
+            pretty_assertions_sorted::assert_eq!(output, expected);
         }
     }
 
@@ -731,9 +783,7 @@ mod tests {
             }]),
         };
 
-        let output = get_storage_proof(context, input).await;
-
-        assert!(output.is_ok());
+        get_storage_proof(context, input).await.unwrap();
     }
 
     #[tokio::test]
@@ -764,5 +814,191 @@ mod tests {
         let output = get_storage_proof(context, input).await;
 
         assert!(matches!(output, Err(Error::BlockNotFound)));
+    }
+
+    #[tokio::test]
+    async fn chain_without_declarations_and_contract_updates() {
+        let storage = pathfinder_storage::StorageBuilder::in_memory().unwrap();
+        let blocks = pathfinder_storage::fake::generate::with_config(
+            1,
+            Config {
+                update_tries: Box::new(update_starknet_state),
+                occurrence: OccurrencePerBlock {
+                    cairo: 0..=0,
+                    sierra: 0..=0,
+                    storage: 0..=0,
+                    nonce: 0..=0,
+                    system_storage: 0..=0,
+                },
+                ..Default::default()
+            },
+        );
+        pathfinder_storage::fake::fill(&storage, &blocks, Some(Box::new(update_starknet_state)));
+
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let input = Input {
+            block_id: BlockId::Number(BlockNumber::GENESIS),
+            class_hashes: Some(vec![class_hash!("0x1")]),
+            contract_addresses: Some(vec![contract_address!("0x2")]),
+            contracts_storage_keys: Some(vec![ContractStorageKeys {
+                contract_address: contract_address!("0x3"),
+                storage_keys: vec![storage_address!("0xabcd")],
+            }]),
+        };
+
+        let output = get_storage_proof(context, input).await.unwrap();
+
+        // We expect 3 empty proofs
+        let expected = Output {
+            classes_proof: NodeHashToNodeMappings(vec![]),
+            contracts_proof: ContractsProof {
+                nodes: NodeHashToNodeMappings(vec![]),
+                contract_leaves_data: vec![],
+            },
+            contracts_storage_proofs: vec![NodeHashToNodeMappings(vec![])],
+            global_roots: GlobalRoots {
+                contracts_tree_root: Felt::ZERO,
+                classes_tree_root: Felt::ZERO,
+                block_hash: blocks.first().unwrap().header.header.hash,
+            },
+        };
+
+        assert_eq!(output, expected);
+    }
+
+    #[derive(Copy, Clone)]
+    enum PartialRequest {
+        Class,
+        ContractNonce,
+        ContractStorage,
+    }
+
+    impl PartialRequest {
+        fn into_input(self, fake_blocks: &[Block]) -> Input {
+            let block = fake_blocks.get(1).unwrap();
+            match self {
+                Self::Class => {
+                    let class_hash = ClassHash(
+                        block
+                            .state_update
+                            .as_ref()
+                            .unwrap()
+                            .declared_sierra_classes
+                            .iter()
+                            .next()
+                            .unwrap()
+                            .0
+                             .0,
+                    );
+                    Input {
+                        block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+                        class_hashes: Some(vec![class_hash]),
+                        contract_addresses: None,
+                        contracts_storage_keys: None,
+                    }
+                }
+                Self::ContractNonce => {
+                    let contract_address = block
+                        .state_update
+                        .as_ref()
+                        .unwrap()
+                        .contract_updates
+                        .keys()
+                        .next()
+                        .unwrap();
+                    Input {
+                        block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+                        class_hashes: None,
+                        contract_addresses: Some(vec![*contract_address]),
+                        contracts_storage_keys: None,
+                    }
+                }
+                Self::ContractStorage => {
+                    let (contract_address, update) = block
+                        .state_update
+                        .as_ref()
+                        .unwrap()
+                        .contract_updates
+                        .iter()
+                        .next()
+                        .unwrap();
+                    Input {
+                        block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+                        class_hashes: None,
+                        contract_addresses: None,
+                        contracts_storage_keys: Some(vec![ContractStorageKeys {
+                            contract_address: *contract_address,
+                            storage_keys: update.storage.keys().cloned().collect(),
+                        }]),
+                    }
+                }
+            }
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::class_request(PartialRequest::Class)]
+    #[case::contract_request(PartialRequest::ContractNonce)]
+    #[case::contract_storage_request(PartialRequest::ContractStorage)]
+    #[tokio::test]
+    async fn partial_query(#[case] req: PartialRequest) {
+        use pathfinder_storage::fake::{fill, generate};
+        use pathfinder_storage::{StorageBuilder, TriePruneMode};
+
+        let storage = StorageBuilder::in_tempdir_with_trie_pruning_and_pool_size(
+            TriePruneMode::Archive,
+            NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
+        let blocks = generate::with_config(
+            2,
+            Config {
+                update_tries: Box::new(update_starknet_state),
+                occurrence: OccurrencePerBlock {
+                    cairo: 1..=10,
+                    sierra: 1..=10,
+                    storage: 1..=10,
+                    nonce: 1..=10,
+                    system_storage: 0..=0,
+                },
+                ..Default::default()
+            },
+        );
+
+        fill(&storage, &blocks, Some(Box::new(update_starknet_state)));
+
+        let context = RpcContext::for_tests().with_storage(storage);
+        let input = req.into_input(&blocks);
+
+        let output = get_storage_proof(context, input).await.unwrap();
+
+        match req {
+            PartialRequest::Class => {
+                // Some class proof should be present
+                assert!(!output.classes_proof.0.is_empty());
+                // The rest should be empty
+                assert!(output.contracts_proof.nodes.0.is_empty());
+                assert!(output.contracts_proof.contract_leaves_data.is_empty());
+                assert!(output.contracts_storage_proofs.is_empty());
+            }
+            PartialRequest::ContractNonce => {
+                // Some contract proof should be present
+                assert!(!output.contracts_proof.nodes.0.is_empty());
+                // At least one nonce update occurred
+                assert!(!output.contracts_proof.contract_leaves_data.is_empty());
+                // The rest should be empty
+                assert!(output.classes_proof.0.is_empty());
+                assert!(output.contracts_storage_proofs.is_empty());
+            }
+            PartialRequest::ContractStorage => {
+                // Some contract storage proof should be present
+                assert!(!output.contracts_storage_proofs.is_empty());
+                // The rest should be empty
+                assert!(output.classes_proof.0.is_empty());
+                assert!(output.contracts_proof.nodes.0.is_empty());
+                assert!(output.contracts_proof.contract_leaves_data.is_empty());
+            }
+        }
     }
 }

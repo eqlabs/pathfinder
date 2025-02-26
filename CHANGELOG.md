@@ -7,6 +7,40 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2025-02-24
+
+### Fixed
+
+- Pathfinder does not return `transaction_hash` in `starknet_getBlockWithTxns` response.
+- Custom networks cannot be configured for pre-0.13.4 Starknet versions,
+
+## [0.16.0] - 2025-02-19
+
+### Added
+
+- Support for Starknet 0.13.4.
+- Support for the JSON-RPC 0.8.0-rc3 API, including Websocket subscriptions.
+- Graceful shutdown upon SIGINT and SIGTERM with a default grace period of 10 seconds, configurable via `--shutdown.grace-period`.
+
+### Removed
+
+- `storage_commitment` and `class_commitment` fields from the `pathfinder_subscribe_newHeads` method response.
+
+### Fixed
+
+- `pathfinder_getProof`, `pathfinder_getClassProof` return `ProofMissing` (10001) when Pathfinder is in `archive` mode and queried block's tries are empty.
+- `starknet_syncing` returns `u64::MAX` as the starting block number when starting from scratch.
+
+### Changed
+
+- Use aggregate Bloom filters for `starknet_getEvents` to improve performance.
+
+## [0.15.3] - 2025-01-10
+
+### Changed
+
+- Cairo 0 class definition size is now capped at 4 MiB.
+
 ## [0.15.2] - 2024-12-04
 
 ### Fixed

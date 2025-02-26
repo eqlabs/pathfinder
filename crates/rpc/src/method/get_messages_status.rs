@@ -1,7 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::{L1TransactionHash, TransactionHash};
 use pathfinder_ethereum::EthereumApi;
-use serde::{Deserialize, Serialize};
 
 use crate::context::RpcContext;
 use crate::method::get_transaction_status;
@@ -23,13 +22,40 @@ impl crate::dto::DeserializeForVersion for Input {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Clone, Debug)]
 enum FinalityStatus {
     Received,
     Rejected,
     AcceptedOnL2,
     AcceptedOnL1,
+}
+
+impl crate::dto::SerializeForVersion for FinalityStatus {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let status_str = match self {
+            FinalityStatus::Received => "RECEIVED",
+            FinalityStatus::Rejected => "REJECTED",
+            FinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
+            FinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
+        };
+        serializer.serialize_str(status_str)
+    }
+}
+
+impl crate::dto::DeserializeForVersion for FinalityStatus {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let status_str: String = value.deserialize()?;
+        match status_str.as_str() {
+            "RECEIVED" => Ok(Self::Received),
+            "REJECTED" => Ok(Self::Rejected),
+            "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
+            "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
+            _ => Err(serde::de::Error::custom("Invalid finality status")),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -53,7 +79,10 @@ pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Ou
     let ethereum = context.ethereum.clone();
 
     let l1_handler_txs = ethereum
-        .get_l1_handler_txs(&context.core_contract_address, &input.transaction_hash)
+        .get_l1_handler_txs(
+            &context.contract_addresses.l1_contract_address,
+            &input.transaction_hash,
+        )
         .await
         .context("Fetching L1 handler tx hashes")
         .map_err(|_| Error::TxnHashNotFound)?;
@@ -90,20 +119,20 @@ pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Ou
     Ok(Output(res))
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         serializer.serialize_iter(self.0.len(), &mut self.0.clone().into_iter())
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for L1HandlerTransactionStatus {
+impl crate::dto::SerializeForVersion for L1HandlerTransactionStatus {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.serialize_field("finality_status", &self.finality_status)?;

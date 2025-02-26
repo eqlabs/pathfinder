@@ -1,12 +1,20 @@
 use std::sync::Arc;
 
 use blockifier::context::TransactionContext;
-use blockifier::execution::entry_point::{CallEntryPoint, EntryPointExecutionContext};
+use blockifier::execution::entry_point::{
+    CallEntryPoint,
+    EntryPointExecutionContext,
+    SierraGasRevertTracker,
+};
+use blockifier::execution::stack_trace::{
+    extract_trailing_cairo1_revert_trace,
+    Cairo1RevertHeader,
+};
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
 use blockifier::versioned_constants::VersionedConstants;
-use cairo_vm::vm::runners::cairo_runner::ExecutionResources;
-use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
+use pathfinder_common::{felt, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
 
 use super::error::CallError;
@@ -21,46 +29,76 @@ pub fn call(
 ) -> Result<Vec<CallResultValue>, CallError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
 
-    let contract_address = starknet_api::core::ContractAddress(PatriciaKey::try_from(
+    let starknet_api_contract_address = starknet_api::core::ContractAddress(PatriciaKey::try_from(
         contract_address.0.into_starkfelt(),
     )?);
-    let entry_point_selector =
+    let starknet_api_entry_point_selector =
         starknet_api::core::EntryPointSelector(entry_point_selector.0.into_starkfelt());
     let calldata = calldata
         .into_iter()
         .map(|param| param.0.into_starkfelt())
         .collect();
-    let class_hash = state.get_class_hash_at(contract_address)?;
+    let class_hash = state.get_class_hash_at(starknet_api_contract_address)?;
+
+    let initial_gas = VersionedConstants::latest_constants()
+        .os_constants
+        .gas_costs
+        .base
+        .default_initial_gas_cost;
 
     let call_entry_point = CallEntryPoint {
-        storage_address: contract_address,
-        entry_point_type: starknet_api::deprecated_contract_class::EntryPointType::External,
-        entry_point_selector,
-        calldata: starknet_api::transaction::Calldata(Arc::new(calldata)),
-        initial_gas: VersionedConstants::latest_constants().tx_initial_gas(),
+        storage_address: starknet_api_contract_address,
+        entry_point_type: EntryPointType::External,
+        entry_point_selector: starknet_api_entry_point_selector,
+        calldata: starknet_api::transaction::fields::Calldata(Arc::new(calldata)),
+        initial_gas,
         call_type: blockifier::execution::entry_point::CallType::Call,
         ..Default::default()
     };
 
-    let mut resources = ExecutionResources::default();
     let mut context = EntryPointExecutionContext::new_invoke(
         Arc::new(TransactionContext {
             block_context,
             tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
         }),
         false,
-    )?;
+        SierraGasRevertTracker::new(starknet_api::execution_resources::GasAmount(initial_gas)),
+    );
 
+    let mut remaining_gas = call_entry_point.initial_gas;
     let call_info = call_entry_point
-        .execute(&mut state, &mut resources, &mut context)
+        .execute(&mut state, &mut context, &mut remaining_gas)
         .map_err(|e| {
             CallError::from_entry_point_execution_error(
                 e,
-                &contract_address,
+                &starknet_api_contract_address,
                 &class_hash,
-                &entry_point_selector,
+                &starknet_api_entry_point_selector,
             )
         })?;
+
+    // In Starknet 0.13.4 calls return a failure which is not an error.
+    if call_info.execution.failed {
+        match call_info.execution.retdata.0.as_slice() {
+            [error_code]
+                if error_code.into_felt()
+                    == felt!(
+                        blockifier::execution::syscalls::hint_processor::ENTRYPOINT_NOT_FOUND_ERROR
+                    ) =>
+            {
+                return Err(CallError::InvalidMessageSelector);
+            }
+            _ => {
+                let revert_trace =
+                    extract_trailing_cairo1_revert_trace(&call_info, Cairo1RevertHeader::Execution);
+
+                return Err(CallError::ContractError(
+                    anyhow::Error::msg(revert_trace.to_string()),
+                    revert_trace.into(),
+                ));
+            }
+        }
+    }
 
     let result = call_info
         .execution

@@ -11,7 +11,6 @@ use pathfinder_common::{
     BlockHeader,
     BlockNumber,
     BlockTimestamp,
-    ClassCommitment,
     ClassHash,
     EventCommitment,
     Fee,
@@ -22,13 +21,12 @@ use pathfinder_common::{
     SignedBlockHeader,
     StateCommitment,
     StateDiffCommitment,
-    StorageCommitment,
     TransactionCommitment,
     TransactionHash,
     TransactionIndex,
 };
-use tagged::Tagged;
-use tagged_debug_derive::TaggedDebug;
+use pathfinder_tagged::Tagged;
+use pathfinder_tagged_debug_derive::TaggedDebug;
 
 use crate::client::conv::TryFromDto;
 
@@ -118,8 +116,6 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 l1_da_mode: TryFromDto::try_from_dto(dto.l1_data_availability_mode)?,
                 state_diff_commitment: StateDiffCommitment(dto.state_diff_commitment.root.0),
                 state_diff_length: dto.state_diff_commitment.state_diff_length,
-                class_commitment: ClassCommitment::ZERO,
-                storage_commitment: StorageCommitment::ZERO,
             },
             signature,
         })

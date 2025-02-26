@@ -164,7 +164,7 @@ impl fmt::Display for OutboundFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OutboundFailure::DialFailure => write!(f, "Failed to dial the requested peer"),
-            OutboundFailure::Timeout => write!(f, "Timeout while waiting for a response"),
+            OutboundFailure::Timeout => write!(f, "Opening outbound stream timed out"),
             OutboundFailure::ConnectionClosed => {
                 write!(f, "Connection was closed before a response was received")
             }
@@ -238,23 +238,31 @@ impl fmt::Display for OutboundRequestId {
 /// The configuration for a `Behaviour` protocol.
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
-    request_timeout: Duration,
+    stream_timeout: Duration,
+    response_timeout: Duration,
     max_concurrent_streams: usize,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            request_timeout: Duration::from_secs(60),
+            stream_timeout: Duration::from_secs(60),
+            response_timeout: Duration::from_secs(10),
             max_concurrent_streams: 100,
         }
     }
 }
 
 impl Config {
-    /// Sets the timeout for inbound and outbound requests.
-    pub fn request_timeout(mut self, v: Duration) -> Self {
-        self.request_timeout = v;
+    /// Sets the timeout for the stream
+    pub fn stream_timeout(mut self, v: Duration) -> Self {
+        self.stream_timeout = v;
+        self
+    }
+
+    /// Sets the timeout for a single response
+    pub fn response_timeout(mut self, v: Duration) -> Self {
+        self.response_timeout = v;
         self
     }
 
@@ -349,7 +357,7 @@ where
     /// connection is established.
     ///
     /// > **Note**: In order for such a dialing attempt to succeed,
-    /// > the `RequestResponse` protocol must be embedded
+    /// > the `p2p_stream` protocol must be embedded
     /// > in another `NetworkBehaviour` that provides peer and
     /// > address discovery.
     pub fn send_request(&mut self, peer: &PeerId, request: TCodec::Request) -> OutboundRequestId {
@@ -595,7 +603,8 @@ where
         let mut handler = Handler::new(
             self.protocols.clone(),
             self.codec.clone(),
-            self.config.request_timeout,
+            self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );
@@ -636,7 +645,8 @@ where
         let mut handler = Handler::new(
             self.protocols.clone(),
             self.codec.clone(),
-            self.config.request_timeout,
+            self.config.stream_timeout,
+            self.config.response_timeout,
             self.next_inbound_request_id.clone(),
             self.config.max_concurrent_streams,
         );

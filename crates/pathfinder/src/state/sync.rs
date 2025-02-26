@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::state_update::StateUpdateRef;
 use pathfinder_common::{
     BlockCommitmentSignature,
     Chain,
@@ -20,11 +19,10 @@ use pathfinder_common::{
 };
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
-use pathfinder_merkle_tree::contract_state::update_contract_state;
-use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
+use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
-use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
+use pathfinder_storage::{Connection, Storage, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::{Block, PendingBlock};
@@ -234,7 +232,7 @@ where
 
     // Keep polling the sequencer for the latest block
     let (tx_latest, rx_latest) = tokio::sync::watch::channel(gateway_latest);
-    let mut latest_handle = tokio::spawn(l2::poll_latest(
+    let mut latest_handle = util::task::spawn(l2::poll_latest(
         sequencer.clone(),
         head_poll_interval,
         tx_latest,
@@ -242,12 +240,13 @@ where
 
     // Start update sync-status process.
     let (starting_block_num, starting_block_hash, _) = l2_head.unwrap_or((
-        // Seems a better choice for an invalid block number than 0
-        BlockNumber::MAX,
+        // start from genesis if storage is empty
+        BlockNumber::GENESIS,
         BlockHash(Felt::ZERO),
         StateCommitment(Felt::ZERO),
     ));
-    let _status_sync = tokio::spawn(update_sync_status_latest(
+
+    let _status_sync = util::task::spawn(update_sync_status_latest(
         Arc::clone(&state),
         starting_block_hash,
         starting_block_num,
@@ -257,7 +256,7 @@ where
 
     // Start L1 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
-    let mut l1_handle = tokio::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
+    let mut l1_handle = util::task::spawn(l1_sync(event_sender.clone(), l1_context.clone()));
 
     // Fetch latest blocks from storage
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
@@ -267,7 +266,7 @@ where
 
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.
-    let mut l2_handle = tokio::spawn(l2_sync(
+    let mut l2_handle = util::task::spawn(l2_sync(
         event_sender.clone(),
         l2_context.clone(),
         l2_head,
@@ -285,9 +284,10 @@ where
         websocket_txs,
         notifications,
     };
-    let mut consumer_handle = tokio::spawn(consumer(event_receiver, consumer_context, tx_current));
+    let mut consumer_handle =
+        util::task::spawn(consumer(event_receiver, consumer_context, tx_current));
 
-    let mut pending_handle = tokio::spawn(pending::poll_pending(
+    let mut pending_handle = util::task::spawn(pending::poll_pending(
         event_sender.clone(),
         sequencer.clone(),
         Duration::from_secs(2),
@@ -302,7 +302,7 @@ where
             _ = &mut pending_handle => {
                 tracing::error!("Pending tracking task ended unexpectedly");
 
-                pending_handle = tokio::spawn(pending::poll_pending(
+                pending_handle = util::task::spawn(pending::poll_pending(
                     event_sender.clone(),
                     sequencer.clone(),
                     Duration::from_secs(2),
@@ -339,7 +339,7 @@ where
                 }
 
                 let fut = l1_sync(event_sender.clone(), l1_context.clone());
-                l1_handle = tokio::spawn(async move {
+                l1_handle = util::task::spawn(async move {
                     tokio::time::sleep(RESET_DELAY_ON_FAILURE).await;
                     fut.await
                 });
@@ -366,7 +366,7 @@ where
                 let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
                 let fut = l2_sync(event_sender.clone(), l2_context.clone(), l2_head, block_chain, rx_latest.clone());
 
-                l2_handle = tokio::spawn(async move {
+                l2_handle = util::task::spawn(async move {
                     tokio::time::sleep(restart_delay).await;
                     fut.await
                 });
@@ -545,7 +545,7 @@ async fn consumer(
 
                 // Update sync status
                 match &mut *state.status.write().await {
-                    Syncing::False(_) => {}
+                    Syncing::False => {}
                     Syncing::Status(status) => {
                         status.current = NumberedBlock::from((block_hash, block_number));
 
@@ -760,7 +760,7 @@ async fn update_sync_status_latest(
         latest_hash = hash;
         let latest = NumberedBlock::from((hash, number));
         match &mut *state.status.write().await {
-            sync_status @ Syncing::False(_) => {
+            sync_status @ Syncing::False => {
                 *sync_status = Syncing::Status(syncing::Status {
                     starting,
                     current: starting,
@@ -908,16 +908,14 @@ async fn l2_update(
             eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
             // Default value for Starknet <0.13.1 is zero
             strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
-            strk_l2_gas_price: GasPrice(0), // TODO: Fix when we get l2_gas_price in the gateway
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
             sequencer_address: block
                 .sequencer_address
                 .unwrap_or(SequencerAddress(Felt::ZERO)),
             starknet_version: block.starknet_version,
-            class_commitment,
             event_commitment,
             state_commitment,
-            storage_commitment,
             transaction_commitment,
             transaction_count,
             event_count,
@@ -1045,10 +1043,6 @@ async fn l2_reorg(
             .context("Fetching last block hash")?
             .context("Expected last block hash to exist")?;
 
-        transaction
-            .increment_reorg_counter()
-            .context("Incrementing reorg counter")?;
-
         // Roll back Merkle trie updates.
         //
         // If we're rolling back genesis then there will be no blocks left so state will
@@ -1082,10 +1076,9 @@ async fn l2_reorg(
             head -= 1;
         }
 
-        #[cfg(feature = "aggregate_bloom")]
         transaction
-            .reconstruct_running_event_filter()
-            .context("Reconstructing running aggregate bloom")?;
+            .reset_in_memory_state(head)
+            .context("Resetting in-memory DB state after reorg")?;
 
         // Track combined L1 and L2 state.
         let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
@@ -1124,142 +1117,6 @@ async fn l2_reorg(
 
         Ok(())
     })
-}
-
-pub fn update_starknet_state(
-    transaction: &Transaction<'_>,
-    state_update: StateUpdateRef<'_>,
-    verify_hashes: bool,
-    block: BlockNumber,
-    // we need this so that we can create extra read-only transactions for
-    // parallel contract state updates
-    storage: Storage,
-) -> anyhow::Result<(StorageCommitment, ClassCommitment)> {
-    use rayon::prelude::*;
-
-    let mut storage_commitment_tree = match block.parent() {
-        Some(parent) => StorageCommitmentTree::load(transaction, parent)
-            .context("Loading storage commitment tree")?,
-        None => StorageCommitmentTree::empty(transaction),
-    }
-    .with_verify_hashes(verify_hashes);
-
-    let (send, recv) = std::sync::mpsc::channel();
-
-    rayon::scope(|s| {
-        s.spawn(|_| {
-            let result: Result<Vec<_>, _> = state_update
-                .contract_updates
-                .par_iter()
-                .map_init(
-                    || storage.clone().connection(),
-                    |connection, (contract_address, update)| {
-                        let connection = match connection {
-                            Ok(connection) => connection,
-                            Err(e) => anyhow::bail!(
-                                "Failed to create database connection in rayon thread: {}",
-                                e
-                            ),
-                        };
-                        let transaction = connection.transaction()?;
-                        update_contract_state(
-                            **contract_address,
-                            update.storage,
-                            *update.nonce,
-                            update.class.as_ref().map(|x| x.class_hash()),
-                            &transaction,
-                            verify_hashes,
-                            block,
-                        )
-                    },
-                )
-                .collect();
-            let _ = send.send(result);
-        })
-    });
-
-    let contract_update_results = recv.recv().context("Panic on rayon thread")??;
-
-    for contract_update_result in contract_update_results.into_iter() {
-        storage_commitment_tree
-            .set(
-                contract_update_result.contract_address,
-                contract_update_result.state_hash,
-            )
-            .context("Updating storage commitment tree")?;
-        contract_update_result
-            .insert(block, transaction)
-            .context("Inserting contract update result")?;
-    }
-
-    for (contract, update) in state_update.system_contract_updates {
-        let update_result = update_contract_state(
-            *contract,
-            update.storage,
-            None,
-            None,
-            transaction,
-            verify_hashes,
-            block,
-        )
-        .context("Update system contract state")?;
-
-        storage_commitment_tree
-            .set(*contract, update_result.state_hash)
-            .context("Updating system contract storage commitment tree")?;
-
-        update_result
-            .insert(block, transaction)
-            .context("Persisting system contract trie updates")?;
-    }
-
-    // Apply storage commitment tree changes.
-    let (storage_commitment, trie_update) = storage_commitment_tree
-        .commit()
-        .context("Apply storage commitment tree updates")?;
-
-    let root_idx = transaction
-        .insert_storage_trie(&trie_update, block)
-        .context("Persisting storage trie")?;
-
-    transaction
-        .insert_storage_root(block, root_idx)
-        .context("Inserting storage root index")?;
-
-    // Add new Sierra classes to class commitment tree.
-    let mut class_commitment_tree = match block.parent() {
-        Some(parent) => ClassCommitmentTree::load(transaction, parent)
-            .context("Loading class commitment tree")?,
-        None => ClassCommitmentTree::empty(transaction),
-    }
-    .with_verify_hashes(verify_hashes);
-
-    for (sierra, casm) in state_update.declared_sierra_classes {
-        let leaf_hash = pathfinder_common::calculate_class_commitment_leaf_hash(*casm);
-
-        transaction
-            .insert_class_commitment_leaf(block, &leaf_hash, casm)
-            .context("Adding class commitment leaf")?;
-
-        class_commitment_tree
-            .set(*sierra, leaf_hash)
-            .context("Update class commitment tree")?;
-    }
-
-    // Apply all class commitment tree changes.
-    let (class_commitment, trie_update) = class_commitment_tree
-        .commit()
-        .context("Apply class commitment tree updates")?;
-
-    let class_root_idx = transaction
-        .insert_class_trie(&trie_update, block)
-        .context("Persisting class trie")?;
-
-    transaction
-        .insert_class_root(block, class_root_idx)
-        .context("Inserting class root index")?;
-
-    Ok((storage_commitment, class_commitment))
 }
 
 #[cfg(test)]
@@ -1341,6 +1198,10 @@ mod tests {
                     price_in_wei: header.eth_l1_data_gas_price,
                     price_in_fri: header.strk_l1_data_gas_price,
                 },
+                l2_gas_price: Some(GasPrices {
+                    price_in_wei: header.eth_l2_gas_price,
+                    price_in_fri: header.strk_l2_gas_price,
+                }),
                 parent_block_hash: header.parent_hash,
                 sequencer_address: Some(header.sequencer_address),
                 state_commitment: header.state_commitment,

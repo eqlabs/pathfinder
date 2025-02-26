@@ -40,11 +40,11 @@ pub enum Notification {
     TransactionHash(TransactionHash),
 }
 
-impl crate::dto::serialize::SerializeForVersion for Notification {
+impl crate::dto::SerializeForVersion for Notification {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
             Notification::Transaction(transaction) => {
                 crate::dto::TransactionWithHash(transaction).serialize(serializer)
@@ -150,12 +150,11 @@ mod tests {
     };
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use primitive_types::H160;
     use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::PendingBlock;
     use tokio::sync::{mpsc, watch};
 
-    use crate::context::{RpcConfig, RpcContext};
+    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
     use crate::pending::PendingWatcher;
     use crate::types::syncing::Syncing;
@@ -479,11 +478,13 @@ mod tests {
             execution_storage: StorageBuilder::in_memory().unwrap(),
             pending_data: PendingWatcher::new(pending_data),
             sync_status: SyncState {
-                status: Syncing::False(false).into(),
+                status: Syncing::False.into(),
             }
             .into(),
             chain_id: ChainId::MAINNET,
-            core_contract_address: H160::from(pathfinder_ethereum::core_addr::MAINNET),
+            contract_addresses: EthContractAddresses::new_known(
+                pathfinder_ethereum::core_addr::MAINNET,
+            ),
             sequencer: Client::mainnet(Duration::from_secs(10)),
             websocket: None,
             notifications,
@@ -492,9 +493,8 @@ mod tests {
             config: RpcConfig {
                 batch_concurrency_limit: 1.try_into().unwrap(),
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
-                get_events_max_uncached_bloom_filters_to_load: 1.try_into().unwrap(),
-                #[cfg(feature = "aggregate_bloom")]
-                get_events_max_bloom_filters_to_load: 1.try_into().unwrap(),
+                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
+                fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
         };

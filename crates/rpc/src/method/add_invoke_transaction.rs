@@ -14,7 +14,7 @@ pub enum Transaction {
 impl crate::dto::DeserializeForVersion for Transaction {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
-            let tag: String = value.deserialize_serde("type")?;
+            let tag: String = value.deserialize("type")?;
             if tag != "INVOKE" {
                 return Err(serde_json::Error::custom("Invalid transaction type"));
             }
@@ -26,6 +26,68 @@ impl crate::dto::DeserializeForVersion for Transaction {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     invoke_transaction: Transaction,
+}
+
+impl Input {
+    pub fn is_v3_transaction(&self) -> bool {
+        matches!(
+            self.invoke_transaction,
+            Transaction::Invoke(BroadcastedInvokeTransaction::V3(_))
+        )
+    }
+}
+
+#[cfg(test)]
+impl Input {
+    pub(crate) fn for_test_with_v0_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V0(
+                crate::types::request::BroadcastedInvokeTransactionV0 {
+                    version: pathfinder_common::TransactionVersion::ZERO,
+                    max_fee: Default::default(),
+                    signature: Default::default(),
+                    contract_address: Default::default(),
+                    entry_point_selector: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
+
+    pub(crate) fn for_test_with_v1_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V1(
+                crate::types::request::BroadcastedInvokeTransactionV1 {
+                    version: pathfinder_common::TransactionVersion::ONE,
+                    max_fee: Default::default(),
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    sender_address: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
+
+    pub(crate) fn for_test_with_v3_transaction() -> Self {
+        Self {
+            invoke_transaction: Transaction::Invoke(BroadcastedInvokeTransaction::V3(
+                crate::types::request::BroadcastedInvokeTransactionV3 {
+                    version: pathfinder_common::TransactionVersion::THREE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    resource_bounds: Default::default(),
+                    tip: Default::default(),
+                    paymaster_data: Default::default(),
+                    account_deployment_data: Default::default(),
+                    nonce_data_availability_mode: Default::default(),
+                    fee_data_availability_mode: Default::default(),
+                    sender_address: Default::default(),
+                    calldata: Default::default(),
+                },
+            )),
+        }
+    }
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -170,20 +232,9 @@ pub(crate) async fn add_invoke_transaction_impl(
                     add_transaction::InvokeFunctionV3 {
                         signature: tx.signature,
                         nonce: tx.nonce,
-                        nonce_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.nonce_data_availability_mode,
-                            )
-                            .into(),
-                        fee_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.fee_data_availability_mode,
-                            )
-                            .into(),
-                        resource_bounds: pathfinder_common::transaction::ResourceBounds::from(
-                            tx.resource_bounds,
-                        )
-                        .into(),
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
                         paymaster_data: tx.paymaster_data,
                         sender_address: tx.sender_address,
@@ -196,16 +247,13 @@ pub(crate) async fn add_invoke_transaction_impl(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::Felt(&self.transaction_hash.0),
-        )?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.end()
     }
 }
@@ -213,11 +261,11 @@ impl crate::dto::serialize::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
     use pathfinder_common::{ResourceAmount, ResourcePricePerUnit, Tip, TransactionVersion};
 
     use super::*;
     use crate::types::request::BroadcastedInvokeTransactionV1;
-    use crate::types::{DataAvailabilityMode, ResourceBound, ResourceBounds};
 
     fn test_invoke_txn() -> Transaction {
         Transaction::Invoke(BroadcastedInvokeTransaction::V1(
@@ -254,8 +302,7 @@ mod tests {
         use serde_json::json;
 
         use super::*;
-        use crate::dto::serialize::{self, SerializeForVersion};
-        use crate::dto::DeserializeForVersion;
+        use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
 
         #[test]
         fn positional_args() {
@@ -344,7 +391,7 @@ mod tests {
             let error = crate::error::ApplicationError::from(error);
             let error = crate::jsonrpc::RpcError::from(error);
             let error = error
-                .serialize(serialize::Serializer::new(crate::RpcVersion::V07))
+                .serialize(Serializer::new(crate::RpcVersion::V07))
                 .unwrap();
 
             let expected = json!({

@@ -32,8 +32,9 @@ pub async fn spawn_server(
         });
     let listener = tokio::net::TcpListener::bind(addr.into()).await?;
     let addr = listener.local_addr()?;
-    let spawn = tokio::spawn(async move {
+    let spawn = util::task::spawn(async move {
         axum::serve(listener, app.into_make_service())
+            .with_graceful_shutdown(util::task::cancellation_token().cancelled_owned())
             .await
             .expect("server error")
     });
@@ -158,7 +159,7 @@ mod tests {
         let readiness = Arc::new(AtomicBool::new(false));
         let handle = PrometheusBuilder::new().build_recorder().handle();
         let sync_state = Arc::new(SyncState {
-            status: RwLock::new(Syncing::False(false)),
+            status: RwLock::new(Syncing::False),
         });
         let (addr, _) = super::spawn_server(
             ([127, 0, 0, 1], 0),

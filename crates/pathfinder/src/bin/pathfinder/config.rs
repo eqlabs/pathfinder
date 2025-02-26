@@ -10,16 +10,16 @@ use clap::{ArgAction, CommandFactory, Parser};
 use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
-use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
 use pathfinder_common::AllowedOrigins;
 use pathfinder_executor::VersionedConstants;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
+use util::percentage::Percentage;
 
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
 #[command(author = "Equilibrium Labs")]
-#[command(version = VERGEN_GIT_DESCRIBE)]
+#[command(version = pathfinder_version::VERSION)]
 #[command(
     about = "A Starknet node implemented by Equilibrium Labs. Submit bug reports and issues at https://github.com/eqlabs/pathfinder."
 )]
@@ -86,7 +86,7 @@ Examples:
         default_value = "v07",
         env = "PATHFINDER_RPC_ROOT_VERSION"
     )]
-    rpc_root_version: RpcVersion,
+    rpc_root_version: RootRpcVersion,
 
     #[arg(
         long = "rpc.execution-concurrency",
@@ -256,43 +256,39 @@ This should only be enabled for debugging purposes as it adds substantial proces
     feeder_gateway_fetch_concurrency: std::num::NonZeroUsize,
 
     #[arg(
-        long = "storage.event-bloom-filter-cache-size",
-        long_help = "The number of blocks whose event bloom filters are cached in memory. This \
-                     cache speeds up event related RPC queries at the cost of using extra memory. \
-                     Each cached filter takes 2 KiB of memory.",
-        env = "PATHFINDER_STORAGE_BLOOM_FILTER_CACHE_SIZE",
-        default_value = "524288"
+        long = "storage.event-filter-cache-size",
+        long_help = format!(
+            "The number of aggregate event bloom filters to cache in memory. Each filter covers a {} block range.
+            This cache speeds up event related RPC queries at the cost of using extra memory.
+            Each cached filter takes 16 MiB of memory.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_STORAGE_EVENT_FILTER_CACHE_SIZE",
+        default_value = "64"
     )]
-    event_bloom_filter_cache_size: std::num::NonZeroUsize,
+    event_filter_cache_size: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
-        long_help = "The number of blocks to scan for events when querying for events. This limit \
-                     is used to prevent queries from taking too long.",
+        long_help = "The number of blocks to scan when querying for events. This limit is used to \
+                     prevent queries from taking too long.",
         env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
         default_value = "500"
     )]
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-uncached-bloom-filters-to-load",
-        long_help = "The number of Bloom filters to load for events when querying for events. \
-                     This limit is used to prevent queries from taking too long.",
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_BLOOM_FILTERS_TO_LOAD",
-        default_value = "100000"
+        long = "rpc.get-events-max-uncached-event-filters-to-load",
+        long_help = format!(
+            "The number of uncached aggregate Bloom filters to load when querying for events.
+            Each filter covers a {} block range.
+            This limit is used to prevent queries from taking too long.",
+            pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
+        ),
+        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_EVENT_FILTERS_TO_LOAD",
+        default_value = "12"
     )]
-    get_events_max_uncached_bloom_filters_to_load: std::num::NonZeroUsize,
-
-    #[cfg(feature = "aggregate_bloom")]
-    #[arg(
-        long = "rpc.get-events-max-bloom-filters-to-load",
-        long_help = format!("The number of Bloom filters to load for events when querying for events. \
-                    Each filter covers a {} block range. \
-                    This limit is used to prevent queries from taking too long.", pathfinder_storage::BLOCK_RANGE_LEN),
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOOM_FILTERS_TO_LOAD",
-        default_value = "3"
-    )]
-    get_events_max_bloom_filters_to_load: std::num::NonZeroUsize,
+    get_events_max_uncached_event_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
         long = "storage.state-tries",
@@ -320,6 +316,27 @@ This should only be enabled for debugging purposes as it adds substantial proces
         action=ArgAction::Set
     )]
     fetch_casm_from_fgw: bool,
+
+    #[arg(
+        long = "shutdown.grace-period",
+        value_name = "Seconds",
+        long_help = "Timeout duration for graceful shutdown after receiving a SIGINT or SIGTERM",
+        env = "PATHFINDER_SHUTDOWN_GRACE_PERIOD",
+        default_value = "10"
+    )]
+    shutdown_grace_period: std::num::NonZeroU64,
+
+    #[arg(
+        long = "rpc.fee-estimation-epsilon",
+        value_name = "Percentage",
+        long_help = "Acceptable overhead to add on top of consumed L2 gas (g) during fee estimation (`estimateFee` and `simulate` RPC methods). \
+            Setting a lower value gives a more precise fee estimation (in terms of L2 gas) but runs a higher risk of having to resort to a binary \
+            search if the initial L2 gas limit (`g  + (g * EPSILON/100)`) is insufficient.",
+        env = "PATHFINDER_RPC_FEE_ESTIMATION_EPSILON",
+        default_value = "10",
+        value_parser = parse_fee_estimation_epsilon
+    )]
+    fee_estimation_epsilon: Percentage,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -344,9 +361,10 @@ impl Color {
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
-pub enum RpcVersion {
+pub enum RootRpcVersion {
     V06,
     V07,
+    V08,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -365,6 +383,21 @@ fn parse_state_tries(s: &str) -> Result<StateTries, String> {
             Ok(StateTries::Pruned(value))
         }
     }
+}
+
+fn parse_fee_estimation_epsilon(s: &str) -> Result<Percentage, String> {
+    let value: u8 = s
+        .parse()
+        .map_err(|_| "Expected a number (u8)".to_string())
+        .and_then(|value| {
+            if value > 100 {
+                Err("Expected a number between 0 and 100".to_string())
+            } else {
+                Ok(value)
+            }
+        })?;
+
+    Ok(Percentage::new(value))
 }
 
 #[derive(clap::Args)]
@@ -522,7 +555,7 @@ Example:
 
     #[arg(
         long = "p2p.experimental.stream-timeout",
-        long_help = "Timeout of the request/response-stream protocol.",
+        long_help = "Timeout of the entire stream in the request/response-stream protocol.",
         value_name = "SECONDS",
         default_value = "60",
         env = "PATHFINDER_P2P_EXPERIMENTAL_STREAM_TIMEOUT"
@@ -530,11 +563,20 @@ Example:
     stream_timeout: u32,
 
     #[arg(
+        long = "p2p.experimental.response-timeout",
+        long_help = "Timeout of a single response in the request/response-stream protocol.",
+        value_name = "SECONDS",
+        default_value = "10",
+        env = "PATHFINDER_P2P_EXPERIMENTAL_RESPONSE_TIMEOUT"
+    )]
+    response_timeout: u32,
+
+    #[arg(
         long = "p2p.experimental.max-concurrent-streams",
         long_help = "Maximum allowed number of concurrent streams per each \
                      request/response-stream protocol per connection.",
         value_name = "LIMIT",
-        default_value = "1",
+        default_value = "100",
         env = "PATHFINDER_P2P_EXPERIMENTAL_MAX_CONCURRENT_STREAMS"
     )]
     max_concurrent_streams: usize,
@@ -702,15 +744,15 @@ pub struct Config {
     pub ethereum: Ethereum,
     pub rpc_address: SocketAddr,
     pub rpc_cors_domains: Option<AllowedOrigins>,
-    pub rpc_root_version: RpcVersion,
+    pub rpc_root_version: RootRpcVersion,
     pub websocket: WebsocketConfig,
     pub monitor_address: Option<SocketAddr>,
     pub network: Option<NetworkConfig>,
     pub execution_concurrency: Option<std::num::NonZeroU32>,
     pub sqlite_wal: JournalMode,
     pub max_rpc_connections: std::num::NonZeroUsize,
-    pub poll_interval: std::time::Duration,
-    pub l1_poll_interval: std::time::Duration,
+    pub poll_interval: Duration,
+    pub l1_poll_interval: Duration,
     pub color: Color,
     pub log_output_json: bool,
     pub disable_version_update_check: bool,
@@ -722,15 +764,15 @@ pub struct Config {
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
     pub gateway_timeout: Duration,
-    pub event_bloom_filter_cache_size: NonZeroUsize,
+    pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_bloom_filters_to_load: NonZeroUsize,
-    #[cfg(feature = "aggregate_bloom")]
-    pub get_events_max_bloom_filters_to_load: NonZeroUsize,
+    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
+    pub shutdown_grace_period: Duration,
+    pub fee_estimation_epsilon: Percentage,
 }
 
 pub struct Ethereum {
@@ -765,6 +807,7 @@ pub struct P2PConfig {
     pub kad_name: Option<String>,
     pub l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     pub stream_timeout: Duration,
+    pub response_timeout: Duration,
     pub max_concurrent_streams: usize,
     pub direct_connection_timeout: Duration,
     pub eviction_timeout: Duration,
@@ -776,7 +819,7 @@ pub struct P2PConfig;
 
 pub struct DebugConfig {
     pub pretty_log: bool,
-    pub restart_delay: std::time::Duration,
+    pub restart_delay: Duration,
 }
 
 impl NetworkConfig {
@@ -915,6 +958,7 @@ impl P2PConfig {
             kad_name: args.kad_name,
             l1_checkpoint_override,
             stream_timeout: Duration::from_secs(args.stream_timeout.into()),
+            response_timeout: Duration::from_secs(args.response_timeout.into()),
             max_concurrent_streams: args.max_concurrent_streams,
             direct_connection_timeout: Duration::from_secs(args.direct_connection_timeout.into()),
             eviction_timeout: Duration::from_secs(args.eviction_timeout.into()),
@@ -962,7 +1006,7 @@ impl DebugConfig {
     fn parse(_: ()) -> Self {
         Self {
             pretty_log: false,
-            restart_delay: std::time::Duration::from_secs(60),
+            restart_delay: Duration::from_secs(60),
         }
     }
 }
@@ -972,7 +1016,7 @@ impl DebugConfig {
     fn parse(args: DebugCli) -> Self {
         Self {
             pretty_log: args.pretty_log,
-            restart_delay: std::time::Duration::from_secs(args.restart_delay),
+            restart_delay: Duration::from_secs(args.restart_delay),
         }
     }
 }
@@ -1014,12 +1058,10 @@ impl Config {
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
-            event_bloom_filter_cache_size: cli.event_bloom_filter_cache_size,
+            event_filter_cache_size: cli.event_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_uncached_bloom_filters_to_load: cli
-                .get_events_max_uncached_bloom_filters_to_load,
-            #[cfg(feature = "aggregate_bloom")]
-            get_events_max_bloom_filters_to_load: cli.get_events_max_bloom_filters_to_load,
+            get_events_max_uncached_event_filters_to_load: cli
+                .get_events_max_uncached_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,
@@ -1027,6 +1069,8 @@ impl Config {
                 .custom_versioned_constants_path
                 .map(parse_versioned_constants_or_exit),
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
+            shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
+            fee_estimation_epsilon: cli.fee_estimation_epsilon,
         }
     }
 }
@@ -1165,7 +1209,7 @@ mod tests {
     #[test]
     fn parse_versioned_constants_success() {
         super::parse_versioned_constants(
-            "../executor/resources/versioned_constants_13_1_1.json".into(),
+            "../executor/resources/versioned_constants_0_13_1_1.json".into(),
         )
         .unwrap();
     }

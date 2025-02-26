@@ -23,12 +23,18 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug)]
 pub struct Output(CasmContractClass);
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        self.0.serialize(serializer)
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        use serde::de::Error;
+        let mut s = serializer.serialize_struct()?;
+        // Convert CasmContractClass to a serde_json::Value first
+        let json_value = serde_json::to_value(&self.0).map_err(serde_json::Error::custom)?;
+        // Serialize it as a field
+        s.serialize_field("casm", &json_value)?;
+        s.end()
     }
 }
 
@@ -48,7 +54,11 @@ impl From<anyhow::Error> for Error {
 impl From<Error> for crate::jsonrpc::RpcError {
     fn from(error: Error) -> Self {
         match error {
-            Error::CompilationFailed => Self::ApplicationError(ApplicationError::CompilationFailed),
+            Error::CompilationFailed => {
+                Self::ApplicationError(ApplicationError::CompilationFailed {
+                    data: String::new(),
+                })
+            }
             Error::ClassHashNotFound(_) => {
                 Self::ApplicationError(ApplicationError::ClassHashNotFound)
             }
@@ -60,7 +70,7 @@ impl From<Error> for crate::jsonrpc::RpcError {
 /// Get the compiled casm for a given class hash.
 pub async fn get_compiled_casm(context: RpcContext, input: Input) -> Result<Output, Error> {
     let span = tracing::Span::current();
-    let jh = tokio::task::spawn_blocking(move || -> Result<Output, Error> {
+    let jh = util::task::spawn_blocking(move |_| -> Result<Output, Error> {
         let _g = span.enter();
 
         let mut db = context

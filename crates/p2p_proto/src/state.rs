@@ -2,8 +2,8 @@ use std::fmt::Debug;
 
 use fake::Dummy;
 use pathfinder_crypto::Felt;
-use tagged::Tagged;
-use tagged_debug_derive::TaggedDebug;
+use pathfinder_tagged::Tagged;
+use pathfinder_tagged_debug_derive::TaggedDebug;
 
 use crate::common::{Address, Hash, Iteration, VolitionDomain};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};

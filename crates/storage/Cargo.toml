@@ -5,10 +5,6 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[features]
-aggregate_bloom = []
 
 [dependencies]
 anyhow = { workspace = true }
@@ -25,6 +21,7 @@ flume = { version = "0.11.0", default-features = false, features = [
 hex = { workspace = true }
 metrics = { workspace = true }
 paste = { workspace = true }
+pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
@@ -33,7 +30,12 @@ primitive-types = { workspace = true }
 r2d2 = { workspace = true }
 r2d2_sqlite = { workspace = true }
 rand = { workspace = true }
-rusqlite = { workspace = true, features = ["bundled", "functions"] }
+rusqlite = { workspace = true, features = [
+    "bundled",
+    "functions",
+    "vtab",
+    "array",
+] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
     "arbitrary_precision",
@@ -41,7 +43,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-starknet-gateway-types = { path = "../gateway-types" }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -49,7 +50,6 @@ tracing = { workspace = true }
 zstd = { workspace = true, features = ["experimental"] }
 
 [dev-dependencies]
-assert_matches = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }

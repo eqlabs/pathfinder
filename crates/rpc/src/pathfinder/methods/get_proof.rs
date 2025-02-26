@@ -9,8 +9,6 @@ use pathfinder_merkle_tree::{
     ContractsStorageTree,
     StorageCommitmentTree,
 };
-use serde::{Deserialize, Serialize};
-use serde_with::skip_serializing_none;
 
 use crate::context::RpcContext;
 
@@ -21,7 +19,7 @@ pub struct GetProofInput {
     pub keys: Vec<StorageAddress>,
 }
 
-#[derive(Deserialize, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct GetClassProofInput {
     pub block_id: BlockId,
     pub class_hash: ClassHash,
@@ -93,71 +91,81 @@ impl From<GetProofError> for crate::error::ApplicationError {
 }
 
 /// Utility struct used for serializing.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 struct PathWrapper {
     value: Felt,
     len: usize,
 }
 
+impl crate::dto::SerializeForVersion for PathWrapper {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("value", &self.value)?;
+        obj.serialize_field("len", &self.len)?;
+        obj.end()
+    }
+}
+
 /// Wrapper around [`Vec<TrieNode>`] as we don't control [TrieNode] in this
 /// crate.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProofNodes(Vec<TrieNode>);
 
-impl Serialize for ProofNodes {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::{SerializeSeq, SerializeStructVariant};
-        let mut sequence = serializer.serialize_seq(Some(self.0.len()))?;
+impl crate::dto::SerializeForVersion for ProofNodes {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(
+            self.0.len(),
+            &mut self.0.iter().map(|node| {
+                struct SerProofNode<'a>(&'a TrieNode);
 
-        for node in &self.0 {
-            struct SerProofNode<'a>(&'a TrieNode);
+                impl crate::dto::SerializeForVersion for SerProofNode<'_> {
+                    fn serialize(
+                        &self,
+                        serializer: crate::dto::Serializer,
+                    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                        let mut s = serializer.serialize_struct()?;
+                        match self.0 {
+                            TrieNode::Binary { left, right } => {
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("left", left)?;
+                                inner.serialize_field("right", right)?;
+                                let inner = inner.end()?;
 
-            impl Serialize for SerProofNode<'_> {
-                fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                where
-                    S: serde::Serializer,
-                {
-                    match self.0 {
-                        TrieNode::Binary { left, right } => {
-                            let mut state = serializer.serialize_struct_variant(
-                                "proof_node",
-                                0,
-                                "binary",
-                                2,
-                            )?;
-                            state.serialize_field("left", &left)?;
-                            state.serialize_field("right", &right)?;
-                            state.end()
+                                s.serialize_field("binary", &inner)?;
+                            }
+                            TrieNode::Edge { child, path } => {
+                                let value = Felt::from_bits(path).unwrap();
+                                let path = PathWrapper {
+                                    value,
+                                    len: path.len(),
+                                };
+
+                                let mut inner = serializer.serialize_struct()?;
+                                inner.serialize_field("path", &path)?;
+                                inner.serialize_field("child", child)?;
+                                let inner = inner.end()?;
+
+                                s.serialize_field("edge", &inner)?;
+                            }
                         }
-                        TrieNode::Edge { child, path } => {
-                            let value = Felt::from_bits(path).unwrap();
-                            let path = PathWrapper {
-                                value,
-                                len: path.len(),
-                            };
-
-                            let mut state =
-                                serializer.serialize_struct_variant("proof_node", 1, "edge", 2)?;
-                            state.serialize_field("path", &path)?;
-                            state.serialize_field("child", &child)?;
-                            state.end()
-                        }
+                        s.end()
                     }
                 }
-            }
 
-            sequence.serialize_element(&SerProofNode(node))?;
-        }
-
-        sequence.end()
+                SerProofNode(node)
+            }),
+        )
     }
 }
 
 /// Holds the data and proofs for a specific contract.
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub struct ContractData {
     /// Required to verify the contract state hash to contract root calculation.
     class_hash: ClassHash,
@@ -175,10 +183,31 @@ pub struct ContractData {
     storage_proofs: Vec<ProofNodes>,
 }
 
+impl crate::dto::SerializeForVersion for ContractData {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut obj = serializer.serialize_struct()?;
+        obj.serialize_field("class_hash", &self.class_hash)?;
+        obj.serialize_field("nonce", &self.nonce)?;
+        obj.serialize_field("root", &self.root)?;
+        obj.serialize_field(
+            "contract_state_hash_version",
+            &self.contract_state_hash_version,
+        )?;
+        obj.serialize_iter(
+            "storage_proofs",
+            self.storage_proofs.len(),
+            &mut self.storage_proofs.iter().cloned(),
+        )?;
+        obj.end()
+    }
+}
+
 /// Holds the membership/non-membership of a contract and its associated
 /// contract contract if the contract exists.
-#[derive(Debug, Serialize)]
-#[skip_serializing_none]
+#[derive(Debug)]
 pub struct GetProofOutput {
     /// The global state commitment for Starknet 0.11.0 blocks onwards, if
     /// absent the hash of the first node in the
@@ -198,8 +227,21 @@ pub struct GetProofOutput {
     contract_data: Option<ContractData>,
 }
 
-#[derive(Debug, Serialize)]
-#[skip_serializing_none]
+impl crate::dto::SerializeForVersion for GetProofOutput {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional_with_null("state_commitment", self.state_commitment)?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
+        serializer.serialize_field("contract_proof", &self.contract_proof)?;
+        serializer.serialize_optional("contract_data", self.contract_data.clone())?;
+        serializer.end()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct GetClassProofOutput {
     /// Required to verify that the hash of the class commitment and the root of
     /// the [contract_proof](GetProofOutput::contract_proof) matches the
@@ -208,6 +250,18 @@ pub struct GetClassProofOutput {
     class_commitment: Option<ClassCommitment>,
     /// Membership / Non-membership proof for the queried contract classes
     class_proof: ProofNodes,
+}
+
+impl crate::dto::SerializeForVersion for GetClassProofOutput {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_optional_with_null("class_commitment", self.class_commitment)?;
+        serializer.serialize_field("class_proof", &self.class_proof)?;
+        serializer.end()
+    }
 }
 
 /// Returns all the necessary data to trustlessly verify storage slots for a
@@ -235,8 +289,7 @@ pub async fn get_proof(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -256,15 +309,30 @@ pub async fn get_proof(
             StateCommitment::ZERO => None,
             other => Some(other),
         };
-        let class_commitment = match header.class_commitment {
-            ClassCommitment::ZERO => None,
-            other => Some(other),
-        };
 
         let storage_root_idx = tx
             .storage_root_index(header.number)
-            .context("Querying storage root index")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .context("Querying storage root index")?;
+        let class_commitment = tx
+            .class_root(header.number)
+            .context("Querying class commitment")?;
+
+        let Some(storage_root_idx) = storage_root_idx else {
+            if tx.trie_pruning_enabled() {
+                return Err(GetProofError::ProofMissing);
+            } else {
+                // Either:
+                // - the chain is empty (no contract updates) up to and including this block
+                // - or all leaves were removed resulting in an empty trie
+                // An empty proof is then a proof of non-membership in an empty block.
+                return Ok(GetProofOutput {
+                    state_commitment,
+                    class_commitment,
+                    contract_proof: ProofNodes(vec![]),
+                    contract_data: None,
+                });
+            }
+        };
 
         // Generate a proof for this contract. If the contract does not exist, this will
         // be a "non membership" proof.
@@ -354,7 +422,7 @@ pub async fn get_proof(
 
 /// Returns all the necessary data to trustlessly verify class changes for a
 /// particular contract.
-pub async fn get_proof_class(
+pub async fn get_class_proof(
     context: RpcContext,
     input: GetClassProofInput,
 ) -> Result<GetClassProofOutput, GetProofError> {
@@ -369,8 +437,7 @@ pub async fn get_proof_class(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -386,15 +453,29 @@ pub async fn get_proof_class(
             .context("Fetching block header")?
             .ok_or(GetProofError::BlockNotFound)?;
 
-        let class_commitment = match header.class_commitment {
-            ClassCommitment::ZERO => None,
-            other => Some(other),
-        };
-
         let class_root_idx = tx
             .class_root_index(header.number)
-            .context("Querying class root index")?
-            .ok_or(GetProofError::ProofMissing)?;
+            .context("Querying class root index")?;
+
+        let Some(class_root_idx) = class_root_idx else {
+            if tx.trie_pruning_enabled() {
+                return Err(GetProofError::ProofMissing);
+            } else {
+                // Either:
+                // - the chain is empty (no declared classes) up to and including this block
+                // - or all leaves were removed resulting in an empty trie
+                // An empty proof is then a proof of non-membership in an empty block.
+                return Ok(GetClassProofOutput {
+                    class_commitment: None,
+                    class_proof: ProofNodes(vec![]),
+                });
+            }
+        };
+
+        let class_commitment = tx
+            .class_trie_node_hash(class_root_idx)
+            .context("Querying class trie root")?
+            .map(ClassCommitment);
 
         // Generate a proof for this class. If the class does not exist, this will
         // be a "non membership" proof.
@@ -417,65 +498,269 @@ pub async fn get_proof_class(
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 
     use super::*;
 
-    #[tokio::test]
-    async fn limit_exceeded() {
-        let context = RpcContext::for_tests();
-        let input = GetProofInput {
-            block_id: BlockId::Latest,
-            contract_address: contract_address!("0xdeadbeef"),
-            keys: (0..10_000)
-                .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
-                .collect(),
-        };
+    mod serialization {
+        use bitvec::prelude::*;
 
-        let err = get_proof(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+        use super::*;
+        use crate::dto::SerializeForVersion;
+
+        #[test]
+        fn serialize_proof_nodes() {
+            let nodes = ProofNodes(vec![
+                TrieNode::Binary {
+                    left: Felt::from_u64(0),
+                    right: Felt::from_u64(1),
+                },
+                TrieNode::Edge {
+                    child: Felt::from_u64(2),
+                    path: bitvec::bitvec![u8, Msb0; 1, 1],
+                },
+            ]);
+            let actual = nodes
+                .serialize(crate::dto::Serializer {
+                    version: crate::RpcVersion::default(),
+                })
+                .unwrap();
+            let expected = serde_json::json!(
+                [
+                    {
+                        "binary": {
+                            "left": "0x0",
+                            "right": "0x1",
+                        }
+                    },
+                    {
+                        "edge": {
+                            "path": {
+                                "value": "0x3",
+                                "len": 2,
+                            },
+                            "child": "0x2",
+                        }
+                    },
+                ]
+            );
+            assert_eq!(actual, expected);
+        }
     }
 
-    #[tokio::test]
-    async fn proof_pruned() {
-        let context =
-            RpcContext::for_tests_with_trie_pruning(pathfinder_storage::TriePruneMode::Prune {
+    mod get_proof {
+        use super::*;
+
+        #[tokio::test]
+        async fn success() {
+            let context = RpcContext::for_tests();
+
+            let input = GetProofInput {
+                block_id: BlockId::Number(pathfinder_common::BlockNumber::GENESIS + 2),
+                contract_address: contract_address_bytes!(b"contract 2 (sierra)"),
+                keys: vec![storage_address_bytes!(b"storage addr 0")],
+            };
+
+            get_proof(context, input).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn limit_exceeded() {
+            let context = RpcContext::for_tests();
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address!("0xdeadbeef"),
+                keys: (0..10_000)
+                    .map(|idx| StorageAddress::new_or_panic(Felt::from_u64(idx)))
+                    .collect(),
+            };
+
+            let err = get_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofLimitExceeded { .. });
+        }
+
+        #[tokio::test]
+        async fn proof_pruned() {
+            let context =
+                RpcContext::for_tests_with_trie_pruning(pathfinder_storage::TriePruneMode::Prune {
+                    num_blocks_kept: 0,
+                });
+            let mut conn = context.storage.connection().unwrap();
+            let tx = conn.transaction().unwrap();
+
+            // Ensure that all storage tries are pruned, hence the node does not store
+            // historic proofs.
+            tx.insert_storage_trie(
+                &pathfinder_storage::TrieUpdate {
+                    nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
+                    nodes_removed: (0..100).collect(),
+                    root_commitment: Felt::ZERO,
+                },
+                BlockNumber::GENESIS + 3,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            let tx = conn.transaction().unwrap();
+            tx.insert_storage_trie(
+                &pathfinder_storage::TrieUpdate {
+                    nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
+                    nodes_removed: vec![],
+                    root_commitment: Felt::ZERO,
+                },
+                BlockNumber::GENESIS + 4,
+            )
+            .unwrap();
+            tx.commit().unwrap();
+            drop(conn);
+
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address_bytes!(b"contract 1"),
+                keys: vec![storage_address_bytes!(b"storage addr 0")],
+            };
+            let err = get_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+        }
+
+        #[tokio::test]
+        async fn chain_without_contract_updates() {
+            let storage =
+                pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                pathfinder_storage::fake::Config {
+                    occurrence: pathfinder_storage::fake::OccurrencePerBlock {
+                        nonce: 0..=0,
+                        storage: 0..=0,
+                        system_storage: 0..=0,
+                        ..Default::default()
+                    },
+                    update_tries: Box::new(update_starknet_state),
+                    ..Default::default()
+                },
+            );
+
+            pathfinder_storage::fake::fill(
+                &storage,
+                &blocks,
+                Some(Box::new(update_starknet_state)),
+            );
+
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            let input = GetProofInput {
+                block_id: BlockId::Latest,
+                contract_address: contract_address!("0xabcd"),
+                keys: vec![storage_address!("0x1234")],
+            };
+
+            let output = get_proof(context, input).await.unwrap();
+            assert!(output.contract_proof.0.is_empty());
+            assert!(output.contract_data.is_none());
+        }
+    }
+
+    mod get_class_proof {
+        use pathfinder_storage::fake::{Config, OccurrencePerBlock};
+        use pathfinder_storage::{StorageBuilder, TriePruneMode};
+
+        use super::*;
+
+        #[tokio::test]
+        async fn success() {
+            let context = RpcContext::for_tests();
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Number(pathfinder_common::BlockNumber::GENESIS + 2),
+                class_hash: class_hash_bytes!(b"class 2 hash (sierra)"),
+            };
+
+            get_class_proof(context, input).await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn proof_pruned() {
+            let storage = StorageBuilder::in_memory_with_trie_pruning(TriePruneMode::Prune {
                 num_blocks_kept: 0,
-            });
-        let mut conn = context.storage.connection().unwrap();
-        let tx = conn.transaction().unwrap();
+            })
+            .unwrap();
 
-        // Ensure that all storage tries are pruned, hence the node does not store
-        // historic proofs.
-        tx.insert_storage_trie(
-            &pathfinder_storage::TrieUpdate {
-                nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
-                nodes_removed: (0..100).collect(),
-                root_commitment: Felt::ZERO,
-            },
-            BlockNumber::GENESIS + 3,
-        )
-        .unwrap();
-        tx.commit().unwrap();
-        let tx = conn.transaction().unwrap();
-        tx.insert_storage_trie(
-            &pathfinder_storage::TrieUpdate {
-                nodes_added: vec![(Felt::from_u64(1), pathfinder_storage::Node::LeafBinary)],
-                nodes_removed: vec![],
-                root_commitment: Felt::ZERO,
-            },
-            BlockNumber::GENESIS + 4,
-        )
-        .unwrap();
-        tx.commit().unwrap();
-        drop(conn);
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                Config {
+                    occurrence: OccurrencePerBlock {
+                        sierra: 1..=10,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            );
+            pathfinder_storage::fake::fill(
+                &storage, &blocks, /* Simulates pruned tries */ None,
+            );
 
-        let input = GetProofInput {
-            block_id: BlockId::Latest,
-            contract_address: contract_address!("0xdeadbeef"),
-            keys: vec![storage_address_bytes!(b"storage addr 0")],
-        };
-        let err = get_proof(context, input).await.unwrap_err();
-        assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+            let context = RpcContext::for_tests().with_storage(storage);
+            let class_hash = ClassHash(blocks.first().unwrap().sierra_defs.first().unwrap().0 .0);
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Latest,
+                // Declared in the block but the tries are missing
+                class_hash,
+            };
+
+            let err = get_class_proof(context, input).await.unwrap_err();
+            assert_matches::assert_matches!(err, GetProofError::ProofMissing);
+        }
+
+        #[tokio::test]
+        async fn chain_without_class_declarations() {
+            let storage =
+                pathfinder_storage::StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                    pathfinder_storage::TriePruneMode::Archive,
+                    NonZeroU32::new(5).unwrap(),
+                )
+                .unwrap();
+            let blocks = pathfinder_storage::fake::generate::with_config(
+                1,
+                pathfinder_storage::fake::Config {
+                    occurrence: pathfinder_storage::fake::OccurrencePerBlock {
+                        cairo: 0..=0,
+                        sierra: 0..=0,
+                        ..Default::default()
+                    },
+                    update_tries: Box::new(update_starknet_state),
+                    ..Default::default()
+                },
+            );
+
+            pathfinder_storage::fake::fill(
+                &storage,
+                &blocks,
+                Some(Box::new(update_starknet_state)),
+            );
+
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            let input = GetClassProofInput {
+                block_id: BlockId::Latest,
+                class_hash: class_hash!("0xabcd"),
+            };
+
+            let output = get_class_proof(context, input).await.unwrap();
+            assert_eq!(
+                output,
+                GetClassProofOutput {
+                    class_commitment: None,
+                    class_proof: ProofNodes(vec![])
+                }
+            );
+        }
     }
 }

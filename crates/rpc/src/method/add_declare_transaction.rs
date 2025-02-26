@@ -17,7 +17,7 @@ pub enum AddDeclareTransactionError {
     InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
-    CompilationFailed,
+    CompilationFailed(String),
     ContractClassSizeIsTooLarge,
     DuplicateTransaction,
     CompiledClassHashMismatch,
@@ -41,7 +41,7 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
             AddDeclareTransactionError::ValidationFailure(message) => {
                 Self::ValidationFailureV06(message)
             }
-            AddDeclareTransactionError::CompilationFailed => Self::CompilationFailed,
+            AddDeclareTransactionError::CompilationFailed(data) => Self::CompilationFailed { data },
             AddDeclareTransactionError::ContractClassSizeIsTooLarge => {
                 Self::ContractClassSizeIsTooLarge
             }
@@ -87,7 +87,7 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::ClassAlreadyDeclared
             }
             SequencerError::StarknetError(e) if e.code == CompilationFailed.into() => {
-                AddDeclareTransactionError::CompilationFailed
+                AddDeclareTransactionError::CompilationFailed(e.message)
             }
             SequencerError::StarknetError(e)
                 if e.code == ContractBytecodeSizeTooLarge.into()
@@ -135,7 +135,7 @@ pub enum Transaction {
 impl crate::dto::DeserializeForVersion for Transaction {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
-            let tag: String = value.deserialize_serde("type")?;
+            let tag: String = value.deserialize("type")?;
             if tag != "DECLARE" {
                 return Err(serde::de::Error::custom("Invalid transaction type"));
             }
@@ -152,6 +152,122 @@ pub struct Input {
     // An undocumented parameter that we forward to the sequencer API
     // A deploy token is required to deploy contracts on Starknet mainnet only.
     token: Option<String>,
+}
+
+impl Input {
+    pub fn is_v3_transaction(&self) -> bool {
+        matches!(
+            self.declare_transaction,
+            Transaction::Declare(BroadcastedDeclareTransaction::V3(_))
+        )
+    }
+}
+
+#[cfg(test)]
+impl Input {
+    pub(crate) fn for_test_with_v0_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V0(
+                crate::types::request::BroadcastedDeclareTransactionV0 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::ZERO,
+                    signature: Default::default(),
+                    contract_class: crate::types::CairoContractClass {
+                        program: Default::default(),
+                        entry_points_by_type: crate::types::ContractEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v1_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V1(
+                crate::types::request::BroadcastedDeclareTransactionV1 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::ONE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    contract_class: crate::types::CairoContractClass {
+                        program: Default::default(),
+                        entry_points_by_type: crate::types::ContractEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v2_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V2(
+                crate::types::request::BroadcastedDeclareTransactionV2 {
+                    max_fee: Default::default(),
+                    version: pathfinder_common::TransactionVersion::TWO,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    compiled_class_hash: Default::default(),
+                    contract_class: crate::types::SierraContractClass {
+                        sierra_program: Default::default(),
+                        contract_class_version: Default::default(),
+                        entry_points_by_type: crate::types::SierraEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
+
+    pub(crate) fn for_test_with_v3_transaction() -> Self {
+        Self {
+            declare_transaction: Transaction::Declare(BroadcastedDeclareTransaction::V3(
+                crate::types::request::BroadcastedDeclareTransactionV3 {
+                    version: pathfinder_common::TransactionVersion::THREE,
+                    signature: Default::default(),
+                    nonce: Default::default(),
+                    resource_bounds: Default::default(),
+                    tip: Default::default(),
+                    paymaster_data: Default::default(),
+                    account_deployment_data: Default::default(),
+                    nonce_data_availability_mode: Default::default(),
+                    fee_data_availability_mode: Default::default(),
+                    compiled_class_hash: Default::default(),
+                    contract_class: crate::types::SierraContractClass {
+                        sierra_program: Default::default(),
+                        contract_class_version: Default::default(),
+                        entry_points_by_type: crate::types::SierraEntryPoints {
+                            constructor: Default::default(),
+                            external: Default::default(),
+                            l1_handler: Default::default(),
+                        },
+                        abi: Default::default(),
+                    },
+                    sender_address: Default::default(),
+                },
+            )),
+            token: None,
+        }
+    }
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -249,20 +365,9 @@ pub async fn add_declare_transaction(
                     add_transaction::Declare::V3(add_transaction::DeclareV3 {
                         signature: tx.signature,
                         nonce: tx.nonce,
-                        nonce_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.nonce_data_availability_mode,
-                            )
-                            .into(),
-                        fee_data_availability_mode:
-                            pathfinder_common::transaction::DataAvailabilityMode::from(
-                                tx.fee_data_availability_mode,
-                            )
-                            .into(),
-                        resource_bounds: pathfinder_common::transaction::ResourceBounds::from(
-                            tx.resource_bounds,
-                        )
-                        .into(),
+                        nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
+                        fee_data_availability_mode: tx.fee_data_availability_mode.into(),
+                        resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
                         paymaster_data: tx.paymaster_data,
                         contract_class: contract_definition,
@@ -282,17 +387,14 @@ pub async fn add_declare_transaction(
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
-            "transaction_hash",
-            &crate::dto::Felt(&self.transaction_hash.0),
-        )?;
-        serializer.serialize_field("class_hash", &crate::dto::Felt(&self.class_hash.0))?;
+        serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
+        serializer.serialize_field("class_hash", &self.class_hash)?;
         serializer.end()
     }
 }
@@ -302,6 +404,7 @@ mod tests {
     use std::sync::LazyLock;
 
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
     use pathfinder_common::{
         CasmHash,
         ContractAddress,
@@ -325,14 +428,7 @@ mod tests {
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
     };
-    use crate::types::{
-        CairoContractClass,
-        ContractClass,
-        DataAvailabilityMode,
-        ResourceBound,
-        ResourceBounds,
-        SierraContractClass,
-    };
+    use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
 
     pub static CONTRACT_CLASS: LazyLock<CairoContractClass> = LazyLock::new(|| {
         ContractClass::from_definition_bytes(CONTRACT_DEFINITION)
@@ -381,8 +477,7 @@ mod tests {
             use serde_json::json;
 
             use super::super::*;
-            use crate::dto::serialize::SerializeForVersion;
-            use crate::dto::{serialize, DeserializeForVersion};
+            use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
             use crate::types::request::BroadcastedDeclareTransactionV1;
             use crate::RpcVersion;
 
@@ -461,9 +556,7 @@ mod tests {
                 let error = AddDeclareTransactionError::from(starknet_error);
                 let error = crate::error::ApplicationError::from(error);
                 let error = crate::jsonrpc::RpcError::from(error);
-                let error = error
-                    .serialize(serialize::Serializer::new(RpcVersion::V07))
-                    .unwrap();
+                let error = error.serialize(Serializer::new(RpcVersion::V07)).unwrap();
 
                 let expected = json!({
                     "code": 63,

@@ -46,7 +46,6 @@
         }
     },
     {
-        "new_root": "0x1",
         "old_root": "0x2",
         "state_diff": {
             "storage_diffs": [

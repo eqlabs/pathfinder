@@ -5,7 +5,10 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Common types and utilities for Pathfinder"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "blockchain", "web3", "types"]
+categories = ["cryptography::cryptocurrencies", "data-structures", "development-tools", "web-programming", "network-programming"]
 
 [features]
 full-serde = []
@@ -18,7 +21,9 @@ metrics = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = "0.2"
 paste = { workspace = true }
-pathfinder-crypto = { path = "../crypto" }
+pathfinder-crypto = { version = "0.16.1", path = "../crypto" }
+pathfinder-tagged = { version = "0.1.0", path = "../tagged" }
+pathfinder-tagged-debug-derive = { version = "0.1.0", path = "../tagged-debug-derive" }
 primitive-types = { workspace = true, features = ["serde"] }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -28,8 +33,6 @@ serde_json = { workspace = true, features = [
 ] }
 serde_with = { workspace = true }
 sha3 = { workspace = true }
-tagged = { path = "../tagged" }
-tagged-debug-derive = { path = "../tagged-debug-derive" }
 thiserror = { workspace = true }
 
 [dev-dependencies]

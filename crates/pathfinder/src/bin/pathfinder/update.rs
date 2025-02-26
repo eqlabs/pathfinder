@@ -5,7 +5,7 @@
 /// Will continuously log this with every poll so that the user
 /// has a better chance of spotting it.
 pub async fn poll_github_for_releases() {
-    let current_version = pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
+    let current_version = pathfinder_version::VERSION;
     let current_version = current_version.strip_prefix('v').unwrap_or(current_version);
     let local_version = match semver::Version::parse(current_version) {
         Ok(version) => version,
@@ -92,7 +92,7 @@ fn configure_client() -> anyhow::Result<reqwest::Client> {
     reqwest::Client::builder()
         .default_headers(headers)
         // https://docs.github.com/en/rest/overview/resources-in-the-rest-api#user-agent-required
-        .user_agent(pathfinder_common::consts::USER_AGENT)
+        .user_agent(pathfinder_version::USER_AGENT)
         .timeout(std::time::Duration::from_secs(300))
         .build()
         .context("Failed to create Github client")

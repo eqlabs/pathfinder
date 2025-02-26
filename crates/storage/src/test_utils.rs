@@ -25,38 +25,43 @@ pub const NUM_TRANSACTIONS: usize = NUM_BLOCKS * TRANSACTIONS_PER_BLOCK;
 pub const NUM_EVENTS: usize = NUM_BLOCKS * EVENTS_PER_BLOCK;
 
 /// Creates a custom set of [BlockHeader]s with arbitrary values.
-pub(crate) fn create_blocks(block_numbers: &[usize]) -> Vec<BlockHeader> {
-    block_numbers
-        .iter()
-        .enumerate()
-        .map(|(i, &block_number)| {
+pub(crate) fn create_blocks(n_blocks: usize) -> Vec<BlockHeader> {
+    (0..n_blocks)
+        .map(|block_number| {
             let storage_commitment =
-                StorageCommitment(Felt::from_hex_str(&"b".repeat(i + 3)).unwrap());
-            let class_commitment = ClassCommitment(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap());
-            let index_as_felt = Felt::from_be_slice(&[i as u8]).unwrap();
+                StorageCommitment(Felt::from_hex_str(&"b".repeat(block_number + 3)).unwrap());
+            let class_commitment =
+                ClassCommitment(Felt::from_hex_str(&"c".repeat(block_number + 3)).unwrap());
+            let index_as_felt = Felt::from_be_slice(&[block_number as u8]).unwrap();
 
             BlockHeader::builder()
                 .number(BlockNumber::GENESIS + block_number as u64)
-                .timestamp(BlockTimestamp::new_or_panic(i as u64 + 500))
-                .class_commitment(class_commitment)
-                .storage_commitment(storage_commitment)
-                .calculated_state_commitment()
-                .eth_l1_gas_price(GasPrice::from(i as u64))
+                .timestamp(BlockTimestamp::new_or_panic(block_number as u64 + 500))
+                .calculated_state_commitment(storage_commitment, class_commitment)
+                .eth_l1_gas_price(GasPrice::from(block_number as u64))
                 .sequencer_address(SequencerAddress(index_as_felt))
                 .transaction_commitment(TransactionCommitment(index_as_felt))
                 .event_commitment(EventCommitment(index_as_felt))
-                .finalize_with_hash(BlockHash(Felt::from_hex_str(&"a".repeat(i + 3)).unwrap()))
+                .finalize_with_hash(BlockHash(
+                    Felt::from_hex_str(&"a".repeat(block_number + 3)).unwrap(),
+                ))
         })
         .collect::<Vec<_>>()
 }
 
 /// Creates a custom test set of transactions and receipts.
 pub(crate) fn create_transactions_and_receipts(
-    block_count: usize,
+    n_blocks: usize,
     transactions_per_block: usize,
 ) -> Vec<(Transaction, Receipt, Vec<Event>)> {
-    let n = block_count * transactions_per_block;
-    let transactions = (0..n).map(|i| match i % transactions_per_block {
+    let n_transactions = n_blocks * transactions_per_block;
+    assert!(
+        n_transactions < 64,
+        "Too many transactions ({} > {}), `Felt::from_hex_str() will overflow.",
+        n_transactions,
+        64
+    );
+    let transactions = (0..n_transactions).map(|i| match i % transactions_per_block {
         x if x < INVOKE_TRANSACTIONS_PER_BLOCK => Transaction {
             hash: TransactionHash(Felt::from_hex_str(&"4".repeat(i + 3)).unwrap()),
             variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
@@ -112,60 +117,62 @@ pub(crate) fn create_transactions_and_receipts(
         },
     });
 
-    let tx_receipt = transactions.enumerate().map(|(i, tx)| {
-        let receipt = Receipt {
-            actual_fee: Fee::ZERO,
-            execution_resources: ExecutionResources {
-                builtins: Default::default(),
-                n_steps: i as u64 + 987,
-                n_memory_holes: i as u64 + 1177,
-                data_availability: L1Gas {
-                    l1_gas: i as u128 + 124,
-                    l1_data_gas: i as u128 + 457,
+    transactions
+        .enumerate()
+        .map(|(i, tx)| {
+            let receipt = Receipt {
+                actual_fee: Fee::ZERO,
+                execution_resources: ExecutionResources {
+                    builtins: Default::default(),
+                    n_steps: i as u64 + 987,
+                    n_memory_holes: i as u64 + 1177,
+                    data_availability: L1Gas {
+                        l1_gas: i as u128 + 124,
+                        l1_data_gas: i as u128 + 457,
+                    },
+                    total_gas_consumed: L1Gas {
+                        l1_gas: i as u128 + 333,
+                        l1_data_gas: i as u128 + 666,
+                    },
+                    l2_gas: Default::default(),
                 },
-                total_gas_consumed: L1Gas {
-                    l1_gas: i as u128 + 333,
-                    l1_data_gas: i as u128 + 666,
-                },
-                l2_gas: Default::default(),
-            },
-            transaction_hash: tx.hash,
-            transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
-            ..Default::default()
-        };
-        let events = if i % transactions_per_block < EVENTS_PER_BLOCK {
-            vec![pathfinder_common::event::Event {
-                from_address: ContractAddress::new_or_panic(
-                    Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
-                ),
-                data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
-                keys: vec![
-                    EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
-                    event_key!("0xdeadbeef"),
-                ],
-            }]
-        } else {
-            vec![]
-        };
+                transaction_hash: tx.hash,
+                transaction_index: TransactionIndex::new_or_panic(i as u64 + 2311),
+                ..Default::default()
+            };
+            let events = if i % transactions_per_block < EVENTS_PER_BLOCK {
+                vec![pathfinder_common::event::Event {
+                    from_address: ContractAddress::new_or_panic(
+                        Felt::from_hex_str(&"2".repeat(i + 3)).unwrap(),
+                    ),
+                    data: vec![EventData(Felt::from_hex_str(&"c".repeat(i + 3)).unwrap())],
+                    keys: vec![
+                        EventKey(Felt::from_hex_str(&"d".repeat(i + 3)).unwrap()),
+                        event_key!("0xdeadbeef"),
+                    ],
+                }]
+            } else {
+                vec![]
+            };
 
-        (tx, receipt, events)
-    });
-
-    tx_receipt.collect::<Vec<_>>()
+            (tx, receipt, events)
+        })
+        .collect::<Vec<_>>()
 }
 
 /// Creates a set of emitted events from given blocks and transactions.
 pub(crate) fn extract_events(
     blocks: &[BlockHeader],
     transactions: &[(Transaction, Receipt, Vec<Event>)],
+    transactions_per_block: usize,
 ) -> Vec<EmittedEvent> {
     transactions
         .iter()
         .enumerate()
         .filter_map(|(i, (txn, _, events))| {
-            if i % TRANSACTIONS_PER_BLOCK < EVENTS_PER_BLOCK {
+            if i % transactions_per_block < EVENTS_PER_BLOCK {
                 let event = &events[0];
-                let block = &blocks[i / TRANSACTIONS_PER_BLOCK];
+                let block = &blocks[i / transactions_per_block];
 
                 Some(EmittedEvent {
                     data: event.data.clone(),
@@ -193,24 +200,22 @@ pub struct TestData {
 /// [BlockHeader]s starting from L2 genesis, with arbitrary other values and a
 /// set of expected emitted events.
 pub fn setup_test_storage() -> (crate::Storage, TestData) {
-    let block_numbers: Vec<usize> = (0..NUM_BLOCKS).collect();
-    setup_custom_test_storage(&block_numbers, TRANSACTIONS_PER_BLOCK)
+    setup_custom_test_storage(NUM_BLOCKS, TRANSACTIONS_PER_BLOCK)
 }
 
-// Creates an in-memory storage instance with custom block numbers (not
-// necessarily consecutive) and a custom number of transactions per block, with
-// a set of expected emitted events.
+// Creates an in-memory storage instance with N blocks and a custom number of
+// transactions per block, with a set of expected emitted events.
 pub fn setup_custom_test_storage(
-    block_numbers: &[usize],
+    n_blocks: usize,
     transactions_per_block: usize,
 ) -> (crate::Storage, TestData) {
     let storage = crate::StorageBuilder::in_memory().unwrap();
     let mut connection = storage.connection().unwrap();
     let tx = connection.transaction().unwrap();
 
-    let headers = create_blocks(block_numbers);
+    let headers = create_blocks(n_blocks);
     let transactions_and_receipts =
-        create_transactions_and_receipts(block_numbers.len(), transactions_per_block);
+        create_transactions_and_receipts(n_blocks, transactions_per_block);
 
     for (i, header) in headers.iter().enumerate() {
         tx.insert_block_header(header).unwrap();
@@ -236,7 +241,7 @@ pub fn setup_custom_test_storage(
 
     tx.commit().unwrap();
 
-    let events = extract_events(&headers, &transactions_and_receipts);
+    let events = extract_events(&headers, &transactions_and_receipts, transactions_per_block);
     let (transactions, receipts): (Vec<_>, Vec<_>) = transactions_and_receipts
         .into_iter()
         .map(|(transaction, receipts, _)| (transaction, receipts))

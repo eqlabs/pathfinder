@@ -42,8 +42,7 @@ crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result<Output, Error> {
     // Check database.
     let span = tracing::Span::current();
-
-    let db_status = tokio::task::spawn_blocking(move || {
+    let db_status = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context
@@ -161,16 +160,15 @@ impl Output {
     }
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("finality_status", &self.finality_status())?;
         serializer.serialize_optional("execution_status", self.execution_status())?;
-        // Delete check once rustc gives you a friendly reminder
-        if serializer.version != RpcVersion::V07 {
+        if serializer.version > RpcVersion::V07 {
             serializer.serialize_optional("failure_reason", self.failure_reason())?;
         }
         serializer.end()
@@ -198,7 +196,7 @@ mod tests {
         json!({"finality_status":"ACCEPTED_ON_L2","execution_status":"REVERTED"})
     )]
     fn output_serialization(#[case] output: Output, #[case] expected: serde_json::Value) {
-        use crate::dto::serialize::SerializeForVersion;
+        use crate::dto::SerializeForVersion;
         let encoded = output.serialize(Default::default()).unwrap();
         assert_eq!(encoded, expected);
     }
@@ -315,5 +313,42 @@ mod tests {
             .unwrap_err();
 
         assert_matches!(err, Error::TxnHashNotFound);
+    }
+
+    #[test]
+    fn test_v06_serialization() {
+        use crate::dto::SerializeForVersion;
+
+        let cases = [
+            (Output::Received, json!({"finality_status": "RECEIVED"})),
+            (
+                Output::Rejected {
+                    error_message: Some("error".to_string()),
+                },
+                json!({"finality_status": "REJECTED"}),
+            ),
+            (
+                Output::AcceptedOnL1(TxnExecutionStatus::Succeeded),
+                json!({
+                    "finality_status": "ACCEPTED_ON_L1",
+                    "execution_status": "SUCCEEDED"
+                }),
+            ),
+            (
+                Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
+                    reason: Some("error".to_string()),
+                }),
+                json!({
+                    "finality_status": "ACCEPTED_ON_L2",
+                    "execution_status": "REVERTED"
+                }),
+            ),
+        ];
+
+        for (output, expected) in cases {
+            let serializer = crate::dto::Serializer::new(crate::RpcVersion::V06);
+            let encoded = output.serialize(serializer).unwrap();
+            assert_eq!(encoded, expected);
+        }
     }
 }

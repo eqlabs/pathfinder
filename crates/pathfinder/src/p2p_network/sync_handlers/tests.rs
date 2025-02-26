@@ -137,7 +137,6 @@ mod prop {
         TransactionHash,
         TransactionIndex,
     };
-    use pathfinder_crypto::Felt;
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
@@ -185,9 +184,6 @@ mod prop {
             let expected = overlapping::get(in_db, start_block, limit, step, num_blocks, direction)
                 .into_iter().map(|Block { header, .. }| pathfinder_common::SignedBlockHeader {
                     header: pathfinder_common::BlockHeader {
-                        // TODO Set the storage and class commitment
-                        storage_commitment: Default::default(),
-                        class_commitment: Default::default(),
                         ..header.header
                     },
                     signature: header.signature,
@@ -277,10 +273,11 @@ mod prop {
             // Check the rest
             responses.into_iter().for_each(|response| match response {
                 StateDiffsResponse::ContractDiff(ContractDiff { address, nonce, class_hash, values, domain: _ }) => {
-                    if address.0 == Felt::from_u64(1) {
+                    let contract_address = ContractAddress(address.0);
+                    if contract_address.is_system_contract() {
                         actual_system_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 SystemContractUpdate {
                                     storage: values.into_iter().map(
                                         |ContractStoredValue { key, value }| (StorageAddress(key), StorageValue(value))).collect()}
@@ -288,7 +285,7 @@ mod prop {
                     } else {
                         actual_contract_updates.push(
                             (
-                                ContractAddress(address.0),
+                                contract_address,
                                 ContractUpdate {
                                     storage: values.into_iter().map(|ContractStoredValue { key, value }|
                                         (StorageAddress(key), StorageValue(value))).collect(),

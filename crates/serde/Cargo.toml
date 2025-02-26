@@ -5,13 +5,16 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Starknet-specific serialization utilities for Pathfinder"
+repository = "https://github.com/eqlabs/pathfinder"
+keywords = ["starknet", "ethereum", "serde", "serialization", "web3"]
+categories = ["encoding", "cryptography::cryptocurrencies", "development-tools", "web-programming"]
 
 [dependencies]
 anyhow = { workspace = true }
 num-bigint = { workspace = true }
-pathfinder-common = { path = "../common" }
-pathfinder-crypto = { path = "../crypto" }
+pathfinder-common = { version = "0.16.1", path = "../common" }
+pathfinder-crypto = { version = "0.16.1", path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

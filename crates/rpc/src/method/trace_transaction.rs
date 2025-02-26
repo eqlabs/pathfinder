@@ -1,26 +1,48 @@
 use anyhow::Context;
+use pathfinder_common::TransactionHash;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
 use crate::compose_executor_transaction;
 use crate::context::RpcContext;
+use crate::dto::TransactionTrace;
 use crate::error::{ApplicationError, TraceError};
 use crate::executor::{
     ExecutionStateError,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::method::trace_block_transactions::map_gateway_trace;
-use crate::v06::method::trace_transaction as v06;
 
 #[derive(Debug)]
-pub struct Output {
-    trace: pathfinder_executor::types::TransactionTrace,
-    include_state_diff: bool,
+pub struct Input {
+    pub transaction_hash: TransactionHash,
+}
+
+impl crate::dto::DeserializeForVersion for Input {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                transaction_hash: value.deserialize("transaction_hash").map(TransactionHash)?,
+            })
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct Output(TransactionTrace);
+
+impl crate::dto::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        self.0.serialize(serializer)
+    }
 }
 
 pub async fn trace_transaction(
     context: RpcContext,
-    input: v06::TraceTransactionInput,
+    input: Input,
 ) -> Result<Output, TraceTransactionError> {
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
@@ -30,7 +52,7 @@ pub async fn trace_transaction(
 
     let span = tracing::Span::current();
     let local =
-        tokio::task::spawn_blocking(move || -> Result<LocalExecution, TraceTransactionError> {
+        util::task::spawn_blocking(move |_| -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
 
             let mut db = context
@@ -91,7 +113,6 @@ pub async fn trace_transaction(
                     .context("Fetching block transactions")?
                     .context("Block transactions missing")?
                     .into_iter()
-                    .map(Into::into)
                     .collect::<Vec<_>>();
 
                 (header, transactions.clone(), context.cache.clone())
@@ -104,6 +125,8 @@ pub async fn trace_transaction(
                 header,
                 None,
                 context.config.custom_versioned_constants,
+                context.contract_addresses.eth_l2_token_address,
+                context.contract_addresses.strk_l2_token_address,
             );
 
             let executor_transactions = transactions
@@ -147,10 +170,10 @@ pub async fn trace_transaction(
 
     let transaction = match local {
         LocalExecution::Success(trace) => {
-            return Ok(Output {
-                trace,
-                include_state_diff: true,
-            })
+            return Ok(Output(TransactionTrace {
+                trace: trace.clone(),
+                include_state_diff: false,
+            }));
         }
         LocalExecution::Unsupported(tx) => tx,
     };
@@ -163,24 +186,11 @@ pub async fn trace_transaction(
 
     let trace = map_gateway_trace(transaction, trace)?;
 
-    Ok(Output {
-        trace,
+    Ok(Output(TransactionTrace {
+        trace: trace.clone(),
         // State diffs are not available for traces fetched from the gateway.
         include_state_diff: false,
-    })
-}
-
-impl crate::dto::serialize::SerializeForVersion for Output {
-    fn serialize(
-        &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        crate::dto::TransactionTrace {
-            trace: &self.trace,
-            include_state_diff: self.include_state_diff,
-        }
-        .serialize(serializer)
-    }
+    }))
 }
 
 #[derive(Debug)]
@@ -251,13 +261,13 @@ impl From<TraceTransactionError> for ApplicationError {
 
 #[cfg(test)]
 pub mod tests {
+
     use super::super::trace_block_transactions::tests::{
         setup_multi_tx_trace_pending_test,
         setup_multi_tx_trace_test,
     };
-    use super::v06::{TraceTransactionInput, TraceTransactionOutput};
-    use super::*;
-    use crate::dto::serialize::{SerializeForVersion, Serializer};
+    use super::{trace_transaction, Input, Output};
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
     #[tokio::test]
@@ -265,18 +275,25 @@ pub mod tests {
         let (context, _, traces) = setup_multi_tx_trace_test().await?;
 
         for trace in traces {
-            let input = TraceTransactionInput {
+            let input = Input {
                 transaction_hash: trace.transaction_hash,
             };
             let output = trace_transaction(context.clone(), input).await.unwrap();
-            let expected = TraceTransactionOutput(trace.trace_root);
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
             pretty_assertions_sorted::assert_eq!(
                 output
                     .serialize(Serializer {
-                        version: RpcVersion::V06
+                        version: RpcVersion::V07
                     })
                     .unwrap(),
-                serde_json::to_value(expected).unwrap()
+                expected
+                    .serialize(Serializer {
+                        version: RpcVersion::V07
+                    })
+                    .unwrap()
             );
         }
 
@@ -288,18 +305,25 @@ pub mod tests {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
 
         for trace in traces {
-            let input = TraceTransactionInput {
+            let input = Input {
                 transaction_hash: trace.transaction_hash,
             };
             let output = trace_transaction(context.clone(), input).await.unwrap();
-            let expected = TraceTransactionOutput(trace.trace_root);
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
             pretty_assertions_sorted::assert_eq!(
                 output
                     .serialize(Serializer {
-                        version: RpcVersion::V06
+                        version: RpcVersion::V07
                     })
                     .unwrap(),
-                serde_json::to_value(expected).unwrap()
+                expected
+                    .serialize(Serializer {
+                        version: RpcVersion::V07
+                    })
+                    .unwrap()
             );
         }
 

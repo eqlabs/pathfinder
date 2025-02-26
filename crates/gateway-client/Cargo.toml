@@ -5,7 +5,6 @@ authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = { workspace = true }
@@ -17,6 +16,7 @@ mockall = { workspace = true }
 pathfinder-common = { path = "../common" }
 pathfinder-retry = { path = "../retry" }
 pathfinder-serde = { path = "../serde" }
+pathfinder-version = { path = "../version" }
 reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
@@ -26,7 +26,6 @@ serde_json = { workspace = true, features = [
 starknet-gateway-types = { path = "../gateway-types" }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing = { workspace = true }
-
 [dev-dependencies]
 assert_matches = { workspace = true }
 base64 = { workspace = true }

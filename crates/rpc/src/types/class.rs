@@ -1,13 +1,12 @@
 use std::io::{Cursor, Read};
 
 use anyhow::Context;
+use pathfinder_class_hash::{compute_class_hash, ComputedClassHash};
 use pathfinder_crypto::Felt;
 use pathfinder_serde::U64AsHexStr;
 use serde::{Deserialize, Serialize};
-use starknet_gateway_types::class_hash::{compute_class_hash, ComputedClassHash};
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContractClass {
     Cairo(CairoContractClass),
     Sierra(SierraContractClass),
@@ -223,10 +222,11 @@ impl CairoContractClass {
 
     pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
         // decode program
-        let mut decompressor =
+        let decompressor =
             flate2::read::GzDecoder::new(Cursor::new(base64::decode(&self.program).unwrap()));
         let mut program = Vec::new();
         decompressor
+            .take(pathfinder_common::class_definition::CLASS_DEFINITION_MAX_ALLOWED_SIZE)
             .read_to_end(&mut program)
             .context("Decompressing program")?;
 
@@ -426,7 +426,7 @@ pub struct TypedParameter {
 /// Also matches the gateway representation, which means it
 /// can be used to deserialize directly from storage.
 #[serde_with::serde_as]
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SierraContractClass {
     #[serde_as(as = "Vec<crate::felt::RpcFelt>")]
@@ -531,11 +531,11 @@ mod tests {
     }
 
     mod declare_class_hash {
+        use pathfinder_class_hash::compute_class_hash;
         use starknet_gateway_test_fixtures::class_definitions::{
             CAIRO_0_11_SIERRA,
             CONTRACT_DEFINITION,
         };
-        use starknet_gateway_types::class_hash::compute_class_hash;
 
         use super::super::ContractClass;
 

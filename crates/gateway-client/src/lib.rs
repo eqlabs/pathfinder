@@ -274,7 +274,7 @@ impl Client {
         Ok(Self {
             inner: reqwest::Client::builder()
                 .timeout(timeout)
-                .user_agent(pathfinder_common::consts::USER_AGENT)
+                .user_agent(pathfinder_version::USER_AGENT)
                 .build()?,
             gateway,
             feeder_gateway,
@@ -562,7 +562,6 @@ mod tests {
     async fn client_user_agent() {
         use std::convert::Infallible;
 
-        use pathfinder_common::consts::VERGEN_GIT_DESCRIBE;
         use warp::Filter;
 
         let filter = warp::header::optional("user-agent").and_then(
@@ -571,7 +570,7 @@ mod tests {
                 let (name, version) = user_agent.split_once('/').unwrap();
 
                 assert_eq!(name, "starknet-pathfinder");
-                assert_eq!(version, VERGEN_GIT_DESCRIBE);
+                assert_eq!(version, pathfinder_version::VERSION);
 
                 Ok::<_, Infallible>(warp::reply::json(
                     &serde_json::json!({"block_hash": "0x0", "block_number": 0}),
@@ -630,7 +629,15 @@ mod tests {
         let (_jh, url) = setup([(
             "/feeder_gateway/get_contract_addresses",
             (
-                r#"{"Starknet":"0xde29d060d45901fb19ed6c6e959eb22d8626708e","GpsStatementVerifier":"0xab43ba48c9edf4c2c4bb01237348d1d7b28ef168"}"#,
+                r#"{
+			"FriStatementContract": "0x55d049b4C82807808E76e61a08C6764bbf2ffB55",
+			"GpsStatementVerifier": "0x2046B966994Adcb88D83f467a41b75d64C2a619F",
+			"MemoryPageFactRegistry": "0x5628E75245Cc69eCA0994F0449F4dDA9FbB5Ec6a",
+			"MerkleStatementContract": "0xd414f8f535D4a96cB00fFC8E85160b353cb7809c",
+			"Starknet": "0x4737c0c1B4D5b1A687B42610DdabEE781152359c",
+			"strk_l2_token_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+			"eth_l2_token_address": "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+		}"#,
                 200,
             ),
         )]);

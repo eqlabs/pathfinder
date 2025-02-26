@@ -11,6 +11,7 @@ pub enum CallError {
     Custom(anyhow::Error),
     BlockNotFound,
     ContractNotFound,
+    EntrypointNotFound,
     ContractError {
         revert_error: Option<String>,
         revert_error_stack: pathfinder_executor::ErrorStack,
@@ -28,7 +29,7 @@ impl From<pathfinder_executor::CallError> for CallError {
         use pathfinder_executor::CallError::*;
         match value {
             ContractNotFound => Self::ContractNotFound,
-            InvalidMessageSelector => Self::Custom(anyhow::anyhow!("Invalid message selector")),
+            InvalidMessageSelector => Self::EntrypointNotFound,
             ContractError(error, error_stack) => Self::ContractError {
                 revert_error: Some(format!("Execution error: {}", error)),
                 revert_error_stack: error_stack,
@@ -54,6 +55,7 @@ impl From<CallError> for ApplicationError {
         match value {
             CallError::BlockNotFound => ApplicationError::BlockNotFound,
             CallError::ContractNotFound => ApplicationError::ContractNotFound,
+            CallError::EntrypointNotFound => ApplicationError::EntrypointNotFound,
             CallError::ContractError {
                 revert_error,
                 revert_error_stack,
@@ -67,35 +69,38 @@ impl From<CallError> for ApplicationError {
     }
 }
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     pub request: FunctionCall,
     pub block_id: BlockId,
 }
 
-#[derive(serde::Deserialize, Clone, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
     pub calldata: Vec<CallParam>,
 }
 
-// TODO: Not used yet, just an example for now.
+impl crate::dto::DeserializeForVersion for FunctionCall {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                contract_address: value.deserialize_serde("contract_address")?,
+                entry_point_selector: value.deserialize_serde("entry_point_selector")?,
+                calldata: value
+                    .deserialize_array("calldata", crate::dto::Value::deserialize_serde)?,
+            })
+        })
+    }
+}
+
 impl crate::dto::DeserializeForVersion for Input {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         value.deserialize_map(|value| {
             Ok(Self {
-                request: value.deserialize_map("request", |value| {
-                    Ok(FunctionCall {
-                        contract_address: value.deserialize_serde("contract_address")?,
-                        entry_point_selector: value.deserialize_serde("entry_point_selector")?,
-                        calldata: value
-                            .deserialize_array("calldata", crate::dto::Value::deserialize_serde)?,
-                    })
-                })?,
-                block_id: value.deserialize_serde("block_id")?,
+                request: value.deserialize("request")?,
+                block_id: value.deserialize("block_id")?,
             })
         })
     }
@@ -106,7 +111,7 @@ pub struct Output(pub Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
     let span = tracing::Span::current();
-    let result = tokio::task::spawn_blocking(move || {
+    let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
         let mut db = context
@@ -142,6 +147,8 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             pending,
             L1BlobDataAvailability::Disabled,
             context.config.custom_versioned_constants,
+            context.contract_addresses.eth_l2_token_address,
+            context.contract_addresses.strk_l2_token_address,
         );
 
         let result = pathfinder_executor::call(
@@ -159,15 +166,12 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
     result.map(Output)
 }
 
-impl crate::dto::serialize::SerializeForVersion for Output {
+impl crate::dto::SerializeForVersion for Output {
     fn serialize(
         &self,
-        serializer: crate::dto::serialize::Serializer,
-    ) -> Result<crate::dto::serialize::Ok, crate::dto::serialize::Error> {
-        serializer.serialize_iter(
-            self.0.len(),
-            &mut self.0.iter().map(|v| crate::dto::Felt(&v.0)),
-        )
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize_iter(self.0.len(), &mut self.0.iter())
     }
 }
 
@@ -181,15 +185,18 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         #[test]
         fn positional_args() {
-            let positional = json!([
+            let positional_json = json!([
                 { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 { "block_hash": "0xbbbbbbbb" }
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(positional).unwrap();
             let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -203,12 +210,14 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named = json!({
+            let named_json = json!({
                 "request": { "contract_address": "0xabcde", "entry_point_selector": "0xee", "calldata": ["0x1234", "0x2345"] },
                 "block_id": { "block_hash": "0xbbbbbbbb" }
             });
 
-            let input = serde_json::from_value::<Input>(named).unwrap();
+            let named = crate::dto::Value::new(named_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(named).unwrap();
             let expected = Input {
                 request: FunctionCall {
                     contract_address: contract_address!("0xabcde"),
@@ -232,6 +241,7 @@ mod tests {
             ClassHash,
             ContractAddress,
             GasPrice,
+            StarknetVersion,
             StateUpdate,
             StorageAddress,
             StorageValue,
@@ -515,6 +525,210 @@ mod tests {
             let result = call(context, input).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
         }
+
+        #[tokio::test]
+        async fn call_sierra_1_7_class_with_invalid_entry_point() {
+            let (
+                storage,
+                _last_block_header,
+                account_contract_address,
+                _universal_deployer_address,
+                _test_storage_value,
+            ) = crate::method::simulate_transactions::tests::setup_storage_with_starknet_version(
+                StarknetVersion::new(0, 13, 4, 0),
+            )
+            .await;
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: account_contract_address,
+                    entry_point_selector: EntryPoint::hashed(b"bogus_entry_point"),
+                    calldata: vec![],
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let error = call(context, input).await;
+            assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
+        }
+
+        #[tokio::test]
+        async fn call_sierra_1_7_class_validate_invalid_params() {
+            let (
+                storage,
+                _last_block_header,
+                account_contract_address,
+                _universal_deployer_address,
+                _test_storage_value,
+            ) = crate::method::simulate_transactions::tests::setup_storage_with_starknet_version(
+                StarknetVersion::new(0, 13, 4, 0),
+            )
+            .await;
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            let validate_entry_point = EntryPoint::hashed(b"__validate__");
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: account_contract_address,
+                    entry_point_selector: validate_entry_point,
+                    calldata: vec![],
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let error = call(context, input).await;
+            assert_matches::assert_matches!(error, Err(CallError::ContractError { revert_error, revert_error_stack }) => {
+                assert_eq!(revert_error, Some("Execution error: Execution failed. Failure reason:\nError in contract (contract address: 0x0000000000000000000000000000000000000000000000000000000000000c01, class hash: 0x019cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978, selector: 0x0162da33a4585851fe8d3af3c2a9c60b557814e221e0d4f30ff0b2189d9c7775):\n0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1').\n".to_owned()));
+                assert_eq!(revert_error_stack.0.len(), 2);
+                assert_matches::assert_matches!(&revert_error_stack.0[0], pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address,
+                    class_hash,
+                    selector,
+                }) => {
+                    assert_eq!(storage_address, &account_contract_address);
+                    assert_eq!(class_hash, &crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH);
+                    assert_matches::assert_matches!(selector, Some(entry_point) => assert_eq!(entry_point, &validate_entry_point));
+                });
+                assert_matches::assert_matches!(&revert_error_stack.0[1], pathfinder_executor::Frame::StringFrame(error_string) => {
+                    assert_eq!(error_string, "0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1')");
+                });
+            });
+        }
+
+        #[tokio::test]
+        async fn invalid_params_when_called_via_syscall() {
+            let (
+                storage,
+                last_block_header,
+                _account_contract_address,
+                _universal_deployer_address,
+                _test_storage_value,
+            ) = crate::method::simulate_transactions::tests::setup_storage_with_starknet_version(
+                StarknetVersion::new(0, 13, 4, 0),
+            )
+            .await;
+            let context = RpcContext::for_tests().with_storage(storage);
+
+            let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
+            let sierra_hash =
+                sierra_hash!("0x03f6241e01a5afcb81f181518d74a1d3c8fc49c2aa583f805b67732e494ba9a8");
+            let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
+            let casm_hash =
+                casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+
+            let block_number = BlockNumber::new_or_panic(last_block_header.number.get() + 1);
+            let contract_address = contract_address!("0xcaaaa");
+            let caller_contract_address = contract_address!("0xccccc");
+            let storage_key = StorageAddress::from_name(b"my_storage_var");
+            let storage_value = storage_value!("0xb");
+
+            let caller_sierra_definition = include_bytes!(
+                "../../fixtures/contracts/caller/target/dev/caller_Caller.contract_class.json"
+            );
+            let caller_sierra_json: serde_json::Value =
+                serde_json::from_slice(caller_sierra_definition).unwrap();
+            let caller_sierra_definition = serde_json::json!({
+                "contract_class_version": caller_sierra_json["contract_class_version"],
+                "sierra_program": caller_sierra_json["sierra_program"],
+                "entry_points_by_type": caller_sierra_json["entry_points_by_type"],
+                "abi": serde_json::to_string(&caller_sierra_json["abi"]).unwrap(),
+            });
+            let caller_sierra_definition = serde_json::to_vec(&caller_sierra_definition).unwrap();
+            let caller_sierra_hash =
+                sierra_hash!("0x050d4827b118b6bef606c6e0ad4f33738b726e387de81b5ce045eb62d161bf9b");
+            let caller_casm_definition = include_bytes!(
+                "../../fixtures/contracts/caller/target/dev/caller_Caller.compiled_contract_class.\
+                 json"
+            );
+            let caller_casm_hash =
+                casm_hash!("0x02027e88d6cde8be7669d1baf9ac51f47fe52e600ced31cafba80eee1972a25b");
+
+            let mut connection = context.storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+
+            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+                .unwrap();
+            tx.insert_sierra_class(
+                &caller_sierra_hash,
+                &caller_sierra_definition,
+                &caller_casm_hash,
+                caller_casm_definition,
+            )
+            .unwrap();
+
+            let header = BlockHeader::child_builder(&last_block_header)
+                .number(block_number)
+                .starknet_version(last_block_header.starknet_version)
+                .finalize_with_hash(block_hash!("0xb02"));
+            tx.insert_block_header(&header).unwrap();
+
+            let state_update = StateUpdate::default()
+                .with_declared_sierra_class(sierra_hash, casm_hash)
+                .with_declared_sierra_class(caller_sierra_hash, caller_casm_hash)
+                .with_deployed_contract(contract_address, ClassHash(*sierra_hash.get()))
+                .with_deployed_contract(
+                    caller_contract_address,
+                    ClassHash(*caller_sierra_hash.get()),
+                )
+                .with_storage_update(contract_address, storage_key, storage_value);
+            tx.insert_state_update(block_number, &state_update).unwrap();
+
+            tx.commit().unwrap();
+            drop(connection);
+
+            // Our test account class is Sierra 1.7, so the easiest is just to call that.
+            let caller_entry_point = EntryPoint::hashed(b"call");
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: caller_contract_address,
+                    entry_point_selector: caller_entry_point,
+                    calldata: vec![
+                        // Number of calls
+                        call_param!("0x1"),
+                        // Called contract address
+                        CallParam(*caller_contract_address.get()),
+                        // Entry point selector for the called contract
+                        CallParam(EntryPoint::hashed(b"call").0),
+                        // Length of the call data for the called contract
+                        call_param!("1"),
+                        // Number of calls, but then no more data; leads to deserailization error
+                        call_param!("0x1"),
+                    ],
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let error = call(context, input).await;
+
+            assert_matches::assert_matches!(error, Err(CallError::ContractError { revert_error, revert_error_stack }) => {
+                assert_eq!(revert_error, Some("Execution error: Execution failed. Failure reason:\nError in contract (contract address: 0x00000000000000000000000000000000000000000000000000000000000ccccc, class hash: 0x050d4827b118b6bef606c6e0ad4f33738b726e387de81b5ce045eb62d161bf9b, selector: 0x031a75a0d711dfe3639aae96eb8f9facc2fd74df5aa611067f2511cc9fefc229):\nError in contract (contract address: 0x00000000000000000000000000000000000000000000000000000000000ccccc, class hash: 0x050d4827b118b6bef606c6e0ad4f33738b726e387de81b5ce045eb62d161bf9b, selector: 0x031a75a0d711dfe3639aae96eb8f9facc2fd74df5aa611067f2511cc9fefc229):\n0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1').\n".to_owned()));
+                assert_eq!(revert_error_stack.0.len(), 3);
+                assert_matches::assert_matches!(&revert_error_stack.0[0], pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address,
+                    class_hash,
+                    selector,
+                }) => {
+                    assert_eq!(storage_address, &caller_contract_address);
+                    assert_eq!(class_hash, &ClassHash(caller_sierra_hash.0));
+                    assert_matches::assert_matches!(selector, Some(entry_point) => assert_eq!(entry_point, &caller_entry_point));
+                });
+                assert_matches::assert_matches!(&revert_error_stack.0[1], pathfinder_executor::Frame::CallFrame(pathfinder_executor::CallFrame {
+                    storage_address,
+                    class_hash,
+                    selector,
+                }) => {
+                    assert_eq!(storage_address, &caller_contract_address);
+                    assert_eq!(class_hash, &ClassHash(caller_sierra_hash.0));
+                    assert_matches::assert_matches!(selector, Some(entry_point) => assert_eq!(entry_point, &caller_entry_point));
+                });
+                assert_matches::assert_matches!(&revert_error_stack.0[2], pathfinder_executor::Frame::StringFrame(error_string) => {
+                    assert_eq!(error_string, "0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1')");
+                });
+            });
+        }
     }
 
     mod mainnet {
@@ -606,7 +820,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
             let error = call(context, input).await;
-            assert_matches::assert_matches!(error, Err(CallError::Custom(_)));
+            assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
         }
 
         #[tokio::test]

@@ -144,8 +144,8 @@ impl<T: Clone + PartialEq + 'static> Tagged<T> {
 #[cfg(test)]
 mod tests {
     use fake::Dummy;
+    use pathfinder_tagged_debug_derive::TaggedDebug;
     use pretty_assertions_sorted::assert_eq;
-    use tagged_debug_derive::TaggedDebug;
 
     use super::*;
 

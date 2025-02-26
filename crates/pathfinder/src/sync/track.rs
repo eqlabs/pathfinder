@@ -40,13 +40,13 @@ use pathfinder_common::{
     TransactionCommitment,
     TransactionHash,
 };
+use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio_stream::wrappers::ReceiverStream;
 
 use super::class_definitions::CompiledClass;
 use super::{state_updates, transactions};
-use crate::state::update_starknet_state;
 use crate::sync::class_definitions::{self, ClassWithLayout};
 use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver, SyncResult};
@@ -206,7 +206,7 @@ impl<L, P> HeaderSource<L, P> {
             mut start,
         } = self;
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             let mut latest_onchain = Box::pin(latest_onchain);
             while let Some(latest_onchain) = latest_onchain.next().await {
                 let mut headers =
@@ -241,7 +241,7 @@ impl StateDiffFanout {
         let (d1_tx, d1_rx) = tokio::sync::mpsc::channel(buffer);
         let (d2_tx, d2_rx) = tokio::sync::mpsc::channel(buffer);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             while let Some(state_update) = source.recv().await {
                 let is_err = state_update.is_err();
 
@@ -288,7 +288,7 @@ impl TransactionsFanout {
         let (t_tx, t_rx) = tokio::sync::mpsc::channel(buffer);
         let (e_tx, e_rx) = tokio::sync::mpsc::channel(buffer);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             while let Some(transactions) = source.recv().await {
                 let is_err = transactions.is_err();
 
@@ -329,7 +329,7 @@ impl HeaderFanout {
         let (s_tx, s_rx) = tokio::sync::mpsc::channel(buffer);
         let (t_tx, t_rx) = tokio::sync::mpsc::channel(buffer);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             while let Some(signed_header) = source.recv().await {
                 let is_err = signed_header.is_err();
 
@@ -381,7 +381,8 @@ impl<P> TransactionSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-        tokio::spawn(async move {
+
+        util::task::spawn(async move {
             let Self { p2p, mut headers } = self;
 
             while let Some(header) = headers.next().await {
@@ -456,7 +457,8 @@ impl<P> EventSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-        tokio::spawn(async move {
+
+        util::task::spawn(async move {
             let Self {
                 p2p,
                 mut transactions,
@@ -539,7 +541,8 @@ impl<P> StateDiffSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-        tokio::spawn(async move {
+
+        util::task::spawn(async move {
             let Self { p2p, mut headers } = self;
 
             while let Some(header) = headers.next().await {
@@ -595,7 +598,8 @@ impl<P> ClassSource<P> {
         P: Clone + BlockClient + Send + 'static,
     {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
-        tokio::spawn(async move {
+
+        util::task::spawn(async move {
             let Self {
                 p2p,
                 mut declarations,
@@ -663,7 +667,7 @@ impl BlockStream {
     fn spawn(mut self) -> SyncReceiver<BlockData> {
         let (tx, rx) = tokio::sync::mpsc::channel(1);
 
-        tokio::spawn(async move {
+        util::task::spawn(async move {
             loop {
                 let Some(result) = self.next().await else {
                     return;
@@ -788,12 +792,8 @@ impl ProcessStage for StoreBlock {
             strk_l2_gas_price: header.strk_l2_gas_price,
             sequencer_address: header.sequencer_address,
             starknet_version: header.starknet_version,
-            // Class commitment is updated after the class tries are updated.
-            class_commitment: ClassCommitment::ZERO,
             event_commitment: header.event_commitment,
             state_commitment: header.state_commitment,
-            // Storage commitment is updated after the storage tries are updated.
-            storage_commitment: StorageCommitment::ZERO,
             transaction_commitment: header.transaction_commitment,
             transaction_count: header.transaction_count,
             event_count: header.event_count,
@@ -827,7 +827,7 @@ impl ProcessStage for StoreBlock {
             block_number,
             self.storage.clone(),
         )
-        .context("Updating Starknet state")?;
+        .with_context(|| format!("Updating Starknet state, block_number {block_number}"))?;
 
         // Ensure that roots match.
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
@@ -840,9 +840,6 @@ impl ProcessStage for StoreBlock {
                     "State root mismatch");
             return Err(SyncError::StateRootMismatch(*peer));
         }
-
-        db.update_storage_and_class_commitments(block_number, storage_commitment, class_commitment)
-            .context("Updating storage and class commitments")?;
 
         classes.into_iter().try_for_each(
             |CompiledClass {

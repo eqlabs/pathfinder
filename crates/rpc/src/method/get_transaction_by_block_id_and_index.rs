@@ -1,11 +1,10 @@
 use anyhow::Context;
+use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionIndex};
 
 use crate::context::RpcContext;
-use crate::v06::types::TransactionWithHash;
 
-#[derive(serde::Deserialize, Debug, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
     index: TransactionIndex,
@@ -22,6 +21,9 @@ impl crate::dto::DeserializeForVersion for Input {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct Output(Transaction);
+
 crate::error::generate_rpc_error_subset!(
     GetTransactionByBlockIdAndIndexError: BlockNotFound,
     InvalidTxnIndex
@@ -30,7 +32,7 @@ crate::error::generate_rpc_error_subset!(
 pub async fn get_transaction_by_block_id_and_index(
     context: RpcContext,
     input: Input,
-) -> Result<TransactionWithHash, GetTransactionByBlockIdAndIndexError> {
+) -> Result<Output, GetTransactionByBlockIdAndIndexError> {
     let index: usize = input
         .index
         .get()
@@ -39,8 +41,7 @@ pub async fn get_transaction_by_block_id_and_index(
 
     let storage = context.storage.clone();
     let span = tracing::Span::current();
-
-    let jh = tokio::task::spawn_blocking(move || {
+    let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db = storage
             .connection()
@@ -59,7 +60,7 @@ pub async fn get_transaction_by_block_id_and_index(
                     .get(index)
                     .cloned()
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
-                return result.map(Into::into);
+                return result.map(Output);
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -69,7 +70,7 @@ pub async fn get_transaction_by_block_id_and_index(
             .transaction_at_block(block_id, index)
             .context("Reading transaction from database")?
         {
-            Some(transaction) => Ok(transaction.into()),
+            Some(transaction) => Ok(Output(transaction)),
             None => {
                 // We now need to check whether it was the block hash or transaction index which
                 // were invalid. We do this by checking if the block exists
@@ -90,6 +91,15 @@ pub async fn get_transaction_by_block_id_and_index(
     jh.await.context("Database read panic or shutting down")?
 }
 
+impl crate::dto::SerializeForVersion for Output {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        serializer.serialize(&crate::dto::TransactionWithHash(&self.0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
@@ -100,15 +110,18 @@ mod tests {
         use serde_json::json;
 
         use super::*;
+        use crate::dto::DeserializeForVersion;
 
         #[test]
         fn positional_args() {
-            let positional = json!([
+            let positional_json = json!([
                 {"block_hash": "0xdeadbeef"},
                 1
             ]);
 
-            let input = serde_json::from_value::<Input>(positional).unwrap();
+            let positional = crate::dto::Value::new(positional_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(positional).unwrap();
             assert_eq!(
                 input,
                 Input {
@@ -120,12 +133,14 @@ mod tests {
 
         #[test]
         fn named_args() {
-            let named_args = json!({
+            let named_args_json = json!({
                 "block_id": {"block_hash": "0xdeadbeef"},
                 "index": 1
             });
 
-            let input = serde_json::from_value::<Input>(named_args).unwrap();
+            let named = crate::dto::Value::new(named_args_json, crate::RpcVersion::V08);
+
+            let input = Input::deserialize(named).unwrap();
             assert_eq!(
                 input,
                 Input {

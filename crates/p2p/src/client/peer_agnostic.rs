@@ -395,7 +395,7 @@ impl BlockClient for Client {
                             }
                         }
                         let address = ContractAddress(address.0);
-                        if address == ContractAddress::ONE {
+                        if address.is_system_contract() {
                             let storage = &mut state_diff
                                 .system_contract_updates
                                 .entry(address)
@@ -644,7 +644,7 @@ mod header_stream {
 
         tracing::trace!(?start, ?stop, ?dir, "Streaming headers");
 
-        make_stream::from_future(move |tx| async move {
+        util::make_stream::from_future(move |tx| async move {
             // Loop which refreshes peer set once we exhaust it.
             loop {
                 'next_peer: for peer in get_peers().await {
@@ -778,7 +778,7 @@ mod transaction_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming Transactions");
 
-        make_stream::from_future(move |tx| async move {
+        util::make_stream::from_future(move |tx| async move {
             let mut expected_transaction_counts_stream = Box::pin(counts_stream);
 
             let cnt = match try_next(&mut expected_transaction_counts_stream).await {
@@ -961,7 +961,7 @@ mod state_diff_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming state diffs");
 
-        make_stream::from_future(move |tx| async move {
+        util::make_stream::from_future(move |tx| async move {
             let mut length_stream = Box::pin(length_stream);
 
             let cnt = match try_next(&mut length_stream).await {
@@ -1046,7 +1046,7 @@ mod state_diff_stream {
 
                 progress.checked_sub_assign(values.len())?;
 
-                if address == ContractAddress::ONE {
+                if address.is_system_contract() {
                     let storage = &mut state_diff
                         .system_contract_updates
                         .entry(address)
@@ -1185,7 +1185,7 @@ mod class_definition_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming classes");
 
-        make_stream::from_future(move |tx| async move {
+        util::make_stream::from_future(move |tx| async move {
             let mut declared_class_counts_stream = Box::pin(counts_stream);
 
             let cnt = match try_next(&mut declared_class_counts_stream).await {
@@ -1384,7 +1384,7 @@ mod event_stream {
     {
         tracing::trace!(?start, ?stop, "Streaming events");
 
-        make_stream::from_future(move |tx| async move {
+        util::make_stream::from_future(move |tx| async move {
             let mut counts_stream = Box::pin(counts_stream);
 
             let Some(Ok(cnt)) = counts_stream.next().await else {

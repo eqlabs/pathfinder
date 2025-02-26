@@ -21,6 +21,8 @@ pub enum ApplicationError {
     FailedToReceiveTxn,
     #[error("Contract not found")]
     ContractNotFound,
+    #[error("Requested entrypoint does not exist in the contract")]
+    EntrypointNotFound,
     #[error("Block not found")]
     BlockNotFound,
     #[error("Invalid transaction index in a block")]
@@ -63,7 +65,7 @@ pub enum ApplicationError {
     #[error("Account validation failed")]
     ValidationFailureV06(String),
     #[error("Compilation failed")]
-    CompilationFailed,
+    CompilationFailed { data: String },
     #[error("Contract class size it too large")]
     ContractClassSizeIsTooLarge,
     #[error("Sender address in not an account contract")]
@@ -103,8 +105,6 @@ pub enum ApplicationError {
     InvalidSubscriptionID,
     #[error("Too many addresses in filter sender_address filter")]
     TooManyAddressesInFilter,
-    #[error("This method does not support being called on the pending block")]
-    CallOnPending,
     /// Internal errors are errors whose details we don't want to show to the
     /// end user. These are logged, and a simple "internal error" message is
     /// shown to the end user.
@@ -118,13 +118,20 @@ pub enum ApplicationError {
 }
 
 impl ApplicationError {
-    pub fn code(&self) -> i32 {
+    pub fn code(&self, version: RpcVersion) -> i32 {
         match self {
             // Taken from the official starknet json rpc api.
             // https://github.com/starkware-libs/starknet-specs
             ApplicationError::FailedToReceiveTxn => 1,
             ApplicationError::NoTraceAvailable(_) => 10,
             ApplicationError::ContractNotFound => 20,
+            ApplicationError::EntrypointNotFound => {
+                if version >= RpcVersion::V08 {
+                    21
+                } else {
+                    -32603 /* Custom - new code not available */
+                }
+            }
             ApplicationError::BlockNotFound => 24,
             ApplicationError::InvalidTxnHash => 25,
             ApplicationError::InvalidBlockHash => 26,
@@ -144,7 +151,7 @@ impl ApplicationError {
             ApplicationError::InsufficientResourcesForValidate => 53,
             ApplicationError::InsufficientAccountBalance => 54,
             ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
-            ApplicationError::CompilationFailed => 56,
+            ApplicationError::CompilationFailed { .. } => 56,
             ApplicationError::ContractClassSizeIsTooLarge => 57,
             ApplicationError::NonAccount => 58,
             ApplicationError::DuplicateTransaction => 59,
@@ -152,15 +159,14 @@ impl ApplicationError {
             ApplicationError::UnsupportedTxVersion => 61,
             ApplicationError::UnsupportedContractClassVersion => 62,
             ApplicationError::UnexpectedError { .. } => 63,
-            // doc/rpc/pathfinder_rpc_api.json
+            // specs/rpc/pathfinder_rpc_api.json
             ApplicationError::ProofLimitExceeded { .. } => 10000,
             ApplicationError::ProofMissing => 10001,
             ApplicationError::SubscriptionTransactionHashNotFound { .. } => 10029,
             ApplicationError::SubscriptionGatewayDown { .. } => 10030,
-            // doc/rpc/starknet_ws_api.json
+            // specs/rpc/starknet_ws_api.json
             ApplicationError::InvalidSubscriptionID => 66,
             ApplicationError::TooManyAddressesInFilter => 67,
-            ApplicationError::CallOnPending => 69,
             // https://www.jsonrpc.org/specification#error_object
             ApplicationError::GatewayError(_)
             | ApplicationError::Internal(_)
@@ -170,6 +176,13 @@ impl ApplicationError {
 
     pub fn message(&self, version: RpcVersion) -> String {
         match self {
+            ApplicationError::EntrypointNotFound => {
+                if version >= RpcVersion::V08 {
+                    self.to_string()
+                } else {
+                    "Invalid message selector".to_string()
+                }
+            }
             ApplicationError::InsufficientResourcesForValidate => match version {
                 RpcVersion::V06 | RpcVersion::V07 => "Max fee is smaller than the minimal \
                                                       transaction cost (validation plus fee \
@@ -188,6 +201,7 @@ impl ApplicationError {
         match self {
             ApplicationError::FailedToReceiveTxn => None,
             ApplicationError::ContractNotFound => None,
+            ApplicationError::EntrypointNotFound => None,
             ApplicationError::BlockNotFound => None,
             ApplicationError::InvalidTxnIndex => None,
             ApplicationError::InvalidTxnHash => None,
@@ -203,7 +217,10 @@ impl ApplicationError {
             ApplicationError::InsufficientResourcesForValidate => None,
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,
-            ApplicationError::CompilationFailed => None,
+            ApplicationError::CompilationFailed { data } => match version {
+                RpcVersion::V06 | RpcVersion::V07 => None,
+                _ => Some(json!(data)),
+            },
             ApplicationError::ContractClassSizeIsTooLarge => None,
             ApplicationError::NonAccount => None,
             ApplicationError::DuplicateTransaction => None,
@@ -212,7 +229,6 @@ impl ApplicationError {
             ApplicationError::UnsupportedContractClassVersion => None,
             ApplicationError::InvalidSubscriptionID => None,
             ApplicationError::TooManyAddressesInFilter => None,
-            ApplicationError::CallOnPending => None,
             ApplicationError::GatewayError(error) => Some(json!({
                 "error": error,
             })),
