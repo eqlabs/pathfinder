@@ -1,5 +1,8 @@
 #!/bin/bash -e
 if [[ "${TARGETARCH}" == "amd64" ]]; then
+    MLIR_SYS_190_PREFIX="/usr/lib/llvm-19" \
+    LLVM_SYS_191_PREFIX="/usr/lib/llvm-19" \
+    TABLEGEN_190_PREFIX="/usr/lib/llvm-19" \
     CARGO_BUILD_TARGET=x86_64-unknown-linux-gnu \
     cargo chef cook $*
 elif [[ "${TARGETARCH}" == "arm64" ]]; then
