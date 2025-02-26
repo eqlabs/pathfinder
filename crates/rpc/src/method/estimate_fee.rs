@@ -100,7 +100,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
                     context.chain_id,
                     skip_validate,
                     true,
-                    true
+                    true,
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -1139,15 +1139,9 @@ mod tests {
             transaction_nonce!("0x1"),
             call_param!("7"),
         );
-       
 
         let input = Input {
-            request: vec![
-                declare_transaction,
-                deploy_transaction,
-                invoke_transaction,
-       
-            ],
+            request: vec![declare_transaction, deploy_transaction, invoke_transaction],
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
@@ -1233,5 +1227,4 @@ mod tests {
             ])
         );
     }
-
 }
