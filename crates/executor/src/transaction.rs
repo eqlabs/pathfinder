@@ -518,7 +518,11 @@ where
             if balance > max_possible_fee_without_l2_gas.0.into() {
                 // The maximum amount of L2 gas that can be bought with the balance.
                 let max_amount = (balance - max_possible_fee_without_l2_gas.0)
-                    / initial_resource_bounds.l2_gas.max_price_per_unit.0;
+                    / initial_resource_bounds
+                        .l2_gas
+                        .max_price_per_unit
+                        .0
+                        .max(1u64.into());
                 Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
             } else {
                 // Balance is less than committed L1 gas and L1 data gas, tx will fail anyway.
