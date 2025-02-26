@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
@@ -12,6 +14,11 @@ use crate::lru_cache::GLOBAL_CACHE;
 
 #[cfg(feature = "cairo-native")]
 mod native;
+#[cfg(feature = "cairo-native")]
+pub use native::NativeClassCache;
+
+#[cfg(not(feature = "cairo-native"))]
+pub struct NativeClassCache;
 
 pub(super) struct PathfinderStateReader<'tx> {
     transaction: &'tx pathfinder_storage::Transaction<'tx>,
@@ -20,6 +27,7 @@ pub(super) struct PathfinderStateReader<'tx> {
     // This flag makes it possible to find these classes -- essentially makes the state
     // reader look up classes which are not declared at a canonical block yet.
     ignore_block_number_for_classes: bool,
+    native_class_cache: Arc<NativeClassCache>,
 }
 
 impl<'tx> PathfinderStateReader<'tx> {
@@ -27,11 +35,13 @@ impl<'tx> PathfinderStateReader<'tx> {
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
+        native_class_cache: Arc<NativeClassCache>,
     ) -> Self {
         Self {
             transaction,
             block_number,
             ignore_block_number_for_classes,
+            native_class_cache,
         }
     }
 
@@ -95,12 +105,15 @@ impl<'tx> PathfinderStateReader<'tx> {
 
                 #[cfg(feature = "cairo-native")]
                 let runnable_class = if sierra_version >= SierraVersion::new(1, 7, 0) {
-                    native::sierra_class_as_native(
+                    match self.native_class_cache.get(
                         pathfinder_class_hash,
-                        sierra_version,
+                        sierra_version.clone(),
                         class_definition,
-                        casm_definition,
-                    )?
+                        casm_definition.clone(),
+                    ) {
+                        Some(native_class) => RunnableCompiledClass::V1Native(native_class),
+                        None => sierra_class_as_casm(sierra_version, casm_definition)?,
+                    }
                 } else {
                     sierra_class_as_casm(sierra_version, casm_definition)?
                 };
