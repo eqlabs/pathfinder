@@ -1082,7 +1082,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn starknet_0_13_4_user_provided_gas_limit_exceeded() {
+    async fn starknet_0_13_4_user_provided_gas_limit_exceeded_does_not_fail_with_out_of_gas() {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 4, 0,
@@ -1099,7 +1099,7 @@ mod tests {
         let invoke_transaction = invoke_v3_transaction_with_data_gas(
             account_contract_address,
             transaction_nonce!("0x2"),
-            call_param!("1000"),
+            call_param!("100"),
         );
 
         let input = Input {
@@ -1107,15 +1107,40 @@ mod tests {
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let EstimateFeeError::TransactionExecutionError { error, .. } =
-            super::estimate_fee(context, input).await.unwrap_err()
-        else {
-            panic!("Expected TransactionExecutionError");
+        let result = super::estimate_fee(context, input).await.unwrap();
+        let declare_expected = FeeEstimate {
+            l1_gas_consumed: 1736.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 192.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 3856.into(),
+            unit: PriceUnit::Fri,
         };
-
-        // This is currently the best way to check that the transaction was reverted due
-        // to insufficient gas. Leaving this test and the assert below to detect if
-        // anything in `blockifier` changes in the future.
-        assert!(error.contains("Out of gas"));
+        let deploy_expected = FeeEstimate {
+            l1_gas_consumed: 22.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 224.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 0.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 492.into(),
+            unit: PriceUnit::Fri,
+        };
+        let invoke_expected = FeeEstimate {
+            l1_gas_consumed: 0.into(),
+            l1_gas_price: 2.into(),
+            l1_data_gas_consumed: 128.into(),
+            l1_data_gas_price: 2.into(),
+            l2_gas_consumed: 15596093.into(),
+            l2_gas_price: 1.into(),
+            overall_fee: 15596349.into(),
+            unit: PriceUnit::Fri,
+        };
+        self::assert_eq!(
+            result,
+            Output(vec![declare_expected, deploy_expected, invoke_expected,])
+        );
     }
 }

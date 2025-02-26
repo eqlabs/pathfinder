@@ -1,6 +1,7 @@
 use blockifier::execution::contract_class::TrackedResource;
 use blockifier::state::cached_state::{CachedState, MutRefState};
 use blockifier::state::state_api::UpdatableState;
+use blockifier::transaction::account_transaction::ExecutionFlags;
 use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
@@ -129,6 +130,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
 where
     S: UpdatableState,
 {
+    let execution_flags = get_execution_flags(tx);
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let initial_l2_gas_limit = initial_resource_bounds.l2_gas.max_amount;
 
@@ -231,7 +233,7 @@ where
             .expect("l2_gas_limit > l2_gas_consumed") as f64
     );
 
-    if l2_gas_limit > initial_l2_gas_limit {
+    if execution_flags.charge_fee && l2_gas_limit > initial_l2_gas_limit {
         tracing::debug!(
             initial_limit=%initial_l2_gas_limit,
             final_limit=%l2_gas_limit,
@@ -487,6 +489,13 @@ fn get_resource_bounds(tx: &Transaction) -> Result<AllResourceBounds, Transactio
             },
         ) => Ok(*all_resources),
         _ => Err(anyhow::anyhow!("Transaction doesn't have L2 gas").into()),
+    }
+}
+
+fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
+    match tx {
+        Transaction::Account(account_transaction) => account_transaction.execution_flags.clone(),
+        Transaction::L1Handler(_) => Default::default(),
     }
 }
 
