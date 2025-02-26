@@ -793,6 +793,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
 
     use axum::async_trait;
@@ -800,6 +801,7 @@ mod tests {
     use pathfinder_common::{BlockHash, BlockHeader, BlockNumber, ChainId};
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
+    use pathfinder_executor::NativeClassCache;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
     use tokio::sync::mpsc;
@@ -1005,6 +1007,7 @@ mod tests {
         .unwrap();
         let (_, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
+        let native_class_cache = Arc::new(NativeClassCache::spawn());
         let ctx = RpcContext {
             cache: Default::default(),
             storage,
@@ -1030,6 +1033,7 @@ mod tests {
                 fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
+            native_class_cache,
         };
         RpcRouter::builder(crate::RpcVersion::V08)
             .register("test", endpoint)
