@@ -112,7 +112,14 @@ impl<'tx> PathfinderStateReader<'tx> {
                         casm_definition.clone(),
                     ) {
                         Some(native_class) => RunnableCompiledClass::V1Native(native_class),
-                        None => sierra_class_as_casm(sierra_version, casm_definition)?,
+                        None => {
+                            let runnable_class =
+                                sierra_class_as_casm(sierra_version, casm_definition)?;
+                            // FIXME: this is a hack to avoid caching the CASM
+                            // class in the global cache until Native
+                            // compilation is finished
+                            return Ok((None, runnable_class));
+                        }
                     }
                 } else {
                     sierra_class_as_casm(sierra_version, casm_definition)?
