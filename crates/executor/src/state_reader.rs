@@ -1,14 +1,31 @@
+use std::sync::Arc;
+
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
-use cairo_vm::types::errors::program_errors::ProgramError;
 use pathfinder_common::{BlockNumber, ClassHash, StorageAddress, StorageValue};
 use pathfinder_crypto::Felt;
+use starknet_api::contract_class::SierraVersion;
 use starknet_api::StarknetApiError;
 use starknet_types_core::felt::Felt as CoreFelt;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
 use crate::lru_cache::GLOBAL_CACHE;
+
+#[cfg(feature = "cairo-native")]
+mod native;
+#[cfg(feature = "cairo-native")]
+pub use native::NativeClassCache;
+
+#[cfg(not(feature = "cairo-native"))]
+pub struct NativeClassCache;
+
+#[cfg(not(feature = "cairo-native"))]
+impl NativeClassCache {
+    pub fn spawn() -> Self {
+        Self {}
+    }
+}
 
 pub(super) struct PathfinderStateReader<'tx> {
     transaction: &'tx pathfinder_storage::Transaction<'tx>,
@@ -17,6 +34,8 @@ pub(super) struct PathfinderStateReader<'tx> {
     // This flag makes it possible to find these classes -- essentially makes the state
     // reader look up classes which are not declared at a canonical block yet.
     ignore_block_number_for_classes: bool,
+    #[allow(unused)]
+    native_class_cache: Arc<NativeClassCache>,
 }
 
 impl<'tx> PathfinderStateReader<'tx> {
@@ -24,11 +43,13 @@ impl<'tx> PathfinderStateReader<'tx> {
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
+        native_class_cache: Arc<NativeClassCache>,
     ) -> Self {
         Self {
             transaction,
             block_number,
             ignore_block_number_for_classes,
+            native_class_cache,
         }
     }
 
@@ -88,31 +109,34 @@ impl<'tx> PathfinderStateReader<'tx> {
             Some(casm_definition) => {
                 // There's a CASM definition in storage, so this is a Sierra class. Extract
                 // class version from program.
-                let sierra_class: pathfinder_common::class_definition::Sierra<'_> =
-                    serde_json::from_slice(&class_definition)
-                        .map_err(|error| StateError::ProgramError(ProgramError::Parse(error)))?;
-                let sierra_version =
-                    starknet_api::contract_class::SierraVersion::extract_from_program(
-                        &sierra_class.sierra_program,
-                    )?;
+                let sierra_version = self.sierra_version_from_class(&class_definition)?;
 
-                let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
-                    StateError::StateReadError(format!(
-                        "Class definition is not valid UTF-8: {}",
-                        error
-                    ))
-                })?;
-                let casm_class =
-                    blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
-                        &casm_definition,
-                        sierra_version,
-                    )
-                    .map_err(StateError::ProgramError)?;
+                #[cfg(feature = "cairo-native")]
+                let runnable_class = if sierra_version >= SierraVersion::new(1, 7, 0) {
+                    match self.native_class_cache.get(
+                        pathfinder_class_hash,
+                        sierra_version.clone(),
+                        class_definition,
+                        casm_definition.clone(),
+                    ) {
+                        Some(native_class) => RunnableCompiledClass::V1Native(native_class),
+                        None => {
+                            let runnable_class =
+                                sierra_class_as_casm(sierra_version, casm_definition)?;
+                            // FIXME: this is a hack to avoid caching the CASM
+                            // class in the global cache until Native
+                            // compilation is finished
+                            return Ok((None, runnable_class));
+                        }
+                    }
+                } else {
+                    sierra_class_as_casm(sierra_version, casm_definition)?
+                };
 
-                Ok((
-                    definition_block_number,
-                    RunnableCompiledClass::V1(casm_class),
-                ))
+                #[cfg(not(feature = "cairo-native"))]
+                let runnable_class = sierra_class_as_casm(sierra_version, casm_definition)?;
+
+                Ok((definition_block_number, runnable_class))
             }
             None => {
                 // No CASM definition means this is a legacy Cairo 0 class.
@@ -133,6 +157,34 @@ impl<'tx> PathfinderStateReader<'tx> {
             }
         }
     }
+
+    fn sierra_version_from_class(
+        &self,
+        class_definition: &[u8],
+    ) -> Result<SierraVersion, StateError> {
+        use cairo_vm::types::errors::program_errors::ProgramError;
+
+        let sierra_class: pathfinder_common::class_definition::Sierra<'_> =
+            serde_json::from_slice(class_definition)
+                .map_err(|error| StateError::ProgramError(ProgramError::Parse(error)))?;
+        SierraVersion::extract_from_program(&sierra_class.sierra_program).map_err(Into::into)
+    }
+}
+
+fn sierra_class_as_casm(
+    sierra_version: SierraVersion,
+    casm_definition: Vec<u8>,
+) -> Result<RunnableCompiledClass, StateError> {
+    let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
+        StateError::StateReadError(format!("CASM definition is not valid UTF-8: {}", error))
+    })?;
+    let casm_class = blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
+        &casm_definition,
+        sierra_version,
+    )
+    .map_err(StateError::ProgramError)?;
+
+    Ok(RunnableCompiledClass::V1(casm_class))
 }
 
 impl StateReader for PathfinderStateReader<'_> {

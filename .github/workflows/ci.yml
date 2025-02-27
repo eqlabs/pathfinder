@@ -16,14 +16,17 @@ concurrency:
 
 jobs:
   test-all-features:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
+      MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
+      LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
+      TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
     steps:
       - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+        uses: easimon/maximize-build-space@v10
         with:
-          root-reserve-mb: "3072"
+          root-reserve-mb: "16384"
           temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +38,14 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: taiki-e/install-action@nextest
+      - uses: gerlero/add-apt-repository@v1
+        with:
+          uri: http://apt.llvm.org/noble/
+          suite: llvm-toolchain-noble-19
+          key: https://apt.llvm.org/llvm-snapshot.gpg.key
+      - uses: gerlero/apt-install@v1
+        with:
+          packages: build-essential llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
       - name: Clear cache
         if: github.event_name =='schedule'
         run: |
@@ -53,7 +64,7 @@ jobs:
           if-no-files-found: warn
 
   test-default-features:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
     steps:
@@ -90,7 +101,11 @@ jobs:
           if-no-files-found: warn
   
   clippy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    env:
+      MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
+      LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
+      TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -102,6 +117,14 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: gerlero/add-apt-repository@v1
+        with:
+          uri: http://apt.llvm.org/noble/
+          suite: llvm-toolchain-noble-19
+          key: https://apt.llvm.org/llvm-snapshot.gpg.key
+      - uses: gerlero/apt-install@v1
+        with:
+          packages: llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
       - name: Clear cache
         if: github.event_name =='schedule'
         run: |
@@ -115,7 +138,7 @@ jobs:
 
 
   rustfmt:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
@@ -126,7 +149,7 @@ jobs:
           cargo +nightly fmt --all --manifest-path crates/load-test/Cargo.toml -- --check
 
   doc:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
@@ -144,7 +167,7 @@ jobs:
       - run: cargo doc --no-deps --document-private-items
 
   dep-sort:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -156,7 +179,7 @@ jobs:
           cargo sort --check --workspace
 
   typos:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@v1.26.0
@@ -164,7 +187,7 @@ jobs:
           files: .
 
   load_test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
