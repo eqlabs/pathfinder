@@ -202,39 +202,6 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn delete_canonical_blocks_before(&self, block: BlockNumber) -> anyhow::Result<()> {
-        self.inner()
-            .execute(
-                "DELETE FROM canonical_blocks WHERE number < ?",
-                params![&block],
-            )
-            .context("Deleting block from canonical_blocks table")?;
-
-        Ok(())
-    }
-
-    pub fn delete_block_headers_before(&self, block: BlockNumber) -> anyhow::Result<()> {
-        self.inner()
-            .execute(
-                "DELETE FROM block_headers WHERE number < ?",
-                params![&block],
-            )
-            .context("Deleting block from block_headers table")?;
-
-        Ok(())
-    }
-
-    pub fn delete_block_signatures_before(&self, block: BlockNumber) -> anyhow::Result<()> {
-        self.inner()
-            .execute(
-                "DELETE FROM block_signatures WHERE block_number < ?",
-                params![&block],
-            )
-            .context("Deleting block from block_signatures table")?;
-
-        Ok(())
-    }
-
     pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
         match block {
             BlockId::Latest => self.inner().query_row(

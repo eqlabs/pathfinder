@@ -1816,8 +1816,10 @@ mod tests {
             let block = u64::try_from(block).unwrap();
 
             let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Block data is present.
-            assert!(tx.block_exists(block_id).unwrap());
+            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+            // Transaction data is present.
+            assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
         }
         drop(tx);
 
@@ -1837,17 +1839,26 @@ mod tests {
             let block = u64::try_from(block).unwrap();
 
             let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Block data has been pruned.
-            assert!(!tx.block_exists(block_id).unwrap());
+            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+            // Transaction data has been pruned.
+            assert!(transactions.is_empty() && transaction_hashes.is_empty());
         }
 
         let latest_block_id = BlockId::Number(BlockNumber::new_or_panic(
             u64::try_from(num_blocks - 1).unwrap(),
         ));
-        // Latest block data has not been pruned.
-        assert!(tx.block_exists(latest_block_id).unwrap());
+        let transactions = tx.transactions_for_block(latest_block_id).unwrap().unwrap();
+        let transaction_hashes = tx
+            .transaction_hashes_for_block(latest_block_id)
+            .unwrap()
+            .unwrap();
+        // Latest block transaction data has not been pruned.
+        assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
     }
 
+    // TODO: This test will only make sense once block data pruning is implemented.
+    #[ignore]
     #[tokio::test(flavor = "multi_thread")]
     async fn blockchain_history_pruning_with_reorg() {
         let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(

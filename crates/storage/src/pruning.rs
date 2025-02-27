@@ -67,9 +67,6 @@ impl Transaction<'_> {
         tracing::info!(last_kept=%oldest, "Running blockchain pruning");
         self.delete_transactions_before(oldest)?;
         self.delete_transaction_hashes_before(oldest)?;
-        self.delete_canonical_blocks_before(oldest)?;
-        self.delete_block_headers_before(oldest)?;
-        self.delete_block_signatures_before(oldest)?;
         self.commit()
     }
 
