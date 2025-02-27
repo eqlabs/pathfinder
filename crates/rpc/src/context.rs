@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
-use pathfinder_executor::{TraceCache, VersionedConstants, NativeClassCache};
+use pathfinder_executor::{NativeClassCache, TraceCache, VersionedConstants};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use util::percentage::Percentage;

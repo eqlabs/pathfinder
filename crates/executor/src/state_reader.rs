@@ -20,6 +20,13 @@ pub use native::NativeClassCache;
 #[cfg(not(feature = "cairo-native"))]
 pub struct NativeClassCache;
 
+#[cfg(not(feature = "cairo-native"))]
+impl NativeClassCache {
+    pub fn spawn() -> Self {
+        Self {}
+    }
+}
+
 pub(super) struct PathfinderStateReader<'tx> {
     transaction: &'tx pathfinder_storage::Transaction<'tx>,
     pub block_number: Option<BlockNumber>,
@@ -27,6 +34,7 @@ pub(super) struct PathfinderStateReader<'tx> {
     // This flag makes it possible to find these classes -- essentially makes the state
     // reader look up classes which are not declared at a canonical block yet.
     ignore_block_number_for_classes: bool,
+    #[allow(unused)]
     native_class_cache: Arc<NativeClassCache>,
 }
 

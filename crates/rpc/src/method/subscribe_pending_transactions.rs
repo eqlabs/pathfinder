@@ -136,6 +136,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -149,6 +150,7 @@ mod tests {
         TransactionHash,
     };
     use pathfinder_ethereum::EthereumClient;
+    use pathfinder_executor::NativeClassCache;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::PendingBlock;
@@ -472,6 +474,7 @@ mod tests {
         let storage = StorageBuilder::in_memory().unwrap();
         let (pending_data_tx, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
+        let native_class_cache = Arc::new(NativeClassCache::spawn());
         let ctx = RpcContext {
             cache: Default::default(),
             storage,
@@ -497,6 +500,7 @@ mod tests {
                 fee_estimation_epsilon: Default::default(),
                 custom_versioned_constants: None,
             },
+            native_class_cache,
         };
         let router = v08::register_routes().build(ctx);
         let (sender_tx, sender_rx) = mpsc::channel(1024);
