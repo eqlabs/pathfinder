@@ -329,3 +329,95 @@ impl EthereumApi for EthereumClient {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::str;
+
+    use futures::{join, StreamExt};
+    use pathfinder_common::{EthereumChain, L1BlockNumber};
+    use tokio::sync::mpsc;
+    use tokio_stream::wrappers::UnboundedReceiverStream;
+    use warp::ws::{Message, WebSocket, Ws};
+    use warp::{Filter, Rejection, Reply};
+
+    use super::{EthereumApi, EthereumClient};
+
+    fn insert_response(
+        repertory: &mut HashMap<String, String>,
+        name: &'static str,
+        raw_rsp: &[u8],
+    ) {
+        let rsp = str::from_utf8(raw_rsp).unwrap();
+        repertory.insert(name.to_string(), rsp.to_string());
+    }
+
+    async fn handle_connection(ws: WebSocket) {
+        let mut repertory = HashMap::new();
+        insert_response(
+            &mut repertory,
+            "eth_getBlockByNumber",
+            include_bytes!("../fixtures/eth_getBlockByNumber.json"),
+        );
+        insert_response(
+            &mut repertory,
+            "eth_chainId",
+            include_bytes!("../fixtures/eth_chainId.json"),
+        );
+
+        let (wtx, mut wrx) = ws.split();
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        let srx = UnboundedReceiverStream::new(rx);
+        tokio::task::spawn(srx.forward(wtx));
+
+        while let Some(result) = wrx.next().await {
+            let raw_msg = match result {
+                Ok(msg) => msg,
+                Err(_) => {
+                    // can happen at shutdown
+                    break;
+                }
+            };
+
+            // websocket Ping might get through...
+            if let Ok(msg) = raw_msg.to_str() {
+                let req: serde_json::Value = serde_json::from_str(msg).unwrap();
+                let name = req["method"].as_str().unwrap();
+                if let Some(rsp) = repertory.get(name) {
+                    tx.send(Ok(Message::text(rsp))).unwrap();
+                } else {
+                    panic!("method \"{}\" not in test repertory", name);
+                }
+            }
+        }
+    }
+
+    async fn accept_connection(ws: Ws) -> Result<impl Reply, Rejection> {
+        Ok(ws.on_upgrade(handle_connection))
+    }
+
+    #[tokio::test]
+    async fn test_with_ws_server() {
+        let any = warp::any().and(warp::ws()).and_then(accept_connection);
+        let (addr, run_srv) = warp::serve(any).bind_ephemeral(([127, 0, 0, 1], 0));
+        tokio::spawn(run_srv);
+        let url = format!("ws://{}", addr);
+        let get_finalized_block_number_fut = test_get_finalized_block_number(url.clone());
+        let get_chain_fut = test_get_chain(url);
+        join!(get_finalized_block_number_fut, get_chain_fut);
+    }
+
+    async fn test_get_finalized_block_number(url: String) {
+        let client = EthereumClient::new(url).unwrap();
+        let n = client.get_finalized_block_number().await.unwrap();
+        assert_eq!(n, L1BlockNumber::new_or_panic(436));
+    }
+
+    async fn test_get_chain(url: String) {
+        let client = EthereumClient::new(url).unwrap();
+        let cid = client.get_chain().await.unwrap();
+        assert_eq!(cid, EthereumChain::Mainnet);
+    }
+}
