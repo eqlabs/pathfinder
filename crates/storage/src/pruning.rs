@@ -64,9 +64,11 @@ impl Transaction<'_> {
             return Ok(());
         };
 
+        let start = std::time::Instant::now();
         tracing::info!(last_kept=%oldest, "Running blockchain pruning");
         self.delete_transactions_before(oldest)?;
         self.delete_transaction_hashes_before(oldest)?;
+        tracing::debug!(last_kept=%oldest, elapsed=?start.elapsed(), "Blockchain pruning done");
         self.commit()
     }
 
