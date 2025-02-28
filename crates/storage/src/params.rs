@@ -46,6 +46,8 @@ use pathfinder_crypto::Felt;
 use rusqlite::types::{FromSqlError, ToSqlOutput};
 use rusqlite::RowIndex;
 
+use crate::TrieStorageIndex;
+
 pub trait ToSql {
     fn to_sql(&self) -> ToSqlOutput<'_>;
 }
@@ -67,6 +69,13 @@ impl<Inner: ToSql> ToSql for Option<Inner> {
             Some(value) => value.to_sql(),
             None => ToSqlOutput::Owned(Value::Null),
         }
+    }
+}
+
+impl ToSql for TrieStorageIndex {
+    fn to_sql(&self) -> ToSqlOutput<'_> {
+        use rusqlite::types::Value;
+        ToSqlOutput::Owned(Value::Integer(self.0 as i64))
     }
 }
 

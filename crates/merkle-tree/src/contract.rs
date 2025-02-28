@@ -20,7 +20,7 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_storage::{Transaction, TrieUpdate};
+use pathfinder_storage::{Transaction, TrieStorageIndex, TrieUpdate};
 
 use crate::merkle_node::InternalNode;
 use crate::tree::{GetProofError, MerkleTree, TrieNodeWithHash, Visit};
@@ -82,7 +82,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         contract: ContractAddress,
         block: BlockNumber,
         key: &BitSlice<u8, Msb0>,
-        root: u64,
+        root: TrieStorageIndex,
     ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
         let storage = ContractStorage {
             tx,
@@ -102,7 +102,7 @@ impl<'tx> ContractsStorageTree<'tx> {
         contract: ContractAddress,
         block: BlockNumber,
         keys: &[StorageAddress],
-        root: u64,
+        root: TrieStorageIndex,
     ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
         let storage = ContractStorage {
             tx,
@@ -212,7 +212,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         address: &ContractAddress,
-        root: u64,
+        root: TrieStorageIndex,
     ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
@@ -230,7 +230,7 @@ impl<'tx> StorageCommitmentTree<'tx> {
         tx: &'tx Transaction<'tx>,
         block: BlockNumber,
         addresses: &[ContractAddress],
-        root: u64,
+        root: TrieStorageIndex,
     ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
         let storage = StorageTrieStorage {
             tx,
@@ -261,11 +261,14 @@ struct ContractStorage<'tx> {
 }
 
 impl crate::storage::Storage for ContractStorage<'_> {
-    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+    fn get(
+        &self,
+        index: TrieStorageIndex,
+    ) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
         self.tx.contract_trie_node(index)
     }
 
-    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         self.tx.contract_trie_node_hash(index)
     }
 
@@ -294,11 +297,14 @@ struct StorageTrieStorage<'tx> {
 }
 
 impl crate::storage::Storage for StorageTrieStorage<'_> {
-    fn get(&self, index: u64) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
+    fn get(
+        &self,
+        index: TrieStorageIndex,
+    ) -> anyhow::Result<Option<pathfinder_storage::StoredNode>> {
         self.tx.storage_trie_node(index)
     }
 
-    fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+    fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         self.tx.storage_trie_node_hash(index)
     }
 

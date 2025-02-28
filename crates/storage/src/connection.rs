@@ -24,7 +24,7 @@ use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockNumber, TransactionHash};
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
-pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieUpdate};
+pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
 
 use crate::bloom::AggregateBloomCache;
 

@@ -596,7 +596,7 @@ mod tests {
             tx.insert_storage_trie(
                 &pathfinder_storage::TrieUpdate {
                     nodes_added: vec![(Felt::from_u64(0), pathfinder_storage::Node::LeafBinary)],
-                    nodes_removed: (0..100).collect(),
+                    nodes_removed: (0..100).map(pathfinder_storage::TrieStorageIndex).collect(),
                     root_commitment: Felt::ZERO,
                 },
                 BlockNumber::GENESIS + 3,
