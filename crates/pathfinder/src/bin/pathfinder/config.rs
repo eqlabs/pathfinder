@@ -291,6 +291,17 @@ This should only be enabled for debugging purposes as it adds substantial proces
     get_events_max_uncached_event_filters_to_load: std::num::NonZeroUsize,
 
     #[arg(
+        long = "storage.blockchain-history",
+        long_help = "When set to `archive` all historical blockchain data is preserved. When set to an integer N, only the last N+1 blocks of the blockchain are kept in the database. \
+            This can be used to reduce the disk space usage at the cost of only being able to provide information for the latest N+1 blocks (the state for the latest block is always stored). \
+            Defaults to `archive` if not specified.",
+        env = "PATHFINDER_STORAGE_BLOCKCHAIN_HISTORY",
+        value_name = "archive | N",
+        value_parser = parse_blockchain_history
+    )]
+    blockchain_history: Option<BlockchainHistory>,
+
+    #[arg(
         long = "storage.state-tries",
         long_help = "When set to `archive` all historical Merkle trie state is preserved. When set to an integer N, only the last N+1 states of the Merkle tries are kept in the database. \
             This can be used to reduce the disk space usage at the cost of only being able to provide storage proofs for the latest N+1 blocks (the state for the latest block is always stored). \
@@ -365,6 +376,24 @@ pub enum RootRpcVersion {
     V06,
     V07,
     V08,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BlockchainHistory {
+    Prune(u64),
+    Archive,
+}
+
+fn parse_blockchain_history(s: &str) -> Result<BlockchainHistory, String> {
+    match s {
+        "archive" => Ok(BlockchainHistory::Archive),
+        _ => {
+            let value: u64 = s
+                .parse()
+                .map_err(|_| "Expected either `archive` or a number".to_string())?;
+            Ok(BlockchainHistory::Prune(value))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -767,6 +796,7 @@ pub struct Config {
     pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
+    pub blockchain_history: BlockchainHistory,
     pub state_tries: Option<StateTries>,
     pub custom_versioned_constants: Option<VersionedConstants>,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
@@ -1064,6 +1094,7 @@ impl Config {
                 .get_events_max_uncached_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
+            blockchain_history: cli.blockchain_history.unwrap_or(BlockchainHistory::Archive),
             state_tries: cli.state_tries,
             custom_versioned_constants: cli
                 .custom_versioned_constants_path

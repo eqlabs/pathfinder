@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
+use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
@@ -16,6 +17,7 @@ use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
+use pathfinder_storage::pruning::run_blockchain_pruning;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
@@ -147,6 +149,25 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
 
+    let prune_storage = storage_manager
+        .create_pool(NonZeroU32::new(1).unwrap())
+        .context(
+            r"Creating database connection pool for blockchain pruning
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+        Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
+
+    if let BlockchainHistory::Prune(num_blocks_kept) = config.blockchain_history {
+        prune_storage
+            .connection()
+            .context("Creating database connection for startup blockchain pruning")?
+            .transaction()
+            .context("Creating database transaction for startup blockchain pruning")?
+            .prune_blockchain_on_startup(num_blocks_kept)
+            .context("Pruning blockchain history on startup")?;
+    }
+
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
     // all queries.
@@ -230,7 +251,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         custom_versioned_constants: config.custom_versioned_constants.take(),
     };
 
-    let notifications = Notifications::default();
+    let (block_headers, block_headers_rx) = tokio::sync::broadcast::channel(1024);
+    let (l2_blocks, _) = tokio::sync::broadcast::channel(1024);
+    let (reorgs, _) = tokio::sync::broadcast::channel(1024);
+    let notifications = Notifications {
+        block_headers,
+        l2_blocks,
+        reorgs,
+    };
 
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
@@ -339,6 +367,17 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
+    let blockchain_pruning_handle = match config.blockchain_history {
+        config::BlockchainHistory::Prune(num_blocks_kept) => {
+            run_blockchain_pruning(prune_storage, block_headers_rx, num_blocks_kept)
+        }
+        config::BlockchainHistory::Archive => {
+            drop(prune_storage);
+            drop(block_headers_rx);
+            tokio::spawn(std::future::pending())
+        }
+    };
+
     if !config.disable_version_update_check {
         util::task::spawn(update::poll_github_for_releases());
     }
@@ -349,6 +388,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Monitor our critical spawned process tasks.
     let main_result = tokio::select! {
         result = sync_handle => handle_critical_task_result("Sync", result),
+        result = blockchain_pruning_handle => handle_critical_task_result("Prune", result),
         result = rpc_handle => handle_critical_task_result("RPC", result),
         result = p2p_handle => handle_critical_task_result("P2P", result),
         _ = term_signal.recv() => {
