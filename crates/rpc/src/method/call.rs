@@ -146,7 +146,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             header,
             pending,
             L1BlobDataAvailability::Disabled,
-            context.config.custom_versioned_constants,
+            context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
         );

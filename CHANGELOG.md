@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- supporting custom versioned constants for multiple Starknet versions.
+
 ### Fixed
 
 - `starknet_estimateFee` returns an internal error for v3 transactions with L2 gas `max_price_per_unit` set to zero.
