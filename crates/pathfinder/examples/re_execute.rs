@@ -139,7 +139,7 @@ fn execute(storage: &mut Storage, chain_id: ChainId, work: Work) {
         chain_id,
         work.header.clone(),
         None,
-        None,
+        Default::default(),
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
     );

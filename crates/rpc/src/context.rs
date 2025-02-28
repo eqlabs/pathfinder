@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
-use pathfinder_executor::{TraceCache, VersionedConstants};
+use pathfinder_executor::{TraceCache, VersionedConstantsMap};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use util::percentage::Percentage;
@@ -68,7 +68,7 @@ pub struct RpcConfig {
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub fee_estimation_epsilon: Percentage,
-    pub custom_versioned_constants: Option<VersionedConstants>,
+    pub versioned_constants_map: VersionedConstantsMap,
 }
 
 #[derive(Clone)]
@@ -170,7 +170,7 @@ impl RpcContext {
             get_events_max_blocks_to_scan: NonZeroUsize::new(1000).unwrap(),
             get_events_max_uncached_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
             fee_estimation_epsilon: Percentage::new(10),
-            custom_versioned_constants: None,
+            versioned_constants_map: Default::default(),
         };
 
         let ethereum =

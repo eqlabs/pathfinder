@@ -495,7 +495,7 @@ mod tests {
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
                 get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 fee_estimation_epsilon: Default::default(),
-                custom_versioned_constants: None,
+                versioned_constants_map: Default::default(),
             },
         };
         let router = v08::register_routes().build(ctx);
