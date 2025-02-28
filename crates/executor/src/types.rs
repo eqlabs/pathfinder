@@ -37,7 +37,6 @@ impl FeeEstimate {
         fee_type: FeeType,
         minimal_l1_gas_amount_vector: &Option<GasVector>,
     ) -> FeeEstimate {
-        tracing::trace!(resources=?tx_info.receipt.resources, "Transaction resources");
         let gas_prices = block_info.gas_prices.gas_price_vector(&fee_type);
         let l1_gas_price = gas_prices.l1_gas_price.get();
         let l1_data_gas_price = gas_prices.l1_data_gas_price.get();

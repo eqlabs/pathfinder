@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
+use blockifier::blockifier::stateful_validator::StatefulValidator;
 use blockifier::state::cached_state::CachedState;
 use blockifier::state::errors::StateError;
 use blockifier::transaction::transaction_execution::Transaction;
@@ -122,6 +123,14 @@ pub fn simulate(
                     epsilon,
                 )?
             } else {
+                if let Transaction::Account(account_tx) = &tx {
+                    let validator_state =  CachedState::<_>::create_transactional(&mut tx_state);
+                    let mut validator = StatefulValidator::create(validator_state, block_context.clone());
+                    if let Err(e) = validator.perform_validations(account_tx.clone(), false) {
+                        tracing::warn!(error=%e, "Stateful transaction validation failed");
+                    }
+                }
+
                 execute_transaction(&tx, tx_index, &mut tx_state, &block_context, &ExecutionBehaviorOnRevert::Continue)?
             };
             let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
