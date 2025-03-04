@@ -81,7 +81,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             header,
             pending,
             L1BlobDataAvailability::Enabled,
-            context.config.custom_versioned_constants,
+            context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
         );

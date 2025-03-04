@@ -51,7 +51,7 @@ async fn async_main() -> anyhow::Result<Storage> {
         std::env::set_var("RUST_LOG", "pathfinder=info");
     }
 
-    let mut config = config::Config::parse();
+    let config = config::Config::parse();
 
     setup_tracing(
         config.color,
@@ -227,7 +227,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         get_events_max_uncached_event_filters_to_load: config
             .get_events_max_uncached_event_filters_to_load,
         fee_estimation_epsilon: config.fee_estimation_epsilon,
-        custom_versioned_constants: config.custom_versioned_constants.take(),
+        versioned_constants_map: config.versioned_constants_map.clone(),
     };
 
     let notifications = Notifications::default();
