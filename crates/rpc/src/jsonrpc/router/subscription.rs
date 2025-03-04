@@ -162,28 +162,17 @@ where
         };
 
         let first_block = T::starting_block(&params);
-
-        let mut current_block = match first_block {
-            SubscriptionBlockId::Latest => {
-                // No need to catch up. The code below will subscribe to new blocks.
-                None
-            }
-            first_block @ (SubscriptionBlockId::Number(_) | SubscriptionBlockId::Hash(_)) => {
-                // Load the first block number, return an error if it's invalid.
-                let first_block = pathfinder_storage::BlockId::from(first_block);
-                let storage = router.context.storage.clone();
-                let current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-                    let mut conn = storage.connection().map_err(RpcError::InternalError)?;
-                    let db = conn.transaction().map_err(RpcError::InternalError)?;
-                    db.block_number(first_block)
-                        .map_err(RpcError::InternalError)?
-                        .ok_or_else(|| ApplicationError::BlockNotFound.into())
-                })
-                .await
-                .map_err(|e| RpcError::InternalError(e.into()))??;
-                Some(current_block)
-            }
-        };
+        let first_block = pathfinder_storage::BlockId::from(first_block);
+        let storage = router.context.storage.clone();
+        let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+            let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+            let db = conn.transaction().map_err(RpcError::InternalError)?;
+            db.block_number(first_block)
+                .map_err(RpcError::InternalError)?
+                .ok_or_else(|| ApplicationError::BlockNotFound.into())
+        })
+        .await
+        .map_err(|e| RpcError::InternalError(e.into()))??;
 
         Ok(util::task::spawn(async move {
             let _subscription_guard = SubscriptionsGuard {
@@ -195,46 +184,44 @@ where
             let _lock_guard = lock.read().await;
 
             // Catch up to the latest block in batches of BATCH_SIZE.
-            if let Some(current_block) = current_block.as_mut() {
-                loop {
-                    // -1 because the end is inclusive, otherwise we get batches of
-                    // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
-                    // matter, but it's misleading.
-                    let end = *current_block + Self::CATCH_UP_BATCH_SIZE - 1;
-                    let catch_up =
-                        match T::catch_up(&router.context, &params, *current_block, end).await {
-                            Ok(messages) => messages,
-                            Err(e) => {
-                                tx.send_err(e)
-                                    .await
-                                    // Could error if the subscription is closing.
-                                    .ok();
-                                return;
-                            }
-                        };
-                    let last_block = match catch_up.last_block {
-                        Some(last_block) => last_block,
-                        None => {
-                            // `None` means that there were no messages for the given block range.
-                            break;
-                        }
-                    };
-                    for msg in catch_up.messages {
-                        if tx
-                            .send(msg.notification, msg.subscription_name)
+            loop {
+                // -1 because the end is inclusive, otherwise we get batches of
+                // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
+                // matter, but it's misleading.
+                let end = current_block + Self::CATCH_UP_BATCH_SIZE - 1;
+                let catch_up = match T::catch_up(&router.context, &params, current_block, end).await
+                {
+                    Ok(messages) => messages,
+                    Err(e) => {
+                        tx.send_err(e)
                             .await
-                            .is_err()
-                        {
-                            // Subscription closing.
-                            return;
-                        }
+                            // Could error if the subscription is closing.
+                            .ok();
+                        return;
                     }
-                    // Increment by 1 because the catch_up range is inclusive.
-                    *current_block = last_block + 1;
-                    if last_block < end {
-                        // This was the last batch.
+                };
+                let last_block = match catch_up.last_block {
+                    Some(last_block) => last_block,
+                    None => {
+                        // `None` means that there were no messages for the given block range.
                         break;
                     }
+                };
+                for msg in catch_up.messages {
+                    if tx
+                        .send(msg.notification, msg.subscription_name)
+                        .await
+                        .is_err()
+                    {
+                        // Subscription closing.
+                        return;
+                    }
+                }
+                // Increment by 1 because the catch_up range is inclusive.
+                current_block = last_block + 1;
+                if last_block < end {
+                    // This was the last batch.
+                    break;
                 }
             }
 
@@ -263,8 +250,8 @@ where
             // blocks. Because the catch_up range is inclusive, we need to subtract 1 from
             // the block number (i.e. take its parent).
             let end = first_msg.block_number.parent();
-            match (current_block, end) {
-                (Some(current_block), Some(end)) if current_block <= end => {
+            match end {
+                Some(end) if current_block <= end => {
                     let catch_up =
                         match T::catch_up(&router.context, &params, current_block, end).await {
                             Ok(messages) => messages,
@@ -288,8 +275,7 @@ where
                     }
                 }
                 _ => {
-                    // Either the range is empty or catch-up is not supported by
-                    // the endpoint (`current_block` is `None`).
+                    // The range is empty.
                 }
             }
 

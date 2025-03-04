@@ -587,10 +587,11 @@ mod tests {
 
     #[tokio::test]
     async fn reorg() {
-        let router = setup(0).await;
+        let router = setup(1).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+
         receiver_tx
             .send(Ok(Message::Text(
                 serde_json::json!({
@@ -612,6 +613,32 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
+
+        // event from "latest" block
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match res {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "starknet_subscriptionEvents",
+                "params": {
+                    "result": {
+                        "block_hash": "0x0",
+                        "block_number": 0,
+                        "data": ["0x0", "0x1", "0x2"],
+                        "from_address": "0x0",
+                        "keys": ["0x0", "0x1", "0x2"],
+                        "transaction_hash": "0x0"
+                    },
+                    "subscription_id": subscription_id
+                }
+            })
+        );
+
         retry(|| {
             router.context.notifications.reorgs.send(
                 Reorg {
@@ -650,7 +677,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_with_pending_block() {
-        let router = setup(0).await;
+        let router = setup(1).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -693,7 +720,7 @@ mod tests {
     }
 
     async fn setup(num_blocks: u64) -> RpcRouter {
-        assert!(num_blocks == 0 || num_blocks > SubscribeEvents::CATCH_UP_BATCH_SIZE);
+        assert!(num_blocks > 0);
 
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
