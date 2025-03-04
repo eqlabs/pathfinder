@@ -36,6 +36,8 @@ pub fn run_blockchain_pruning(
                     prune_storage
                         .connection()
                         .context("Creating database connection for blockchain pruning")?
+                        .with_retry()
+                        .context("Enabling retries for database connection")?
                         .transaction_with_behavior(
                             // Avoid contention with the transaction that writes the block header
                             // data.

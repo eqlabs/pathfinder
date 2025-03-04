@@ -474,7 +474,9 @@ async fn consumer(
 
     let mut db_conn = storage
         .connection()
-        .context("Creating database connection")?;
+        .context("Creating database connection")?
+        .with_retry()
+        .context("Enabling retries for database connection")?;
 
     let (mut latest_timestamp, mut next_number) = tokio::task::block_in_place(|| {
         let tx = db_conn
