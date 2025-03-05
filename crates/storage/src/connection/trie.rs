@@ -10,7 +10,10 @@ use crate::prelude::*;
 use crate::{BlockId, TriePruneMode};
 
 impl Transaction<'_> {
-    pub fn class_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
+    pub fn class_root_index(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM class_roots WHERE block_number <= ? ORDER BY block_number \
@@ -19,7 +22,7 @@ impl Transaction<'_> {
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
-            .map(|x| x.flatten())
+            .map(|x| x.flatten().map(TrieStorageIndex))
             .map_err(Into::into)
     }
 
@@ -47,7 +50,10 @@ impl Transaction<'_> {
             .map_err(Into::into)
     }
 
-    pub fn storage_root_index(&self, block_number: BlockNumber) -> anyhow::Result<Option<u64>> {
+    pub fn storage_root_index(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM storage_roots WHERE block_number <= ? ORDER BY \
@@ -56,7 +62,7 @@ impl Transaction<'_> {
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
-            .map(|x| x.flatten())
+            .map(|x| x.flatten().map(TrieStorageIndex))
             .map_err(Into::into)
     }
 
@@ -74,7 +80,7 @@ impl Transaction<'_> {
         &self,
         block_number: BlockNumber,
         contract: ContractAddress,
-    ) -> anyhow::Result<Option<u64>> {
+    ) -> anyhow::Result<Option<TrieStorageIndex>> {
         self.inner()
             .query_row(
                 "SELECT root_index FROM contract_roots WHERE contract_address = ? AND \
@@ -83,7 +89,7 @@ impl Transaction<'_> {
                 |row| row.get::<_, Option<u64>>(0),
             )
             .optional()
-            .map(|x| x.flatten())
+            .map(|x| x.flatten().map(TrieStorageIndex))
             .map_err(Into::into)
     }
 
@@ -324,11 +330,14 @@ impl Transaction<'_> {
         self.insert_trie(update, block_number, "trie_contracts")
     }
 
-    pub fn contract_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
+    pub fn contract_trie_node(
+        &self,
+        index: TrieStorageIndex,
+    ) -> anyhow::Result<Option<StoredNode>> {
         self.trie_node(index, "trie_contracts")
     }
 
-    pub fn contract_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+    pub fn contract_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         self.trie_node_hash(index, "trie_contracts")
     }
 
@@ -340,11 +349,11 @@ impl Transaction<'_> {
         self.insert_trie(update, block_number, "trie_class")
     }
 
-    pub fn class_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
+    pub fn class_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
         self.trie_node(index, "trie_class")
     }
 
-    pub fn class_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+    pub fn class_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         self.trie_node_hash(index, "trie_class")
     }
 
@@ -356,11 +365,11 @@ impl Transaction<'_> {
         self.insert_trie(update, block_number, "trie_storage")
     }
 
-    pub fn storage_trie_node(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
+    pub fn storage_trie_node(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
         self.trie_node(index, "trie_storage")
     }
 
-    pub fn storage_trie_node_hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+    pub fn storage_trie_node_hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
         self.trie_node_hash(index, "trie_storage")
     }
 
@@ -389,7 +398,7 @@ impl Transaction<'_> {
     /// Mark the input nodes as ready for removal.
     fn remove_trie(
         &self,
-        removed: &[u64],
+        removed: &[TrieStorageIndex],
         block_number: BlockNumber,
         table: &'static str,
     ) -> anyhow::Result<()> {
@@ -564,7 +573,7 @@ impl Transaction<'_> {
                 )
                 .context("Inserting node")?;
 
-            indices.insert(idx, storage_idx);
+            indices.insert(idx, storage_idx.into());
 
             metrics::increment_counter!(METRIC_TRIE_NODES_ADDED, "table" => table);
         }
@@ -577,7 +586,11 @@ impl Transaction<'_> {
     }
 
     /// Returns the node with the given index.
-    fn trie_node(&self, index: u64, table: &'static str) -> anyhow::Result<Option<StoredNode>> {
+    fn trie_node(
+        &self,
+        index: TrieStorageIndex,
+        table: &'static str,
+    ) -> anyhow::Result<Option<StoredNode>> {
         // We rely on sqlite caching the statement here. Storing the statement would be
         // nice, however that leads to &mut requirements or interior mutable
         // work-arounds.
@@ -599,7 +612,11 @@ impl Transaction<'_> {
     }
 
     /// Returns the hash of the node with the given index.
-    fn trie_node_hash(&self, index: u64, table: &'static str) -> anyhow::Result<Option<Felt>> {
+    fn trie_node_hash(
+        &self,
+        index: TrieStorageIndex,
+        table: &'static str,
+    ) -> anyhow::Result<Option<Felt>> {
         // We rely on sqlite caching the statement here. Storing the statement would be
         // nice, however that leads to &mut requirements or interior mutable
         // work-arounds.
@@ -627,16 +644,129 @@ pub struct TrieUpdate {
     /// The last node is the root of the trie.
     pub nodes_added: Vec<(Felt, Node)>,
     /// Nodes committed to storage that have been removed.
-    pub nodes_removed: Vec<u64>,
+    pub nodes_removed: Vec<TrieStorageIndex>,
     /// New root commitment of the trie.
     pub root_commitment: Felt,
+}
+
+/// The storage index of a trie node.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TrieStorageIndex(pub u64);
+
+impl std::fmt::Display for TrieStorageIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<u64> for TrieStorageIndex {
+    fn from(index: u64) -> Self {
+        Self(index)
+    }
+}
+
+impl From<TrieStorageIndex> for u64 {
+    fn from(index: TrieStorageIndex) -> Self {
+        index.0
+    }
+}
+
+impl bincode::Encode for TrieStorageIndex {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> Result<(), bincode::error::EncodeError> {
+        self.0.encode(encoder)
+    }
+}
+
+impl bincode::Decode for TrieStorageIndex {
+    fn decode<D: bincode::de::Decoder>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self(u64::decode(decoder)?))
+    }
+}
+
+impl<'de> bincode::BorrowDecode<'de> for TrieStorageIndex {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+        decoder: &mut D,
+    ) -> Result<Self, bincode::error::DecodeError> {
+        Ok(Self(u64::borrow_decode(decoder)?))
+    }
+}
+
+impl std::ops::Add for TrieStorageIndex {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self(
+            self.0
+                .checked_add(rhs.0)
+                .expect("TrieStorageIndex addition overflow"),
+        )
+    }
+}
+
+impl std::ops::Add<u64> for TrieStorageIndex {
+    type Output = Self;
+
+    fn add(self, rhs: u64) -> Self {
+        Self(
+            self.0
+                .checked_add(rhs)
+                .expect("TrieStorageIndex addition overflow"),
+        )
+    }
+}
+
+impl std::ops::AddAssign<u64> for TrieStorageIndex {
+    fn add_assign(&mut self, rhs: u64) {
+        self.0 = self
+            .0
+            .checked_add(rhs)
+            .expect("TrieStorageIndex addition overflow");
+    }
+}
+
+impl std::ops::Sub for TrieStorageIndex {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self(
+            self.0
+                .checked_sub(rhs.0)
+                .expect("TrieStorageIndex subtraction underflow"),
+        )
+    }
+}
+
+impl std::ops::Sub<u64> for TrieStorageIndex {
+    type Output = Self;
+
+    fn sub(self, rhs: u64) -> Self {
+        Self(
+            self.0
+                .checked_sub(rhs)
+                .expect("TrieStorageIndex subtraction underflow"),
+        )
+    }
+}
+
+impl std::ops::SubAssign<u64> for TrieStorageIndex {
+    fn sub_assign(&mut self, rhs: u64) {
+        self.0 = self
+            .0
+            .checked_sub(rhs)
+            .expect("TrieStorageIndex subtraction underflow");
+    }
 }
 
 /// The result of inserting a `TrieUpdate`.
 #[derive(Debug, PartialEq)]
 pub enum RootIndexUpdate {
     Unchanged,
-    Updated(u64),
+    Updated(TrieStorageIndex),
     TrieEmpty,
 }
 
@@ -659,7 +789,7 @@ pub enum Node {
 #[derive(Copy, Clone, Debug)]
 pub enum NodeRef {
     // A reference to a node that has already been committed to storage.
-    StorageIndex(u64),
+    StorageIndex(TrieStorageIndex),
     // A reference to a node that has not yet been committed to storage.
     // The index within the `nodes_added` vector is used as a reference.
     Index(usize),
@@ -667,18 +797,34 @@ pub enum NodeRef {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StoredNode {
-    Binary { left: u64, right: u64 },
-    Edge { child: u64, path: BitVec<u8, Msb0> },
+    Binary {
+        left: TrieStorageIndex,
+        right: TrieStorageIndex,
+    },
+    Edge {
+        child: TrieStorageIndex,
+        path: BitVec<u8, Msb0>,
+    },
     LeafBinary,
-    LeafEdge { path: BitVec<u8, Msb0> },
+    LeafEdge {
+        path: BitVec<u8, Msb0>,
+    },
 }
 
 #[derive(Clone, Debug, bincode::Encode, bincode::BorrowDecode)]
 enum StoredSerde {
-    Binary { left: u64, right: u64 },
-    Edge { child: u64, path: Vec<u8> },
+    Binary {
+        left: TrieStorageIndex,
+        right: TrieStorageIndex,
+    },
+    Edge {
+        child: TrieStorageIndex,
+        path: Vec<u8>,
+    },
     LeafBinary,
-    LeafEdge { path: Vec<u8> },
+    LeafEdge {
+        path: Vec<u8>,
+    },
 }
 
 impl StoredNode {
@@ -751,7 +897,10 @@ impl StoredNode {
 }
 
 impl Node {
-    fn as_stored(&self, storage_indices: &HashMap<usize, u64>) -> anyhow::Result<StoredNode> {
+    fn as_stored(
+        &self,
+        storage_indices: &HashMap<usize, TrieStorageIndex>,
+    ) -> anyhow::Result<StoredNode> {
         let node = match self {
             Node::Binary { left, right } => {
                 let left = match left {
@@ -808,28 +957,34 @@ mod tests {
         let result = tx.class_root_index(BlockNumber::GENESIS).unwrap();
         assert_eq!(result, None);
 
-        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123))
+        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123.into()))
             .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(123));
+        assert_eq!(result, Some(123.into()));
 
-        tx.insert_class_root(BlockNumber::GENESIS + 1, RootIndexUpdate::Updated(456))
-            .unwrap();
+        tx.insert_class_root(
+            BlockNumber::GENESIS + 1,
+            RootIndexUpdate::Updated(456.into()),
+        )
+        .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(123));
+        assert_eq!(result, Some(123.into()));
         let result = tx.class_root_index(BlockNumber::GENESIS + 1).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
         let result = tx.class_root_index(BlockNumber::GENESIS + 2).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
 
-        tx.insert_class_root(BlockNumber::GENESIS + 10, RootIndexUpdate::Updated(789))
-            .unwrap();
+        tx.insert_class_root(
+            BlockNumber::GENESIS + 10,
+            RootIndexUpdate::Updated(789.into()),
+        )
+        .unwrap();
         let result = tx.class_root_index(BlockNumber::GENESIS + 9).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
         let result = tx.class_root_index(BlockNumber::GENESIS + 10).unwrap();
-        assert_eq!(result, Some(789));
+        assert_eq!(result, Some(789.into()));
         let result = tx.class_root_index(BlockNumber::GENESIS + 11).unwrap();
-        assert_eq!(result, Some(789));
+        assert_eq!(result, Some(789.into()));
 
         tx.insert_class_root(BlockNumber::GENESIS + 12, RootIndexUpdate::TrieEmpty)
             .unwrap();
@@ -850,28 +1005,34 @@ mod tests {
         let result = tx.storage_root_index(BlockNumber::GENESIS).unwrap();
         assert_eq!(result, None);
 
-        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123))
+        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(123.into()))
             .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(123));
+        assert_eq!(result, Some(123.into()));
 
-        tx.insert_storage_root(BlockNumber::GENESIS + 1, RootIndexUpdate::Updated(456))
-            .unwrap();
+        tx.insert_storage_root(
+            BlockNumber::GENESIS + 1,
+            RootIndexUpdate::Updated(456.into()),
+        )
+        .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS).unwrap();
-        assert_eq!(result, Some(123));
+        assert_eq!(result, Some(123.into()));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 1).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 2).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
 
-        tx.insert_storage_root(BlockNumber::GENESIS + 10, RootIndexUpdate::Updated(789))
-            .unwrap();
+        tx.insert_storage_root(
+            BlockNumber::GENESIS + 10,
+            RootIndexUpdate::Updated(789.into()),
+        )
+        .unwrap();
         let result = tx.storage_root_index(BlockNumber::GENESIS + 9).unwrap();
-        assert_eq!(result, Some(456));
+        assert_eq!(result, Some(456.into()));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 10).unwrap();
-        assert_eq!(result, Some(789));
+        assert_eq!(result, Some(789.into()));
         let result = tx.storage_root_index(BlockNumber::GENESIS + 11).unwrap();
-        assert_eq!(result, Some(789));
+        assert_eq!(result, Some(789.into()));
 
         tx.insert_storage_root(BlockNumber::GENESIS + 12, RootIndexUpdate::TrieEmpty)
             .unwrap();
@@ -938,8 +1099,12 @@ mod tests {
 
         tx.insert_contract_root(BlockNumber::GENESIS + 1, c1, idx1_update)
             .unwrap();
-        tx.insert_contract_root(BlockNumber::GENESIS + 1, c2, RootIndexUpdate::Updated(888))
-            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::GENESIS + 1,
+            c2,
+            RootIndexUpdate::Updated(888.into()),
+        )
+        .unwrap();
         let result1 = tx.contract_root_index(BlockNumber::GENESIS, c1).unwrap();
         let result2 = tx.contract_root_index(BlockNumber::GENESIS, c2).unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS, c1).unwrap();
@@ -954,7 +1119,7 @@ mod tests {
             .unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS + 1, c1).unwrap();
         assert_eq!(result1, Some(idx1));
-        assert_eq!(result2, Some(888));
+        assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
         let result1 = tx
             .contract_root_index(BlockNumber::GENESIS + 2, c1)
@@ -964,7 +1129,7 @@ mod tests {
             .unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS + 2, c1).unwrap();
         assert_eq!(result1, Some(idx1));
-        assert_eq!(result2, Some(888));
+        assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
 
         let root2 = contract_root_bytes!(b"root 2");
@@ -982,8 +1147,12 @@ mod tests {
 
         tx.insert_contract_root(BlockNumber::GENESIS + 10, c1, idx2_update)
             .unwrap();
-        tx.insert_contract_root(BlockNumber::GENESIS + 11, c2, RootIndexUpdate::Updated(999))
-            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::GENESIS + 11,
+            c2,
+            RootIndexUpdate::Updated(999.into()),
+        )
+        .unwrap();
         let result1 = tx
             .contract_root_index(BlockNumber::GENESIS + 9, c1)
             .unwrap();
@@ -992,7 +1161,7 @@ mod tests {
             .unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS + 9, c1).unwrap();
         assert_eq!(result1, Some(idx1));
-        assert_eq!(result2, Some(888));
+        assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root1));
         let result1 = tx
             .contract_root_index(BlockNumber::GENESIS + 10, c1)
@@ -1002,13 +1171,13 @@ mod tests {
             .unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS + 10, c1).unwrap();
         assert_eq!(result1, Some(idx2));
-        assert_eq!(result2, Some(888));
+        assert_eq!(result2, Some(888.into()));
         assert_eq!(hash1, Some(root2));
         let result2 = tx
             .contract_root_index(BlockNumber::GENESIS + 11, c2)
             .unwrap();
         let hash1 = tx.contract_root(BlockNumber::GENESIS + 11, c1).unwrap();
-        assert_eq!(result2, Some(999));
+        assert_eq!(result2, Some(999.into()));
         assert_eq!(hash1, Some(root2));
 
         tx.insert_contract_root(BlockNumber::GENESIS + 12, c1, RootIndexUpdate::TrieEmpty)
@@ -1029,10 +1198,10 @@ mod tests {
 
     #[rstest::rstest]
     #[case::binary(StoredNode::Binary {
-        left: 12, right: 34
+        left: TrieStorageIndex(12), right: TrieStorageIndex(34)
     })]
     #[case::edge(StoredNode::Edge {
-        child: 123,
+        child: TrieStorageIndex(123),
         path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1]
     })]
     #[case::binary(StoredNode::LeafBinary)]
@@ -1040,11 +1209,11 @@ mod tests {
         path: bitvec::bitvec![u8, Msb0; 1,0,0,1,0,1,0,0,0,0,0,1,1,1,1]
     })]
     #[case::edge_max_path(StoredNode::Edge {
-        child: 123,
+        child: TrieStorageIndex(123),
         path: bitvec::bitvec![u8, Msb0; 1; 251]
     })]
     #[case::edge_min_path(StoredNode::Edge {
-        child: 123,
+        child: TrieStorageIndex(123),
         path: bitvec::bitvec![u8, Msb0; 0]
     })]
     fn serde(#[case] node: StoredNode) {
@@ -1135,7 +1304,7 @@ mod tests {
                     (felt!("4"), Node::LeafBinary),
                     (felt!("5"), Node::LeafBinary),
                 ],
-                nodes_removed: vec![1],
+                nodes_removed: vec![TrieStorageIndex(1)],
                 root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
@@ -1181,7 +1350,7 @@ mod tests {
         .unwrap();
 
         // At this point, index 1 should still be in the table.
-        assert!(tx.class_trie_node(1).unwrap().is_some());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_some());
 
         tx.insert_class_trie(
             &TrieUpdate {
@@ -1204,7 +1373,7 @@ mod tests {
         .unwrap();
 
         // At this point, index 1 should no longer be in the table.
-        assert!(tx.class_trie_node(1).unwrap().is_none());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_none());
     }
 
     #[test]
@@ -1249,7 +1418,7 @@ mod tests {
                     (felt!("4"), Node::LeafBinary),
                     (felt!("5"), Node::LeafBinary),
                 ],
-                nodes_removed: vec![1],
+                nodes_removed: vec![TrieStorageIndex(1)],
                 root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
@@ -1315,7 +1484,7 @@ mod tests {
         .unwrap();
 
         // Nothing was pruned.
-        assert!(tx.class_trie_node(1).unwrap().is_some());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_some());
 
         // Simulate a configuration change.
         tx.trie_prune_mode = TriePruneMode::Prune { num_blocks_kept: 2 };
@@ -1327,7 +1496,7 @@ mod tests {
         tx.prune_tries().unwrap();
 
         // The class trie was pruned.
-        assert!(tx.class_trie_node(1).unwrap().is_none());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_none());
     }
 
     #[test]
@@ -1399,9 +1568,9 @@ mod tests {
         .unwrap();
 
         // At this point, indices 1, 2, 3 should be in the table.
-        assert!(tx.class_trie_node(1).unwrap().is_some());
-        assert!(tx.class_trie_node(2).unwrap().is_some());
-        assert!(tx.class_trie_node(3).unwrap().is_some());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_some());
+        assert!(tx.class_trie_node(TrieStorageIndex(2)).unwrap().is_some());
+        assert!(tx.class_trie_node(TrieStorageIndex(3)).unwrap().is_some());
 
         tx.insert_class_trie(
             &TrieUpdate {
@@ -1416,7 +1585,7 @@ mod tests {
                     (felt!("4"), Node::LeafBinary),
                     (felt!("5"), Node::LeafBinary),
                 ],
-                nodes_removed: vec![1, 2, 3],
+                nodes_removed: vec![1, 2, 3].into_iter().map(TrieStorageIndex).collect(),
                 root_commitment: Felt::ZERO,
             },
             BlockNumber::GENESIS + 1,
@@ -1443,9 +1612,9 @@ mod tests {
         .unwrap();
 
         // At this point, 1, 2, 3 should no longer be in the table.
-        assert!(tx.class_trie_node(1).unwrap().is_none());
-        assert!(tx.class_trie_node(2).unwrap().is_none());
-        assert!(tx.class_trie_node(3).unwrap().is_none());
+        assert!(tx.class_trie_node(TrieStorageIndex(1)).unwrap().is_none());
+        assert!(tx.class_trie_node(TrieStorageIndex(2)).unwrap().is_none());
+        assert!(tx.class_trie_node(TrieStorageIndex(3)).unwrap().is_none());
     }
 
     #[test]
@@ -1478,7 +1647,7 @@ mod tests {
                 BlockNumber::GENESIS,
             )
             .unwrap();
-        assert_eq!(root_update, RootIndexUpdate::Updated(1));
+        assert_eq!(root_update, RootIndexUpdate::Updated(1.into()));
     }
 
     #[test]
@@ -1491,13 +1660,19 @@ mod tests {
         .unwrap();
         let tx = db.transaction().unwrap();
 
-        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1.into()))
             .unwrap();
-        tx.insert_class_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
-            .unwrap();
+        tx.insert_class_root(
+            BlockNumber::new_or_panic(1),
+            RootIndexUpdate::Updated(2.into()),
+        )
+        .unwrap();
         // no root inserted for block 2
-        tx.insert_class_root(BlockNumber::new_or_panic(3), RootIndexUpdate::Updated(3))
-            .unwrap();
+        tx.insert_class_root(
+            BlockNumber::new_or_panic(3),
+            RootIndexUpdate::Updated(3.into()),
+        )
+        .unwrap();
 
         assert!(!tx.class_root_exists(BlockNumber::GENESIS).unwrap());
         // root at block 1 cannot be deleted because it is still required for
@@ -1516,10 +1691,13 @@ mod tests {
         .unwrap();
         let tx = db.transaction().unwrap();
 
-        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+        tx.insert_class_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1.into()))
             .unwrap();
-        tx.insert_class_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
-            .unwrap();
+        tx.insert_class_root(
+            BlockNumber::new_or_panic(1),
+            RootIndexUpdate::Updated(2.into()),
+        )
+        .unwrap();
 
         assert!(!tx.class_root_exists(BlockNumber::GENESIS).unwrap());
         assert!(tx.class_root_exists(BlockNumber::new_or_panic(1)).unwrap());
@@ -1611,13 +1789,19 @@ mod tests {
         .unwrap();
         let tx = db.transaction().unwrap();
 
-        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1.into()))
             .unwrap();
-        tx.insert_storage_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
-            .unwrap();
+        tx.insert_storage_root(
+            BlockNumber::new_or_panic(1),
+            RootIndexUpdate::Updated(2.into()),
+        )
+        .unwrap();
         // no new root index for block 2
-        tx.insert_storage_root(BlockNumber::new_or_panic(3), RootIndexUpdate::Updated(3))
-            .unwrap();
+        tx.insert_storage_root(
+            BlockNumber::new_or_panic(3),
+            RootIndexUpdate::Updated(3.into()),
+        )
+        .unwrap();
 
         assert!(!tx.storage_root_exists(BlockNumber::GENESIS).unwrap());
         assert!(tx
@@ -1638,10 +1822,13 @@ mod tests {
         .unwrap();
         let tx = db.transaction().unwrap();
 
-        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1))
+        tx.insert_storage_root(BlockNumber::GENESIS, RootIndexUpdate::Updated(1.into()))
             .unwrap();
-        tx.insert_storage_root(BlockNumber::new_or_panic(1), RootIndexUpdate::Updated(2))
-            .unwrap();
+        tx.insert_storage_root(
+            BlockNumber::new_or_panic(1),
+            RootIndexUpdate::Updated(2.into()),
+        )
+        .unwrap();
 
         assert!(!tx.storage_root_exists(BlockNumber::GENESIS).unwrap());
         assert!(tx
@@ -1660,19 +1847,23 @@ mod tests {
         let tx = db.transaction().unwrap();
 
         let contract = contract_address!("0xdeadbeef");
-        tx.insert_contract_root(BlockNumber::GENESIS, contract, RootIndexUpdate::Updated(1))
-            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::GENESIS,
+            contract,
+            RootIndexUpdate::Updated(1.into()),
+        )
+        .unwrap();
         tx.insert_contract_root(
             BlockNumber::new_or_panic(1),
             contract,
-            RootIndexUpdate::Updated(2),
+            RootIndexUpdate::Updated(2.into()),
         )
         .unwrap();
         // no new root for block 2
         tx.insert_contract_root(
             BlockNumber::new_or_panic(3),
             contract,
-            RootIndexUpdate::Updated(3),
+            RootIndexUpdate::Updated(3.into()),
         )
         .unwrap();
 
@@ -1684,12 +1875,12 @@ mod tests {
         assert_eq!(
             tx.contract_root_index(BlockNumber::new_or_panic(2), contract)
                 .unwrap(),
-            Some(2)
+            Some(2.into())
         );
         assert_eq!(
             tx.contract_root_index(BlockNumber::new_or_panic(3), contract)
                 .unwrap(),
-            Some(3)
+            Some(3.into())
         );
     }
 
@@ -1704,12 +1895,16 @@ mod tests {
         let tx = db.transaction().unwrap();
 
         let contract = contract_address!("0xdeadbeef");
-        tx.insert_contract_root(BlockNumber::GENESIS, contract, RootIndexUpdate::Updated(1))
-            .unwrap();
+        tx.insert_contract_root(
+            BlockNumber::GENESIS,
+            contract,
+            RootIndexUpdate::Updated(1.into()),
+        )
+        .unwrap();
         tx.insert_contract_root(
             BlockNumber::new_or_panic(1),
             contract,
-            RootIndexUpdate::Updated(2),
+            RootIndexUpdate::Updated(2.into()),
         )
         .unwrap();
 
@@ -1721,7 +1916,7 @@ mod tests {
         assert_eq!(
             tx.contract_root_index(BlockNumber::new_or_panic(1), contract)
                 .unwrap(),
-            Some(2)
+            Some(2.into())
         );
     }
 }
