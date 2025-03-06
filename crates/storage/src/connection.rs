@@ -74,6 +74,14 @@ impl Connection {
             trie_prune_mode: self.trie_prune_mode,
         })
     }
+
+    pub fn with_retry(self) -> anyhow::Result<Self> {
+        self.connection.busy_handler(Some(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            true
+        }))?;
+        Ok(self)
+    }
 }
 
 pub struct Transaction<'inner> {
