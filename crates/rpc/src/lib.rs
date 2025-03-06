@@ -1110,11 +1110,24 @@ mod tests {
                 });
 
                 stream.send(Message::Text(request.to_string())).await.unwrap();
-                let res = stream.next().await.unwrap().unwrap();
+                let res: Message = stream.next().await.unwrap().unwrap();
                 let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
 
                 if res["error"]["code"] == method_not_found {
                     failures.push(method);
+                }
+
+                if !res["result"].is_null() {
+                    let unsubscribe_request = json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_unsubscribe",
+                        "params": {
+                            "subscription_id": res["result"]
+                        },
+                        "id": 0,
+                    });
+                    stream.send(Message::Text(unsubscribe_request.to_string())).await.unwrap();
+                    let _unsubscribe_res: Message = stream.next().await.unwrap().unwrap();
                 }
             }
 
