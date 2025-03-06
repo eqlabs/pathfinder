@@ -492,9 +492,7 @@ fn map_gateway_function_invocation(
             l1_gas: gas_consumed.l1_gas,
             l2_gas: gas_consumed.l2_gas.unwrap_or_default(),
         },
-        // Pre-0.13.4 failures in individual calls are not possible -- the whole TX is reverted in
-        // that case.
-        is_reverted: false,
+        is_reverted: invocation.failed,
     })
 }
 

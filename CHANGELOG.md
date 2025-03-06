@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_estimateFee` returns an internal error for v3 transactions with L2 gas `max_price_per_unit` set to zero.
 - `starknet_getCompiledCasm` returns CASM wrapped in a `casm` property.
+- `starknet_traceBlockTransactions` fails on Starknet 0.13.4 when a fallback to fetching from the feeder gateway is required.
 
 ## [0.16.1] - 2025-02-24
 
