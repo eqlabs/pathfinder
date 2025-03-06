@@ -1284,11 +1284,6 @@ pub mod request {
 
     #[cfg(test)]
     mod tests {
-        macro_rules! fixture {
-            ($file_name:literal) => {
-                include_str!(concat!("../fixtures/0.6.0/", $file_name)).replace(&[' ', '\n'], "")
-            };
-        }
 
         /// The aim of these tests is to check if deserialization works
         /// correctly **without resorting to serialization to prepare
@@ -1535,8 +1530,10 @@ pub mod request {
                     )),
                 ];
 
+                let json_fixture_str =
+                    include_str!(concat!("../fixtures/0.6.0/broadcasted_transactions.json"));
                 let json_fixture: serde_json::Value =
-                    serde_json::from_str(&fixture!("broadcasted_transactions.json")).unwrap();
+                    serde_json::from_str(json_fixture_str).unwrap();
 
                 let serializer = crate::dto::Serializer::new(crate::RpcVersion::V07);
                 let serialized = serializer
