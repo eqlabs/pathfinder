@@ -84,6 +84,7 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
 
     use super::*;
+    use crate::RpcVersion;
 
     mod parsing {
         use serde_json::json;
@@ -248,5 +249,83 @@ mod tests {
         };
         let result = get_class_hash_at(context, input).await;
         assert_matches!(result, Err(Error::ContractNotFound));
+    }
+    use crate::dto::{SerializeForVersion, Serializer};
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn json_rpc_latest(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Latest,
+            contract_address: contract_address_bytes!(b"contract 0"),
+        };
+
+        let output = get_class_hash_at(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "class_hash/latest.json");
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn json_rpc_pending(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pending().await;
+        let input = Input {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"pending contract 0 address"),
+        };
+
+        let output = get_class_hash_at(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "class_hash/pending.json");
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn json_rpc_at_block(#[case] version: RpcVersion) {
+        use pathfinder_common::BlockNumber;
+
+        let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockNumber::new_or_panic(1).into(),
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
+
+        let output = get_class_hash_at(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "class_hash/at_block.json");
+    }
+
+    #[tokio::test]
+    async fn error_contract_not_found() {
+        let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Latest,
+            contract_address: contract_address_bytes!(b"invalid"),
+        };
+
+        let error = get_class_hash_at(context, input).await.unwrap_err();
+        assert_matches!(error, Error::ContractNotFound);
     }
 }
