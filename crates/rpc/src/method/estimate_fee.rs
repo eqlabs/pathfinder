@@ -203,6 +203,7 @@ mod tests {
     use pretty_assertions_sorted::assert_eq;
 
     use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
@@ -214,6 +215,7 @@ mod tests {
         BroadcastedTransaction,
     };
     use crate::types::{ContractClass, SierraContractClass};
+    use crate::RpcVersion;
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
@@ -359,8 +361,12 @@ mod tests {
         ))
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 1, 0,
@@ -391,71 +397,21 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
-            l1_gas_consumed: 23817.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 192.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 24201.into(),
-            unit: PriceUnit::Wei,
-        };
-        let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 18.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 224.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 466.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_expected = FeeEstimate {
-            l1_gas_consumed: 14.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 270.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v0_expected = FeeEstimate {
-            l1_gas_consumed: 10.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 266.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v3_expected = FeeEstimate {
-            l1_gas_consumed: 14.into(),
-            // STRK gas price is 2
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 284.into(),
-            unit: PriceUnit::Fri,
-        };
-        assert_eq!(
-            result,
-            Output(vec![
-                declare_expected,
-                deploy_expected,
-                invoke_expected,
-                invoke_v0_expected,
-                invoke_v3_expected,
-            ])
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_13_1.json"
         );
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1_1() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_1_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 1, 1,
@@ -486,71 +442,21 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
-            l1_gas_consumed: 878.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 192.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 1262.into(),
-            unit: PriceUnit::Wei,
-        };
-        let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 19.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 224.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 467.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_expected = FeeEstimate {
-            l1_gas_consumed: 14.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 270.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v0_expected = FeeEstimate {
-            l1_gas_consumed: 10.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 266.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v3_expected = FeeEstimate {
-            l1_gas_consumed: 14.into(),
-            // STRK gas price is 2
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 284.into(),
-            unit: PriceUnit::Fri,
-        };
-        assert_eq!(
-            result,
-            Output(vec![
-                declare_expected,
-                deploy_expected,
-                invoke_expected,
-                invoke_v0_expected,
-                invoke_v3_expected,
-            ])
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_13_1_1.json"
         );
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 2, 0,
@@ -581,71 +487,21 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = super::estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
-            l1_gas_consumed: 23819.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 192.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 24203.into(),
-            unit: PriceUnit::Wei,
-        };
-        let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 22.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 224.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 470.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 272.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v0_expected = FeeEstimate {
-            l1_gas_consumed: 11.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 267.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v3_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
-            // STRK gas price is 2
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 288.into(),
-            unit: PriceUnit::Fri,
-        };
-        assert_eq!(
-            result,
-            Output(vec![
-                declare_expected,
-                deploy_expected,
-                invoke_expected,
-                invoke_v0_expected,
-                invoke_v3_expected,
-            ])
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_13_2.json"
         );
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2_1() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_2_1(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 2, 1,
@@ -676,66 +532,12 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = super::estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
-            l1_gas_consumed: 880.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 192.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 1264.into(),
-            unit: PriceUnit::Wei,
-        };
-        let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 22.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 224.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 470.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 272.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v0_expected = FeeEstimate {
-            l1_gas_consumed: 11.into(),
-            l1_gas_price: 1.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 267.into(),
-            unit: PriceUnit::Wei,
-        };
-        let invoke_v3_expected = FeeEstimate {
-            l1_gas_consumed: 16.into(),
-            // STRK gas price is 2
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 288.into(),
-            unit: PriceUnit::Fri,
-        };
-        assert_eq!(
-            result,
-            Output(vec![
-                declare_expected,
-                deploy_expected,
-                invoke_expected,
-                invoke_v0_expected,
-                invoke_v3_expected,
-            ])
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_13_2_1.json"
         );
     }
 
@@ -864,8 +666,12 @@ mod tests {
         ))
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4(#[case] version: RpcVersion) {
         let (context, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_context_with_starknet_version(StarknetVersion::new(
                 0, 13, 4, 0,
@@ -902,44 +708,12 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
         let result = super::estimate_fee(context, input).await.unwrap();
-        let declare_expected = FeeEstimate {
-            l1_gas_consumed: 1736.into(),
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 192.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 3856.into(),
-            unit: PriceUnit::Fri,
-        };
-        let deploy_expected = FeeEstimate {
-            l1_gas_consumed: 22.into(),
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 224.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 492.into(),
-            unit: PriceUnit::Fri,
-        };
-        let invoke_expected = FeeEstimate {
-            l1_gas_consumed: 0.into(),
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 778635.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 778891.into(),
-            unit: PriceUnit::Fri,
-        };
-        self::assert_eq!(
-            result,
-            Output(vec![
-                declare_expected,
-                deploy_expected,
-                invoke_expected,
-                invoke_expected,
-            ])
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "fee_estimates/declare_deploy_invoke_sierra_0_13_4.json"
         );
     }
 
