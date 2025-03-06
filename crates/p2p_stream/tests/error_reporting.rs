@@ -195,7 +195,7 @@ async fn report_outbound_timeout_on_read_response_timeout() {
         let (peer, req_id_done, error) = wait_inbound_failure(&mut swarm1).await.unwrap();
         assert_eq!(peer, peer2_id);
         assert_eq!(req_id_done, req_id);
-        assert!(matches!(error, InboundFailure::Timeout));
+        assert!(matches!(error, InboundFailure::ConnectionClosed));
     };
 
     let client_task = async move {

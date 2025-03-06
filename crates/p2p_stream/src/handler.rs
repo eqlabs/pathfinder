@@ -249,6 +249,12 @@ where
                             )))
                             .await
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        return Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            format!(
+                                "Timeout reading response from stream for request id {request_id}"
+                            ),
+                        ));
                     }
                     Ok(Ok(response)) => {
                         rs_send
