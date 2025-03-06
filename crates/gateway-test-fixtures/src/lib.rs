@@ -86,6 +86,11 @@ pub mod v0_13_4 {
         pub const SEPOLIA_INTEGRATION_63881: &str =
             str_fixture!("0.13.4/state_update/sepolia_integration_63881.json");
     }
+
+    pub mod traces {
+        pub const SEPOLIA_TESTNET_30000: &str =
+            str_fixture!("0.13.4/traces/sepolia_testnet_30000.json");
+    }
 }
 
 pub mod add_transaction {
