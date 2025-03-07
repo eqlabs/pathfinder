@@ -111,6 +111,8 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
 
     use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
 
     mod parsing {
         use dto::DeserializeForVersion;
@@ -151,224 +153,69 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn pending() {
+    async fn cairo_0(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Latest,
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
 
-        // Cairo class v0.x
-        let valid_v0 = contract_address_bytes!(b"contract 0");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Pending,
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap();
+        let output = get_class_at(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
 
-        // Cairo class v1.x
-        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Pending,
-                contract_address: valid_v1,
-            },
-        )
-        .await
-        .unwrap();
+        crate::assert_json_matches_fixture!(output, version, "class_at/cairo0.json");
+    }
 
-        let invalid = contract_address_bytes!(b"invalid");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Pending,
-                contract_address: invalid,
-            },
-        )
-        .await
-        .unwrap_err();
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn cairo_1(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Latest,
+            contract_address: contract_address_bytes!(b"contract 2 (sierra)"),
+        };
+
+        let output = get_class_at(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "class_at/sierra.json");
+    }
+
+    #[tokio::test]
+    async fn contract_not_found() {
+        let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Latest,
+            contract_address: contract_address_bytes!(b"invalid"),
+        };
+
+        let error = get_class_at(context, input).await.unwrap_err();
         assert_matches!(error, Error::ContractNotFound);
     }
 
     #[tokio::test]
-    async fn latest() {
+    async fn block_not_found() {
         let context = RpcContext::for_tests();
+        let input = Input {
+            block_id: BlockId::Hash(block_hash_bytes!(b"invalid")),
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
 
-        // Cairo class v0.x
-        let valid_v0 = contract_address_bytes!(b"contract 0");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Latest,
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap();
-
-        // Cairo class v1.x
-        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Latest,
-                contract_address: valid_v1,
-            },
-        )
-        .await
-        .unwrap();
-
-        let invalid = contract_address_bytes!(b"invalid");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Latest,
-                contract_address: invalid,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::ContractNotFound);
-    }
-
-    #[tokio::test]
-    async fn number() {
-        use pathfinder_common::BlockNumber;
-
-        let context = RpcContext::for_tests();
-
-        // Cairo v0.x class
-        // This contract is declared in block 1.
-        let valid_v0 = contract_address_bytes!(b"contract 1");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap();
-
-        // Cairo v1.x class (sierra)
-        // This contract is declared in block 2.
-        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
-                contract_address: valid_v1,
-            },
-        )
-        .await
-        .unwrap();
-
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Number(BlockNumber::GENESIS),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::ContractNotFound);
-
-        let invalid = contract_address_bytes!(b"invalid");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
-                contract_address: invalid,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::ContractNotFound);
-
-        // Class exists, but block number does not.
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Number(BlockNumber::MAX),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::BlockNotFound);
-    }
-
-    #[tokio::test]
-    async fn hash() {
-        let context = RpcContext::for_tests();
-
-        // Cairo v0.x class
-        // This class is declared in block 1.
-        let valid_v0 = contract_address_bytes!(b"contract 1");
-        let block1_hash = block_hash_bytes!(b"block 1");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Hash(block1_hash),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap();
-
-        // Cairo v1.x class (sierra)
-        // This class is declared in block 2.
-        let valid_v1 = contract_address_bytes!(b"contract 2 (sierra)");
-        let block2_hash = block_hash_bytes!(b"latest");
-        super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Hash(block2_hash),
-                contract_address: valid_v1,
-            },
-        )
-        .await
-        .unwrap();
-
-        let block0_hash = block_hash_bytes!(b"genesis");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Hash(block0_hash),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::ContractNotFound);
-
-        let invalid = contract_address_bytes!(b"invalid");
-        let latest_hash = block_hash_bytes!(b"latest");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Hash(latest_hash),
-                contract_address: invalid,
-            },
-        )
-        .await
-        .unwrap_err();
-        assert_matches!(error, Error::ContractNotFound);
-
-        // Class exists, but block hash does not.
-        let invalid_block = block_hash_bytes!(b"invalid");
-        let error = super::get_class_at(
-            context.clone(),
-            Input {
-                block_id: BlockId::Hash(invalid_block),
-                contract_address: valid_v0,
-            },
-        )
-        .await
-        .unwrap_err();
+        let error = get_class_at(context, input).await.unwrap_err();
         assert_matches!(error, Error::BlockNotFound);
     }
 }
