@@ -1032,6 +1032,7 @@ mod tests {
             .unwrap();
 
         let method_not_found = json!(-32601);
+        let invalid_params = json!(-32602);
 
         if api.has_http() {
             let url = format!("http://{addr}{route}");
@@ -1043,6 +1044,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": method,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 let res: serde_json::Value = client
@@ -1058,6 +1062,7 @@ mod tests {
                 if res["error"]["code"] == method_not_found {
                     failures.push(method);
                 }
+                assert_eq!(res["error"]["code"], invalid_params);
             }
 
             if !failures.is_empty() {
@@ -1071,6 +1076,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": excluded,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 let res: serde_json::Value = client
@@ -1107,6 +1115,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": method,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 stream.send(Message::Text(request.to_string())).await.unwrap();
@@ -1116,19 +1127,7 @@ mod tests {
                 if res["error"]["code"] == method_not_found {
                     failures.push(method);
                 }
-
-                if !res["result"].is_null() {
-                    let unsubscribe_request = json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_unsubscribe",
-                        "params": {
-                            "subscription_id": res["result"]
-                        },
-                        "id": 0,
-                    });
-                    stream.send(Message::Text(unsubscribe_request.to_string())).await.unwrap();
-                    let _unsubscribe_res: Message = stream.next().await.unwrap().unwrap();
-                }
+                assert_eq!(res["error"]["code"], invalid_params);
             }
 
             if !failures.is_empty() {
@@ -1142,6 +1141,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": excluded,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 stream.send(Message::Text(request.to_string())).await.unwrap();
