@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
-use pathfinder_executor::{TraceCache, VersionedConstantsMap};
+use pathfinder_executor::{TraceCache, VersionedConstantsMap, NativeClassCache};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use util::percentage::Percentage;
@@ -85,6 +85,7 @@ pub struct RpcContext {
     pub notifications: Notifications,
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
+    pub native_class_cache: Arc<NativeClassCache>,
 }
 
 impl RpcContext {
@@ -102,6 +103,7 @@ impl RpcContext {
         config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
+        let native_class_cache = Arc::new(NativeClassCache::spawn());
         Self {
             cache: Default::default(),
             storage,
@@ -115,6 +117,7 @@ impl RpcContext {
             notifications,
             ethereum,
             config,
+            native_class_cache,
         }
     }
 

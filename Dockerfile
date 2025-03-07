@@ -46,10 +46,13 @@ RUN TARGETARCH=${TARGETARCH} \
 FROM debian:bookworm-slim AS runner
 ARG TARGETARCH
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates libzstd1 libgmp10 tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates tini binutils && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 1000 pathfinder && useradd --no-log-init --uid 1000 --gid pathfinder --no-create-home pathfinder
 
 COPY --from=rust-builder /usr/src/pathfinder/pathfinder-${TARGETARCH} /usr/local/bin/pathfinder
+
+# Hack to enable `ld` link with glibc without the libc6-dev package being installed
+RUN ln -s /lib/x86_64-linux-gnu/libc.so.6 /lib/x86_64-linux-gnu/libc.so
 
 # Create directory and volume for persistent data
 RUN install --owner 1000 --group 1000 --mode 0755 -d /usr/share/pathfinder/data
