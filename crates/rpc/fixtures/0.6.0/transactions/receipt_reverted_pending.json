@@ -1,0 +1,16 @@
+{
+  "actual_fee": {
+    "amount": "0x0",
+    "unit": "WEI"
+  },
+  "events": [],
+  "execution_resources": {
+    "steps": 0
+  },
+  "execution_status": "REVERTED",
+  "finality_status": "ACCEPTED_ON_L2",
+  "messages_sent": [],
+  "revert_reason": "Reverted!",
+  "transaction_hash": "0x70656e64696e67207265766572746564",
+  "type": "INVOKE"
+}
