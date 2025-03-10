@@ -779,33 +779,19 @@ pub(crate) mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_transactions(#[case] rpc_version: RpcVersion) -> anyhow::Result<()> {
-        let (context, next_block_header, traces) = setup_multi_tx_trace_test().await?;
+    async fn test_multiple_transactions(#[case] version: RpcVersion) -> anyhow::Result<()> {
+        let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
         };
-        let output = trace_block_transactions(context, input).await.unwrap();
-        let expected = TraceBlockTransactionsOutput {
-            traces: traces
-                .into_iter()
-                .map(|t| (t.transaction_hash, t.trace_root))
-                .collect(),
-            include_state_diffs: true,
-        };
+        let output = trace_block_transactions(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
 
-        pretty_assertions_sorted::assert_eq!(
-            output
-                .serialize(Serializer {
-                    version: rpc_version,
-                })
-                .unwrap(),
-            expected
-                .serialize(Serializer {
-                    version: rpc_version,
-                })
-                .unwrap(),
-        );
+        crate::assert_json_matches_fixture!(output, version, "traces/multiple_txs.json");
 
         Ok(())
     }
@@ -983,36 +969,20 @@ pub(crate) mod tests {
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_multiple_pending_transactions(
-        #[case] rpc_version: RpcVersion,
-    ) -> anyhow::Result<()> {
-        let (context, traces) = setup_multi_tx_trace_pending_test().await?;
+    async fn test_multiple_pending_transactions(#[case] version: RpcVersion) -> anyhow::Result<()> {
+        let (context, next_block_header, _) = setup_multi_tx_trace_test().await?;
 
         let input = TraceBlockTransactionsInput {
-            block_id: BlockId::Pending,
-        };
-        let output = trace_block_transactions(context, input).await.unwrap();
-
-        let expected = TraceBlockTransactionsOutput {
-            traces: traces
-                .into_iter()
-                .map(|t| (t.transaction_hash, t.trace_root))
-                .collect(),
-            include_state_diffs: true,
+            block_id: next_block_header.hash.into(),
         };
 
-        pretty_assertions_sorted::assert_eq!(
-            output
-                .serialize(Serializer {
-                    version: rpc_version,
-                })
-                .unwrap(),
-            expected
-                .serialize(Serializer {
-                    version: rpc_version,
-                })
-                .unwrap(),
-        );
+        let output = trace_block_transactions(context, input)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "traces/multiple_pending_txs.json");
 
         Ok(())
     }
