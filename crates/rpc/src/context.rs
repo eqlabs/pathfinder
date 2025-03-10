@@ -121,6 +121,38 @@ impl RpcContext {
         }
     }
 
+    pub fn with_storage(self, storage: Storage) -> Self {
+        Self {
+            storage: storage.clone(),
+            execution_storage: storage,
+            ..self
+        }
+    }
+
+    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<PendingData>) -> Self {
+        let pending_data = PendingWatcher::new(pending_data);
+        Self {
+            pending_data,
+            ..self
+        }
+    }
+
+
+    pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
+        Self {
+            websocket: Some(websockets),
+            ..self
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_notifications(self, notifications: Notifications) -> Self {
+        Self {
+            notifications,
+            ..self
+        }
+    }
+
     #[cfg(test)]
     pub fn for_tests() -> Self {
         Self::for_tests_on(pathfinder_common::Chain::SepoliaTestnet)
@@ -137,7 +169,7 @@ impl RpcContext {
     }
 
     #[cfg(test)]
-    pub fn for_tests_impl(
+    fn for_tests_impl(
         chain: pathfinder_common::Chain,
         trie_prune_mode: pathfinder_storage::TriePruneMode,
     ) -> Self {
@@ -193,21 +225,6 @@ impl RpcContext {
         )
     }
 
-    pub fn with_storage(self, storage: Storage) -> Self {
-        Self {
-            storage: storage.clone(),
-            execution_storage: storage,
-            ..self
-        }
-    }
-
-    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<PendingData>) -> Self {
-        let pending_data = PendingWatcher::new(pending_data);
-        Self {
-            pending_data,
-            ..self
-        }
-    }
 
     #[cfg(test)]
     pub async fn for_tests_with_pending() -> Self {
@@ -222,10 +239,4 @@ impl RpcContext {
         context.with_pending_data(rx)
     }
 
-    pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
-        Self {
-            websocket: Some(websockets),
-            ..self
-        }
-    }
 }
