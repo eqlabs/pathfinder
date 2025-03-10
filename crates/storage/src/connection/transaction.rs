@@ -366,6 +366,35 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
+    pub fn delete_transactions_before(&self, block_number: BlockNumber) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            r"
+            DELETE FROM transactions
+            WHERE block_number < ?
+            ",
+        )?;
+        stmt.execute(params![&block_number])
+            .context("Deleting old transactions")?;
+
+        Ok(())
+    }
+
+    pub fn delete_transaction_hashes_before(
+        &self,
+        block_number: BlockNumber,
+    ) -> anyhow::Result<()> {
+        let mut stmt = self.inner().prepare_cached(
+            r"
+            DELETE FROM transaction_hashes
+            WHERE block_number < ?
+            ",
+        )?;
+        stmt.execute(params![&block_number])
+            .context("Deleting old transaction hashes")?;
+
+        Ok(())
+    }
+
     fn query_transactions_by_block(
         &self,
         block_number: BlockNumber,
@@ -3303,6 +3332,39 @@ mod tests {
         let invalid = tx
             .transaction_block_hash(transaction_hash_bytes!(b"invalid hash"))
             .unwrap();
+        assert_eq!(invalid, None);
+    }
+
+    #[test]
+    fn delete_transactions_before() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let target = body.first().unwrap().0.hash;
+        let result = tx.transaction(target).unwrap().unwrap();
+        assert_eq!(result, body.first().unwrap().0);
+
+        // Add 1 because transactions belong to `header`.
+        tx.delete_transactions_before(header.number + 1).unwrap();
+
+        let invalid = tx.transaction(target).unwrap();
+        assert_eq!(invalid, None);
+    }
+
+    #[test]
+    fn delete_transaction_hashes_before() {
+        let (mut db, header, body) = setup();
+        let tx = db.transaction().unwrap();
+
+        let target = body.first().unwrap().0.hash;
+        let result = tx.transaction(target).unwrap().unwrap();
+        assert_eq!(result, body.first().unwrap().0);
+
+        // Add 1 because transactions belong to `header`.
+        tx.delete_transaction_hashes_before(header.number + 1)
+            .unwrap();
+
+        let invalid = tx.transaction(target).unwrap();
         assert_eq!(invalid, None);
     }
 }
