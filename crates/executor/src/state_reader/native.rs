@@ -1,8 +1,8 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use blockifier::execution::native::contract_class::NativeCompiledClassV1;
 use blockifier::state::errors::StateError;
+use cached::{Cached, SizedCache};
 use cairo_native::executor::AotContractExecutor;
 use cairo_vm::types::errors::program_errors::ProgramError;
 use pathfinder_common::ClassHash;
@@ -20,7 +20,7 @@ enum CacheItem {
     CompilationPending,
 }
 
-type Cache = Mutex<HashMap<ClassHash, CacheItem>>;
+type Cache = Mutex<SizedCache<ClassHash, CacheItem>>;
 
 pub struct NativeClassCache {
     cache: Arc<Cache>,
@@ -28,10 +28,10 @@ pub struct NativeClassCache {
 }
 
 impl NativeClassCache {
-    pub fn spawn() -> Self {
+    pub fn spawn(cache_size: usize) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let cache = Arc::new(Mutex::new(HashMap::new()));
+        let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size)));
 
         std::thread::spawn({
             let cache = Arc::clone(&cache);
@@ -53,7 +53,7 @@ impl NativeClassCache {
     ) -> Option<NativeCompiledClassV1> {
         let mut locked = self.cache.lock().unwrap();
 
-        match locked.get(&class_hash) {
+        match locked.cache_get(&class_hash) {
             Some(CacheItem::CompiledClass(cached_class)) => {
                 tracing::trace!(%class_hash, "Native class cache hit");
                 Some(cached_class.clone())
@@ -64,7 +64,7 @@ impl NativeClassCache {
             }
             None => {
                 tracing::trace!(%class_hash, "Native class cache miss (compiling)");
-                locked.insert(class_hash, CacheItem::CompilationPending);
+                locked.cache_set(class_hash, CacheItem::CompilationPending);
                 let _ = self.compiler_tx.send(CompilerInput {
                     class_hash,
                     sierra_version,
@@ -92,7 +92,7 @@ fn compiler_thread(cache: Arc<Cache>, rx: std::sync::mpsc::Receiver<CompilerInpu
                 cache
                     .lock()
                     .unwrap()
-                    .insert(class_hash, CacheItem::CompiledClass(compiled_class));
+                    .cache_set(class_hash, CacheItem::CompiledClass(compiled_class));
             }
             Err(error) => {
                 tracing::error!(elapsed=?started_at.elapsed(), %error, "Error compiling native class");
