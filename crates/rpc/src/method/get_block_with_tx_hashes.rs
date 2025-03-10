@@ -131,3 +131,54 @@ impl crate::dto::SerializeForVersion for Output {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn pending(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let input = Input {
+            block_id: BlockId::Pending,
+        };
+
+        let output = get_block_with_tx_hashes(context, input).await.unwrap();
+        let output_json = output.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "blocks/pending_with_tx_hashes.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn latest(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pending().await;
+
+        let input = Input {
+            block_id: BlockId::Latest,
+        };
+
+        let output = get_block_with_tx_hashes(context, input).await.unwrap();
+        let output_json = output.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "blocks/latest_with_tx_hashes.json"
+        );
+    }
+}

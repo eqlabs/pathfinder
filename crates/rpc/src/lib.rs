@@ -287,6 +287,40 @@ pub mod test_utils {
 
     use crate::pending::PendingData;
 
+    #[macro_export]
+    macro_rules! fixture {
+        ($version:expr, $file_name:literal) => {{
+            match $version {
+                $crate::RpcVersion::V06 => {
+                    include_str!(concat!("../../fixtures/0.6.0/", $file_name))
+                }
+                $crate::RpcVersion::V07 => {
+                    include_str!(concat!("../../fixtures/0.7.0/", $file_name))
+                }
+                $crate::RpcVersion::V08 => {
+                    include_str!(concat!("../../fixtures/0.8.0/", $file_name))
+                }
+                _ => unreachable!(),
+            }
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! assert_json_matches_fixture {
+        ($output_json:expr, $version:expr, $file_name:literal) => {{
+            let expected_str = $crate::fixture!($version, $file_name);
+            let expected_json: serde_json::Value =
+                serde_json::from_str(expected_str).expect("Failed to parse fixture as JSON");
+
+            pretty_assertions_sorted::assert_eq!(
+                $output_json,
+                expected_json,
+                "\nExpected fixture content from {}\nGot output",
+                $file_name
+            );
+        }};
+    }
+
     // Creates storage for tests
     pub fn setup_storage(trie_prune_mode: pathfinder_storage::TriePruneMode) -> Storage {
         use pathfinder_merkle_tree::contract_state::update_contract_state;
