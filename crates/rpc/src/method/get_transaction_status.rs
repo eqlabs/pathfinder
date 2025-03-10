@@ -232,11 +232,11 @@ mod tests {
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
-        crate::assert_json_matches_fixture!(
-            output_json,
-            version,
-            "transactions/status_l2_accepted.json"
-        );
+        let expected_status = include_str!("../../fixtures/status/l2_accepted.json");
+        let expected_json: serde_json::Value =
+            serde_json::from_str(expected_status).expect("Failed to parse fixture as JSON");
+
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
     }
 
     #[rstest::rstest]
@@ -254,11 +254,11 @@ mod tests {
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
-        crate::assert_json_matches_fixture!(
-            output_json,
-            version,
-            "transactions/status_pending.json"
-        );
+        let expected_status = include_str!("../../fixtures/status/pending.json");
+        let expected_json: serde_json::Value =
+            serde_json::from_str(expected_status).expect("Failed to parse fixture as JSON");
+
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
     }
 
     #[tokio::test]
