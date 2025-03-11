@@ -117,7 +117,10 @@
             "validate_block_number_rounding": 100,
             "validate_timestamp_rounding": 3600
         },
-        "validated": "VALID"
+        "validated": "VALID",
+        "v1_bound_accounts_cairo0": [],
+        "v1_bound_accounts_cairo1": [],
+        "v1_bound_accounts_max_tip": "0x0"
     },
     "os_resources": {
         "execute_syscalls": {
