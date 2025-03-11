@@ -165,24 +165,20 @@ impl EthereumApi for EthereumClient {
                     Ok(Some(finalized_block)) => {
                         let block_number =
                             L1BlockNumber::new_or_panic(finalized_block.header.number);
-                        let _ = finalized_block_tx.send(block_number).await.unwrap();
+                        if finalized_block_tx.send(block_number).await.is_err() {
+                            tracing::debug!("L1 finalized block channel closed");
+                            return;
+                        }
                     }
                     Ok(None) => {
                         tracing::error!("No L1 finalized block found");
                     }
                     Err(e) => {
                         tracing::error!(error=%e, "Error fetching L1 finalized block");
+                        return;
                     }
                 }
             }
-            // This it to mitigate the warning: "this function depends on never type
-            // fallback being `()`" as we are unable to implement
-            // [`util::task::FutureOutputExt`] for the never type `!`. Consequently, when
-            // this warning becomes a hard error we should keep this workaround or by then
-            // the `!` type will not be experimental anymore.
-            // Warning related issue: https://github.com/rust-lang/rust/issues/123748
-            #[allow(unreachable_code)]
-            ()
         });
 
         // Process incoming events
@@ -219,18 +215,26 @@ impl EthereumApi for EthereumClient {
                         }
                     }
                 }
-                Some(block_number) = finalized_block_rx.recv() => {
-                    tracing::trace!(%block_number, "Processing L1 finalized block");
-                    // Collect all state updates up to (and including) the finalized block
-                    let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
-                        .range(..=block_number)
-                        .map(|(_, &update)| update)
-                        .collect();
-                    // Remove emitted updates from the map
-                    self.pending_state_updates.retain(|&k, _| k > block_number);
-                    // Emit the state updates
-                    for state_update in pending_state_updates {
-                        let _ = callback(state_update).await;
+                maybe_block_number = finalized_block_rx.recv() => {
+                    match maybe_block_number {
+                        Some(block_number) => {
+                            tracing::trace!(%block_number, "Processing L1 finalized block");
+                            // Collect all state updates up to (and including) the finalized block
+                            let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
+                                .range(..=block_number)
+                                .map(|(_, &update)| update)
+                                .collect();
+                            // Remove emitted updates from the map
+                            self.pending_state_updates.retain(|&k, _| k > block_number);
+                            // Emit the state updates
+                            for state_update in pending_state_updates {
+                                let _ = callback(state_update).await;
+                            }
+                        }
+                        None => {
+                            tracing::debug!("L1 finalized block channel closed");
+                            return Err(anyhow::anyhow!("L1 finalized block channel closed"));
+                        }
                     }
                 }
             }
