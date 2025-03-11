@@ -26,6 +26,7 @@ use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};
 use starknet::StarknetCoreContract;
 use tokio::select;
+use tokio::time::MissedTickBehavior;
 
 use crate::utils::*;
 
@@ -154,6 +155,7 @@ impl EthereumApi for EthereumClient {
 
         util::task::spawn(async move {
             let mut interval = tokio::time::interval(poll_interval);
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
             loop {
                 interval.tick().await;
 
