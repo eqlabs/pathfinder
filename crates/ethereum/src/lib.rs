@@ -163,8 +163,16 @@ impl EthereumApi for EthereumClient {
                     .get_block_by_number(BlockNumberOrTag::Finalized)
                     .await
                 {
-                    let block_number = L1BlockNumber::new_or_panic(finalized_block.header.number);
-                    let _ = finalized_block_tx.send(block_number).await.unwrap();
+                    Ok(Some(finalized_block)) => {
+                        let block_number = L1BlockNumber::new_or_panic(finalized_block.header.number);
+                        let _ = finalized_block_tx.send(block_number).await.unwrap();
+                    }
+                    Ok(None) => {
+                        tracing::error!("No L1 finalized block found");
+                    }
+                    Err(e) => {
+                        tracing::error!(error=%e, "Error fetching L1 finalized block");
+                    }
                 }
             }
             // This it to mitigate the warning: "this function depends on never type
@@ -203,6 +211,7 @@ impl EthereumApi for EthereumClient {
                     }
                 }
                 Some(block_number) = finalized_block_rx.recv() => {
+                    tracing::debug!(%block_number, "Processing L1 finalized block");
                     // Collect all state updates up to (and including) the finalized block
                     let pending_state_updates: Vec<EthereumStateUpdate> = self.pending_state_updates
                         .range(..=block_number)
