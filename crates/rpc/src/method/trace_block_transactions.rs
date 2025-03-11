@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use pathfinder_common::BlockId;
 use pathfinder_executor::types::InnerCallExecutionResources;
@@ -118,7 +116,7 @@ pub async fn trace_block_transactions(
             context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
-            Arc::clone(&context.native_class_cache),
+            context.native_class_cache,
         );
         let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
             Ok(traces) => traces,

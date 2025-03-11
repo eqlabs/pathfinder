@@ -180,12 +180,20 @@ Examples:
     #[clap(flatten)]
     debug: DebugCli,
 
-    #[clap(flatten)]
-    websocket: WebsocketConfig,
-
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
     debug: (),
+
+    #[cfg(feature = "cairo-native")]
+    #[clap(flatten)]
+    native_execution: NativeExecutionCli,
+
+    #[cfg(not(feature = "cairo-native"))]
+    #[clap(skip)]
+    native_execution: (),
+
+    #[clap(flatten)]
+    websocket: WebsocketConfig,
 
     #[arg(
         long = "sync.verify_tree_node_data",
@@ -629,6 +637,28 @@ struct DebugCli {
     restart_delay: u64,
 }
 
+#[cfg(feature = "cairo-native")]
+#[derive(clap::Args)]
+struct NativeExecutionCli {
+    #[arg(
+        long = "rpc.native-execution",
+        long_help = "Enable Cairo native execution for RPC calls.",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_RPC_NATIVE_EXECUTION"
+    )]
+    is_enabled: bool,
+
+    #[arg(
+        long = "rpc.native-execution-class-cache-size",
+        long_help = "Number of Native classes to cache temporarily on disk.",
+        action = clap::ArgAction::Set,
+        default_value = "512",
+        env = "PATHFINDER_RPC_NATIVE_EXECUTION_CLASS_CACHE_SIZE"
+    )]
+    class_cache_size: NonZeroUsize,
+}
+
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 enum Network {
@@ -817,6 +847,7 @@ pub struct Config {
     pub fetch_casm_from_fgw: bool,
     pub shutdown_grace_period: Duration,
     pub fee_estimation_epsilon: Percentage,
+    pub native_execution: NativeExecutionConfig,
 }
 
 pub struct Ethereum {
@@ -865,6 +896,17 @@ pub struct DebugConfig {
     pub pretty_log: bool,
     pub restart_delay: Duration,
 }
+
+#[cfg(feature = "cairo-native")]
+#[derive(Clone)]
+pub struct NativeExecutionConfig {
+    enabled: bool,
+    class_cache_size: NonZeroUsize,
+}
+
+#[cfg(not(feature = "cairo-native"))]
+#[derive(Clone)]
+pub struct NativeExecutionConfig;
 
 impl NetworkConfig {
     fn from_components(args: NetworkCli) -> Option<Self> {
@@ -1065,6 +1107,39 @@ impl DebugConfig {
     }
 }
 
+#[cfg(not(feature = "cairo-native"))]
+impl NativeExecutionConfig {
+    fn parse(_: ()) -> Self {
+        Self
+    }
+
+    pub(super) fn is_enabled(&self) -> bool {
+        false
+    }
+
+    pub(super) fn class_cache_size(&self) -> NonZeroUsize {
+        NonZeroUsize::new(1).unwrap()
+    }
+}
+
+#[cfg(feature = "cairo-native")]
+impl NativeExecutionConfig {
+    fn parse(args: NativeExecutionCli) -> Self {
+        Self {
+            enabled: args.is_enabled,
+            class_cache_size: args.class_cache_size,
+        }
+    }
+
+    pub(super) fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
+    pub(super) fn class_cache_size(&self) -> NonZeroUsize {
+        self.class_cache_size
+    }
+}
+
 impl Config {
     #[cfg_attr(not(feature = "p2p"), allow(clippy::unit_arg))]
     pub fn parse() -> Self {
@@ -1116,6 +1191,7 @@ impl Config {
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
+            native_execution: NativeExecutionConfig::parse(cli.native_execution),
         }
     }
 }

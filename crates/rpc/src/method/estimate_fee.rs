@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use pathfinder_common::BlockId;
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
@@ -86,7 +84,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
-            Arc::clone(&context.native_class_cache),
+            context.native_class_cache,
         );
 
         let skip_validate = input

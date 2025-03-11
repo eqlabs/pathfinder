@@ -985,7 +985,9 @@ mod tests {
         .unwrap();
         let (_, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
-        let ctx = RpcContext::for_tests().with_notifications(notifications).with_pending_data(pending_data);
+        let ctx = RpcContext::for_tests()
+            .with_notifications(notifications)
+            .with_pending_data(pending_data);
 
         RpcRouter::builder(crate::RpcVersion::V08)
             .register("test", endpoint)

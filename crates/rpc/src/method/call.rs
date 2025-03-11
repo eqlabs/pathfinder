@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
@@ -151,7 +149,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
-            Arc::clone(&context.native_class_cache),
+            context.native_class_cache,
         );
 
         let result = pathfinder_executor::call(

@@ -1,5 +1,4 @@
-use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::num::{NonZeroU32, NonZeroUsize};
 
 use anyhow::Context;
 use pathfinder_common::receipt::Receipt;
@@ -63,7 +62,7 @@ fn main() -> anyhow::Result<()> {
     let start_time = std::time::Instant::now();
     let mut num_transactions: usize = 0;
 
-    let native_class_cache = Arc::new(NativeClassCache::spawn());
+    let native_class_cache = NativeClassCache::spawn(NonZeroUsize::new(512).unwrap());
 
     (first_block..=last_block)
         .map(|block_number| {
@@ -94,7 +93,7 @@ fn main() -> anyhow::Result<()> {
         .for_each_with(
             (storage, native_class_cache),
             |(storage, native_class_cache), block| {
-                execute(storage, chain_id, block, Arc::clone(native_class_cache))
+                execute(storage, chain_id, block, native_class_cache.clone())
             },
         );
 
@@ -138,7 +137,7 @@ fn execute(
     storage: &mut Storage,
     chain_id: ChainId,
     work: Work,
-    native_class_cache: Arc<NativeClassCache>,
+    native_class_cache: NativeClassCache,
 ) {
     let start_time = std::time::Instant::now();
     let num_transactions = work.transactions.len();
@@ -155,7 +154,7 @@ fn execute(
         Default::default(),
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
-        native_class_cache,
+        Some(native_class_cache),
     );
 
     let transactions = work

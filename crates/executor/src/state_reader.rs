@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
@@ -18,11 +16,12 @@ mod native;
 pub use native::NativeClassCache;
 
 #[cfg(not(feature = "cairo-native"))]
+#[derive(Clone)]
 pub struct NativeClassCache;
 
 #[cfg(not(feature = "cairo-native"))]
 impl NativeClassCache {
-    pub fn spawn(_cache_size: usize) -> Self {
+    pub fn spawn(_cache_size: std::num::NonZeroUsize) -> Self {
         Self {}
     }
 }
@@ -35,7 +34,7 @@ pub(super) struct PathfinderStateReader<'tx> {
     // reader look up classes which are not declared at a canonical block yet.
     ignore_block_number_for_classes: bool,
     #[allow(unused)]
-    native_class_cache: Arc<NativeClassCache>,
+    native_class_cache: Option<NativeClassCache>,
 }
 
 impl<'tx> PathfinderStateReader<'tx> {
@@ -43,7 +42,7 @@ impl<'tx> PathfinderStateReader<'tx> {
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
-        native_class_cache: Arc<NativeClassCache>,
+        native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
             transaction,
@@ -113,23 +112,29 @@ impl<'tx> PathfinderStateReader<'tx> {
 
                 #[cfg(feature = "cairo-native")]
                 let runnable_class = if sierra_version >= SierraVersion::new(1, 7, 0) {
-                    match self.native_class_cache.get(
-                        pathfinder_class_hash,
-                        sierra_version.clone(),
-                        class_definition,
-                        casm_definition.clone(),
-                    ) {
-                        Some(native_class) => RunnableCompiledClass::V1Native(native_class),
-                        None => {
-                            let runnable_class =
-                                sierra_class_as_casm(sierra_version, casm_definition)?;
-                            // FIXME: this is a hack to avoid caching the CASM
-                            // class in the global cache until Native
-                            // compilation is finished
-                            return Ok((None, runnable_class));
+                    if let Some(native_class_cache) = &self.native_class_cache {
+                        match native_class_cache.get(
+                            pathfinder_class_hash,
+                            sierra_version.clone(),
+                            class_definition,
+                            casm_definition.clone(),
+                        ) {
+                            Some(native_class) => RunnableCompiledClass::V1Native(native_class),
+                            None => {
+                                let runnable_class =
+                                    sierra_class_as_casm(sierra_version, casm_definition)?;
+                                // FIXME: this is a hack to avoid caching the CASM
+                                // class in the global cache until Native
+                                // compilation is finished
+                                return Ok((None, runnable_class));
+                            }
                         }
+                    } else {
+                        // Native execution is disabled.
+                        sierra_class_as_casm(sierra_version, casm_definition)?
                     }
                 } else {
+                    // Pre-1.7 Sierra classes are not natively compiled.
                     sierra_class_as_casm(sierra_version, casm_definition)?
                 };
 

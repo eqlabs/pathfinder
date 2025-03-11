@@ -228,6 +228,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             .get_events_max_uncached_event_filters_to_load,
         fee_estimation_epsilon: config.fee_estimation_epsilon,
         versioned_constants_map: config.versioned_constants_map.clone(),
+        native_execution: config.native_execution.is_enabled(),
+        native_class_cache_size: config.native_execution.class_cache_size(),
     };
 
     let notifications = Notifications::default();

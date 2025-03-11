@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::sync::{Arc, Mutex};
 
 use blockifier::execution::native::contract_class::NativeCompiledClassV1;
@@ -22,16 +23,17 @@ enum CacheItem {
 
 type Cache = Mutex<SizedCache<ClassHash, CacheItem>>;
 
+#[derive(Clone)]
 pub struct NativeClassCache {
     cache: Arc<Cache>,
     compiler_tx: std::sync::mpsc::Sender<CompilerInput>,
 }
 
 impl NativeClassCache {
-    pub fn spawn(cache_size: usize) -> Self {
+    pub fn spawn(cache_size: NonZeroUsize) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
 
-        let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size)));
+        let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size.get())));
 
         std::thread::spawn({
             let cache = Arc::clone(&cache);
@@ -84,11 +86,11 @@ fn compiler_thread(cache: Arc<Cache>, rx: std::sync::mpsc::Receiver<CompilerInpu
         let _span =
             tracing::span!(tracing::Level::DEBUG, "native_class_compiler", %class_hash).entered();
 
-        tracing::trace!("Compiling native class");
+        tracing::debug!("Compiling native class");
         let started_at = std::time::Instant::now();
         match sierra_class_as_native(input) {
             Ok(compiled_class) => {
-                tracing::trace!(elapsed=?started_at.elapsed(), "Compilation finished");
+                tracing::debug!(elapsed=?started_at.elapsed(), "Compilation finished");
                 cache
                     .lock()
                     .unwrap()
