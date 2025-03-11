@@ -109,7 +109,7 @@ impl EthereumClient {
         let provider = ProviderBuilder::new().on_ws(ws).await?;
         // Fetch the finalized block number
         provider
-            .get_block_by_number(BlockNumberOrTag::Finalized, false)
+            .get_block_by_number(BlockNumberOrTag::Finalized)
             .await?
             .map(|block| L1BlockNumber::new_or_panic(block.header.number))
             .context("Failed to fetch finalized block hash")
@@ -156,8 +156,9 @@ impl EthereumApi for EthereumClient {
             let mut interval = tokio::time::interval(poll_interval);
             loop {
                 interval.tick().await;
-                if let Ok(Some(finalized_block)) = provider_clone
-                    .get_block_by_number(BlockNumberOrTag::Finalized, false)
+
+                match provider_clone
+                    .get_block_by_number(BlockNumberOrTag::Finalized)
                     .await
                 {
                     let block_number = L1BlockNumber::new_or_panic(finalized_block.header.number);
