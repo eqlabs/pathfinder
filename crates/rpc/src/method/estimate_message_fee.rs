@@ -128,17 +128,7 @@ pub async fn estimate_message_fee(
     }
 
     let result = result.pop().unwrap();
-
-    Ok(Output(pathfinder_executor::types::FeeEstimate {
-        l1_gas_consumed: result.l1_gas_consumed,
-        l1_gas_price: result.l1_gas_price,
-        l1_data_gas_consumed: result.l1_data_gas_consumed,
-        l1_data_gas_price: result.l1_data_gas_price,
-        l2_gas_consumed: result.l2_gas_consumed,
-        l2_gas_price: result.l2_gas_price,
-        overall_fee: result.overall_fee,
-        unit: result.unit,
-    }))
+    Ok(Output(result))
 }
 
 fn create_executor_transaction(
@@ -266,11 +256,12 @@ mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::{BlockId, L1DataAvailabilityMode};
     use pathfinder_storage::StorageBuilder;
-    use pretty_assertions_sorted::assert_eq;
     use primitive_types::H160;
 
     use super::*;
     use crate::context::RpcContext;
+    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
 
     enum Setup {
         Full,
@@ -362,23 +353,18 @@ mod tests {
         }
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn test_estimate_message_fee() {
-        let expected = super::Output(pathfinder_executor::types::FeeEstimate {
-            l1_gas_consumed: 14647.into(),
-            l1_gas_price: 2.into(),
-            l1_data_gas_consumed: 128.into(),
-            l1_data_gas_price: 1.into(),
-            l2_gas_consumed: 0.into(),
-            l2_gas_price: 1.into(),
-            overall_fee: 29422.into(),
-            unit: pathfinder_executor::types::PriceUnit::Wei,
-        });
-
+    async fn test_estimate_message_fee(#[case] version: RpcVersion) {
         let rpc = setup(Setup::Full).await.expect("RPC context");
         let result = super::estimate_message_fee(rpc, input())
             .await
             .expect("result");
-        assert_eq!(result, expected);
+
+        let output_json = result.serialize(Serializer { version }).unwrap();
+        crate::assert_json_matches_fixture!(output_json, version, "fee_estimates/full.json");
     }
 }

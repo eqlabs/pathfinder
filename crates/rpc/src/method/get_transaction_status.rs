@@ -183,6 +183,8 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::dto::{SerializeForVersion, Serializer};
+    use crate::RpcVersion;
 
     #[rstest::rstest]
     #[case::rejected(Output::Rejected { error_message: None }, json!({"finality_status":"REJECTED"}))]
@@ -214,8 +216,12 @@ mod tests {
         assert_eq!(status, Output::AcceptedOnL1(TxnExecutionStatus::Succeeded));
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn l2_accepted() {
+    async fn l2_accepted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
         // This transaction is in block 1 which is not L1 accepted.
         let tx_hash = transaction_hash_bytes!(b"txn 1");
@@ -224,11 +230,21 @@ mod tests {
         };
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, Output::AcceptedOnL2(TxnExecutionStatus::Succeeded));
+        let output_json = status.serialize(Serializer { version }).unwrap();
+
+        let expected_status = include_str!("../../fixtures/status/l2_accepted.json");
+        let expected_json: serde_json::Value =
+            serde_json::from_str(expected_status).expect("Failed to parse fixture as JSON");
+
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn pending() {
+    async fn pending(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
         let tx_hash = transaction_hash_bytes!(b"pending tx hash 0");
         let input = Input {
@@ -236,7 +252,13 @@ mod tests {
         };
         let status = get_transaction_status(context, input).await.unwrap();
 
-        assert_eq!(status, Output::AcceptedOnL2(TxnExecutionStatus::Succeeded));
+        let output_json = status.serialize(Serializer { version }).unwrap();
+
+        let expected_status = include_str!("../../fixtures/status/pending.json");
+        let expected_json: serde_json::Value =
+            serde_json::from_str(expected_status).expect("Failed to parse fixture as JSON");
+
+        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
     }
 
     #[tokio::test]
@@ -274,8 +296,12 @@ mod tests {
         );
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
     #[tokio::test]
-    async fn reverted() {
+    async fn reverted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
@@ -283,22 +309,26 @@ mod tests {
         let status = get_transaction_status(context.clone(), input)
             .await
             .unwrap();
-        assert_eq!(
-            status,
-            Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
-                reason: Some("Reverted because".to_string())
-            })
+
+        let output_json = status.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "transactions/status_reverted_with_reason.json"
         );
 
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"pending reverted"),
         };
         let status = get_transaction_status(context, input).await.unwrap();
-        assert_eq!(
-            status,
-            Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
-                reason: Some("Reverted!".to_string())
-            })
+
+        let output_json = status.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "transactions/status_reverted.json"
         );
     }
 
@@ -313,42 +343,5 @@ mod tests {
             .unwrap_err();
 
         assert_matches!(err, Error::TxnHashNotFound);
-    }
-
-    #[test]
-    fn test_v06_serialization() {
-        use crate::dto::SerializeForVersion;
-
-        let cases = [
-            (Output::Received, json!({"finality_status": "RECEIVED"})),
-            (
-                Output::Rejected {
-                    error_message: Some("error".to_string()),
-                },
-                json!({"finality_status": "REJECTED"}),
-            ),
-            (
-                Output::AcceptedOnL1(TxnExecutionStatus::Succeeded),
-                json!({
-                    "finality_status": "ACCEPTED_ON_L1",
-                    "execution_status": "SUCCEEDED"
-                }),
-            ),
-            (
-                Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
-                    reason: Some("error".to_string()),
-                }),
-                json!({
-                    "finality_status": "ACCEPTED_ON_L2",
-                    "execution_status": "REVERTED"
-                }),
-            ),
-        ];
-
-        for (output, expected) in cases {
-            let serializer = crate::dto::Serializer::new(crate::RpcVersion::V06);
-            let encoded = output.serialize(serializer).unwrap();
-            assert_eq!(encoded, expected);
-        }
     }
 }
