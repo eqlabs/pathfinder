@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Support for custom versioned constants for multiple Starknet versions.
+- Support for Starknet 0.13.5.
 
 ### Fixed
 
