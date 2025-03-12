@@ -4,7 +4,6 @@ use std::num::NonZeroUsize;
 
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use futures::StreamExt;
-use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
@@ -15,7 +14,6 @@ use p2p_proto::event::EventsResponse;
 use p2p_proto::header::BlockHeadersResponse;
 use p2p_proto::state::StateDiffsResponse;
 use p2p_proto::transaction::TransactionsResponse;
-use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::{self, OutboundRequestId};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Duration;
@@ -285,45 +283,6 @@ impl MainLoop {
             // ===========================
             SwarmEvent::Behaviour(behaviour::Event::Ping(event)) => {
                 self.swarm.behaviour_mut().pinged(event);
-            }
-            // ===========================
-            // Block propagation
-            // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Gossipsub(gossipsub::Event::Message {
-                propagation_source: peer_id,
-                message_id: id,
-                message,
-            })) => {
-                use prost::Message;
-
-                match p2p_proto::proto::header::NewBlock::decode(message.data.as_ref()) {
-                    Ok(new_block) => {
-                        match p2p_proto::header::NewBlock::try_from_protobuf(new_block, "message") {
-                            Ok(new_block) => {
-                                tracing::trace!(
-                                    "Gossipsub Message: [id={}][peer={}] {:?} ({} bytes)",
-                                    id,
-                                    peer_id,
-                                    new_block,
-                                    message.data.len()
-                                );
-                                self.event_sender
-                                    .send(Event::BlockPropagation {
-                                        from: peer_id,
-                                        new_block,
-                                    })
-                                    .await
-                                    .expect("Event receiver not to be dropped");
-                            }
-                            Err(error) => {
-                                tracing::error!(from=%peer_id, %error, "Gossipsub Message")
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        tracing::error!(from=%peer_id, %error, "Gossipsub Message");
-                    }
-                };
             }
             // ===========================
             // Discovery
@@ -774,36 +733,11 @@ impl MainLoop {
             Command::Disconnect { peer_id, sender } => {
                 let _ = sender.send(self.disconnect(peer_id).await);
             }
-            Command::ProvideCapability { capability, sender } => {
-                let _ = match self.swarm.behaviour_mut().provide_capability(&capability) {
-                    Ok(_) => {
-                        tracing::debug!(%capability, "Providing capability");
-                        sender.send(Ok(()))
-                    }
-                    Err(e) => sender.send(Err(e)),
-                };
-            }
-            Command::GetCapabilityProviders { capability, sender } => {
-                let query_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .get_capability_providers(&capability);
-                self.pending_queries.get_providers.insert(query_id, sender);
-            }
             Command::GetClosestPeers { peer, sender } => {
                 let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
                 self.pending_queries
                     .get_closest_peers
                     .insert(query_id, sender);
-            }
-            Command::SubscribeTopic { topic, sender } => {
-                let _ = match self.swarm.behaviour_mut().subscribe_topic(&topic) {
-                    Ok(_) => {
-                        tracing::debug!(%topic, "Subscribing to topic");
-                        sender.send(Ok(()))
-                    }
-                    Err(e) => sender.send(Err(e)),
-                };
             }
             Command::SendHeadersSyncRequest {
                 peer_id,
@@ -883,33 +817,12 @@ impl MainLoop {
                     .send_request(&peer_id, request);
                 self.pending_sync_requests.events.insert(request_id, sender);
             }
-            Command::PublishPropagationMessage {
-                topic,
-                new_block,
-                sender,
-            } => {
-                use prost::Message;
-                let data: Vec<u8> = new_block.to_protobuf().encode_to_vec();
-                let result = self.publish_data(topic, &data);
-                let _ = sender.send(result);
-            }
             Command::NotUseful { peer_id, sender } => {
                 self.swarm.behaviour_mut().not_useful(peer_id);
                 let _ = sender.send(());
             }
             Command::_Test(command) => self.handle_test_command(command).await,
         };
-    }
-
-    fn publish_data(&mut self, topic: IdentTopic, data: &[u8]) -> anyhow::Result<()> {
-        let message_id = self
-            .swarm
-            .behaviour_mut()
-            .gossipsub_mut()
-            .publish(topic, data)
-            .map_err(|e| anyhow::anyhow!("Gossipsub publish failed: {}", e))?;
-        tracing::debug!(?message_id, "Data published");
-        Ok(())
     }
 
     async fn disconnect(&mut self, peer_id: PeerId) -> anyhow::Result<()> {

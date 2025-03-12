@@ -5,11 +5,10 @@ use std::collections::HashSet;
 
 use anyhow::Context;
 use futures::channel::mpsc::Receiver as ResponseReceiver;
-use libp2p::gossipsub::IdentTopic;
 use libp2p::{Multiaddr, PeerId};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use tokio::sync::{mpsc, oneshot};
@@ -90,52 +89,6 @@ impl Client {
     /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
     /// kind: ConnectionRefused, error: "protocol not supported" })` error for
     /// each remote that does not support our kademlia protocol.
-    pub async fn provide_capability(&self, capability: &str) -> anyhow::Result<()> {
-        let (sender, receiver) = oneshot::channel();
-        self.sender
-            .send(Command::ProvideCapability {
-                capability: capability.to_owned(),
-                sender,
-            })
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
-
-    /// ### Important
-    ///
-    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
-    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
-    /// each remote that does not support our kademlia protocol.
-    pub async fn get_capability_providers(
-        &self,
-        capability: &str,
-    ) -> anyhow::Result<HashSet<PeerId>> {
-        let (sender, mut receiver) = mpsc::channel(1);
-        self.sender
-            .send(Command::GetCapabilityProviders {
-                capability: capability.to_owned(),
-                sender,
-            })
-            .await
-            .expect("Command receiver not to be dropped");
-
-        let mut providers = HashSet::new();
-
-        while let Some(partial_result) = receiver.recv().await {
-            let more_providers =
-                partial_result.with_context(|| format!("Getting providers for {capability}"))?;
-            providers.extend(more_providers.into_iter());
-        }
-
-        Ok(providers)
-    }
-
-    /// ### Important
-    ///
-    /// Triggers kademlia queries to other peers. This will cause `Io(Custom {
-    /// kind: ConnectionRefused, error: "protocol not supported" })` error for
-    /// each remote that does not support our kademlia protocol.
     pub async fn get_closest_peers(&self, peer: PeerId) -> anyhow::Result<HashSet<PeerId>> {
         let (sender, mut receiver) = mpsc::channel(1);
         self.sender
@@ -152,16 +105,6 @@ impl Client {
         }
 
         Ok(peers)
-    }
-
-    pub async fn subscribe_topic(&self, topic: &str) -> anyhow::Result<()> {
-        let (sender, receiver) = oneshot::channel();
-        let topic = IdentTopic::new(topic);
-        self.sender
-            .send(Command::SubscribeTopic { topic, sender })
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
     }
 
     impl_send!(
@@ -198,20 +141,6 @@ impl Client {
         EventsRequest,
         EventsResponse
     );
-
-    pub async fn publish(&self, topic: &str, new_block: NewBlock) -> anyhow::Result<()> {
-        let (sender, receiver) = oneshot::channel();
-        let topic = IdentTopic::new(topic);
-        self.sender
-            .send(Command::PublishPropagationMessage {
-                topic,
-                new_block,
-                sender,
-            })
-            .await
-            .expect("Command receiver not to be dropped");
-        receiver.await.expect("Sender not to be dropped")
-    }
 
     /// Mark a peer as not useful.
     ///

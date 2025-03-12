@@ -6,7 +6,7 @@ pub mod revert;
 
 use std::future::Future;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
@@ -90,7 +90,6 @@ pub struct SyncContext<G, E> {
     pub block_cache_size: usize,
     pub restart_delay: Duration,
     pub verify_tree_hashes: bool,
-    pub gossiper: Gossiper,
     pub sequencer_public_key: PublicKey,
     pub fetch_concurrency: std::num::NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
@@ -124,38 +123,6 @@ where
             sequencer_public_key: value.sequencer_public_key,
             fetch_concurrency: value.fetch_concurrency,
             fetch_casm_from_fgw: value.fetch_casm_from_fgw,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Gossiper {
-    #[cfg(feature = "p2p")]
-    p2p_client: Option<p2p::client::peer_agnostic::Client>,
-}
-
-impl Gossiper {
-    #[cfg(feature = "p2p")]
-    pub fn new(p2p_client: p2p::client::peer_agnostic::Client) -> Self {
-        Self {
-            p2p_client: Some(p2p_client),
-        }
-    }
-
-    async fn propagate_head(&self, _block_number: BlockNumber, _block_hash: BlockHash) {
-        #[cfg(feature = "p2p")]
-        {
-            use p2p_proto::common::{BlockId, Hash};
-
-            if let Some(p2p_client) = &self.p2p_client {
-                _ = p2p_client
-                    .propagate_new_head(BlockId {
-                        number: _block_number.get(),
-                        hash: Hash(_block_hash.0),
-                    })
-                    .await
-                    .map_err(|error| tracing::warn!(%error, "Propagating head failed"));
-            }
         }
     }
 }
@@ -201,7 +168,6 @@ where
         block_cache_size,
         restart_delay,
         verify_tree_hashes: _,
-        gossiper,
         sequencer_public_key: _,
         fetch_concurrency: _,
         fetch_casm_from_fgw,
@@ -251,7 +217,6 @@ where
         starting_block_hash,
         starting_block_num,
         rx_latest.clone(),
-        gossiper,
     ));
 
     // Start L1 producer task. Clone the event sender so that the channel remains
@@ -740,13 +705,10 @@ async fn update_sync_status_latest(
     starting_block_hash: BlockHash,
     starting_block_num: BlockNumber,
     mut latest: tokio::sync::watch::Receiver<(BlockNumber, BlockHash)>,
-    gossiper: Gossiper,
 ) {
     let starting = NumberedBlock::from((starting_block_hash, starting_block_num));
 
-    let mut last_propagated = Instant::now();
     let mut latest_hash = BlockHash::default();
-
     loop {
         let Ok((number, hash)) = latest
             .wait_for(|(_, hash)| hash != &latest_hash)
@@ -770,8 +732,6 @@ async fn update_sync_status_latest(
                 metrics::gauge!("current_block", starting.number.get() as f64);
                 metrics::gauge!("highest_block", latest.number.get() as f64);
 
-                propagate_head(&gossiper, &mut last_propagated, latest).await;
-
                 tracing::debug!(
                     status=%sync_status,
                     "Updated sync status",
@@ -783,8 +743,6 @@ async fn update_sync_status_latest(
 
                     metrics::gauge!("highest_block", latest.number.get() as f64);
 
-                    propagate_head(&gossiper, &mut last_propagated, latest).await;
-
                     tracing::debug!(
                         %status,
                         "Updated sync status",
@@ -792,19 +750,9 @@ async fn update_sync_status_latest(
                 }
             }
         }
-
-        // duplicate_cache_time for gossipsub defaults to 1 minute
-        if last_propagated.elapsed() > Duration::from_secs(120) {
-            propagate_head(&gossiper, &mut last_propagated, latest).await;
-        }
     }
 
     tracing::info!("Channel closed, exiting latest poll task");
-}
-
-async fn propagate_head(gossiper: &Gossiper, last_propagated: &mut Instant, head: NumberedBlock) {
-    _ = gossiper.propagate_head(head.number, head.hash).await;
-    *last_propagated = Instant::now();
 }
 
 async fn l1_update(

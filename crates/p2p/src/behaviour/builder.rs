@@ -1,9 +1,7 @@
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 
-use libp2p::gossipsub::{MessageAuthenticity, MessageId};
 use libp2p::kad::store::MemoryStore;
-use libp2p::{autonat, dcutr, gossipsub, identify, identity, kad, ping, relay, StreamProtocol};
+use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
 use super::{Behaviour, BehaviourWithRelayTransport};
@@ -115,20 +113,6 @@ impl Builder {
         let kademlia =
             kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
 
-        // FIXME: find out how we should derive message id
-        let message_id_fn = |message: &gossipsub::Message| {
-            let mut s = DefaultHasher::new();
-            message.data.hash(&mut s);
-            MessageId::from(s.finish().to_string())
-        };
-        let gossipsub_config = libp2p::gossipsub::ConfigBuilder::default()
-            .message_id_fn(message_id_fn)
-            .build()
-            .expect("valid gossipsub config");
-        let gossipsub =
-            gossipsub::Behaviour::new(MessageAuthenticity::Signed(identity), gossipsub_config)
-                .expect("valid gossipsub params");
-
         let (relay_transport, relay) = relay::client::new(peer_id);
 
         let p2p_stream_cfg = p2p_stream::Config::default()
@@ -165,7 +149,6 @@ impl Builder {
                             )),
                     ),
                     kademlia,
-                    gossipsub,
                     header_sync,
                     class_sync,
                     state_diff_sync,

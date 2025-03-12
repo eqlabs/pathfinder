@@ -2,9 +2,7 @@ use anyhow::Context;
 use p2p::client::peer_agnostic;
 use p2p::libp2p::identity::Keypair;
 use p2p::libp2p::multiaddr::Multiaddr;
-use p2p::{HeadRx, HeadTx};
-use p2p_proto::header::BlockHeadersResponse;
-use pathfinder_common::{BlockHash, BlockNumber, ChainId};
+use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use tracing::Instrument;
 
@@ -15,7 +13,6 @@ use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_t
 // Silence clippy
 pub type P2PNetworkHandle = (
     peer_agnostic::Client,
-    HeadRx,
     tokio::task::JoinHandle<anyhow::Result<()>>,
 );
 
@@ -23,7 +20,6 @@ pub struct P2PContext {
     pub cfg: p2p::Config,
     pub chain_id: ChainId,
     pub storage: Storage,
-    pub proxy: bool,
     pub keypair: Keypair,
     pub listen_on: Vec<Multiaddr>,
     pub bootstrap_addresses: Vec<Multiaddr>,
@@ -36,7 +32,6 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         cfg,
         chain_id,
         storage,
-        proxy,
         keypair,
         listen_on,
         bootstrap_addresses,
@@ -90,15 +85,6 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         p2p_client.dial(peer_id, peer).await?;
     }
 
-    let block_propagation_topic = format!("blocks/{}", chain_id.to_hex_str());
-
-    if !proxy {
-        p2p_client.subscribe_topic(&block_propagation_topic).await?;
-        tracing::info!(topic=%block_propagation_topic, "Subscribed to");
-    }
-
-    let (mut tx, rx) = tokio::sync::watch::channel(None);
-
     let join_handle = {
         util::task::spawn(
             async move {
@@ -109,7 +95,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
                             anyhow::bail!("p2p task ended unexpectedly");
                         }
                         Some(event) = p2p_events.recv() => {
-                            match handle_p2p_event(event, storage.clone(), &mut tx).await {
+                            match handle_p2p_event(event, storage.clone()).await {
                                 Ok(()) => {},
                                 Err(e) => { tracing::error!("Failed to handle P2P event: {:#}", e) },
                             }
@@ -121,18 +107,10 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
         )
     };
 
-    Ok((
-        peer_agnostic::Client::new(p2p_client, block_propagation_topic),
-        rx,
-        join_handle,
-    ))
+    Ok((peer_agnostic::Client::new(p2p_client), join_handle))
 }
 
-async fn handle_p2p_event(
-    event: p2p::Event,
-    storage: Storage,
-    tx: &mut HeadTx,
-) -> anyhow::Result<()> {
+async fn handle_p2p_event(event: p2p::Event, storage: Storage) -> anyhow::Result<()> {
     match event {
         p2p::Event::InboundHeadersSyncRequest {
             request, channel, ..
@@ -158,36 +136,6 @@ async fn handle_p2p_event(
             request, channel, ..
         } => {
             get_events(storage, request, channel).await;
-        }
-        p2p::Event::BlockPropagation { from, new_block } => {
-            tracing::info!(%from, ?new_block, "Block Propagation");
-            use p2p_proto::header::NewBlock;
-
-            let new_head = match new_block {
-                NewBlock::Id(id) => BlockNumber::new(id.number).map(|n| (n, BlockHash(id.hash.0))),
-                NewBlock::Header(BlockHeadersResponse::Header(hdr)) => {
-                    BlockNumber::new(hdr.number).map(|n| (n, BlockHash(hdr.block_hash.0)))
-                }
-                NewBlock::Header(BlockHeadersResponse::Fin) => None,
-            };
-
-            match new_head {
-                Some((new_height, new_hash)) => {
-                    tx.send_if_modified(|head| -> bool {
-                        let current_height = head.unwrap_or_default().0;
-
-                        if new_height > current_height {
-                            *head = Some((new_height, new_hash));
-                            true
-                        } else {
-                            false
-                        }
-                    });
-                }
-                None => {
-                    tracing::warn!("Received block propagation without a valid head")
-                }
-            }
         }
         p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
     }

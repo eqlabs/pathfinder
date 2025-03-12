@@ -286,7 +286,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // and wait for them to finish. Only then can we exit the process and return an
     // error if some of the tasks failed or no error if we have received a signal.
 
-    let (p2p_handle, gossiper, p2p_client) = start_p2p(
+    let (p2p_handle, p2p_client) = start_p2p(
         pathfinder_context.network_id,
         p2p_storage,
         config.p2p.clone(),
@@ -297,7 +297,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             tokio::task::spawn(std::future::ready(
                 Err(error.context("P2P failed to start")),
             )),
-            Default::default(),
             None,
         )
     });
@@ -312,7 +311,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             tx_pending,
             rpc_server.get_topic_broadcasters().cloned(),
             notifications,
-            gossiper,
             gateway_public_key,
             p2p_client,
             config.verify_tree_hashes,
@@ -471,7 +469,6 @@ async fn start_p2p(
     config: config::P2PConfig,
 ) -> anyhow::Result<(
     tokio::task::JoinHandle<anyhow::Result<()>>,
-    state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
     use std::path::Path;
@@ -532,21 +529,15 @@ async fn start_p2p(
         },
         chain_id,
         storage,
-        proxy: config.proxy,
         keypair,
         listen_on: config.listen_on,
         bootstrap_addresses: config.bootstrap_addresses,
         predefined_peers: config.predefined_peers,
     };
 
-    let (p2p_client, _head_receiver, p2p_handle) =
-        pathfinder_lib::p2p_network::start(context).await?;
+    let (p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(context).await?;
 
-    Ok((
-        p2p_handle,
-        state::Gossiper::new(p2p_client.clone()),
-        Some(p2p_client),
-    ))
+    Ok((p2p_handle, Some(p2p_client)))
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -556,12 +547,11 @@ async fn start_p2p(
     _: config::P2PConfig,
 ) -> anyhow::Result<(
     tokio::task::JoinHandle<anyhow::Result<()>>,
-    state::Gossiper,
     Option<p2p::client::peer_agnostic::Client>,
 )> {
     let join_handle = tokio::task::spawn(futures::future::pending());
 
-    Ok((join_handle, Default::default(), None))
+    Ok((join_handle, None))
 }
 
 #[cfg(feature = "p2p")]
@@ -575,7 +565,6 @@ fn start_sync(
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
-    gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<p2p::client::peer_agnostic::Client>,
     verify_tree_hashes: bool,
@@ -590,7 +579,6 @@ fn start_sync(
             tx_pending,
             websocket_txs,
             notifications,
-            gossiper,
             gateway_public_key,
         )
     } else {
@@ -618,7 +606,6 @@ fn start_sync(
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
-    gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<p2p::client::peer_agnostic::Client>,
     _verify_tree_hashes: bool,
@@ -632,7 +619,6 @@ fn start_sync(
         tx_pending,
         websocket_txs,
         notifications,
-        gossiper,
         gateway_public_key,
     )
 }
@@ -647,7 +633,6 @@ fn start_feeder_gateway_sync(
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
-    gossiper: state::Gossiper,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let sync_context = SyncContext {
@@ -667,7 +652,6 @@ fn start_feeder_gateway_sync(
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
-        gossiper,
         sequencer_public_key: gateway_public_key,
         fetch_concurrency: config.feeder_gateway_fetch_concurrency,
         fetch_casm_from_fgw: config.fetch_casm_from_fgw,

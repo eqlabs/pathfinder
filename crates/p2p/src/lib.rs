@@ -4,17 +4,16 @@ use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
 use ipnet::IpNet;
-use libp2p::gossipsub::IdentTopic;
 use libp2p::identity::Keypair;
 use libp2p::kad::RecordKey;
 use libp2p::{Multiaddr, PeerId};
 use main_loop::MainLoop;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use pathfinder_common::{BlockHash, BlockNumber, ChainId};
+use pathfinder_common::ChainId;
 use peers::Peer;
 use tokio::sync::{mpsc, oneshot};
 
@@ -81,9 +80,6 @@ pub struct RateLimit {
     pub interval: Duration,
 }
 
-pub type HeadTx = tokio::sync::watch::Sender<Option<(BlockNumber, BlockHash)>>;
-pub type HeadRx = tokio::sync::watch::Receiver<Option<(BlockNumber, BlockHash)>>;
-
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
 
 #[derive(Debug)]
@@ -101,21 +97,9 @@ enum Command {
         peer_id: PeerId,
         sender: EmptyResultSender,
     },
-    ProvideCapability {
-        capability: String,
-        sender: EmptyResultSender,
-    },
-    GetCapabilityProviders {
-        capability: String,
-        sender: mpsc::Sender<anyhow::Result<HashSet<PeerId>>>,
-    },
     GetClosestPeers {
         peer: PeerId,
         sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
-    },
-    SubscribeTopic {
-        topic: IdentTopic,
-        sender: EmptyResultSender,
     },
     SendHeadersSyncRequest {
         peer_id: PeerId,
@@ -146,11 +130,6 @@ enum Command {
         peer_id: PeerId,
         request: EventsRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
-    },
-    PublishPropagationMessage {
-        topic: IdentTopic,
-        new_block: NewBlock,
-        sender: EmptyResultSender,
     },
     NotUseful {
         peer_id: PeerId,
@@ -195,10 +174,6 @@ pub enum Event {
         from: PeerId,
         request: EventsRequest,
         channel: ResponseSender<EventsResponse>,
-    },
-    BlockPropagation {
-        from: PeerId,
-        new_block: NewBlock,
     },
     /// For testing purposes only
     Test(TestEvent),
