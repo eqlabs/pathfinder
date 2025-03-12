@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use libp2p::gossipsub;
 use libp2p::kad::{QueryId, QueryResult};
 use libp2p::swarm::SwarmEvent;
 use tokio::sync::mpsc;
@@ -8,24 +7,8 @@ use tokio::sync::mpsc;
 use crate::{behaviour, Event, TestCommand, TestEvent};
 
 pub async fn handle_event(event_sender: &mpsc::Sender<Event>, event: SwarmEvent<behaviour::Event>) {
-    match event {
-        SwarmEvent::NewListenAddr { address, .. } => {
-            send_event(event_sender, TestEvent::NewListenAddress(address)).await;
-        }
-        SwarmEvent::Behaviour(behaviour::Event::Gossipsub(gossipsub::Event::Subscribed {
-            peer_id,
-            topic,
-        })) => {
-            send_event(
-                event_sender,
-                TestEvent::Subscribed {
-                    remote: peer_id,
-                    topic: topic.into_string(),
-                },
-            )
-            .await;
-        }
-        _ => {}
+    if let SwarmEvent::NewListenAddr { address, .. } = event {
+        send_event(event_sender, TestEvent::NewListenAddress(address)).await;
     }
 }
 

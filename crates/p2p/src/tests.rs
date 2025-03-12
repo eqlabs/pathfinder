@@ -7,7 +7,7 @@ use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse, NewBlock};
+use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use pathfinder_common::ChainId;
@@ -773,62 +773,6 @@ async fn rate_limit() {
 
     let result = peer4.client.dial(peer1.peer_id, addr1.clone()).await;
     assert!(result.is_err());
-}
-
-#[rstest]
-#[case::server_to_client(server_to_client().await)]
-#[case::client_to_server(client_to_server().await)]
-#[test_log::test(tokio::test)]
-async fn provide_capability(#[case] peers: (TestPeer, TestPeer)) {
-    let (peer1, peer2) = peers;
-
-    let mut peer1_started_providing = filter_events(peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::StartProvidingCompleted(_)) => Some(()),
-        _ => None,
-    });
-    consume_all_events_forever(peer2.event_receiver);
-
-    peer1.client.provide_capability("blah").await.unwrap();
-    peer1_started_providing.recv().await;
-
-    // Apparently sometimes still not yet providing at this point and there's
-    // no other event to rely on
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    let providers = peer2.client.get_capability_providers("blah").await.unwrap();
-
-    assert_eq!(providers, [peer1.peer_id].into());
-}
-
-#[rstest]
-#[case::server_to_client(server_to_client().await)]
-#[case::client_to_server(client_to_server().await)]
-#[test_log::test(tokio::test)]
-async fn subscription_and_propagation(#[case] peers: (TestPeer, TestPeer)) {
-    let (peer1, peer2) = peers;
-
-    let mut peer2_subscribed_to_peer1 = filter_events(peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::Subscribed { .. }) => Some(()),
-        _ => None,
-    });
-
-    let mut propagated_to_peer2 = filter_events(peer2.event_receiver, |event| match event {
-        Event::BlockPropagation { new_block, .. } => Some(new_block),
-        _ => None,
-    });
-
-    const TOPIC: &str = "TOPIC";
-
-    peer2.client.subscribe_topic(TOPIC).await.unwrap();
-    peer2_subscribed_to_peer1.recv().await;
-
-    let expected = Faker.fake::<NewBlock>();
-
-    peer1.client.publish(TOPIC, expected.clone()).await.unwrap();
-
-    let msg = propagated_to_peer2.recv().await.unwrap();
-
-    assert_eq!(msg, expected);
 }
 
 mod successful_sync {

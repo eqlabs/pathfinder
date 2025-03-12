@@ -5,7 +5,6 @@ use std::{cmp, task};
 
 use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
-use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::multiaddr::Protocol;
@@ -65,7 +64,6 @@ pub struct Inner {
     ping: ping::Behaviour,
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
-    gossipsub: gossipsub::Behaviour,
     header_sync: p2p_stream::Behaviour<codec::Headers>,
     class_sync: p2p_stream::Behaviour<codec::Classes>,
     state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
@@ -451,24 +449,8 @@ impl Behaviour {
         Builder::new(identity, chain_id, cfg)
     }
 
-    pub fn provide_capability(&mut self, capability: &str) -> anyhow::Result<()> {
-        let key = string_to_key(capability);
-        self.inner.kademlia.start_providing(key)?;
-        Ok(())
-    }
-
-    pub fn get_capability_providers(&mut self, capability: &str) -> kad::QueryId {
-        let key = string_to_key(capability);
-        self.inner.kademlia.get_providers(key)
-    }
-
     pub fn get_closest_peers(&mut self, peer: PeerId) -> kad::QueryId {
         self.inner.kademlia.get_closest_peers(peer)
-    }
-
-    pub fn subscribe_topic(&mut self, topic: &IdentTopic) -> anyhow::Result<()> {
-        self.inner.gossipsub.subscribe(topic)?;
-        Ok(())
     }
 
     /// Notify the behaviour of a ping event.
@@ -742,10 +724,6 @@ impl Behaviour {
         &mut self.inner.kademlia
     }
 
-    pub fn gossipsub_mut(&mut self) -> &mut gossipsub::Behaviour {
-        &mut self.inner.gossipsub
-    }
-
     pub fn headers_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Headers> {
         &mut self.inner.header_sync
     }
@@ -801,7 +779,6 @@ pub enum Event {
     Ping(ping::Event),
     Identify(Box<identify::Event>),
     Kademlia(kad::Event),
-    Gossipsub(gossipsub::Event),
     HeadersSync(p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>),
     ClassesSync(p2p_stream::Event<ClassesRequest, ClassesResponse>),
     StateDiffsSync(p2p_stream::Event<StateDiffsRequest, StateDiffsResponse>),
@@ -845,12 +822,6 @@ impl From<kad::Event> for Event {
     }
 }
 
-impl From<gossipsub::Event> for Event {
-    fn from(event: gossipsub::Event) -> Self {
-        Event::Gossipsub(event)
-    }
-}
-
 impl From<p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>> for Event {
     fn from(event: p2p_stream::Event<BlockHeadersRequest, BlockHeadersResponse>) -> Self {
         Event::HeadersSync(event)
@@ -879,12 +850,4 @@ impl From<p2p_stream::Event<EventsRequest, EventsResponse>> for Event {
     fn from(event: p2p_stream::Event<EventsRequest, EventsResponse>) -> Self {
         Event::EventsSync(event)
     }
-}
-
-fn string_to_key(input: &str) -> kad::RecordKey {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(input.as_bytes());
-    let result = hasher.finalize();
-    kad::RecordKey::new(&result.as_slice())
 }
