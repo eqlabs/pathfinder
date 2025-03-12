@@ -48,6 +48,12 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3: &[u8] =
         include_bytes!("../resources/versioned_constants_0_13_3.json");
 
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_4.json");
+
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_5.json");
+
     pub(super) const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
     pub(super) const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
@@ -59,6 +65,8 @@ mod versioned_constants {
     pub(super) const STARKNET_VERSION_0_13_3: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
 
     pub(super) const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
+
+    pub(super) const STARKNET_VERSION_0_13_5: StarknetVersion = StarknetVersion::new(0, 13, 5, 0);
 
     pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: LazyLock<VersionedConstants> =
         LazyLock::new(|| {
@@ -89,6 +97,16 @@ mod versioned_constants {
         LazyLock::new(|| {
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3).unwrap()
         });
+
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4).unwrap()
+        });
+
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5).unwrap()
+        });
 }
 
 #[derive(Clone, Debug)]
@@ -109,7 +127,7 @@ impl VersionedConstantsMap {
     }
 
     pub fn latest_version() -> StarknetVersion {
-        versioned_constants::STARKNET_VERSION_0_13_4
+        versioned_constants::STARKNET_VERSION_0_13_5
     }
 
     fn fill_default(data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) {
@@ -143,7 +161,12 @@ impl VersionedConstantsMap {
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_4,
-            VersionedConstants::latest_constants(),
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_5,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5,
         );
     }
 

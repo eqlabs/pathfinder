@@ -1694,9 +1694,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.14.0-rc.1"
+version = "0.14.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aeb4d8bae9ad7f2c482e06ee07aa46d5978fdb435134fe4dbdc3f0aaf405d4dc"
+checksum = "234b54bd61bc8c5209e2d6c98fcaec364f871fb1911b3ce7bb6649c0ff6bf08d"
 dependencies = [
  "anyhow",
  "ark-ec",
@@ -7541,9 +7541,9 @@ dependencies = [
 
 [[package]]
 name = "papyrus_config"
-version = "0.14.0-rc.1"
+version = "0.14.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "013c243553148f362ba2a0cc32b32c280ebabcce63173024f820a94b06f3cf0e"
+checksum = "e494f4cf5ba99bd35230569cee1aa2ea854203f7d3406e7ca1d226bcbed400d3"
 dependencies = [
  "clap",
  "itertools 0.12.1",
@@ -10029,9 +10029,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.14.0-rc.1"
+version = "0.14.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32444b0e220e6ca7e82aa98d19b011655c25dc4894e433d71b4833dc457bc4f5"
+checksum = "04a4abb49dfcddf92cc54c0f89725183999bbaae2133e446e7f4be93f65c4d58"
 dependencies = [
  "bitvec",
  "cairo-lang-runner",
@@ -10057,9 +10057,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_infra_utils"
-version = "0.14.0-rc.1"
+version = "0.14.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23dd63656575b76d0da375904ca82fc401b869fe147a247bedcf9a9d41d8306f"
+checksum = "4b1c406a93765db2ffe5dd02bccd76822e8c5272026ee2c6005df5619f135f17"
 dependencies = [
  "tokio",
  "tracing",
@@ -10067,9 +10067,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_sierra_multicompile"
-version = "0.14.0-rc.1"
+version = "0.14.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "867f83985bf42f2ba9a2a66a252fbdc994bc8373b2d0306fd40161683a90bc64"
+checksum = "c6848ac0f7c2d404ce936126a4adc54f19c2363ef77d9a7bd7427176bb2c21ac"
 dependencies = [
  "cairo-lang-sierra 2.10.0",
  "cairo-lang-starknet-classes",
