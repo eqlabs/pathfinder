@@ -143,11 +143,14 @@ mod tests {
     use pathfinder_common::{
         contract_address,
         transaction_hash,
+        BlockHash,
+        BlockHeader,
         BlockNumber,
         ChainId,
         ContractAddress,
         TransactionHash,
     };
+    use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::Client;
@@ -468,8 +471,23 @@ mod tests {
         })
     }
 
+    fn sample_header(block_number: u64) -> BlockHeader {
+        BlockHeader {
+            hash: BlockHash(Felt::from_u64(block_number)),
+            number: BlockNumber::new_or_panic(block_number),
+            parent_hash: BlockHash::ZERO,
+            ..Default::default()
+        }
+    }
+
     fn setup() -> Setup {
         let storage = StorageBuilder::in_memory().unwrap();
+        {
+            let mut conn = storage.connection().unwrap();
+            let db = conn.transaction().unwrap();
+            db.insert_block_header(&sample_header(0)).unwrap();
+            db.commit().unwrap();
+        }
         let (pending_data_tx, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
         let ctx = RpcContext {
@@ -495,7 +513,7 @@ mod tests {
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
                 get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 fee_estimation_epsilon: Default::default(),
-                custom_versioned_constants: None,
+                versioned_constants_map: Default::default(),
             },
         };
         let router = v08::register_routes().build(ctx);

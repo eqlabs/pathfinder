@@ -35,7 +35,7 @@ impl FeeEstimate {
         tx_info: &TransactionExecutionInfo,
         block_info: &BlockInfo,
         fee_type: FeeType,
-        minimal_l1_gas_amount_vector: &Option<GasVector>,
+        minimal_gas_vector: &Option<GasVector>,
     ) -> FeeEstimate {
         tracing::trace!(resources=?tx_info.receipt.resources, "Transaction resources");
         let gas_prices = block_info.gas_prices.gas_price_vector(&fee_type);
@@ -43,19 +43,15 @@ impl FeeEstimate {
         let l1_data_gas_price = gas_prices.l1_data_gas_price.get();
         let l2_gas_price = gas_prices.l2_gas_price.get();
 
-        let minimal_l1_gas_amount_vector = minimal_l1_gas_amount_vector.unwrap_or_default();
+        let minimal_gas_vector = minimal_gas_vector.unwrap_or_default();
 
-        let l1_gas_consumed = tx_info
-            .receipt
-            .gas
-            .l1_gas
-            .max(minimal_l1_gas_amount_vector.l1_gas);
+        let l1_gas_consumed = tx_info.receipt.gas.l1_gas.max(minimal_gas_vector.l1_gas);
         let l1_data_gas_consumed = tx_info
             .receipt
             .gas
             .l1_data_gas
-            .max(minimal_l1_gas_amount_vector.l1_data_gas);
-        let l2_gas_consumed = tx_info.receipt.gas.l2_gas;
+            .max(minimal_gas_vector.l1_data_gas);
+        let l2_gas_consumed = tx_info.receipt.gas.l2_gas.max(minimal_gas_vector.l2_gas);
 
         // Blockifier does not put the actual fee into the receipt if `max_fee` in the
         // transaction was zero. In that case we have to compute the fee

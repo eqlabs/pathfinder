@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -11,6 +13,7 @@ use pathfinder_common::{
     ChainId,
     ContractAddress,
     L1DataAvailabilityMode,
+    StarknetVersion,
     StateUpdate,
 };
 use starknet_api::block::{BlockHashAndNumber, BlockInfo, GasPrice, NonzeroGasPrice};
@@ -21,7 +24,6 @@ use super::state_reader::PathfinderStateReader;
 use crate::IntoStarkFelt;
 
 mod versioned_constants {
-    use std::borrow::Cow;
     use std::sync::LazyLock;
 
     use pathfinder_common::StarknetVersion;
@@ -46,17 +48,25 @@ mod versioned_constants {
     const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3: &[u8] =
         include_bytes!("../resources/versioned_constants_0_13_3.json");
 
-    const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_4.json");
 
-    const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
+    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5: &[u8] =
+        include_bytes!("../resources/versioned_constants_0_13_5.json");
 
-    const STARKNET_VERSION_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
+    pub(super) const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
-    const STARKNET_VERSION_0_13_2_1: StarknetVersion = StarknetVersion::new(0, 13, 2, 1);
+    pub(super) const STARKNET_VERSION_0_13_1_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
 
-    const STARKNET_VERSION_0_13_3: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
+    pub(super) const STARKNET_VERSION_0_13_2: StarknetVersion = StarknetVersion::new(0, 13, 2, 0);
 
-    const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
+    pub(super) const STARKNET_VERSION_0_13_2_1: StarknetVersion = StarknetVersion::new(0, 13, 2, 1);
+
+    pub(super) const STARKNET_VERSION_0_13_3: StarknetVersion = StarknetVersion::new(0, 13, 3, 0);
+
+    pub(super) const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
+
+    pub(super) const STARKNET_VERSION_0_13_5: StarknetVersion = StarknetVersion::new(0, 13, 5, 0);
 
     pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: LazyLock<VersionedConstants> =
         LazyLock::new(|| {
@@ -88,28 +98,103 @@ mod versioned_constants {
             serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3).unwrap()
         });
 
-    pub(super) fn for_version(
-        version: &StarknetVersion,
-        custom_versioned_constants: Option<VersionedConstants>,
-    ) -> Cow<'static, VersionedConstants> {
-        // We use 0.13.0 for all blocks _before_ 0.13.1.
-        if version < &STARKNET_VERSION_0_13_1 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0)
-        } else if version < &STARKNET_VERSION_0_13_1_1 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1)
-        } else if version < &STARKNET_VERSION_0_13_2 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1)
-        } else if version < &STARKNET_VERSION_0_13_2_1 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2)
-        } else if version < &STARKNET_VERSION_0_13_3 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1)
-        } else if version < &STARKNET_VERSION_0_13_4 {
-            Cow::Borrowed(&BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3)
-        } else {
-            custom_versioned_constants
-                .map(Cow::Owned)
-                .unwrap_or_else(|| Cow::Borrowed(VersionedConstants::latest_constants()))
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4).unwrap()
+        });
+
+    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5: LazyLock<VersionedConstants> =
+        LazyLock::new(|| {
+            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5).unwrap()
+        });
+}
+
+#[derive(Clone, Debug)]
+pub struct VersionedConstantsMap {
+    data: BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>,
+}
+
+impl VersionedConstantsMap {
+    pub fn new() -> Self {
+        let mut data = BTreeMap::new();
+        Self::fill_default(&mut data);
+        Self { data }
+    }
+
+    pub fn custom(mut data: BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) -> Self {
+        Self::fill_default(&mut data);
+        Self { data }
+    }
+
+    pub fn latest_version() -> StarknetVersion {
+        versioned_constants::STARKNET_VERSION_0_13_5
+    }
+
+    fn fill_default(data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) {
+        use versioned_constants::*;
+
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_1,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_1_1,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_2,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_2_1,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_3,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_4,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4,
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_13_5,
+            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5,
+        );
+    }
+
+    fn insert_default(
+        data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>,
+        key: &StarknetVersion,
+        default_value: &'static VersionedConstants,
+    ) {
+        // should be try_insert, but that's still experimental...
+        if !data.contains_key(key) {
+            data.insert(*key, Cow::Borrowed(default_value));
         }
+    }
+
+    pub fn for_version(&self, version: &StarknetVersion) -> Cow<'static, VersionedConstants> {
+        let mut rng = self.data.range(..=version);
+        if let Some(kv) = rng.next_back() {
+            kv.1.clone()
+        } else {
+            // We use 0.13.0 for all blocks before 0.13.1.
+            Cow::Borrowed(&versioned_constants::BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0)
+        }
+    }
+}
+
+impl Default for VersionedConstantsMap {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -120,7 +205,7 @@ pub struct ExecutionState<'tx> {
     execute_on_parent_state: bool,
     pending_state: Option<Arc<StateUpdate>>,
     allow_use_kzg_data: bool,
-    custom_versioned_constants: Option<VersionedConstants>,
+    versioned_constants_map: VersionedConstantsMap,
     eth_fee_address: ContractAddress,
     strk_fee_address: ContractAddress,
 }
@@ -171,10 +256,9 @@ impl<'tx> ExecutionState<'tx> {
             None
         };
 
-        let versioned_constants = versioned_constants::for_version(
-            &self.header.starknet_version,
-            self.custom_versioned_constants,
-        );
+        let versioned_constants = self
+            .versioned_constants_map
+            .for_version(&self.header.starknet_version);
 
         pre_process_block(
             &mut cached_state,
@@ -306,7 +390,7 @@ impl<'tx> ExecutionState<'tx> {
         chain_id: ChainId,
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
-        custom_versioned_constants: Option<VersionedConstants>,
+        versioned_constants_map: VersionedConstantsMap,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
     ) -> Self {
@@ -317,7 +401,7 @@ impl<'tx> ExecutionState<'tx> {
             pending_state,
             execute_on_parent_state: true,
             allow_use_kzg_data: true,
-            custom_versioned_constants,
+            versioned_constants_map,
             eth_fee_address,
             strk_fee_address,
         }
@@ -330,7 +414,7 @@ impl<'tx> ExecutionState<'tx> {
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
         l1_blob_data_availability: L1BlobDataAvailability,
-        custom_versioned_constants: Option<VersionedConstants>,
+        versioned_constants_map: VersionedConstantsMap,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
     ) -> Self {
@@ -341,7 +425,7 @@ impl<'tx> ExecutionState<'tx> {
             pending_state,
             execute_on_parent_state: false,
             allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
-            custom_versioned_constants,
+            versioned_constants_map,
             eth_fee_address,
             strk_fee_address,
         }
@@ -352,4 +436,24 @@ impl<'tx> ExecutionState<'tx> {
 pub enum L1BlobDataAvailability {
     Disabled,
     Enabled,
+}
+
+#[cfg(test)]
+mod tests {
+    use blockifier::versioned_constants::ResourceCost;
+
+    use super::versioned_constants::*;
+    use super::VersionedConstantsMap;
+
+    #[test]
+    fn query_versioned_constants() {
+        let vcm = VersionedConstantsMap::default();
+        let constants = vcm.for_version(&STARKNET_VERSION_0_13_2);
+        let value = constants.deprecated_l2_resource_gas_costs.gas_per_code_byte;
+        assert_eq!(value, ResourceCost::new(875, 1000));
+
+        let constants = vcm.for_version(&STARKNET_VERSION_0_13_2_1);
+        let value = constants.deprecated_l2_resource_gas_costs.gas_per_code_byte;
+        assert_eq!(value, ResourceCost::new(32, 1000));
+    }
 }

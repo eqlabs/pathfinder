@@ -191,13 +191,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn happy_path_with_no_historic_blocks() {
-        happy_path_test(0).await;
-    }
-
-    #[tokio::test]
     async fn reorg() {
-        let (_, mut rx, subscription_id, router) = happy_path_test(0).await;
+        let (_, mut rx, subscription_id, router) = happy_path_test(1).await;
         router
             .context
             .notifications
@@ -327,7 +322,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_no_params() {
-        let router = setup(0).await;
+        let router = setup(1).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -352,6 +347,16 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
+
+        // receive latest header
+        let header = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match header {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        let expected = sample_new_heads_message(0, subscription_id);
+        assert_eq!(json, expected);
+
         for i in 0..10 {
             retry(|| {
                 router
@@ -375,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_empty_params() {
-        let router = setup(0).await;
+        let router = setup(1).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -401,6 +406,16 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
+
+        // receive latest header
+        let header = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match header {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        let expected = sample_new_heads_message(0, subscription_id);
+        assert_eq!(json, expected);
+
         for i in 0..10 {
             retry(|| {
                 router
@@ -424,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn unsubscribe() {
-        let (tx, mut rx, subscription_id, router) = happy_path_test(0).await;
+        let (tx, mut rx, subscription_id, router) = happy_path_test(1).await;
         tx.send(Ok(Message::Text(
             serde_json::json!({
                 "jsonrpc": "2.0",
@@ -462,7 +477,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_with_pending_block() {
-        let router = setup(0).await;
+        let router = setup(1).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -505,6 +520,7 @@ mod tests {
     }
 
     async fn setup(num_blocks: u64) -> RpcRouter {
+        assert!(num_blocks > 0);
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
             let storage = storage.clone();
@@ -545,7 +561,7 @@ mod tests {
                 get_events_max_blocks_to_scan: 1.try_into().unwrap(),
                 get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
                 fee_estimation_epsilon: Default::default(),
-                custom_versioned_constants: None,
+                versioned_constants_map: Default::default(),
             },
         };
         v08::register_routes().build(ctx)

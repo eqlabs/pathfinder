@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -10,8 +11,8 @@ use clap::{ArgAction, CommandFactory, Parser};
 use ipnet::IpNet;
 #[cfg(feature = "p2p")]
 use p2p::libp2p::Multiaddr;
-use pathfinder_common::AllowedOrigins;
-use pathfinder_executor::VersionedConstants;
+use pathfinder_common::{AllowedOrigins, StarknetVersion};
+use pathfinder_executor::VersionedConstantsMap;
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use util::percentage::Percentage;
@@ -303,7 +304,13 @@ This should only be enabled for debugging purposes as it adds substantial proces
 
     #[arg(
         long = "rpc.custom-versioned-constants-json-path",
-        long_help = "Path to a JSON file containing the versioned constants to use for execution",
+        long_help = "Path to a JSON file referencing sequencer versioned constants. The file maps \
+                     Starknet version keys to paths of files containing the versioned constants, \
+                     which are then used for blocks with that version _and_ subsequent versions \
+                     smaller than a hard-coded versioned constants change (or the next key in the \
+                     custom map). The paths in the custom map file can be relative to that file. \
+                     Alternatively, for backwards compatibility, path to the version constants \
+                     file can be passed directly, in which case it's used for the latest version.",
         env = "PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH"
     )]
     custom_versioned_constants_path: Option<PathBuf>,
@@ -712,15 +719,52 @@ enum RpcCorsDomainsParseError {
 
 fn parse_versioned_constants(
     path: PathBuf,
-) -> Result<VersionedConstants, ParseVersionedConstantsError> {
-    let file = File::open(path)?;
+) -> Result<VersionedConstantsMap, ParseVersionedConstantsError> {
+    let mut target = BTreeMap::new();
+    let file = File::open(path.clone())?;
     let reader = std::io::BufReader::new(file);
-    let versioned_constants = serde_json::from_reader(reader)?;
+    let src_res: Result<HashMap<String, String>, _> = serde_json::from_reader(reader);
+    if let Ok(source) = src_res {
+        let dir_path = path.parent().ok_or_else(|| {
+            ParseVersionedConstantsError::Io(std::io::Error::other(
+                "Version constants map file path empty",
+            ))
+        })?;
+        for (raw_version, rel_path) in source {
+            let version = raw_version.parse::<StarknetVersion>().map_err(|_| {
+                ParseVersionedConstantsError::Parse(serde::de::Error::custom(format!(
+                    "Invalid Starknet version \"{}\"",
+                    raw_version
+                )))
+            })?;
+            let abs_path = std::fs::canonicalize(dir_path.join(rel_path))?;
+            let file = File::open(abs_path)?;
+            let reader = std::io::BufReader::new(file);
+            let constants = serde_json::from_reader(reader)?;
+            target.insert(version, Cow::Owned(constants));
+        }
+    } else {
+        // logging isn't set up yet...
+        eprintln!("Unknown versioned constants map file format - trying legacy...");
+        let file = File::open(path)?;
+        let reader = std::io::BufReader::new(file);
+        let constants = serde_json::from_reader(reader)?;
+        target.insert(
+            VersionedConstantsMap::latest_version(),
+            Cow::Owned(constants),
+        );
+    }
 
-    Ok(versioned_constants)
+    if target.is_empty() {
+        return Err(ParseVersionedConstantsError::Parse(
+            serde::de::Error::custom("Version constants map file specified but empty"),
+        ));
+    }
+
+    Ok(VersionedConstantsMap::custom(target))
 }
 
-pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstants {
+pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstantsMap {
     use clap::error::ErrorKind;
 
     match parse_versioned_constants(path) {
@@ -768,7 +812,7 @@ pub struct Config {
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub state_tries: Option<StateTries>,
-    pub custom_versioned_constants: Option<VersionedConstants>,
+    pub versioned_constants_map: VersionedConstantsMap,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
     pub fetch_casm_from_fgw: bool,
     pub shutdown_grace_period: Duration,
@@ -1065,9 +1109,10 @@ impl Config {
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             state_tries: cli.state_tries,
-            custom_versioned_constants: cli
+            versioned_constants_map: cli
                 .custom_versioned_constants_path
-                .map(parse_versioned_constants_or_exit),
+                .map(parse_versioned_constants_or_exit)
+                .unwrap_or_default(),
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
@@ -1200,17 +1245,22 @@ mod tests {
     #[test]
     fn parse_versioned_constants_fails_on_parse_error() {
         assert_matches!(
-            super::parse_versioned_constants("resources/invalid_versioned_constants.json".into())
+            super::parse_versioned_constants("fixtures/invalid_versioned_constants.json".into())
                 .unwrap_err(),
             ParseVersionedConstantsError::Parse(_)
         )
     }
 
     #[test]
-    fn parse_versioned_constants_success() {
+    fn parse_versioned_constants_legacy() {
         super::parse_versioned_constants(
             "../executor/resources/versioned_constants_0_13_1_1.json".into(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn parse_versioned_constants_success() {
+        super::parse_versioned_constants("fixtures/multi_versioned_constants.json".into()).unwrap();
     }
 }

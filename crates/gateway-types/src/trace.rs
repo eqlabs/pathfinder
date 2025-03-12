@@ -64,6 +64,8 @@ pub struct FunctionInvocation {
     #[serde(default)]
     pub result: Vec<Felt>,
     pub execution_resources: ExecutionResources,
+    #[serde(default)]
+    pub failed: bool,
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -90,6 +92,7 @@ mod tests {
 
     mod block {
         use starknet_gateway_test_fixtures::traces::{TESTNET_889_517, TESTNET_GENESIS};
+        use starknet_gateway_test_fixtures::v0_13_4::traces::SEPOLIA_TESTNET_30000;
 
         use super::*;
 
@@ -102,6 +105,11 @@ mod tests {
         fn parse_889_517() {
             // The latest block trace on testnet at the time.
             serde_json::from_slice::<BlockTrace>(TESTNET_889_517).unwrap();
+        }
+
+        #[test]
+        fn parse_sepolia_testnet_30000_starknet_0_13_4() {
+            serde_json::from_str::<BlockTrace>(SEPOLIA_TESTNET_30000).unwrap();
         }
     }
 

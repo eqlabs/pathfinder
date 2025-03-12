@@ -287,6 +287,40 @@ pub mod test_utils {
 
     use crate::pending::PendingData;
 
+    #[macro_export]
+    macro_rules! fixture {
+        ($version:expr, $file_name:literal) => {{
+            match $version {
+                $crate::RpcVersion::V06 => {
+                    include_str!(concat!("../../fixtures/0.6.0/", $file_name))
+                }
+                $crate::RpcVersion::V07 => {
+                    include_str!(concat!("../../fixtures/0.7.0/", $file_name))
+                }
+                $crate::RpcVersion::V08 => {
+                    include_str!(concat!("../../fixtures/0.8.0/", $file_name))
+                }
+                _ => unreachable!(),
+            }
+        }};
+    }
+
+    #[macro_export]
+    macro_rules! assert_json_matches_fixture {
+        ($output_json:expr, $version:expr, $file_name:literal) => {{
+            let expected_str = $crate::fixture!($version, $file_name);
+            let expected_json: serde_json::Value =
+                serde_json::from_str(expected_str).expect("Failed to parse fixture as JSON");
+
+            pretty_assertions_sorted::assert_eq!(
+                $output_json,
+                expected_json,
+                "\nExpected fixture content from {}\nGot output",
+                $file_name
+            );
+        }};
+    }
+
     // Creates storage for tests
     pub fn setup_storage(trie_prune_mode: pathfinder_storage::TriePruneMode) -> Storage {
         use pathfinder_merkle_tree::contract_state::update_contract_state;
@@ -1032,6 +1066,7 @@ mod tests {
             .unwrap();
 
         let method_not_found = json!(-32601);
+        let invalid_params = json!(-32602);
 
         if api.has_http() {
             let url = format!("http://{addr}{route}");
@@ -1043,6 +1078,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": method,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 let res: serde_json::Value = client
@@ -1058,6 +1096,7 @@ mod tests {
                 if res["error"]["code"] == method_not_found {
                     failures.push(method);
                 }
+                assert_eq!(res["error"]["code"], invalid_params);
             }
 
             if !failures.is_empty() {
@@ -1071,6 +1110,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": excluded,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 let res: serde_json::Value = client
@@ -1107,15 +1149,19 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": method,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 stream.send(Message::Text(request.to_string())).await.unwrap();
-                let res = stream.next().await.unwrap().unwrap();
+                let res: Message = stream.next().await.unwrap().unwrap();
                 let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
 
                 if res["error"]["code"] == method_not_found {
                     failures.push(method);
                 }
+                assert_eq!(res["error"]["code"], invalid_params);
             }
 
             if !failures.is_empty() {
@@ -1129,6 +1175,9 @@ mod tests {
                     "jsonrpc": "2.0",
                     "method": excluded,
                     "id": 0,
+                    "params": {
+                        "invalid_param": null,
+                    }
                 });
 
                 stream.send(Message::Text(request.to_string())).await.unwrap();

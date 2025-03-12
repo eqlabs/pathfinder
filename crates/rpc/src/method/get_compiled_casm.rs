@@ -32,8 +32,7 @@ impl crate::dto::SerializeForVersion for Output {
         let mut s = serializer.serialize_struct()?;
         // Convert CasmContractClass to a serde_json::Value first
         let json_value = serde_json::to_value(&self.0).map_err(serde_json::Error::custom)?;
-        // Serialize it as a field
-        s.serialize_field("casm", &json_value)?;
+        s.flatten(&json_value)?;
         s.end()
     }
 }
@@ -143,6 +142,20 @@ mod tests {
             .await
             .expect_err("result");
         assert_matches::assert_matches!(result, Error::ClassHashNotFound(_));
+    }
+
+    #[tokio::test]
+    async fn serialization() {
+        let rpc = setup().await.unwrap();
+
+        let result = get_compiled_casm(rpc, input()).await.unwrap();
+        let output = crate::dto::SerializeForVersion::serialize(
+            &result,
+            crate::dto::Serializer::new(crate::RpcVersion::V08),
+        )
+        .unwrap();
+        let expected_output = serde_json::to_value(expected()).unwrap();
+        assert_eq!(output, expected_output);
     }
 
     async fn setup() -> anyhow::Result<RpcContext> {

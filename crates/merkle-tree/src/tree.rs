@@ -64,14 +64,14 @@ use pathfinder_crypto::Felt;
 use pathfinder_storage::{Node, NodeRef, StoredNode, TrieUpdate};
 
 use crate::merkle_node::{BinaryNode, Direction, EdgeNode, InternalNode};
-use crate::storage::Storage;
+use crate::storage::{Storage, TrieStorageIndex};
 
 /// A Starknet binary Merkle-Patricia tree.
 #[derive(Debug, Clone)]
 pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
     root: Option<Rc<RefCell<InternalNode>>>,
     leaves: HashMap<BitVec<u8, Msb0>, Felt>,
-    nodes_removed: Vec<u64>,
+    nodes_removed: Vec<TrieStorageIndex>,
     _hasher: std::marker::PhantomData<H>,
     /// If enables, node hashes are verified as they are resolved. This allows
     /// testing for database corruption.
@@ -79,7 +79,7 @@ pub struct MerkleTree<H: FeltHash, const HEIGHT: usize> {
 }
 
 impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
-    pub fn new(root: u64) -> Self {
+    pub fn new(root: TrieStorageIndex) -> Self {
         let root = Some(Rc::new(RefCell::new(InternalNode::Unresolved(root))));
         Self {
             root,
@@ -156,7 +156,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
         &self,
         node: &mut InternalNode,
         added: &mut Vec<(Felt, Node)>,
-        removed: &mut Vec<u64>,
+        removed: &mut Vec<TrieStorageIndex>,
         storage: &impl Storage,
         mut path: BitVec<u8, Msb0>,
     ) -> anyhow::Result<(Felt, Option<NodeRef>)> {
@@ -523,7 +523,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
 
     /// Single-key version of [`MerkleTree::get_proofs`].
     pub fn get_proof(
-        root: u64,
+        root: TrieStorageIndex,
         storage: &impl Storage,
         key: &BitSlice<u8, Msb0>,
     ) -> Result<Vec<TrieNodeWithHash>, GetProofError> {
@@ -547,12 +547,12 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     ///
     /// Uses caching to avoid repeated lookups.
     pub fn get_proofs(
-        root: u64,
+        root: TrieStorageIndex,
         storage: &impl Storage,
         keys: &[&BitSlice<u8, Msb0>],
     ) -> Result<Vec<Vec<TrieNodeWithHash>>, GetProofError> {
-        let mut node_cache: HashMap<u64, StoredNode> = HashMap::new();
-        let mut node_hash_cache: HashMap<u64, Felt> = HashMap::new();
+        let mut node_cache: HashMap<TrieStorageIndex, StoredNode> = HashMap::new();
+        let mut node_hash_cache: HashMap<TrieStorageIndex, Felt> = HashMap::new();
 
         let mut proofs = vec![];
 
@@ -732,7 +732,7 @@ impl<H: FeltHash, const HEIGHT: usize> MerkleTree<H, HEIGHT> {
     fn resolve(
         &self,
         storage: &impl Storage,
-        index: u64,
+        index: TrieStorageIndex,
         height: usize,
     ) -> anyhow::Result<InternalNode> {
         anyhow::ensure!(
@@ -914,7 +914,7 @@ pub type TrieNodeWithHash = (TrieNode, Felt);
 #[derive(Debug)]
 pub enum GetProofError {
     Internal(anyhow::Error),
-    StorageNodeMissing(u64),
+    StorageNodeMissing(TrieStorageIndex),
 }
 
 impl From<anyhow::Error> for GetProofError {
@@ -952,17 +952,17 @@ mod tests {
 
     #[derive(Default, Debug)]
     struct TestStorage {
-        nodes: HashMap<u64, (Felt, StoredNode)>,
+        nodes: HashMap<TrieStorageIndex, (Felt, StoredNode)>,
         leaves: HashMap<Felt, Felt>,
-        next_index: u64,
+        next_index: TrieStorageIndex,
     }
 
     impl Storage for TestStorage {
-        fn get(&self, index: u64) -> anyhow::Result<Option<StoredNode>> {
+        fn get(&self, index: TrieStorageIndex) -> anyhow::Result<Option<StoredNode>> {
             Ok(self.nodes.get(&index).map(|x| x.1.clone()))
         }
 
-        fn hash(&self, index: u64) -> anyhow::Result<Option<Felt>> {
+        fn hash(&self, index: TrieStorageIndex) -> anyhow::Result<Option<Felt>> {
             Ok(self.nodes.get(&index).map(|x| x.0))
         }
 
@@ -978,14 +978,14 @@ mod tests {
     fn commit_and_persist_with_pruning<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
-    ) -> (Felt, u64) {
+    ) -> (Felt, TrieStorageIndex) {
         commit_and_persist(tree, storage, true)
     }
 
     fn commit_and_persist_without_pruning<H: FeltHash, const HEIGHT: usize>(
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
-    ) -> (Felt, u64) {
+    ) -> (Felt, TrieStorageIndex) {
         commit_and_persist(tree, storage, false)
     }
 
@@ -994,7 +994,7 @@ mod tests {
         tree: MerkleTree<H, HEIGHT>,
         storage: &mut TestStorage,
         prune_nodes: bool,
-    ) -> (Felt, u64) {
+    ) -> (Felt, TrieStorageIndex) {
         for (key, value) in &tree.leaves {
             let key = Felt::from_bits(key).unwrap();
             storage.leaves.insert(key, *value);
@@ -1015,12 +1015,12 @@ mod tests {
                 Node::Binary { left, right } => {
                     let left = match left {
                         NodeRef::StorageIndex(idx) => idx,
-                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
+                        NodeRef::Index(idx) => storage.next_index + idx as u64,
                     };
 
                     let right = match right {
                         NodeRef::StorageIndex(idx) => idx,
-                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
+                        NodeRef::Index(idx) => storage.next_index + idx as u64,
                     };
 
                     StoredNode::Binary { left, right }
@@ -1028,7 +1028,7 @@ mod tests {
                 Node::Edge { child, path } => {
                     let child = match child {
                         NodeRef::StorageIndex(idx) => idx,
-                        NodeRef::Index(idx) => storage.next_index + (idx as u64),
+                        NodeRef::Index(idx) => storage.next_index + idx as u64,
                     };
 
                     StoredNode::Edge { child, path }
@@ -1766,7 +1766,7 @@ mod tests {
             let RootIndexUpdate::Updated(root_index) = root_index_update else {
                 panic!("Expected root index to be updated");
             };
-            assert_eq!(root_index, 1);
+            assert_eq!(root_index, TrieStorageIndex(1));
             tx.insert_class_root(BlockNumber::GENESIS, root_index_update)
                 .unwrap();
             assert!(tx.class_root_exists(BlockNumber::GENESIS).unwrap());
@@ -2026,6 +2026,7 @@ mod tests {
         use pathfinder_common::hash::PedersenHash;
         use pathfinder_common::trie::TrieNode;
         use pathfinder_crypto::Felt;
+        use pathfinder_storage::TrieStorageIndex;
 
         use super::{Direction, TestStorage, TestTree, TrieNodeWithHash};
         use crate::tree::tests::commit_and_persist_with_pruning;
@@ -2129,7 +2130,7 @@ mod tests {
             keys: Vec<Felt>,
             values: Vec<Felt>,
             root: Felt,
-            root_idx: u64,
+            root_idx: TrieStorageIndex,
             storage: TestStorage,
         }
 
