@@ -21,6 +21,7 @@ use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
+use crate::state_reader::NativeClassCache;
 use crate::IntoStarkFelt;
 
 mod versioned_constants {
@@ -208,6 +209,7 @@ pub struct ExecutionState<'tx> {
     versioned_constants_map: VersionedConstantsMap,
     eth_fee_address: ContractAddress,
     strk_fee_address: ContractAddress,
+    native_class_cache: Option<NativeClassCache>,
 }
 
 impl<'tx> ExecutionState<'tx> {
@@ -223,16 +225,17 @@ impl<'tx> ExecutionState<'tx> {
             Some(self.header.number)
         };
 
+        let chain_info = self.chain_info()?;
+        let block_info = self.block_info()?;
+
         let raw_reader = PathfinderStateReader::new(
             self.transaction,
             block_number,
             self.pending_state.is_some(),
+            self.native_class_cache,
         );
         let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
         let mut cached_state = CachedState::new(pending_state_reader);
-
-        let chain_info = self.chain_info()?;
-        let block_info = self.block_info()?;
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
@@ -385,6 +388,7 @@ impl<'tx> ExecutionState<'tx> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn trace(
         transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
@@ -393,6 +397,7 @@ impl<'tx> ExecutionState<'tx> {
         versioned_constants_map: VersionedConstantsMap,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
+        native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
             transaction,
@@ -404,6 +409,7 @@ impl<'tx> ExecutionState<'tx> {
             versioned_constants_map,
             eth_fee_address,
             strk_fee_address,
+            native_class_cache,
         }
     }
 
@@ -417,6 +423,7 @@ impl<'tx> ExecutionState<'tx> {
         versioned_constants_map: VersionedConstantsMap,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
+        native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
             transaction,
@@ -428,6 +435,7 @@ impl<'tx> ExecutionState<'tx> {
             versioned_constants_map,
             eth_fee_address,
             strk_fee_address,
+            native_class_cache,
         }
     }
 }

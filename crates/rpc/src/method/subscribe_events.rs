@@ -299,7 +299,6 @@ mod tests {
         BlockHash,
         BlockHeader,
         BlockNumber,
-        ChainId,
         ContractAddress,
         EventData,
         EventKey,
@@ -307,18 +306,14 @@ mod tests {
         TransactionIndex,
     };
     use pathfinder_crypto::Felt;
-    use pathfinder_ethereum::EthereumClient;
     use pathfinder_storage::StorageBuilder;
-    use starknet_gateway_client::Client;
     use starknet_gateway_types::reply::{Block, PendingBlock};
     use tokio::sync::mpsc;
 
-    use crate::context::{EthContractAddresses, RpcConfig, RpcContext};
+    use crate::context::RpcContext;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcRouter, RpcSubscriptionFlow};
     use crate::method::subscribe_events::SubscribeEvents;
-    use crate::pending::PendingWatcher;
-    use crate::types::syncing::Syncing;
-    use crate::{v08, Notifications, Reorg, SyncState};
+    use crate::{v08, Notifications, Reorg};
 
     #[tokio::test]
     async fn no_filtering() {
@@ -897,32 +892,10 @@ mod tests {
         .unwrap();
         let (pending_data_tx, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
-        let ctx = RpcContext {
-            cache: Default::default(),
-            storage: storage.clone(),
-            execution_storage: storage,
-            pending_data: PendingWatcher::new(pending_data),
-            sync_status: SyncState {
-                status: Syncing::False.into(),
-            }
-            .into(),
-            chain_id: ChainId::MAINNET,
-            contract_addresses: EthContractAddresses::new_known(
-                pathfinder_ethereum::core_addr::MAINNET,
-            ),
-            sequencer: Client::mainnet(Duration::from_secs(10)),
-            websocket: None,
-            notifications,
-            ethereum: EthereumClient::new("wss://eth-sepolia.g.alchemy.com/v2/just-for-tests")
-                .unwrap(),
-            config: RpcConfig {
-                batch_concurrency_limit: 64.try_into().unwrap(),
-                get_events_max_blocks_to_scan: 1024.try_into().unwrap(),
-                get_events_max_uncached_event_filters_to_load: 1.try_into().unwrap(),
-                fee_estimation_epsilon: Default::default(),
-                versioned_constants_map: Default::default(),
-            },
-        };
+        let ctx = RpcContext::for_tests()
+            .with_storage(storage)
+            .with_notifications(notifications)
+            .with_pending_data(pending_data);
         (v08::register_routes().build(ctx), pending_data_tx)
     }
 

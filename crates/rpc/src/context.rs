@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use pathfinder_common::{contract_address, ChainId, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
-use pathfinder_executor::{TraceCache, VersionedConstantsMap};
+use pathfinder_executor::{NativeClassCache, TraceCache, VersionedConstantsMap};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
 use util::percentage::Percentage;
@@ -69,6 +69,8 @@ pub struct RpcConfig {
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
     pub fee_estimation_epsilon: Percentage,
     pub versioned_constants_map: VersionedConstantsMap,
+    pub native_execution: bool,
+    pub native_class_cache_size: NonZeroUsize,
 }
 
 #[derive(Clone)]
@@ -85,6 +87,7 @@ pub struct RpcContext {
     pub notifications: Notifications,
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
+    pub native_class_cache: Option<NativeClassCache>,
 }
 
 impl RpcContext {
@@ -102,6 +105,11 @@ impl RpcContext {
         config: RpcConfig,
     ) -> Self {
         let pending_data = PendingWatcher::new(pending_data);
+        let native_class_cache = if config.native_execution {
+            Some(NativeClassCache::spawn(config.native_class_cache_size))
+        } else {
+            None
+        };
         Self {
             cache: Default::default(),
             storage,
@@ -115,6 +123,38 @@ impl RpcContext {
             notifications,
             ethereum,
             config,
+            native_class_cache,
+        }
+    }
+
+    pub fn with_storage(self, storage: Storage) -> Self {
+        Self {
+            storage: storage.clone(),
+            execution_storage: storage,
+            ..self
+        }
+    }
+
+    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<PendingData>) -> Self {
+        let pending_data = PendingWatcher::new(pending_data);
+        Self {
+            pending_data,
+            ..self
+        }
+    }
+
+    pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
+        Self {
+            websocket: Some(websockets),
+            ..self
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_notifications(self, notifications: Notifications) -> Self {
+        Self {
+            notifications,
+            ..self
         }
     }
 
@@ -134,7 +174,7 @@ impl RpcContext {
     }
 
     #[cfg(test)]
-    pub fn for_tests_impl(
+    fn for_tests_impl(
         chain: pathfinder_common::Chain,
         trie_prune_mode: pathfinder_storage::TriePruneMode,
     ) -> Self {
@@ -171,6 +211,8 @@ impl RpcContext {
             get_events_max_uncached_event_filters_to_load: NonZeroUsize::new(1000).unwrap(),
             fee_estimation_epsilon: Percentage::new(10),
             versioned_constants_map: Default::default(),
+            native_execution: true,
+            native_class_cache_size: NonZeroUsize::new(10).unwrap(),
         };
 
         let ethereum =
@@ -190,22 +232,6 @@ impl RpcContext {
         )
     }
 
-    pub fn with_storage(self, storage: Storage) -> Self {
-        Self {
-            storage: storage.clone(),
-            execution_storage: storage,
-            ..self
-        }
-    }
-
-    pub fn with_pending_data(self, pending_data: tokio_watch::Receiver<PendingData>) -> Self {
-        let pending_data = PendingWatcher::new(pending_data);
-        Self {
-            pending_data,
-            ..self
-        }
-    }
-
     #[cfg(test)]
     pub async fn for_tests_with_pending() -> Self {
         // This is a bit silly with the arc in and out, but since its for tests the
@@ -217,12 +243,5 @@ impl RpcContext {
         tx.send(pending_data).unwrap();
 
         context.with_pending_data(rx)
-    }
-
-    pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
-        Self {
-            websocket: Some(websockets),
-            ..self
-        }
     }
 }
