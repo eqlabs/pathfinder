@@ -47,6 +47,7 @@ tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+util = { path = "../util" }
 zstd = { workspace = true, features = ["experimental"] }
 
 [dev-dependencies]

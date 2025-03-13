@@ -11,6 +11,7 @@ pub use bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 mod connection;
 pub mod fake;
 mod params;
+pub mod pruning;
 mod schema;
 pub mod test_utils;
 
