@@ -8,10 +8,10 @@ mod prelude;
 mod bloom;
 use bloom::AggregateBloomCache;
 pub use bloom::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+use connection::pruning::BlockchainHistoryMode;
 mod connection;
 pub mod fake;
 mod params;
-pub mod pruning;
 mod schema;
 pub mod test_utils;
 
@@ -96,6 +96,7 @@ struct Inner {
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
+    blockchain_history_mode: BlockchainHistoryMode,
 }
 
 pub struct StorageManager {
@@ -104,6 +105,7 @@ pub struct StorageManager {
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
+    blockchain_history_mode: BlockchainHistoryMode,
 }
 
 impl std::fmt::Debug for StorageManager {
@@ -136,6 +138,7 @@ impl StorageManager {
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
+            blockchain_history_mode: self.blockchain_history_mode,
         }))
     }
 
@@ -156,6 +159,7 @@ pub struct StorageBuilder {
     journal_mode: JournalMode,
     event_filter_cache_size: usize,
     trie_prune_mode: Option<TriePruneMode>,
+    blockchain_history_mode: Option<BlockchainHistoryMode>,
 }
 
 impl StorageBuilder {
@@ -165,6 +169,7 @@ impl StorageBuilder {
             journal_mode: JournalMode::WAL,
             event_filter_cache_size: 16,
             trie_prune_mode: None,
+            blockchain_history_mode: None,
         }
     }
 
@@ -180,6 +185,14 @@ impl StorageBuilder {
 
     pub fn trie_prune_mode(mut self, trie_prune_mode: Option<TriePruneMode>) -> Self {
         self.trie_prune_mode = trie_prune_mode;
+        self
+    }
+
+    pub fn blockchain_history_mode(
+        mut self,
+        blockchain_history_mode: Option<BlockchainHistoryMode>,
+    ) -> Self {
+        self.blockchain_history_mode = blockchain_history_mode;
         self
     }
 
@@ -232,12 +245,48 @@ impl StorageBuilder {
 
         if let TriePruneMode::Prune { .. } = trie_prune_mode {
             conn.execute(
-                "INSERT INTO storage_flags (flag) VALUES ('prune_tries')",
+                "INSERT INTO storage_options (option) VALUES ('prune_tries')",
                 [],
             )?;
         }
 
         storage.trie_prune_mode = trie_prune_mode;
+        storage.create_pool(pool_size)
+    }
+
+    pub fn in_memory_with_blockchain_pruning_and_pool_size(
+        blockchain_history_mode: BlockchainHistoryMode,
+        pool_size: NonZeroU32,
+    ) -> anyhow::Result<Storage> {
+        // Create a unique database name so that they are not shared between
+        // concurrent tests. i.e. Make every in-mem Storage unique.
+        static COUNT: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
+        let unique_mem_db = {
+            let mut count = COUNT.lock().unwrap();
+            // &cache=shared allows other threads to see and access the inmemory database
+            let unique_mem_db = format!("file:memdb{count}?mode=memory&cache=shared");
+            *count += 1;
+            unique_mem_db
+        };
+
+        let database_path = PathBuf::from(unique_mem_db);
+        // This connection must be held until a pool has been created, since an
+        // in-memory database is dropped once all its connections are. This connection
+        // therefore holds the database in-place until the pool is established.
+        let conn = rusqlite::Connection::open(&database_path)?;
+
+        let mut storage = Self::file(database_path)
+            .journal_mode(JournalMode::Rollback)
+            .migrate()?;
+
+        if let BlockchainHistoryMode::Prune { num_blocks_kept } = blockchain_history_mode {
+            conn.execute(
+                "INSERT INTO storage_options (option, value) VALUES ('prune_blockchain', ?)",
+                [num_blocks_kept],
+            )?;
+        }
+
+        storage.blockchain_history_mode = blockchain_history_mode;
         storage.create_pool(pool_size)
     }
 
@@ -307,7 +356,15 @@ impl StorageBuilder {
         setup_journal_mode(&mut connection, self.journal_mode).context("Setting journal mode")?;
 
         // Validate that configuration matches database flags.
+        let blockchain_history_mode =
+            self.determine_blockchain_history_mode(&mut connection, is_new_database)?;
         let trie_prune_mode = self.determine_trie_prune_mode(&mut connection, is_new_database)?;
+
+        if let BlockchainHistoryMode::Prune { num_blocks_kept } = blockchain_history_mode {
+            tracing::info!(history_kept=%num_blocks_kept, "Blockchain pruning enabled");
+        } else {
+            tracing::info!("Blockchain pruning disabled");
+        }
         if let TriePruneMode::Prune { num_blocks_kept } = trie_prune_mode {
             tracing::info!(history_kept=%num_blocks_kept, "Merkle trie pruning enabled");
         } else {
@@ -330,6 +387,7 @@ impl StorageBuilder {
             )),
             running_event_filter: Arc::new(Mutex::new(running_event_filter)),
             trie_prune_mode,
+            blockchain_history_mode,
         })
     }
 
@@ -345,7 +403,7 @@ impl StorageBuilder {
     ) -> anyhow::Result<TriePruneMode> {
         let prune_flag_is_set = connection
             .query_row(
-                "SELECT 1 FROM storage_flags WHERE flag = 'prune_tries'",
+                "SELECT 1 FROM storage_options WHERE option = 'prune_tries'",
                 [],
                 |_| Ok(()),
             )
@@ -381,7 +439,7 @@ impl StorageBuilder {
 
                 if is_new_database {
                     connection.execute(
-                        "INSERT OR IGNORE INTO storage_flags (flag) VALUES ('prune_tries')",
+                        "INSERT OR IGNORE INTO storage_options (option) VALUES ('prune_tries')",
                         [],
                     )?;
                     tracing::info!("Created new database with Merkle trie pruning enabled.");
@@ -390,6 +448,76 @@ impl StorageBuilder {
         }
 
         Ok(trie_prune_mode)
+    }
+
+    /// Determines the blockchain history mode based on the database state and
+    /// configuration.
+    ///
+    /// - If there is no explicitly requested configuration, assumes the user
+    ///   wants to archive. If this doesn't match the database setting, errors.
+    /// - If there's an explicitly requested setting: uses it if it matches the
+    ///   DB setting, otherwise errors.
+    /// - If the database is new and no configuration is provided, the database
+    ///   is created in archive mode.
+    /// - Once the history size for pruning is set, it cannot be changed.
+    fn determine_blockchain_history_mode(
+        &self,
+        connection: &mut rusqlite::Connection,
+        is_new_database: bool,
+    ) -> anyhow::Result<BlockchainHistoryMode> {
+        let init_num_blocks_kept = connection
+            .query_row(
+                "SELECT value FROM storage_options WHERE option = 'prune_blockchain'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let blockchain_history_mode = self.blockchain_history_mode.unwrap_or({
+            // Keep the same history size or default to archive mode.
+            if let Some(num_blocks_kept) = init_num_blocks_kept {
+                BlockchainHistoryMode::Prune { num_blocks_kept }
+            } else {
+                BlockchainHistoryMode::Archive
+            }
+        });
+
+        match blockchain_history_mode {
+            BlockchainHistoryMode::Archive => {
+                if init_num_blocks_kept.is_some() {
+                    anyhow::bail!(
+                        "Cannot disable blockchain history pruning on a database that was created \
+                         with it enabled."
+                    );
+                }
+            }
+            BlockchainHistoryMode::Prune { num_blocks_kept } => {
+                if !is_new_database {
+                    let Some(init_num_blocks_kept) = init_num_blocks_kept else {
+                        anyhow::bail!(
+                            "Cannot enable blockchain history pruning on a database that was not \
+                             created with it disabled."
+                        );
+                    };
+                    if num_blocks_kept != init_num_blocks_kept {
+                        anyhow::bail!(
+                            "Cannot enable blockchain history pruning with a different number of \
+                             blocks kept than the database was created with \
+                             ({init_num_blocks_kept})."
+                        );
+                    }
+                } else {
+                    connection.execute(
+                        "INSERT OR IGNORE INTO storage_options (option, value) VALUES \
+                         ('prune_blockchain', ?)",
+                        [num_blocks_kept],
+                    )?;
+                    tracing::info!("Created new database with blockchain history pruning enabled.");
+                }
+            }
+        }
+
+        Ok(blockchain_history_mode)
     }
 }
 
@@ -402,6 +530,7 @@ impl Storage {
             self.0.event_filter_cache.clone(),
             self.0.running_event_filter.clone(),
             self.0.trie_prune_mode,
+            self.0.blockchain_history_mode,
         ))
     }
 

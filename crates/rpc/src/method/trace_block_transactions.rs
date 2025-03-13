@@ -71,6 +71,14 @@ pub async fn trace_block_transactions(
             }
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
+
+                let pruned = db
+                    .block_pruned(block_id)
+                    .context("Querying block pruned status")?;
+                if pruned {
+                    return Err(TraceBlockTransactionsError::BlockNotFound);
+                }
+
                 let header = db
                     .block_header(block_id)?
                     .ok_or(TraceBlockTransactionsError::BlockNotFound)?;

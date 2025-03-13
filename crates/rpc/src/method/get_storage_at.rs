@@ -56,6 +56,13 @@ pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output,
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
+        let pruned = tx
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         // Check for block existence.
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);

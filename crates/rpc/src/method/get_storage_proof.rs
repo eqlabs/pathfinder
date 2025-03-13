@@ -304,6 +304,13 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
 
         let tx = db.transaction().context("Creating database transaction")?;
 
+        let pruned = tx
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         // Use internal error to indicate that the process of querying for a particular
         // block failed, which is not the same as being sure that the block is
         // not in the db.
