@@ -72,6 +72,13 @@ pub async fn get_transaction_by_block_id_and_index(
         {
             Some(transaction) => Ok(Output(transaction)),
             None => {
+                let pruned = db_tx
+                    .block_pruned(block_id)
+                    .context("Querying block pruned status")?;
+                if pruned {
+                    return Err(GetTransactionByBlockIdAndIndexError::BlockNotFound);
+                }
+
                 // We now need to check whether it was the block hash or transaction index which
                 // were invalid. We do this by checking if the block exists
                 // at all. If no, then the block hash is invalid. If yes, then the index is

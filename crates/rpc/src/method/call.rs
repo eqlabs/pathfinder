@@ -131,6 +131,14 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             }
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
+
+                let pruned = db
+                    .block_pruned(block_id)
+                    .context("Querying block pruned status")?;
+                if pruned {
+                    return Err(CallError::BlockNotFound);
+                }
+
                 let header = db
                     .block_header(block_id)
                     .context("Querying block header")?

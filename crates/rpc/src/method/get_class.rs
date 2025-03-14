@@ -68,6 +68,13 @@ pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Erro
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
+        let pruned = tx
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         // Check that block exists
         let block_exists = tx.block_exists(block_id)?;
         if !block_exists {

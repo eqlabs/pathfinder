@@ -4,6 +4,7 @@ mod block;
 mod class;
 mod ethereum;
 pub mod event;
+pub mod pruning;
 mod reference;
 mod signature;
 mod state_update;
@@ -22,6 +23,7 @@ use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
 use pathfinder_common::{BlockNumber, TransactionHash};
+use pruning::BlockchainHistoryMode;
 // Re-export this so users don't require rusqlite as a direct dep.
 pub use rusqlite::TransactionBehavior;
 pub use trie::{Node, NodeRef, RootIndexUpdate, StoredNode, TrieStorageIndex, TrieUpdate};
@@ -35,6 +37,7 @@ pub struct Connection {
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
+    pub blockchain_history_mode: BlockchainHistoryMode,
 }
 
 impl Connection {
@@ -43,12 +46,14 @@ impl Connection {
         event_filter_cache: Arc<AggregateBloomCache>,
         running_event_filter: Arc<Mutex<RunningEventFilter>>,
         trie_prune_mode: TriePruneMode,
+        blockchain_history_mode: BlockchainHistoryMode,
     ) -> Self {
         Self {
             connection,
             event_filter_cache,
             running_event_filter,
             trie_prune_mode,
+            blockchain_history_mode,
         }
     }
 
@@ -59,6 +64,7 @@ impl Connection {
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
+            blockchain_history_mode: self.blockchain_history_mode,
         })
     }
 
@@ -72,6 +78,7 @@ impl Connection {
             event_filter_cache: self.event_filter_cache.clone(),
             running_event_filter: self.running_event_filter.clone(),
             trie_prune_mode: self.trie_prune_mode,
+            blockchain_history_mode: self.blockchain_history_mode,
         })
     }
 
@@ -89,6 +96,7 @@ pub struct Transaction<'inner> {
     event_filter_cache: Arc<AggregateBloomCache>,
     running_event_filter: Arc<Mutex<RunningEventFilter>>,
     trie_prune_mode: TriePruneMode,
+    pub blockchain_history_mode: BlockchainHistoryMode,
 }
 
 #[derive(Debug, Clone, Copy)]
