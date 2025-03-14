@@ -58,19 +58,11 @@ pub async fn send_event(event_sender: &mpsc::Sender<Event>, event: TestEvent) {
 
 pub async fn query_completed(
     _pending_test_queries: &mut PendingQueries,
-    event_sender: &mpsc::Sender<Event>,
+    _event_sender: &mpsc::Sender<Event>,
     _id: QueryId,
-    result: QueryResult,
+    _result: QueryResult,
 ) {
-    if let QueryResult::StartProviding(result) = result {
-        use libp2p::kad::AddProviderOk;
-
-        let result = match result {
-            Ok(AddProviderOk { key }) => Ok(key),
-            Err(error) => Err(error.into_key()),
-        };
-        send_event(event_sender, TestEvent::StartProvidingCompleted(result)).await
-    }
+    // This fn as a placeholder for future query types in tests.
 }
 
 pub async fn query_progressed(
@@ -78,8 +70,7 @@ pub async fn query_progressed(
     _id: QueryId,
     _result: QueryResult,
 ) {
-    // QueryResult::GetProviders used to be handled here, but now just keeping
-    // this fn as a placeholder for future query types in tests.
+    // This fn as a placeholder for future query types in tests.
 }
 
 #[derive(Debug, Default)]
