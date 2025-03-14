@@ -56,7 +56,7 @@ pub struct Behaviour {
 }
 
 #[derive(NetworkBehaviour)]
-#[behaviour(to_swarm = "Event", event_process = false)]
+#[behaviour(to_swarm = "Event")]
 pub struct Inner {
     relay: relay::client::Behaviour,
     autonat: autonat::Behaviour,
