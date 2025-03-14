@@ -342,6 +342,6 @@ impl Transaction<'_> {
 
         Ok(latest
             .checked_sub(num_blocks_kept + 1)
-            .map_or(false, |prune_point| block < prune_point))
+            .is_some_and(|prune_point| block < prune_point))
     }
 }
