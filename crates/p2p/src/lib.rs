@@ -5,7 +5,6 @@ use std::time::Duration;
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
 use ipnet::IpNet;
 use libp2p::identity::Keypair;
-use libp2p::kad::RecordKey;
 use libp2p::{Multiaddr, PeerId};
 use main_loop::MainLoop;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
@@ -147,9 +146,6 @@ pub enum TestCommand {
 
 #[derive(Debug)]
 pub enum Event {
-    SyncPeerConnected {
-        peer_id: PeerId,
-    },
     InboundHeadersSyncRequest {
         from: PeerId,
         request: BlockHeadersRequest,
@@ -184,10 +180,8 @@ pub enum TestEvent {
     NewListenAddress(Multiaddr),
     KademliaBootstrapStarted,
     KademliaBootstrapCompleted(Result<PeerId, PeerId>),
-    StartProvidingCompleted(Result<RecordKey, RecordKey>),
     ConnectionEstablished { outbound: bool, remote: PeerId },
     ConnectionClosed { remote: PeerId },
-    Subscribed { remote: PeerId, topic: String },
     PeerAddedToDHT { remote: PeerId },
     Dummy,
 }

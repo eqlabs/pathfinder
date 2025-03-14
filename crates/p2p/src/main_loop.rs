@@ -30,11 +30,6 @@ pub struct MainLoop {
     /// when the dial succeeds or fails.
     pending_dials: HashMap<PeerId, EmptyResultSender>,
     pending_sync_requests: PendingRequests,
-    // TODO there's no sync status message anymore so we have to:
-    // 1. set the idle connection timeout to maximum value to keep connections open (earlier: keep
-    //    alive::Behavior)
-    // 2. update the sync head info of our peers using a different mechanism
-    // request_sync_status: HashSetDelay<PeerId>,
     pending_queries: PendingQueries,
     _pending_test_queries: TestQueries,
 }
