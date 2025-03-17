@@ -137,7 +137,7 @@ async fn handle_p2p_event(event: p2p::Event, storage: Storage) -> anyhow::Result
         } => {
             get_events(storage, request, channel).await;
         }
-        p2p::Event::SyncPeerConnected { .. } | p2p::Event::Test(_) => { /* Ignore me */ }
+        p2p::Event::Test(_) => { /* Ignore me */ }
     }
 
     Ok(())
