@@ -232,7 +232,7 @@ impl MainLoop {
                             ..
                         },
                     ..
-                } = *e
+                } = e
                 {
                     // Important change in libp2p-v0.52 compared to v0.51:
                     //
@@ -421,7 +421,7 @@ impl MainLoop {
             // ===========================
             // Block sync
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
+            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -440,7 +440,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
+            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -456,7 +456,7 @@ impl MainLoop {
                     .expect("Header sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -475,7 +475,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -491,7 +491,7 @@ impl MainLoop {
                     .expect("Classes sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -510,7 +510,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -526,7 +526,7 @@ impl MainLoop {
                     .expect("State diff sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
+            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -545,7 +545,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
+            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -561,7 +561,7 @@ impl MainLoop {
                     .expect("Transaction sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::EventsSync(
+            SwarmEvent::Behaviour(behaviour::Event::EventSync(
                 p2p_stream::Event::InboundRequest {
                     request_id,
                     request,
@@ -580,7 +580,7 @@ impl MainLoop {
                     .await
                     .expect("Event receiver not to be dropped");
             }
-            SwarmEvent::Behaviour(behaviour::Event::EventsSync(
+            SwarmEvent::Behaviour(behaviour::Event::EventSync(
                 p2p_stream::Event::OutboundRequestSentAwaitingResponses {
                     request_id,
                     peer,
@@ -596,7 +596,7 @@ impl MainLoop {
                     .expect("Event sync request still to be pending")
                     .send(Ok(channel));
             }
-            SwarmEvent::Behaviour(behaviour::Event::HeadersSync(
+            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
@@ -614,7 +614,7 @@ impl MainLoop {
                     let _ = sender.send(Err(error.into()));
                 }
             }
-            SwarmEvent::Behaviour(behaviour::Event::ClassesSync(
+            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
@@ -624,7 +624,7 @@ impl MainLoop {
                     let _ = sender.send(Err(error.into()));
                 }
             }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffsSync(
+            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
@@ -638,7 +638,7 @@ impl MainLoop {
                     let _ = sender.send(Err(error.into()));
                 }
             }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionsSync(
+            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
@@ -652,7 +652,7 @@ impl MainLoop {
                     let _ = sender.send(Err(error.into()));
                 }
             }
-            SwarmEvent::Behaviour(behaviour::Event::EventsSync(
+            SwarmEvent::Behaviour(behaviour::Event::EventSync(
                 p2p_stream::Event::OutboundFailure {
                     request_id, error, ..
                 },
