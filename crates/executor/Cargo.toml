@@ -6,11 +6,15 @@ edition = { workspace = true }
 license = { workspace = true }
 rust-version = { workspace = true }
 
+[features]
+cairo-native = ["blockifier/cairo_native", "dep:cairo-native"]
+
 [dependencies]
 anyhow = { workspace = true }
 blockifier = { workspace = true }
 cached = { workspace = true }
 cairo-lang-starknet-classes = { workspace = true }
+cairo-native = { workspace = true, optional = true }
 cairo-vm = { workspace = true }
 metrics = { workspace = true }
 pathfinder-common = { path = "../common" }

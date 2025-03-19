@@ -67,6 +67,8 @@ cached = "0.44.0"
 # This one needs to match the version used by blockifier
 cairo-lang-starknet-classes = "=2.10.0"
 # This one needs to match the version used by blockifier
+cairo-native = "0.3.1"
+# This one needs to match the version used by blockifier
 cairo-vm = "=1.0.2"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }

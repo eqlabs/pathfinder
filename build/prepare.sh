@@ -1,7 +1,7 @@
 #!/bin/bash -e
 if [[ "${TARGETARCH}" == "amd64" ]]; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y pkg-config libzstd-dev protobuf-compiler make
+    DEBIAN_FRONTEND=noninteractive apt-get install -y pkg-config libzstd-dev protobuf-compiler make llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools build-essential
 elif [[ "${TARGETARCH}" == "arm64" ]]; then
     echo "deb [arch=arm64] http://deb.debian.org/debian bookworm main" >>/etc/apt/sources.list
     apt-get update

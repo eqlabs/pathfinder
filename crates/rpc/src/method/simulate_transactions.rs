@@ -85,6 +85,7 @@ pub async fn simulate_transactions(
             context.config.versioned_constants_map,
             context.contract_addresses.eth_l2_token_address,
             context.contract_addresses.strk_l2_token_address,
+            context.native_class_cache,
         );
 
         let transactions = input
