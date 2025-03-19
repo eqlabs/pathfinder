@@ -1134,154 +1134,6 @@ mod tests {
     use super::l2;
     use crate::state::sync::{consumer, ConsumerContext, SyncEvent};
 
-    mod state_updates {
-        use super::*;
-
-        pub fn one_non_prunable_block() -> Vec<StateUpdate> {
-            let contract1 = contract_address_bytes!(b"contract 1");
-            let contract2 = contract_address_bytes!(b"contract 2");
-            let class1 = class_hash_bytes!(b"class 1");
-            let class2 = class_hash_bytes!(b"class 2");
-            let storage_address1 = storage_address_bytes!(b"storage address 1");
-            // Blocks 0 and 1 don't have any state updates. They are prunable.
-            //
-            // Block 3 updates contract 1's storage address 1 and nonce. It is prunable
-            // because both of these are also updated in block 4.
-            //
-            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
-            // replaced.
-            //
-            // Block 4 cannot be pruned because it is the latest block.
-            vec![
-                StateUpdate::default(),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!("0x0"))
-                    .with_declared_cairo_class(class1)
-                    .with_declared_cairo_class(class2),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
-                    ))
-                    .with_deployed_contract(contract1, class1)
-                    .with_deployed_contract(contract2, class1),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x0579F6BE90F9F98020316955A70EFFD78E4317E8AA684546144D0E852F247B96"
-                    ))
-                    .with_storage_update(contract1, storage_address1, storage_value!("0x100"))
-                    .with_contract_nonce(contract1, contract_nonce!("0x1")),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x01283044BBD2E60462EF0A8F593CEC6616ED43D5FF5358EB87CD824F65F1ED7C"
-                    ))
-                    .with_replaced_class(contract1, class2)
-                    .with_storage_update(contract1, storage_address1, storage_value!("0x200"))
-                    .with_contract_nonce(contract1, contract_nonce!("0x3")),
-            ]
-        }
-
-        pub fn one_non_prunable_block_for_each_update() -> Vec<StateUpdate> {
-            let contract1 = contract_address_bytes!(b"contract 1");
-            let contract2 = contract_address_bytes!(b"contract 2");
-            let class1 = class_hash_bytes!(b"class 1");
-            let class2 = class_hash_bytes!(b"class 2");
-            let storage_address1 = storage_address_bytes!(b"storage address 1");
-            // No state updates for blocks 0 and 1. These are prunable.
-            //
-            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
-            // replaced.
-            //
-            // Block 3 cannot be pruned because it replaces contract 1's class, and it is
-            // never replaced again.
-            //
-            // Block 4 cannot be pruned because it makes the last update to contract 1's
-            // storage address 1.
-            //
-            // Block 5 cannot be pruned because it makes the last update to contract 1's
-            // nonce.
-            //
-            // Block 6 cannot be pruned because it is the latest one.
-            vec![
-                StateUpdate::default(),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!("0x0"))
-                    .with_declared_cairo_class(class1)
-                    .with_declared_cairo_class(class2),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
-                    ))
-                    .with_deployed_contract(contract1, class1)
-                    .with_deployed_contract(contract2, class1),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x044204D6012E3A2D4597D021A22ECB494A00D4D2433422038E806EA7346A3B66"
-                    ))
-                    .with_replaced_class(contract1, class2)
-                    .with_storage_update(contract1, storage_address1, storage_value!("0x100"))
-                    .with_contract_nonce(contract1, contract_nonce!("0x1")),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x002343E7A9AEACD3D366D27D5A61095664C894B22F1C4A8309AF9765AF566A36"
-                    ))
-                    .with_storage_update(contract1, storage_address1, storage_value!("0x200")),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
-                    ))
-                    .with_contract_nonce(contract1, contract_nonce!("0x2")),
-                StateUpdate::default().with_state_commitment(state_commitment!(
-                    "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
-                )),
-            ]
-        }
-
-        pub fn state_update_reconstruction() -> Vec<StateUpdate> {
-            let contract1 = contract_address_bytes!(b"contract 1");
-            let class1 = class_hash_bytes!(b"class 1");
-            let class2 = class_hash_bytes!(b"class 2");
-            let class3 = class_hash_bytes!(b"class 3");
-
-            // No state updates for blocks 0 and 1. These are prunable.
-            //
-            // Block 2 deploys contract 1 with class 1. Contract 1 class is replaced two
-            // more times, by blocks 3 and 4.
-            //
-            // This makes blocks 2 and 4 non-prunable. Block 2 cannot be pruned because
-            // contract 1 was deployed in it and block 4 cannot be pruned because it has the
-            // latest state update for contract 1.
-            //
-            // Block 3 can be pruned.
-            //
-            // Block 5 cannot be pruned because it is the latest block.
-            vec![
-                StateUpdate::default(),
-                StateUpdate::default()
-                    .with_declared_cairo_class(class1)
-                    .with_declared_cairo_class(class2)
-                    .with_declared_cairo_class(class3),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
-                    ))
-                    .with_deployed_contract(contract1, class1),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x02217B6E78883EC62771BC63BEC0C34291FFA78EDCFFDE50C4DD8FDD4FE3158E"
-                    ))
-                    .with_replaced_class(contract1, class2),
-                StateUpdate::default()
-                    .with_state_commitment(state_commitment!(
-                        "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
-                    ))
-                    .with_replaced_class(contract1, class3),
-                StateUpdate::default().with_state_commitment(state_commitment!(
-                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
-                )),
-            ]
-        }
-    }
-
     /// Generate some arbitrary block chain data from genesis onwards.
     ///
     /// Note: not very realistic data but is enough to drive tests.
@@ -1320,8 +1172,10 @@ mod tests {
             .skip(1)
             .enumerate()
             .for_each(|(i, state_update)| {
-                let block_hash =
-                    BlockHash(Felt::from_be_slice(format!("{i} block hash").as_bytes()).unwrap());
+                let block_hash = BlockHash(
+                    // Adding 1 because we skipped one block.
+                    Felt::from_be_slice(format!("{} block hash", i + 1).as_bytes()).unwrap(),
+                );
                 let header = headers
                     .last()
                     .unwrap()
@@ -2045,414 +1899,562 @@ mod tests {
         consumer(event_rx, context, tx).await.unwrap();
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn blockchain_history_pruning() {
-        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-            // Keep only the latest block.
-            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
-        let mut conn = storage.connection().unwrap();
+    mod blockchain_pruning {
+        use super::*;
 
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+        pub fn one_non_prunable_block() -> Vec<StateUpdate> {
+            let contract1 = contract_address_bytes!(b"contract 1");
+            let contract2 = contract_address_bytes!(b"contract 2");
+            let class1 = class_hash_bytes!(b"class 1");
+            let class2 = class_hash_bytes!(b"class 2");
+            let storage_address1 = storage_address_bytes!(b"storage address 1");
+            // Blocks 0 and 1 don't have any state updates. They are prunable.
+            //
+            // Block 3 updates contract 1's storage address 1 and nonce. It is prunable
+            // because both of these are also updated in block 4.
+            //
+            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
+            // replaced.
+            //
+            // Block 4 cannot be pruned because it is the latest block.
+            vec![
+                StateUpdate::default(),
+                StateUpdate::default()
+                    .with_declared_cairo_class(class1)
+                    .with_declared_cairo_class(class2),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
+                    ))
+                    .with_deployed_contract(contract1, class1)
+                    .with_deployed_contract(contract2, class1),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x0579F6BE90F9F98020316955A70EFFD78E4317E8AA684546144D0E852F247B96"
+                    ))
+                    .with_storage_update(contract1, storage_address1, storage_value!("0x100"))
+                    .with_contract_nonce(contract1, contract_nonce!("0x1")),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x01283044BBD2E60462EF0A8F593CEC6616ED43D5FF5358EB87CD824F65F1ED7C"
+                    ))
+                    .with_replaced_class(contract1, class2)
+                    .with_storage_update(contract1, storage_address1, storage_value!("0x200"))
+                    .with_contract_nonce(contract1, contract_nonce!("0x3")),
+            ]
+        }
 
-        let blocks = block_data_with_state_updates(state_updates::one_non_prunable_block());
-        // Send block updates.
-        for (a, b, c, d, e) in blocks {
+        pub fn one_non_prunable_block_for_each_update() -> Vec<StateUpdate> {
+            let contract1 = contract_address_bytes!(b"contract 1");
+            let contract2 = contract_address_bytes!(b"contract 2");
+            let class1 = class_hash_bytes!(b"class 1");
+            let class2 = class_hash_bytes!(b"class 2");
+            let storage_address1 = storage_address_bytes!(b"storage address 1");
+            // No state updates for blocks 0 and 1. These are prunable.
+            //
+            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
+            // replaced.
+            //
+            // Block 3 cannot be pruned because it replaces contract 1's class, and it is
+            // never replaced again.
+            //
+            // Block 4 cannot be pruned because it makes the last update to contract 1's
+            // storage address 1.
+            //
+            // Block 5 cannot be pruned because it makes the last update to contract 1's
+            // nonce.
+            //
+            // Block 6 cannot be pruned because it is the latest one.
+            vec![
+                StateUpdate::default(),
+                StateUpdate::default()
+                    .with_declared_cairo_class(class1)
+                    .with_declared_cairo_class(class2),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
+                    ))
+                    .with_deployed_contract(contract1, class1)
+                    .with_deployed_contract(contract2, class1),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x044204D6012E3A2D4597D021A22ECB494A00D4D2433422038E806EA7346A3B66"
+                    ))
+                    .with_replaced_class(contract1, class2)
+                    .with_storage_update(contract1, storage_address1, storage_value!("0x100"))
+                    .with_contract_nonce(contract1, contract_nonce!("0x1")),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x002343E7A9AEACD3D366D27D5A61095664C894B22F1C4A8309AF9765AF566A36"
+                    ))
+                    .with_storage_update(contract1, storage_address1, storage_value!("0x200")),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
+                    ))
+                    .with_contract_nonce(contract1, contract_nonce!("0x2")),
+                StateUpdate::default().with_state_commitment(state_commitment!(
+                    "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
+                )),
+            ]
+        }
+
+        pub fn state_update_reconstruction() -> Vec<StateUpdate> {
+            let contract1 = contract_address_bytes!(b"contract 1");
+            let class1 = class_hash_bytes!(b"class 1");
+            let class2 = class_hash_bytes!(b"class 2");
+            let class3 = class_hash_bytes!(b"class 3");
+
+            // No state updates for blocks 0 and 1. These are prunable.
+            //
+            // Block 2 deploys contract 1 with class 1. Contract 1 class is replaced two
+            // more times, by blocks 3 and 4.
+            //
+            // This makes blocks 2 and 4 non-prunable. Block 2 cannot be pruned because
+            // contract 1 was deployed in it and block 4 cannot be pruned because it has the
+            // latest state update for contract 1.
+            //
+            // Block 3 can be pruned.
+            //
+            // Block 5 cannot be pruned because it is the latest block.
+            vec![
+                StateUpdate::default(),
+                StateUpdate::default()
+                    .with_declared_cairo_class(class1)
+                    .with_declared_cairo_class(class2)
+                    .with_declared_cairo_class(class3),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
+                    ))
+                    .with_deployed_contract(contract1, class1),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x02217B6E78883EC62771BC63BEC0C34291FFA78EDCFFDE50C4DD8FDD4FE3158E"
+                    ))
+                    .with_replaced_class(contract1, class2),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                    ))
+                    .with_replaced_class(contract1, class3),
+                StateUpdate::default().with_state_commitment(state_commitment!(
+                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                )),
+            ]
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn blockchain_history_pruning() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                // Keep only the latest block.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+
+            let blocks = block_data_with_state_updates(one_non_prunable_block());
+            // Send block updates.
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let notifications = pathfinder_rpc::Notifications::default();
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let prunable_blocks = vec![0, 1, 3];
+            let non_prunable_blocks = vec![2];
+            for block in prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (as well as block so query returns None).
+                assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+                assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+                // Block data has been pruned.
+                assert!(!tx.block_exists(block_id).unwrap());
+            }
+            for block in non_prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (because we always prune those) but
+                // the blocks have not (because they are not prunable).
+                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+                let transaction_hashes =
+                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+                assert!(transactions.is_empty() && transaction_hashes.is_empty());
+                assert!(tx.block_exists(block_id).unwrap());
+            }
+            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            assert_eq!(latest, BlockNumber::new_or_panic(4));
+            let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
+            let transaction_hashes = tx
+                .transaction_hashes_for_block(latest.into())
+                .unwrap()
+                .unwrap();
+            // Latest block transaction data has not been pruned.
+            assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn non_prunable_blocks() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                // Keep only the latest block.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
+
+            let blocks = block_data_with_state_updates(one_non_prunable_block_for_each_update());
+            // Send block updates.
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let prunable_blocks = vec![0, 1];
+            let non_prunable_blocks = vec![2, 3, 4, 5];
+
+            for block in prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (as well as block so query returns None).
+                assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+                assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+                // Block data has been pruned.
+                assert!(!tx.block_exists(block_id).unwrap());
+            }
+
+            for block in non_prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (because we always prune those) but
+                // the blocks have not (because they are not prunable).
+                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+                let transaction_hashes =
+                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+                assert!(transactions.is_empty() && transaction_hashes.is_empty());
+                assert!(tx.block_exists(block_id).unwrap());
+            }
+
+            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            assert_eq!(latest, BlockNumber::new_or_panic(6));
+            let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
+            let transaction_hashes = tx
+                .transaction_hashes_for_block(latest.into())
+                .unwrap()
+                .unwrap();
+
+            // Latest block transaction data has not been pruned.
+            assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn reorg_error() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                // Keep only the latest block.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+
+            let blocks = generate_block_data();
+            // Send block updates.
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let notifications = pathfinder_rpc::Notifications::default();
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
+
             event_tx
-                .send(SyncEvent::Block(a, b, c, d, e))
+                .send(SyncEvent::Reorg(BlockNumber::GENESIS))
                 .await
                 .unwrap();
-        }
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
 
-        let notifications = pathfinder_rpc::Notifications::default();
+            let notifications = pathfinder_rpc::Notifications::default();
 
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
 
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let tx = conn.transaction().unwrap();
-        let prunable_blocks = vec![0, 1, 3];
-        let non_prunable_blocks = vec![2];
-        for block in prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (as well as block so query returns None).
-            assert!(tx.transactions_for_block(block_id).unwrap().is_none());
-            assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
-            // Block data has been pruned.
-            assert!(!tx.block_exists(block_id).unwrap());
-        }
-        for block in non_prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (because we always prune those) but
-            // the blocks have not (because they are not prunable).
-            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-            assert!(transactions.is_empty() && transaction_hashes.is_empty());
-            assert!(tx.block_exists(block_id).unwrap());
-        }
-        let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
-        assert_eq!(latest, BlockNumber::new_or_panic(4));
-        let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
-        let transaction_hashes = tx
-            .transaction_hashes_for_block(latest.into())
-            .unwrap()
-            .unwrap();
-        // Latest block transaction data has not been pruned.
-        assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn blockchain_history_pruning_non_prunable_blocks() {
-        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-            // Keep only the latest block.
-            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
-        let mut conn = storage.connection().unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
-
-        let blocks =
-            block_data_with_state_updates(state_updates::one_non_prunable_block_for_each_update());
-        // Send block updates.
-        for (a, b, c, d, e) in blocks {
-            event_tx
-                .send(SyncEvent::Block(a, b, c, d, e))
-                .await
-                .unwrap();
-        }
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications: Default::default(),
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let tx = conn.transaction().unwrap();
-        let prunable_blocks = vec![0, 1];
-        let non_prunable_blocks = vec![2, 3, 4, 5];
-
-        for block in prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (as well as block so query returns None).
-            assert!(tx.transactions_for_block(block_id).unwrap().is_none());
-            assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
-            // Block data has been pruned.
-            assert!(!tx.block_exists(block_id).unwrap());
-        }
-
-        for block in non_prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (because we always prune those) but
-            // the blocks have not (because they are not prunable).
-            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-            assert!(transactions.is_empty() && transaction_hashes.is_empty());
-            assert!(tx.block_exists(block_id).unwrap());
-        }
-
-        let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
-        assert_eq!(latest, BlockNumber::new_or_panic(6));
-        let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
-        let transaction_hashes = tx
-            .transaction_hashes_for_block(latest.into())
-            .unwrap()
-            .unwrap();
-
-        // Latest block transaction data has not been pruned.
-        assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn blockchain_history_pruning_with_reorg_error() {
-        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-            // Keep only the latest block.
-            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
-
-        let blocks = generate_block_data();
-        // Send block updates.
-        for (a, b, c, d, e) in blocks {
-            event_tx
-                .send(SyncEvent::Block(a, b, c, d, e))
-                .await
-                .unwrap();
-        }
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let notifications = pathfinder_rpc::Notifications::default();
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
-
-        event_tx
-            .send(SyncEvent::Reorg(BlockNumber::GENESIS))
-            .await
-            .unwrap();
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let notifications = pathfinder_rpc::Notifications::default();
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let err = consumer(event_rx, context, tx).await.unwrap_err();
-        assert_eq!(
-            err.root_cause().to_string(),
-            r"Reorg tail (block number: 0) does not exist (likely due to blockchain history pruning).
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let err = consumer(event_rx, context, tx).await.unwrap_err();
+            assert_eq!(
+                err.root_cause().to_string(),
+                r"Reorg tail (block number: 0) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
-        );
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
-
-        event_tx
-            .send(SyncEvent::Reorg(BlockNumber::GENESIS + 4))
-            .await
-            .unwrap();
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let notifications = pathfinder_rpc::Notifications::default();
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage,
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let err = consumer(event_rx, context, tx).await.unwrap_err();
-        assert_eq!(
-            err.root_cause().to_string(),
-            r"Reorg tail parent (block number: 3) does not exist (likely due to blockchain history pruning).
-Blockchain history must include the reorg tail and its parent block to perform a reorg."
-        );
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn blockchain_history_pruning_with_reorg_success() {
-        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-            // Keep only the last 2 blocks + latest.
-            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 2 },
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
-        let mut conn = storage.connection().unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
-
-        let blocks = generate_block_data();
-        let block_count = blocks.len();
-        // Send block updates.
-        for (a, b, c, d, e) in blocks {
-            event_tx
-                .send(SyncEvent::Block(a, b, c, d, e))
-                .await
-                .unwrap();
-        }
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let notifications = pathfinder_rpc::Notifications::default();
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
-
-        event_tx
-            .send(SyncEvent::Reorg(
-                // Reorg to latest - 3.
-                BlockNumber::GENESIS + block_count as u64 - 2,
-            ))
-            .await
-            .unwrap();
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let notifications = pathfinder_rpc::Notifications::default();
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage,
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications,
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let tx = conn.transaction().unwrap();
-        let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
-        assert_eq!(latest, BlockNumber::GENESIS + block_count as u64 - 3);
-
-        let prunable_blocks = vec![0, 1];
-        for block in prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (as well as block so query returns None).
-            assert!(tx.transactions_for_block(block_id).unwrap().is_none());
-            assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
-            // Block data has been pruned.
-            assert!(!tx.block_exists(block_id).unwrap());
-        }
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn pruning_does_not_break_state_update_reconstruction() {
-        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-            // Keep only the latest block.
-            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-            std::num::NonZeroU32::new(5).unwrap(),
-        )
-        .unwrap();
-        let mut conn = storage.connection().unwrap();
-
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
-
-        let blocks = block_data_with_state_updates(state_update::state_update_reconstruction());
-        // Send block updates.
-        for (a, b, c, d, e) in blocks {
-            event_tx
-                .send(SyncEvent::Block(a, b, c, d, e))
-                .await
-                .unwrap();
-        }
-        // Close the event channel which allows the consumer task to exit.
-        drop(event_tx);
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        let context = ConsumerContext {
-            storage: storage.clone(),
-            state: Arc::new(SyncState::default()),
-            pending_data: tx,
-            verify_tree_hashes: false,
-            websocket_txs: None,
-            notifications: Default::default(),
-        };
-
-        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
-        consumer(event_rx, context, tx).await.unwrap();
-
-        let tx = conn.transaction().unwrap();
-        let prunable_blocks = vec![0, 1, 3];
-        let non_prunable_blocks = vec![2, 4];
-
-        for block in prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (as well as block so query returns None).
-            assert!(tx.transactions_for_block(block_id).unwrap().is_none());
-            assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
-            // Block data has been pruned.
-            assert!(!tx.block_exists(block_id).unwrap());
-        }
-
-        for block in non_prunable_blocks {
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-            // Transaction data has been pruned (because we always prune those) but
-            // the blocks have not (because they are not prunable).
-            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-            assert!(transactions.is_empty() && transaction_hashes.is_empty());
-            assert!(tx.block_exists(block_id).unwrap());
-        }
-
-        // Check that state update reconstruction still works.
-        let state_update = StateUpdate::default()
-            .with_block_hash(block_hash_bytes!(b"2 block hash"))
-            .with_state_commitment(state_commitment!(
-                "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
-            ))
-            .with_deployed_contract(
-                contract_address_bytes!(b"contract 1"),
-                class_hash_bytes!(b"class 1"),
             );
 
-        let result = tx
-            .state_update(BlockId::Number(BlockNumber::new_or_panic(2)))
-            .unwrap()
-            .unwrap();
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
 
-        assert_eq!(result, state_update);
-        let state_update = StateUpdate::default()
-            .with_block_hash(block_hash_bytes!(b"4 block hash"))
-            .with_state_commitment(state_commitment!(
-                "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
-            ))
-            .with_replaced_class(
-                contract_address_bytes!(b"contract 1"),
-                class_hash_bytes!(b"class 3"),
+            event_tx
+                .send(SyncEvent::Reorg(BlockNumber::GENESIS + 4))
+                .await
+                .unwrap();
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let notifications = pathfinder_rpc::Notifications::default();
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage,
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let err = consumer(event_rx, context, tx).await.unwrap_err();
+            assert_eq!(
+                err.root_cause().to_string(),
+                r"Reorg tail parent (block number: 3) does not exist (likely due to blockchain history pruning).
+Blockchain history must include the reorg tail and its parent block to perform a reorg."
             );
+        }
 
-        let result = tx
-            .state_update(BlockId::Number(BlockNumber::new_or_panic(4)))
-            .unwrap()
+        #[tokio::test(flavor = "multi_thread")]
+        async fn reorg_success() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                // Keep only the last 2 blocks + latest.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 2 },
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
             .unwrap();
-        assert_eq!(result, state_update);
+            let mut conn = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+
+            let blocks = generate_block_data();
+            let block_count = blocks.len();
+            // Send block updates.
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let notifications = pathfinder_rpc::Notifications::default();
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
+
+            event_tx
+                .send(SyncEvent::Reorg(
+                    // Reorg to latest - 3.
+                    BlockNumber::GENESIS + block_count as u64 - 2,
+                ))
+                .await
+                .unwrap();
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let notifications = pathfinder_rpc::Notifications::default();
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage,
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications,
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            assert_eq!(latest, BlockNumber::GENESIS + block_count as u64 - 3);
+
+            let prunable_blocks = vec![0, 1];
+            for block in prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (as well as block so query returns None).
+                assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+                assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+                // Block data has been pruned.
+                assert!(!tx.block_exists(block_id).unwrap());
+            }
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn pruning_does_not_break_state_update_reconstruction() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                // Keep only the latest block.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
+
+            let blocks = block_data_with_state_updates(state_update_reconstruction());
+            // Send block updates.
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let prunable_blocks = vec![0, 1, 3];
+            let non_prunable_blocks = vec![2, 4];
+
+            for block in prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (as well as block so query returns None).
+                assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+                assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+                // Block data has been pruned.
+                assert!(!tx.block_exists(block_id).unwrap());
+            }
+
+            for block in non_prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (because we always prune those) but
+                // the blocks have not (because they are not prunable).
+                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+                let transaction_hashes =
+                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+                assert!(transactions.is_empty() && transaction_hashes.is_empty());
+                assert!(tx.block_exists(block_id).unwrap());
+            }
+
+            // Check that state update reconstruction still works.
+            let state_update = StateUpdate::default()
+                .with_block_hash(block_hash_bytes!(b"2 block hash"))
+                .with_state_commitment(state_commitment!(
+                    "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
+                ))
+                .with_deployed_contract(
+                    contract_address_bytes!(b"contract 1"),
+                    class_hash_bytes!(b"class 1"),
+                );
+
+            let result = tx
+                .state_update(BlockId::Number(BlockNumber::new_or_panic(2)))
+                .unwrap()
+                .unwrap();
+
+            assert_eq!(result, state_update);
+            let state_update = StateUpdate::default()
+                .with_block_hash(block_hash_bytes!(b"4 block hash"))
+                .with_state_commitment(state_commitment!(
+                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                ))
+                .with_replaced_class(
+                    contract_address_bytes!(b"contract 1"),
+                    class_hash_bytes!(b"class 3"),
+                );
+
+            let result = tx
+                .state_update(BlockId::Number(BlockNumber::new_or_panic(4)))
+                .unwrap()
+                .unwrap();
+            assert_eq!(result, state_update);
+        }
     }
 }
