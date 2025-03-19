@@ -66,6 +66,13 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
+        let pruned = transaction
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         let header = transaction
             .block_header(block_id)
             .context("Reading block from database")?

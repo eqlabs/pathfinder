@@ -167,6 +167,14 @@ where
         let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
+
+            let pruned = db
+                .block_pruned(first_block)
+                .map_err(RpcError::InternalError)?;
+            if pruned {
+                return Err(ApplicationError::BlockNotFound.into());
+            }
+
             db.block_number(first_block)
                 .map_err(RpcError::InternalError)?
                 .ok_or_else(|| ApplicationError::BlockNotFound.into())

@@ -17,7 +17,6 @@ use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
-use pathfinder_storage::pruning::run_blockchain_pruning;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio::signal::unix::{signal, SignalKind};
@@ -129,13 +128,8 @@ async fn async_main() -> anyhow::Result<Storage> {
         pathfinder_storage::StorageBuilder::file(pathfinder_context.database.clone())
             .journal_mode(config.sqlite_wal)
             .event_filter_cache_size(config.event_filter_cache_size.get())
-            .trie_prune_mode(match config.state_tries {
-                Some(StateTries::Pruned(num_blocks_kept)) => {
-                    Some(pathfinder_storage::TriePruneMode::Prune { num_blocks_kept })
-                }
-                Some(StateTries::Archive) => Some(pathfinder_storage::TriePruneMode::Archive),
-                None => None,
-            })
+            .trie_prune_mode(config.state_tries.map(StateTries::into))
+            .blockchain_history_mode(config.blockchain_history.map(BlockchainHistory::into))
             .migrate()?;
 
     let sync_storage = storage_manager
@@ -148,25 +142,6 @@ async fn async_main() -> anyhow::Result<Storage> {
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
-
-    let prune_storage = storage_manager
-        .create_pool(NonZeroU32::new(1).unwrap())
-        .context(
-            r"Creating database connection pool for blockchain pruning
-
-Hint: This is usually caused by exceeding the file descriptor limit of your system.
-        Try increasing the file limit to using `ulimit` or similar tooling.",
-        )?;
-
-    if let BlockchainHistory::Prune(num_blocks_kept) = config.blockchain_history {
-        prune_storage
-            .connection()
-            .context("Creating database connection for startup blockchain pruning")?
-            .transaction()
-            .context("Creating database transaction for startup blockchain pruning")?
-            .prune_blockchain_on_startup(num_blocks_kept)
-            .context("Pruning blockchain history on startup")?;
-    }
 
     // Set the rpc file connection limit to a fraction of the RPC connections.
     // Having this be too large is counter productive as disk IO will then slow down
@@ -253,15 +228,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         native_class_cache_size: config.native_execution.class_cache_size(),
     };
 
-    let (block_headers, block_headers_rx) = tokio::sync::broadcast::channel(1024);
-    let (l2_blocks, _) = tokio::sync::broadcast::channel(1024);
-    let (reorgs, _) = tokio::sync::broadcast::channel(1024);
-    let notifications = Notifications {
-        block_headers,
-        l2_blocks,
-        reorgs,
-    };
-
+    let notifications = Notifications::default();
     let context = pathfinder_rpc::context::RpcContext::new(
         rpc_storage,
         execution_storage,
@@ -367,17 +334,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         tokio::spawn(std::future::pending())
     };
 
-    let blockchain_pruning_handle = match config.blockchain_history {
-        config::BlockchainHistory::Prune(num_blocks_kept) => {
-            run_blockchain_pruning(prune_storage, block_headers_rx, num_blocks_kept)
-        }
-        config::BlockchainHistory::Archive => {
-            drop(prune_storage);
-            drop(block_headers_rx);
-            tokio::spawn(std::future::pending())
-        }
-    };
-
     if !config.disable_version_update_check {
         util::task::spawn(update::poll_github_for_releases());
     }
@@ -388,7 +344,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // Monitor our critical spawned process tasks.
     let main_result = tokio::select! {
         result = sync_handle => handle_critical_task_result("Sync", result),
-        result = blockchain_pruning_handle => handle_critical_task_result("Prune", result),
         result = rpc_handle => handle_critical_task_result("RPC", result),
         result = p2p_handle => handle_critical_task_result("P2P", result),
         _ = term_signal.recv() => {
@@ -1037,6 +992,30 @@ fn handle_critical_task_result(
                 "{} task was cancelled unexpectedly",
                 task_name
             ))
+        }
+    }
+}
+
+impl From<StateTries> for pathfinder_storage::TriePruneMode {
+    fn from(val: StateTries) -> Self {
+        match val {
+            StateTries::Pruned(num_blocks_kept) => {
+                pathfinder_storage::TriePruneMode::Prune { num_blocks_kept }
+            }
+            StateTries::Archive => pathfinder_storage::TriePruneMode::Archive,
+        }
+    }
+}
+
+impl From<BlockchainHistory> for pathfinder_storage::pruning::BlockchainHistoryMode {
+    fn from(val: BlockchainHistory) -> Self {
+        match val {
+            BlockchainHistory::Prune(num_blocks_kept) => {
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept }
+            }
+            BlockchainHistory::Archive => {
+                pathfinder_storage::pruning::BlockchainHistoryMode::Archive
+            }
         }
     }
 }

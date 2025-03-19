@@ -870,7 +870,7 @@ pub struct Config {
     pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
-    pub blockchain_history: BlockchainHistory,
+    pub blockchain_history: Option<BlockchainHistory>,
     pub state_tries: Option<StateTries>,
     pub versioned_constants_map: VersionedConstantsMap,
     pub feeder_gateway_fetch_concurrency: NonZeroUsize,
@@ -1213,7 +1213,7 @@ impl Config {
                 .get_events_max_uncached_event_filters_to_load,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
-            blockchain_history: cli.blockchain_history.unwrap_or(BlockchainHistory::Archive),
+            blockchain_history: cli.blockchain_history,
             state_tries: cli.state_tries,
             versioned_constants_map: cli
                 .custom_versioned_constants_path
