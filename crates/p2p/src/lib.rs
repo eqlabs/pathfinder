@@ -30,6 +30,7 @@ mod test_utils;
 #[cfg(test)]
 mod tests;
 mod transport;
+mod v2;
 
 pub use behaviour::kademlia_protocol_name;
 use builder::Builder;

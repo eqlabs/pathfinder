@@ -21,6 +21,7 @@ libp2p = { workspace = true, features = [
     "dcutr",
     "dns",
     "identify",
+    "gossipsub",
     "kad",
     "macros",
     "noise",
