@@ -145,6 +145,7 @@ impl Transaction<'_> {
             FROM contract_updates
             WHERE contract_address = ?
             AND block_number < ?
+            ORDER BY block_number ASC
             ",
         )?;
         let mut blocks_with_same_nonce_update = self.inner().prepare_cached(
@@ -227,6 +228,12 @@ impl Transaction<'_> {
                     row.get_block_number(0)
                 })
                 .context("Querying blocks with same contract update")?
+                // Since this statement returns block numbers sorted in ascending order, the first
+                // block number represents the block in which the contract was deployed. We cannot
+                // delete this block because state update reconstruction logic needs to know whether
+                // a contract was deployed or had its class replaced in the given block.
+                // See `state_update.rs` for more details.
+                .skip(1)
                 .collect::<Result<Vec<_>, _>>()?;
             for block in blocks_with_same_update {
                 contract_updates_delete_stmt

@@ -1235,6 +1235,51 @@ mod tests {
                 )),
             ]
         }
+
+        pub fn state_update_reconstruction() -> Vec<StateUpdate> {
+            let contract1 = contract_address_bytes!(b"contract 1");
+            let class1 = class_hash_bytes!(b"class 1");
+            let class2 = class_hash_bytes!(b"class 2");
+            let class3 = class_hash_bytes!(b"class 3");
+
+            // No state updates for blocks 0 and 1. These are prunable.
+            //
+            // Block 2 deploys contract 1 with class 1. Contract 1 class is replaced two
+            // more times, by blocks 3 and 4.
+            //
+            // This makes blocks 2 and 4 non-prunable. Block 2 cannot be pruned because
+            // contract 1 was deployed in it and block 4 cannot be pruned because it has the
+            // latest state update for contract 1.
+            //
+            // Block 3 can be pruned.
+            //
+            // Block 5 cannot be pruned because it is the latest block.
+            vec![
+                StateUpdate::default(),
+                StateUpdate::default()
+                    .with_declared_cairo_class(class1)
+                    .with_declared_cairo_class(class2)
+                    .with_declared_cairo_class(class3),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
+                    ))
+                    .with_deployed_contract(contract1, class1),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x02217B6E78883EC62771BC63BEC0C34291FFA78EDCFFDE50C4DD8FDD4FE3158E"
+                    ))
+                    .with_replaced_class(contract1, class2),
+                StateUpdate::default()
+                    .with_state_commitment(state_commitment!(
+                        "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                    ))
+                    .with_replaced_class(contract1, class3),
+                StateUpdate::default().with_state_commitment(state_commitment!(
+                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                )),
+            ]
+        }
     }
 
     /// Generate some arbitrary block chain data from genesis onwards.
@@ -2316,5 +2361,98 @@ Blockchain history must include the reorg tail and its parent block to perform a
             // Block data has been pruned.
             assert!(!tx.block_exists(block_id).unwrap());
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pruning_does_not_break_state_update_reconstruction() {
+        let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+            // Keep only the latest block.
+            pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+            std::num::NonZeroU32::new(5).unwrap(),
+        )
+        .unwrap();
+        let mut conn = storage.connection().unwrap();
+
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
+
+        let blocks = block_data_with_state_updates(state_update::state_update_reconstruction());
+        // Send block updates.
+        for (a, b, c, d, e) in blocks {
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
+        }
+        // Close the event channel which allows the consumer task to exit.
+        drop(event_tx);
+
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        let context = ConsumerContext {
+            storage: storage.clone(),
+            state: Arc::new(SyncState::default()),
+            pending_data: tx,
+            verify_tree_hashes: false,
+            websocket_txs: None,
+            notifications: Default::default(),
+        };
+
+        let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+        consumer(event_rx, context, tx).await.unwrap();
+
+        let tx = conn.transaction().unwrap();
+        let prunable_blocks = vec![0, 1, 3];
+        let non_prunable_blocks = vec![2, 4];
+
+        for block in prunable_blocks {
+            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+            // Transaction data has been pruned (as well as block so query returns None).
+            assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+            assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+            // Block data has been pruned.
+            assert!(!tx.block_exists(block_id).unwrap());
+        }
+
+        for block in non_prunable_blocks {
+            let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+            // Transaction data has been pruned (because we always prune those) but
+            // the blocks have not (because they are not prunable).
+            let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+            let transaction_hashes = tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+            assert!(transactions.is_empty() && transaction_hashes.is_empty());
+            assert!(tx.block_exists(block_id).unwrap());
+        }
+
+        // Check that state update reconstruction still works.
+        let state_update = StateUpdate::default()
+            .with_block_hash(block_hash_bytes!(b"2 block hash"))
+            .with_state_commitment(state_commitment!(
+                "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
+            ))
+            .with_deployed_contract(
+                contract_address_bytes!(b"contract 1"),
+                class_hash_bytes!(b"class 1"),
+            );
+
+        let result = tx
+            .state_update(BlockId::Number(BlockNumber::new_or_panic(2)))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(result, state_update);
+        let state_update = StateUpdate::default()
+            .with_block_hash(block_hash_bytes!(b"4 block hash"))
+            .with_state_commitment(state_commitment!(
+                "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+            ))
+            .with_replaced_class(
+                contract_address_bytes!(b"contract 1"),
+                class_hash_bytes!(b"class 3"),
+            );
+
+        let result = tx
+            .state_update(BlockId::Number(BlockNumber::new_or_panic(4)))
+            .unwrap()
+            .unwrap();
+        assert_eq!(result, state_update);
     }
 }
