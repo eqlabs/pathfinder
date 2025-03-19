@@ -8,7 +8,6 @@
 //! - `block_headers`
 //! - `canonical_blocks`
 //! - `block_signatures`
-//! - `class_definitions`
 //! - `contract_updates` (a row can be pruned if there is another row with the
 //!   same `contract_address` and a higher `block_number`)
 //! - `nonce_updates` (a row can be pruned if there is another row with the same
@@ -285,12 +284,6 @@ impl Transaction<'_> {
             WHERE block_number = ?
             ",
         )?;
-        let mut class_definitions_delete_stmt = self.inner().prepare_cached(
-            r"
-            DELETE FROM class_definitions
-            WHERE block_number = ?
-            ",
-        )?;
         let mut canonical_blocks_delete_stmt = self.inner().prepare_cached(
             r"
             DELETE FROM canonical_blocks
@@ -307,9 +300,6 @@ impl Transaction<'_> {
         block_signatures_delete_stmt
             .execute(params![block])
             .context("Deleting block signatures")?;
-        class_definitions_delete_stmt
-            .execute(params![block])
-            .context("Deleting class definitions")?;
         canonical_blocks_delete_stmt
             .execute(params![block])
             .context("Deleting block from canonical_blocks")?;
