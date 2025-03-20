@@ -11,7 +11,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     )
     .context("Renaming flag column to option")?;
     tx.execute("ALTER TABLE storage_options ADD COLUMN value INTEGER", [])
-        .context("Adding value column to storage_flags table")?;
+        .context("Adding value column to storage_options table")?;
 
     Ok(())
 }
