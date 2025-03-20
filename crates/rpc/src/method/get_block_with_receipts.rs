@@ -58,6 +58,13 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
+        let pruned = db
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         let header = db
             .block_header(block_id)
             .context("Fetching block header")?

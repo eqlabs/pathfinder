@@ -63,6 +63,13 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
             .try_into()
             .expect("Only pending cast should fail");
 
+        let pruned = tx
+            .block_pruned(block_id)
+            .context("Querying block pruned status")?;
+        if pruned {
+            return Err(Error::BlockNotFound);
+        }
+
         let state_update = tx
             .state_update(block_id)
             .context("Fetching state diff")?

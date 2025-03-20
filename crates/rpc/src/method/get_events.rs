@@ -200,6 +200,23 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
+        if let Some(from_block) = from_block {
+            let pruned = transaction
+                .block_pruned(from_block.into())
+                .context("Querying block pruned status")?;
+            if pruned {
+                return Err(GetEventsError::BlockNotFound);
+            }
+        }
+        if let Some(to_block) = from_block {
+            let pruned = transaction
+                .block_pruned(to_block.into())
+                .context("Querying block pruned status")?;
+            if pruned {
+                return Err(GetEventsError::BlockNotFound);
+            }
+        }
+
         // Handle cases (3) and (4) where `from_block` is non-pending.
 
         let (from_block, requested_offset) = match continuation_token {

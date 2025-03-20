@@ -66,6 +66,14 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             }
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
+
+                let pruned = db
+                    .block_pruned(block_id)
+                    .context("Querying block pruned status")?;
+                if pruned {
+                    return Err(EstimateFeeError::BlockNotFound);
+                }
+
                 let header = db
                     .block_header(block_id)
                     .context("Querying block header")?
