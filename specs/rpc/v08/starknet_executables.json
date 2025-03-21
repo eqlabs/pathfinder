@@ -1,7 +1,7 @@
 {
     "openrpc": "1.0.0",
     "info": {
-        "version": "0.8.0-rc3",
+        "version": "0.8.0",
         "title": "API for getting Starknet executables from nodes that store compiled artifacts",
         "license": {}
     },
@@ -9,7 +9,7 @@
     "methods": [
         {
             "name": "starknet_getCompiledCasm",
-            "summary": "Get the contract class definition in the given block associated with the given hash",
+            "summary": "Get the CASM code resulting from compiling a given class",
             "params": [
                 {
                     "name": "class_hash",
@@ -128,25 +128,26 @@
                 ]
             },
             "CASM_ENTRY_POINT": {
-                "schema": {
-                    "allOf": [
-                        {
-                            "$ref": "#/components/schemas/DEPRECATED_CAIRO_ENTRY_POINT"
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "builtins": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "string"
-                                    }
-                                }
-                            },
-                            "required": ["builtins"]
+                "type": "object",
+                "properties": {
+                    "offset": {
+                        "title": "Offset",
+                        "description": "The offset of the entry point in the program",
+                        "type": "integer"
+                    },
+                    "selector": {
+                        "title": "Selector",
+                        "description": "A unique identifier of the entry point (function) in the program",
+                        "$ref": "#/components/schemas/FELT"
+                    },
+                    "builtins": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
                         }
-                    ]
-                }
+                    }
+                },
+                "required": ["offset", "selector", "builtins"]
             },
             "CellRef": {
                 "title": "CellRef",
@@ -912,7 +913,7 @@
                                     }
                                 },
                                 "required": [
-                                    "dict_access",
+                                    "dict_accesses",
                                     "ptr_diff",
                                     "n_accesses",
                                     "big_keys",
