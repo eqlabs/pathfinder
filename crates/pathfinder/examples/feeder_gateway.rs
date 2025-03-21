@@ -29,15 +29,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use clap::{Args, Parser};
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
-use pathfinder_common::{
-    BlockCommitmentSignature,
-    BlockCommitmentSignatureElem,
-    BlockHash,
-    BlockNumber,
-    Chain,
-    ClassHash,
-};
+use pathfinder_common::Chain;
 use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
 use pathfinder_storage::BlockId;
 use primitive_types::H160;

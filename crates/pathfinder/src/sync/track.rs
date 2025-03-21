@@ -16,30 +16,10 @@ use p2p::client::types::{
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{DeclaredClasses, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    Chain,
-    ChainId,
-    ClassCommitment,
-    ClassHash,
-    EventCommitment,
-    PublicKey,
-    ReceiptCommitment,
-    SierraHash,
-    SignedBlockHeader,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    StateUpdate,
-    StorageCommitment,
-    TransactionCommitment,
-    TransactionHash,
-};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;

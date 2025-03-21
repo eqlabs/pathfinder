@@ -5,14 +5,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    ContractAddress,
-    EventData,
-    EventKey,
-    TransactionHash,
-};
+use pathfinder_common::prelude::*;
 use rusqlite::types::Value;
 
 use crate::bloom::{AggregateBloom, BlockRange, BloomFilter};

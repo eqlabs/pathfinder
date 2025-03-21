@@ -10,15 +10,7 @@ use anyhow::Context;
 use bitvec::prelude::Msb0;
 use bitvec::slice::BitSlice;
 use pathfinder_common::hash::PedersenHash;
-use pathfinder_common::{
-    BlockNumber,
-    ContractAddress,
-    ContractRoot,
-    ContractStateHash,
-    StorageAddress,
-    StorageCommitment,
-    StorageValue,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieStorageIndex, TrieUpdate};
 

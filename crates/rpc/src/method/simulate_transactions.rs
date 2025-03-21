@@ -218,18 +218,8 @@ pub(crate) mod tests {
     use std::collections::{BTreeMap, HashSet};
 
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        felt,
-        BlockHeader,
-        BlockId,
-        ClassHash,
-        ContractAddress,
-        EntryPoint,
-        StarknetVersion,
-        StorageAddress,
-        StorageValue,
-        TransactionVersion,
-    };
+    use pathfinder_common::prelude::*;
+    use pathfinder_common::BlockId;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
@@ -636,17 +626,11 @@ pub(crate) mod tests {
 
         // The input transactions are the same as in v04.
         pub mod input {
+            use pathfinder_common::prelude::*;
             use pathfinder_common::transaction::{
                 DataAvailabilityMode,
                 ResourceBound,
                 ResourceBounds,
-            };
-            use pathfinder_common::{
-                CallParam,
-                EntryPoint,
-                ResourceAmount,
-                ResourcePricePerUnit,
-                Tip,
             };
 
             use super::*;

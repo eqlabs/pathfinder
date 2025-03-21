@@ -522,19 +522,7 @@ impl crate::dto::SerializeForVersion for pathfinder_executor::types::Transaction
 mod tests {
 
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        felt,
-        BlockHeader,
-        BlockId,
-        CallParam,
-        ClassHash,
-        ContractAddress,
-        EntryPoint,
-        StarknetVersion,
-        StorageAddress,
-        StorageValue,
-        TransactionVersion,
-    };
+    use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::{

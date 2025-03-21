@@ -1,13 +1,6 @@
 use anyhow::Context;
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ReverseContractUpdate, StateUpdateError, StorageRef};
-use pathfinder_common::{
-    BlockNumber,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    ContractRoot,
-    ContractStateHash,
-};
 use pathfinder_crypto::hash::pedersen_hash;
 use pathfinder_crypto::Felt;
 use pathfinder_storage::{Transaction, TrieUpdate};

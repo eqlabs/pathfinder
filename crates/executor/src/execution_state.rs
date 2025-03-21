@@ -8,14 +8,8 @@ use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use blockifier::versioned_constants::VersionedConstants;
-use pathfinder_common::{
-    BlockHeader,
-    ChainId,
-    ContractAddress,
-    L1DataAvailabilityMode,
-    StarknetVersion,
-    StateUpdate,
-};
+use pathfinder_common::prelude::*;
+use pathfinder_common::L1DataAvailabilityMode;
 use starknet_api::block::{BlockHashAndNumber, BlockInfo, GasPrice, NonzeroGasPrice};
 use starknet_api::core::PatriciaKey;
 

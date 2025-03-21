@@ -5,6 +5,7 @@ use std::ops::RangeInclusive;
 use fake::{Fake, Faker};
 use pathfinder_class_hash::compute_class_hash;
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
     ContractClassUpdate,
@@ -15,27 +16,7 @@ use pathfinder_common::state_update::{
 };
 use pathfinder_common::test_utils::fake_non_empty_with_rng;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{
-    class_definition,
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    ChainId,
-    ClassCommitment,
-    ClassHash,
-    ContractAddress,
-    EventCommitment,
-    ReceiptCommitment,
-    SierraHash,
-    SignedBlockHeader,
-    StarknetVersion,
-    StateCommitment,
-    StateUpdate,
-    StorageCommitment,
-    TransactionCommitment,
-    TransactionHash,
-    TransactionIndex,
-};
+use pathfinder_common::SignedBlockHeader;
 use pathfinder_crypto::signature::SignatureError;
 use pathfinder_crypto::Felt;
 use rand::seq::IteratorRandom;
@@ -230,7 +211,11 @@ pub fn fill(storage: &Storage, blocks: &[Block], update_tries: Option<UpdateTrie
 /// - transactions
 ///     - transaction hashes are calculated from their respective variant
 pub mod generate {
-    use pathfinder_common::{BlockCommitmentSignature, BlockCommitmentSignatureElem};
+    use pathfinder_common::{
+        class_definition,
+        BlockCommitmentSignature,
+        BlockCommitmentSignatureElem,
+    };
 
     use super::*;
 

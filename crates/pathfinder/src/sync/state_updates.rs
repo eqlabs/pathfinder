@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{
     self,
     ContractClassUpdate,
@@ -13,21 +14,6 @@ use pathfinder_common::state_update::{
     StateUpdateError,
     StateUpdateRef,
     SystemContractUpdate,
-};
-use pathfinder_common::{
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    CasmHash,
-    ClassCommitment,
-    ClassHash,
-    ContractAddress,
-    SierraHash,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    StateUpdate,
-    StorageCommitment,
 };
 use pathfinder_merkle_tree::contract_state::ContractStateUpdateResult;
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
@@ -146,21 +132,13 @@ impl ProcessStage for VerifyCommitment {
 mod multi_block {
     use std::collections::{HashMap, HashSet};
 
+    use pathfinder_common::prelude::*;
     use pathfinder_common::state_update::{
         ContractClassUpdate,
         ContractUpdateRef,
         StateUpdateRef,
         StorageRef,
         SystemContractUpdateRef,
-    };
-    use pathfinder_common::{
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        StorageAddress,
-        StorageValue,
     };
 
     #[derive(Default, Debug, Clone, PartialEq)]

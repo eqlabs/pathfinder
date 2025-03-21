@@ -137,16 +137,9 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
 #[cfg(test)]
 mod tests {
     use axum::extract::ws::Message;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DeclareTransactionV0V1, Transaction, TransactionVariant};
-    use pathfinder_common::{
-        contract_address,
-        transaction_hash,
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        ContractAddress,
-        TransactionHash,
-    };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::reply::PendingBlock;

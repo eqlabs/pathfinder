@@ -2,14 +2,7 @@
 
 use std::sync::Arc;
 
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    ContractAddress,
-    EventData,
-    EventKey,
-    TransactionHash,
-};
+use pathfinder_common::prelude::*;
 use serde::ser::Error;
 use serde::Deserialize;
 use serde_json::Value;

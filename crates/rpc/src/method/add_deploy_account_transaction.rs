@@ -268,14 +268,8 @@ impl crate::dto::SerializeForVersion for Output {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
-    use pathfinder_common::{
-        ResourceAmount,
-        ResourcePricePerUnit,
-        Tip,
-        TransactionNonce,
-        TransactionVersion,
-    };
 
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};

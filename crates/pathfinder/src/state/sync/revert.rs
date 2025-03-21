@@ -1,12 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{
-    BlockHeader,
-    BlockNumber,
-    ClassCommitment,
-    ClassCommitmentLeafHash,
-    StateCommitment,
-    StorageCommitment,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
 use pathfinder_storage::Transaction;
 

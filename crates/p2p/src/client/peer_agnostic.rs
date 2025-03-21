@@ -21,21 +21,10 @@ use p2p_proto::state::{
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{
-    BlockNumber,
-    CasmHash,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    SierraHash,
-    SignedBlockHeader,
-    StorageAddress,
-    StorageValue,
-    TransactionHash,
-    TransactionIndex,
-};
+use pathfinder_common::SignedBlockHeader;
 use tokio::sync::{mpsc, RwLock};
 
 #[cfg(test)]

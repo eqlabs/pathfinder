@@ -1,12 +1,9 @@
 //! Basic test fixtures for storage.
 
-use crate::Transaction;
-use pathfinder_common::{
-    BlockHash, BlockNumber, BlockTimestamp, CasmHash, ClassHash, ContractAddress, ContractNonce,
-    GasPrice, SequencerAddress, SierraHash, StateCommitment, StateUpdate, StorageAddress,
-    StorageValue,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
+
+use crate::Transaction;
 
 /// Generate [`Felt`] from a sequence of bytes.
 macro_rules! hash {
@@ -19,11 +16,13 @@ pub(crate) use hash;
 
 /// Initializers for storage test fixtures.
 pub mod init {
-    use super::*;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::{BlockHeader, ClassCommitment, StorageCommitment};
 
-    /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and hashes `("0x0".."0xn")` respectively.
+    use super::*;
+
+    /// Inserts `n` state updates, referring to blocks with numbers `(0..n)` and
+    /// hashes `("0x0".."0xn")` respectively.
     pub fn with_n_state_updates(tx: &Transaction<'_>, n: u8) -> Vec<StateUpdate> {
         if n == 0 {
             return vec![];
@@ -83,7 +82,8 @@ pub mod init {
                 )
                 .with_declared_sierra_class(SierraHash(hash!(11, i)), CasmHash(hash!(12, i)));
 
-            // Replace the last deployed contract with itself - this doesn't make much sense and should be improved.
+            // Replace the last deployed contract with itself - this doesn't make much sense
+            // and should be improved.
             if let Some(deployed) = deployed_contract {
                 state_update = state_update.with_replaced_class(deployed.0, deployed.1);
             };

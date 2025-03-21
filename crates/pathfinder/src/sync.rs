@@ -16,15 +16,8 @@ use p2p::client::peer_agnostic::traits::{
 };
 use p2p::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
-use pathfinder_common::{
-    block_hash,
-    BlockHash,
-    BlockNumber,
-    Chain,
-    ChainId,
-    PublicKey,
-    StarknetVersion,
-};
+use pathfinder_common::block_hash;
+use pathfinder_common::prelude::*;
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Transaction;
 use primitive_types::H160;
@@ -314,17 +307,11 @@ mod tests {
     };
     use p2p::libp2p::PeerId;
     use pathfinder_common::event::Event;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{self, StateUpdateData};
     use pathfinder_common::transaction::Transaction;
-    use pathfinder_common::{
-        BlockHeader,
-        BlockId,
-        ClassHash,
-        SierraHash,
-        SignedBlockHeader,
-        TransactionHash,
-    };
+    use pathfinder_common::BlockId;
     use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;

@@ -19,19 +19,10 @@ use p2p::PeerData;
 use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
 use pathfinder_block_hashes::BlockHashDb;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    Chain,
-    ChainId,
-    ClassHash,
-    PublicKey,
-    SignedBlockHeader,
-    TransactionIndex,
-};
 use pathfinder_ethereum::EthereumStateUpdate;
 use pathfinder_storage::Storage;
 use primitive_types::H160;
@@ -705,25 +696,8 @@ mod tests {
     mod handle_header_stream {
         use assert_matches::assert_matches;
         use futures::stream;
-        use pathfinder_common::{
-            public_key,
-            BlockCommitmentSignature,
-            BlockCommitmentSignatureElem,
-            BlockHash,
-            BlockHeader,
-            BlockTimestamp,
-            ClassCommitment,
-            EventCommitment,
-            GasPrice,
-            L1DataAvailabilityMode,
-            ReceiptCommitment,
-            SequencerAddress,
-            StarknetVersion,
-            StateCommitment,
-            StateDiffCommitment,
-            StorageCommitment,
-            TransactionCommitment,
-        };
+        use pathfinder_common::prelude::*;
+        use pathfinder_common::public_key;
         use pathfinder_storage::StorageBuilder;
         use rstest::rstest;
         use serde::Deserialize;
@@ -825,7 +799,7 @@ mod tests {
                     "0x1252b6bce1351844c677869c6327e80eae1535755b611c66b8f46e595b40eea"
                 ),
                 block_hash_db: Some(pathfinder_block_hashes::BlockHashDb::new(
-                    Chain::SepoliaTestnet,
+                    pathfinder_common::Chain::SepoliaTestnet,
                 )),
             }
         }
@@ -916,7 +890,7 @@ mod tests {
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
                     Some(pathfinder_block_hashes::BlockHashDb::new(
-                        Chain::SepoliaTestnet
+                        pathfinder_common::Chain::SepoliaTestnet
                     )),
                     storage.clone(),
                 )
@@ -1000,7 +974,7 @@ mod tests {
                     ChainId::SEPOLIA_TESTNET,
                     public_key,
                     Some(pathfinder_block_hashes::BlockHashDb::new(
-                        Chain::SepoliaTestnet
+                        pathfinder_common::Chain::SepoliaTestnet
                     )),
                     storage.clone(),
                 )
@@ -1382,18 +1356,9 @@ mod tests {
         use futures::{stream, SinkExt};
         use p2p::libp2p::PeerId;
         use pathfinder_common::event::Event;
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::prelude::*;
         use pathfinder_common::transaction::TransactionVariant;
-        use pathfinder_common::{
-            class_hash,
-            felt,
-            sierra_hash,
-            BlockHeader,
-            CasmHash,
-            ClassHash,
-            SierraHash,
-            SignedBlockHeader,
-            TransactionHash,
-        };
         use pathfinder_crypto::Felt;
         use pathfinder_storage::fake::{self as fake_storage, Block};
         use pathfinder_storage::StorageBuilder;

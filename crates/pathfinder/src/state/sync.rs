@@ -10,13 +10,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::{
-    BlockCommitmentSignature,
-    Chain,
-    PublicKey,
-    ReceiptCommitment,
-    StateDiffCommitment,
-};
+use pathfinder_common::Chain;
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
@@ -1097,7 +1091,9 @@ mod tests {
     use std::sync::Arc;
 
     use pathfinder_common::event::Event;
+    use pathfinder_common::felt_bytes;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::transaction::{
         DeclareTransactionV0V1,
@@ -1108,23 +1104,6 @@ mod tests {
         InvokeTransactionV1,
         Transaction,
         TransactionVariant,
-    };
-    use pathfinder_common::{
-        felt_bytes,
-        BlockCommitmentSignature,
-        BlockCommitmentSignatureElem,
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        ClassHash,
-        EventCommitment,
-        ReceiptCommitment,
-        SierraHash,
-        StateCommitment,
-        StateDiffCommitment,
-        StateUpdate,
-        TransactionCommitment,
-        TransactionIndex,
     };
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;

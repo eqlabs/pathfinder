@@ -418,15 +418,9 @@ mod tests {
     use std::time::Duration;
 
     use axum::extract::ws::Message;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::{ExecutionStatus, Receipt};
     use pathfinder_common::transaction::Transaction;
-    use pathfinder_common::{
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        TransactionHash,
-        TransactionIndex,
-    };
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_storage::StorageBuilder;

@@ -1,21 +1,6 @@
 //! Structures used for deserializing replies from Starkware's sequencer REST
 //! API.
-use pathfinder_common::{
-    BlockCommitmentSignatureElem,
-    BlockHash,
-    BlockNumber,
-    BlockTimestamp,
-    ContractAddress,
-    EthereumAddress,
-    EventCommitment,
-    GasPrice,
-    ReceiptCommitment,
-    SequencerAddress,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    TransactionCommitment,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_serde::{EthereumAddressAsHexStr, GasPriceAsHexStr};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -241,30 +226,7 @@ pub mod transaction_status {
 /// Types used when deserializing L2 transaction related data.
 pub mod transaction {
     use fake::{Dummy, Fake, Faker};
-    use pathfinder_common::{
-        AccountDeploymentDataElem,
-        CallParam,
-        CasmHash,
-        ClassHash,
-        ConstructorParam,
-        ContractAddress,
-        ContractAddressSalt,
-        EntryPoint,
-        EthereumAddress,
-        Fee,
-        L1ToL2MessageNonce,
-        L1ToL2MessagePayloadElem,
-        L2ToL1MessagePayloadElem,
-        PaymasterDataElem,
-        ResourceAmount,
-        ResourcePricePerUnit,
-        Tip,
-        TransactionHash,
-        TransactionIndex,
-        TransactionNonce,
-        TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
         CallParamAsDecimalStr,
@@ -2117,15 +2079,7 @@ impl From<StateUpdate> for pathfinder_common::StateUpdate {
 pub mod state_update {
     use std::collections::{HashMap, HashSet};
 
-    use pathfinder_common::{
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        StorageAddress,
-        StorageValue,
-    };
+    use pathfinder_common::prelude::*;
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
 

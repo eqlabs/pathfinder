@@ -292,19 +292,10 @@ mod tests {
 
     use axum::extract::ws::Message;
     use pathfinder_common::event::Event;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::transaction::{Transaction, TransactionVariant};
-    use pathfinder_common::{
-        felt,
-        BlockHash,
-        BlockHeader,
-        BlockNumber,
-        ContractAddress,
-        EventData,
-        EventKey,
-        TransactionHash,
-        TransactionIndex,
-    };
     use pathfinder_crypto::Felt;
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::reply::{Block, PendingBlock};

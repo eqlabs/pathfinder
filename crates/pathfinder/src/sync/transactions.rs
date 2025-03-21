@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context};
 use p2p::client::types::TransactionData;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{
     DeployAccountTransactionV1,
@@ -13,16 +14,6 @@ use pathfinder_common::transaction::{
     DeployTransactionV1,
     Transaction,
     TransactionVariant,
-};
-use pathfinder_common::{
-    BlockHeader,
-    BlockNumber,
-    CallParam,
-    ChainId,
-    ContractAddress,
-    StarknetVersion,
-    TransactionCommitment,
-    TransactionHash,
 };
 use pathfinder_storage::Storage;
 use tokio::sync::mpsc;

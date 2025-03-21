@@ -21,33 +21,7 @@
 //! }
 //! ```
 
-use pathfinder_common::{
-    AccountDeploymentDataElem,
-    BlockHash,
-    CallParam,
-    CallResultValue,
-    CasmHash,
-    ChainId,
-    ClassHash,
-    ConstructorParam,
-    ContractAddress,
-    ContractAddressSalt,
-    ContractNonce,
-    EntryPoint,
-    EventData,
-    EventKey,
-    L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem,
-    PaymasterDataElem,
-    SequencerAddress,
-    SierraHash,
-    StateCommitment,
-    StorageAddress,
-    StorageValue,
-    TransactionHash,
-    TransactionNonce,
-    TransactionSignatureElem,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
 /// An RPC specific wrapper around [Felt] which implements

@@ -1582,14 +1582,8 @@ mod tests {
     }
 
     mod real_world {
-        use pathfinder_common::{
-            class_commitment,
-            class_commitment_leaf_hash,
-            felt,
-            sierra_hash,
-            BlockNumber,
-            ClassCommitmentLeafHash,
-        };
+        use pathfinder_common::macro_prelude::*;
+        use pathfinder_common::prelude::*;
         use pathfinder_storage::RootIndexUpdate;
 
         use super::*;

@@ -1,15 +1,8 @@
 use std::str::FromStr;
 
 use anyhow::Context;
-use pathfinder_common::{
-    BlockHash,
-    BlockId,
-    BlockNumber,
-    ContractAddress,
-    EventData,
-    EventKey,
-    TransactionHash,
-};
+use pathfinder_common::prelude::*;
+use pathfinder_common::BlockId;
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;

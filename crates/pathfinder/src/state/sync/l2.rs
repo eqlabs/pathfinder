@@ -3,25 +3,9 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context};
 use futures::{StreamExt, TryStreamExt};
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
-use pathfinder_common::{
-    BlockCommitmentSignature,
-    BlockHash,
-    BlockNumber,
-    CasmHash,
-    Chain,
-    ChainId,
-    ClassHash,
-    EventCommitment,
-    PublicKey,
-    ReceiptCommitment,
-    SierraHash,
-    StarknetVersion,
-    StateCommitment,
-    StateDiffCommitment,
-    StateUpdate,
-    TransactionCommitment,
-};
+use pathfinder_common::Chain;
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
@@ -1181,24 +1165,8 @@ mod tests {
 
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
-        use pathfinder_common::{
-            BlockHash,
-            BlockId,
-            BlockNumber,
-            BlockTimestamp,
-            Chain,
-            ChainId,
-            ClassHash,
-            ContractAddress,
-            GasPrice,
-            PublicKey,
-            SequencerAddress,
-            StarknetVersion,
-            StateCommitment,
-            StateUpdate,
-            StorageAddress,
-            StorageValue,
-        };
+        use pathfinder_common::prelude::*;
+        use pathfinder_common::{BlockId, Chain};
         use pathfinder_crypto::Felt;
         use pathfinder_storage::StorageBuilder;
         use starknet_gateway_client::MockGatewayApi;
