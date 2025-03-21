@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.8.0-rc3",
+    "version": "0.8.0",
     "title": "StarkNet Node Write API",
     "license": {}
   },
@@ -240,7 +240,7 @@
       },
       "INSUFFICIENT_ACCOUNT_BALANCE": {
         "code": 54,
-        "message": "Account balance is smaller than the transaction's max_fee"
+        "message": "Account balance is smaller than the transaction's maximal fee (calculated as the sum of each resource's limit x max price)"
       },
       "VALIDATION_FAILURE": {
         "code": 55,
