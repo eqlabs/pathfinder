@@ -616,9 +616,9 @@ async fn evicted_peer_reconnection() {
         ..Config::for_test()
     };
 
-    let mut peer1 = TestPeer::new(cfg.clone());
-    let mut peer2 = TestPeer::new(cfg.clone());
-    let mut peer3 = TestPeer::new(cfg.clone());
+    let mut peer1 = TestPeer::builder().disable_kademlia().build(cfg.clone());
+    let mut peer2 = TestPeer::builder().disable_kademlia().build(cfg.clone());
+    let mut peer3 = TestPeer::builder().disable_kademlia().build(cfg.clone());
 
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
@@ -639,10 +639,6 @@ async fn evicted_peer_reconnection() {
         let addr = peer.start_listening().await.unwrap();
         peer1.client.dial(peer.peer_id, addr).await.unwrap();
     }
-
-    // Let the automatic bootstrap "noise" fade away as in some circumstances it can
-    // cause additional dials that interrupt the flow of the test
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
     // is 21, peer2 will be evicted when peer1 connects to peer3.
@@ -673,7 +669,7 @@ async fn evicted_peer_reconnection() {
     consume_accumulated_events(&mut peer2.event_receiver).await;
 
     // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_secs(7)).await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     peer1
         .client
@@ -690,7 +686,7 @@ async fn evicted_peer_reconnection() {
     .await;
 
     // Let it settle.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     let connected_to_peer1 = peer1.connected().await;
     assert!(connected_to_peer1.contains_key(&peer2.peer_id));
@@ -969,8 +965,9 @@ mod propagate_codec_errors_to_caller {
         let p2p_builder =
             crate::Builder::new(keypair.clone(), cfg.clone(), chain_id).behaviour_builder(bb);
         let bad = TestPeer::builder()
+            .keypair(keypair)
             .p2p_builder(p2p_builder)
-            .build(keypair, cfg);
+            .build(cfg);
 
         let (mut server, client) = match bad_peer {
             BadPeer::Server => (bad, good),

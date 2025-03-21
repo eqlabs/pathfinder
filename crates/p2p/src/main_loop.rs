@@ -84,55 +84,17 @@ impl MainLoop {
     pub async fn run(mut self) {
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
-        let me = *self.swarm.local_peer_id();
 
         loop {
-            let network_status_interval_tick = network_status_interval.tick();
-            tokio::pin!(network_status_interval_tick);
+            let network_status_tick = network_status_interval.tick();
+            tokio::pin!(network_status_tick);
 
-            let peer_status_interval_tick = peer_status_interval.tick();
-            tokio::pin!(peer_status_interval_tick);
+            let peer_status_tick = peer_status_interval.tick();
+            tokio::pin!(peer_status_tick);
 
             tokio::select! {
-                _ = network_status_interval_tick => {
-                    let network_info = self.swarm.network_info();
-                    let num_peers = network_info.num_peers();
-                    let connection_counters = network_info.connection_counters();
-                    let num_established_connections = connection_counters.num_established();
-                    let num_pending_connections = connection_counters.num_pending();
-                    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
-                }
-                _ = peer_status_interval_tick => {
-                    let dht = self.swarm.behaviour_mut().kademlia_mut()
-                        .kbuckets()
-                        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
-                        .map(|kbucket_ref| {
-                            kbucket_ref
-                                .iter()
-                                .map(|entry_ref| *entry_ref.node.key.preimage())
-                                .collect::<Vec<_>>()
-                        })
-                        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
-                        .collect::<HashSet<_>>();
-                    let connected = self
-                        .swarm
-                        .behaviour_mut()
-                        .peers()
-                        .filter_map(|(peer_id, peer)| {
-                            if peer.is_connected() {
-                                Some(peer_id)
-                            } else {
-                                None
-                            }
-                        }).collect::<Vec<_>>();
-
-                    tracing::info!(
-                        "Peer status: me {}, connected {:?}, dht {:?}",
-                        me,
-                        connected,
-                        dht,
-                    );
-                }
+                _ = network_status_tick => self.dump_network_status(),
+                _ = peer_status_tick => self.dump_dht_and_connected_peers(),
                 command = self.command_receiver.recv() => {
                     match command {
                         Some(c) => self.handle_command(c).await,
@@ -255,20 +217,19 @@ impl MainLoop {
 
                     self.swarm.add_external_address(observed_addr);
 
-                    let my_kad_names = self.swarm.behaviour().kademlia().protocol_names();
+                    if let Some(kad) = self.swarm.behaviour_mut().kademlia_mut().as_mut() {
+                        let my_kad_names = kad.protocol_names();
 
-                    if protocols.iter().any(|p| my_kad_names.contains(p)) {
-                        for addr in &listen_addrs {
-                            self.swarm
-                                .behaviour_mut()
-                                .kademlia_mut()
-                                .add_address(&peer_id, addr.clone());
-                        }
+                        if protocols.iter().any(|p| my_kad_names.contains(p)) {
+                            for addr in &listen_addrs {
+                                kad.add_address(&peer_id, addr.clone());
+                            }
 
-                        if listen_addrs.is_empty() {
-                            tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
-                        } else {
-                            tracing::debug!(%peer_id, "Added peer to DHT");
+                            if listen_addrs.is_empty() {
+                                tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
+                            } else {
+                                tracing::debug!(%peer_id, "Added peer to DHT");
+                            }
                         }
                     }
                 }
@@ -729,10 +690,14 @@ impl MainLoop {
                 let _ = sender.send(self.disconnect(peer_id).await);
             }
             Command::GetClosestPeers { peer, sender } => {
-                let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
-                self.pending_queries
-                    .get_closest_peers
-                    .insert(query_id, sender);
+                self.swarm
+                    .behaviour_mut()
+                    .get_closest_peers(peer)
+                    .map(|query_id| {
+                        self.pending_queries
+                            .get_closest_peers
+                            .insert(query_id, sender)
+                    });
             }
             Command::SendHeadersSyncRequest {
                 peer_id,
@@ -865,6 +830,49 @@ impl MainLoop {
         #[cfg(test)]
         test_utils::main_loop::query_progressed(&self._pending_test_queries.inner, _id, _result)
             .await
+    }
+
+    fn dump_network_status(&self) {
+        let network_info = self.swarm.network_info();
+        let num_peers = network_info.num_peers();
+        let connection_counters = network_info.connection_counters();
+        let num_established_connections = connection_counters.num_established();
+        let num_pending_connections = connection_counters.num_pending();
+        tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+    }
+
+    fn dump_dht_and_connected_peers(&mut self) {
+        let me = *self.swarm.local_peer_id();
+        self.swarm.behaviour_mut().kademlia_mut().map(|kad| {
+            let dht = kad
+                .kbuckets()
+                // Cannot .into_iter() a KBucketRef, hence the inner collect followed by
+                // flat_map
+                .map(|kbucket_ref| {
+                    kbucket_ref
+                        .iter()
+                        .map(|entry_ref| *entry_ref.node.key.preimage())
+                        .collect::<Vec<_>>()
+                })
+                .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                .collect::<HashSet<_>>();
+            tracing::info!(%me, ?dht, "Local DHT");
+        });
+
+        let connected = self
+            .swarm
+            .behaviour()
+            .peers()
+            .filter_map(|(peer_id, peer)| {
+                if peer.is_connected() {
+                    Some(peer_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        tracing::info!(%me, ?connected, "Connected peers");
     }
 }
 
