@@ -843,7 +843,7 @@ impl MainLoop {
 
     fn dump_dht_and_connected_peers(&mut self) {
         let me = *self.swarm.local_peer_id();
-        self.swarm.behaviour_mut().kademlia_mut().map(|kad| {
+        if let Some(kad) = self.swarm.behaviour_mut().kademlia_mut() {
             let dht = kad
                 .kbuckets()
                 // Cannot .into_iter() a KBucketRef, hence the inner collect followed by
@@ -857,7 +857,7 @@ impl MainLoop {
                 .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
                 .collect::<HashSet<_>>();
             tracing::info!(%me, ?dht, "Local DHT");
-        });
+        }
 
         let connected = self
             .swarm
