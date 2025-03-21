@@ -58,7 +58,10 @@ pub enum ApplicationError {
     InvalidTransactionNonce,
     #[error("The transaction's resources don't cover validation or the minimal transaction fee")]
     InsufficientResourcesForValidate,
-    #[error("Account balance is smaller than the transaction's max_fee")]
+    #[error(
+        "Account balance is smaller than the transaction's maximal fee (calculated as the sum of \
+         each resource's limit x max price)"
+    )]
     InsufficientAccountBalance,
     #[error("Account validation failed")]
     ValidationFailure,
