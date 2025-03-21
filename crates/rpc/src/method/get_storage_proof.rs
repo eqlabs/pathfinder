@@ -1,17 +1,9 @@
 use std::collections::HashSet;
 
 use anyhow::Context;
+use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::{
-    BlockHash,
-    BlockId,
-    BlockNumber,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    ContractRoot,
-    StorageAddress,
-};
+use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;
 use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};

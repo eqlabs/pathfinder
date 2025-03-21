@@ -241,20 +241,8 @@ mod tests {
 
     mod in_memory {
 
-        use pathfinder_common::{
-            felt,
-            BlockHash,
-            BlockHeader,
-            BlockNumber,
-            BlockTimestamp,
-            ClassHash,
-            ContractAddress,
-            GasPrice,
-            StarknetVersion,
-            StateUpdate,
-            StorageAddress,
-            StorageValue,
-        };
+        use pathfinder_common::felt;
+        use pathfinder_common::prelude::*;
         use starknet_gateway_test_fixtures::class_definitions::{
             CONTRACT_DEFINITION,
             CONTRACT_DEFINITION_CLASS_HASH,

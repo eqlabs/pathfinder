@@ -184,14 +184,7 @@ pub mod class_definitions {
 
 pub mod testnet {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        CallParam,
-        ClassHash,
-        ContractAddress,
-        EntryPoint,
-        StorageAddress,
-        TransactionHash,
-    };
+    use pathfinder_common::prelude::*;
     use pathfinder_crypto::Felt;
 
     pub const VALID_TX_HASH: TransactionHash =

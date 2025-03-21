@@ -647,20 +647,9 @@ impl From<TransactionExecutionError> for TraceBlockTransactionsError {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
-    use pathfinder_common::{
-        block_hash,
-        felt,
-        BlockHeader,
-        BlockNumber,
-        BlockTimestamp,
-        Chain,
-        SequencerAddress,
-        SierraHash,
-        StarknetVersion,
-        TransactionHash,
-        TransactionIndex,
-    };
     use pathfinder_crypto::Felt;
     use starknet_gateway_types::reply::{GasPrices, L1DataAvailabilityMode};
 
@@ -998,7 +987,7 @@ pub(crate) mod tests {
     /// with blockifier.
     #[tokio::test]
     async fn mainnet_blockifier_backwards_incompatible_transaction_tracing() {
-        let context = RpcContext::for_tests_on(Chain::Mainnet);
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
         let mut connection = context.storage.connection().unwrap();
         let transaction = connection.transaction().unwrap();
 

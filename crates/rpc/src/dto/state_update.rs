@@ -1,14 +1,6 @@
 use std::collections::HashMap;
 
-use pathfinder_common::{
-    CasmHash,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
-    SierraHash,
-    StorageAddress,
-    StorageValue,
-};
+use pathfinder_common::prelude::*;
 
 use crate::dto;
 use crate::dto::{SerializeForVersion, Serializer};

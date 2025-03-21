@@ -404,17 +404,8 @@ mod tests {
     use std::sync::LazyLock;
 
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
-    use pathfinder_common::{
-        CasmHash,
-        ContractAddress,
-        Fee,
-        ResourceAmount,
-        ResourcePricePerUnit,
-        Tip,
-        TransactionNonce,
-        TransactionVersion,
-    };
     use pathfinder_crypto::Felt;
     use starknet_gateway_test_fixtures::class_definitions::{
         CAIRO_2_0_0_STACK_OVERFLOW,

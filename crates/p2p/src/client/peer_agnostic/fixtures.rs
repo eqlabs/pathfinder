@@ -12,6 +12,7 @@ use p2p_proto::header::BlockHeadersResponse;
 use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
 use pathfinder_common::transaction::{
     DeployAccountTransactionV1,
@@ -19,18 +20,6 @@ use pathfinder_common::transaction::{
     DeployTransactionV0,
     DeployTransactionV1,
     TransactionVariant,
-};
-use pathfinder_common::{
-    BlockHeader,
-    BlockNumber,
-    CasmHash,
-    ChainId,
-    ClassHash,
-    ContractAddress,
-    SierraHash,
-    SignedBlockHeader,
-    TransactionHash,
-    TransactionIndex,
 };
 use pathfinder_tagged::Tagged;
 use pathfinder_tagged_debug_derive::TaggedDebug;

@@ -1,12 +1,5 @@
 //! Structures used for serializing requests to Starkware's sequencer REST API.
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    CallParam,
-    ContractAddress,
-    Fee,
-    TransactionSignatureElem,
-};
+use pathfinder_common::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Special tag used when specifying the `latest` or `pending` block.
@@ -127,17 +120,7 @@ pub mod add_transaction {
         SelectorAndFunctionIndex,
         SelectorAndOffset,
     };
-    use pathfinder_common::{
-        AccountDeploymentDataElem,
-        CasmHash,
-        ClassHash,
-        ContractAddressSalt,
-        EntryPoint,
-        PaymasterDataElem,
-        Tip,
-        TransactionNonce,
-        TransactionVersion,
-    };
+    use pathfinder_common::prelude::*;
     use pathfinder_serde::{CallParamAsDecimalStr, TransactionSignatureElemAsDecimalStr};
     use serde_with::serde_as;
 

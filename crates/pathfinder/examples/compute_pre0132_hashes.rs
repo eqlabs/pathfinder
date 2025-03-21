@@ -2,13 +2,7 @@ use std::io::Write;
 use std::num::NonZeroU32;
 
 use anyhow::{ensure, Context};
-use pathfinder_common::{
-    BlockHeader,
-    BlockNumber,
-    ReceiptCommitment,
-    StarknetVersion,
-    StateCommitment,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_lib::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,

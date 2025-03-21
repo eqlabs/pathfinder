@@ -5,19 +5,7 @@ use std::borrow::Cow;
 use std::str::FromStr;
 
 use num_bigint::BigUint;
-use pathfinder_common::{
-    BlockNumber,
-    CallParam,
-    ConstructorParam,
-    EthereumAddress,
-    GasPrice,
-    L1ToL2MessagePayloadElem,
-    L2ToL1MessagePayloadElem,
-    ResourceAmount,
-    ResourcePricePerUnit,
-    Tip,
-    TransactionSignatureElem,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_crypto::{Felt, HexParseError, OverflowError};
 use primitive_types::{H160, H256, U256};
 use serde::de::Visitor;

@@ -1,18 +1,5 @@
 use pathfinder_common::macro_prelude::*;
-use pathfinder_common::{
-    felt,
-    BlockHash,
-    BlockHeader,
-    BlockNumber,
-    BlockTimestamp,
-    ClassHash,
-    ContractAddress,
-    GasPrice,
-    SierraHash,
-    StarknetVersion,
-    StateUpdate,
-    StorageAddress,
-};
+use pathfinder_common::prelude::*;
 use pathfinder_storage::Storage;
 
 use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};

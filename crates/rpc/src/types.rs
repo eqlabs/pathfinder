@@ -8,26 +8,9 @@ pub use class::*;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
+    use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::{
-        AccountDeploymentDataElem,
-        BlockHash,
-        BlockNumber,
-        CallParam,
-        CasmHash,
-        ChainId,
-        ClassHash,
-        ContractAddress,
-        ContractAddressSalt,
-        EntryPoint,
-        Fee,
-        PaymasterDataElem,
-        Tip,
-        TipHex,
-        TransactionNonce,
-        TransactionSignatureElem,
-        TransactionVersion,
-    };
+    use pathfinder_common::TipHex;
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;

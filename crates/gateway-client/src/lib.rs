@@ -3,15 +3,8 @@ use std::fmt::Debug;
 use std::result::Result;
 use std::time::Duration;
 
-use pathfinder_common::{
-    BlockHash,
-    BlockId,
-    BlockNumber,
-    ClassHash,
-    PublicKey,
-    StateUpdate,
-    TransactionHash,
-};
+use pathfinder_common::prelude::*;
+use pathfinder_common::BlockId;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::PendingBlock;

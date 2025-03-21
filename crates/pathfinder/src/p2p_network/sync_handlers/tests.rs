@@ -122,21 +122,9 @@ mod prop {
         TransactionsResponse,
     };
     use pathfinder_common::event::Event;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::state_update::SystemContractUpdate;
     use pathfinder_common::transaction::TransactionVariant;
-    use pathfinder_common::{
-        BlockNumber,
-        CasmHash,
-        ClassHash,
-        ContractAddress,
-        ContractNonce,
-        SierraHash,
-        SignedBlockHeader,
-        StorageAddress,
-        StorageValue,
-        TransactionHash,
-        TransactionIndex,
-    };
     use pathfinder_storage::fake::Block;
     use proptest::prelude::*;
     use tokio::runtime::Runtime;

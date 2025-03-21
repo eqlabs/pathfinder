@@ -7,19 +7,9 @@ use alloy::primitives::{Address, TxHash};
 use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::types::{FilteredParams, Log};
 use anyhow::Context;
+use pathfinder_common::prelude::*;
 use pathfinder_common::transaction::L1HandlerTransaction;
-use pathfinder_common::{
-    BlockHash,
-    BlockNumber,
-    CallParam,
-    ContractAddress,
-    EntryPoint,
-    EthereumChain,
-    L1BlockNumber,
-    L1TransactionHash,
-    StateCommitment,
-    TransactionNonce,
-};
+use pathfinder_common::{EthereumChain, L1BlockNumber, L1TransactionHash};
 use pathfinder_crypto::Felt;
 use primitive_types::{H160, U256};
 use reqwest::{IntoUrl, Url};

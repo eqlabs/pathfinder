@@ -27,6 +27,7 @@ use pathfinder_common::class_definition::{
     Sierra,
 };
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::{
     BuiltinCounters,
     ExecutionResources,
@@ -53,28 +54,6 @@ use pathfinder_common::transaction::{
     ResourceBounds,
     Transaction,
     TransactionVariant,
-};
-use pathfinder_common::{
-    AccountDeploymentDataElem,
-    ByteCodeOffset,
-    CallParam,
-    CasmHash,
-    ClassHash,
-    ConstructorParam,
-    ContractAddress,
-    ContractAddressSalt,
-    EntryPoint,
-    EventData,
-    EventKey,
-    Fee,
-    GasPrice,
-    L1DataAvailabilityMode,
-    L2ToL1MessagePayloadElem,
-    SignedBlockHeader,
-    TransactionHash,
-    TransactionIndex,
-    TransactionNonce,
-    TransactionSignatureElem,
 };
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};

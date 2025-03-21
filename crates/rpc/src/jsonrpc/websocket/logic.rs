@@ -666,25 +666,9 @@ mod tests {
     use axum::routing::get;
     use futures::{SinkExt, StreamExt};
     use pathfinder_common::event::Event;
+    use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::Transaction;
-    use pathfinder_common::{
-        block_hash,
-        event_commitment,
-        event_key,
-        receipt_commitment,
-        state_commitment,
-        state_diff_commitment,
-        transaction_commitment,
-        transaction_hash,
-        BlockNumber,
-        BlockTimestamp,
-        ContractAddress,
-        EventData,
-        EventKey,
-        GasPrice,
-        SequencerAddress,
-        StarknetVersion,
-    };
     use pathfinder_crypto::Felt;
     use pretty_assertions_sorted::assert_eq;
     use serde::Serialize;
@@ -1538,7 +1522,7 @@ mod tests {
         RawValue::from_string(serde_json::to_string(payload).unwrap()).unwrap()
     }
 
-    fn header_sample() -> BlockHeader {
+    fn header_sample() -> crate::BlockHeader {
         BlockHeader(Default::default())
     }
 
@@ -1633,7 +1617,7 @@ mod tests {
         sender: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
         receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
         server_handle: JoinHandle<()>,
-        head_sender: JsonBroadcaster<BlockHeader>,
+        head_sender: JsonBroadcaster<crate::BlockHeader>,
         l2_blocks: broadcast::Sender<Arc<Block>>,
         pending_data_sender: watch::Sender<PendingData>,
     }

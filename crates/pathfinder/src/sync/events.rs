@@ -6,15 +6,9 @@ use p2p::client::types::EventsForBlockByTransaction;
 use p2p::libp2p::PeerId;
 use p2p::PeerData;
 use pathfinder_common::event::Event;
+use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{
-    BlockHeader,
-    BlockNumber,
-    EventCommitment,
-    StarknetVersion,
-    TransactionHash,
-};
 use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

@@ -168,14 +168,7 @@ impl crate::dto::SerializeForVersion for Reorg {
 #[cfg(test)]
 mod tests {
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{
-        BlockHeader,
-        BlockNumber,
-        BlockTimestamp,
-        GasPrice,
-        SequencerAddress,
-        StarknetVersion,
-    };
+    use pathfinder_common::prelude::*;
     use serde_json::json;
     use starknet_gateway_types::reply::{GasPrices, PendingBlock};
 
