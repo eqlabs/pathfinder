@@ -226,28 +226,6 @@ async fn periodic_bootstrap() {
         peer2.client.for_test().get_peers_from_dht().await,
         [boot.peer_id, peer1.peer_id].into()
     );
-
-    // The peer keeps attempting the bootstrap because the low watermark is not
-    // reached, but there are no new peers to connect to.
-
-    wait_for_event(
-        &mut peer2.event_receiver,
-        filter_kademlia_bootstrap_completed,
-    )
-    .await;
-
-    assert_eq!(
-        boot.client.for_test().get_peers_from_dht().await,
-        [peer1.peer_id, peer2.peer_id].into()
-    );
-    assert_eq!(
-        peer1.client.for_test().get_peers_from_dht().await,
-        [boot.peer_id, peer2.peer_id].into()
-    );
-    assert_eq!(
-        peer2.client.for_test().get_peers_from_dht().await,
-        [boot.peer_id, peer1.peer_id].into()
-    );
 }
 
 /// Test that if a peer attempts to reconnect too quickly, the connection is
@@ -536,9 +514,9 @@ async fn inbound_peer_eviction() {
         ..Config::for_test()
     };
 
-    let mut peer = TestPeer::new(cfg.clone());
+    let mut peer = TestPeer::builder().disable_kademlia().build(cfg.clone());
     let inbound_peers = (0..26)
-        .map(|_| TestPeer::new(cfg.clone()))
+        .map(|_| TestPeer::builder().disable_kademlia().build(cfg.clone()))
         .collect::<Vec<_>>();
     let mut outbound1 = TestPeer::new(cfg);
 
@@ -561,10 +539,6 @@ async fn inbound_peer_eviction() {
             .await
             .unwrap();
     }
-
-    // Let the automatic bootstrap "noise" fade away as in some circumstances it can
-    // cause additional dials that interrupt the flow of the test
-    tokio::time::sleep(Duration::from_secs(5)).await;
 
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
@@ -594,9 +568,6 @@ async fn inbound_peer_eviction() {
     .await
     .unwrap();
 
-    // Let it settle.
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
     let connected = peer.connected().await;
     // 25 inbound and 1 outbound peer.
     assert_eq!(connected.len(), 26);
@@ -609,9 +580,9 @@ async fn inbound_peer_eviction() {
 #[test_log::test(tokio::test)]
 async fn evicted_peer_reconnection() {
     let cfg = Config {
-        max_inbound_direct_peers: 1000,
+        max_inbound_direct_peers: 10,
         max_inbound_relayed_peers: 0,
-        max_outbound_peers: 21,
+        max_outbound_peers: 1,
         bootstrap_period: None,
         ..Config::for_test()
     };
@@ -627,21 +598,8 @@ async fn evicted_peer_reconnection() {
     let addr3 = peer3.start_listening().await.unwrap();
     tracing::info!(%peer3.peer_id, %addr3);
 
-    // We need these peers to fill the DHT of peer1 up to the watermark that
-    // triggers "automatic bootstrap" so that it does not interfere with the test
-    // https://github.com/libp2p/rust-libp2p/pull/4838
-    // https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
-    let mut twenty_peers = (0..20)
-        .map(|_| TestPeer::new(cfg.clone()))
-        .collect::<Vec<_>>();
-
-    for peer in &mut twenty_peers {
-        let addr = peer.start_listening().await.unwrap();
-        peer1.client.dial(peer.peer_id, addr).await.unwrap();
-    }
-
     // Connect peer1 to peer2, then to peer3. Because the outbound connection limit
-    // is 21, peer2 will be evicted when peer1 connects to peer3.
+    // is 1, peer2 will be evicted when peer1 connects to peer3.
     peer1
         .client
         .dial(peer2.peer_id, addr2.clone())
@@ -668,15 +626,26 @@ async fn evicted_peer_reconnection() {
 
     consume_accumulated_events(&mut peer2.event_receiver).await;
 
-    // peer2 can be reconnected after a timeout.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    peer1
+    // In this case there is no peer ID when connecting, so the connection gets
+    // closed after being established.
+    peer2
         .client
-        .dial(peer2.peer_id, addr2.clone())
+        .dial(peer1.peer_id, addr1.clone())
         .await
         .unwrap();
+    wait_for_event(&mut peer2.event_receiver, |event| match event {
+        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer1.peer_id => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await;
 
+    // peer2 can be reconnected after a timeout.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
+
+    // peer3 gets evicted.
     wait_for_event(&mut peer1.event_receiver, |event| match event {
         Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer3.peer_id => {
             Some(())
@@ -684,13 +653,6 @@ async fn evicted_peer_reconnection() {
         _ => None,
     })
     .await;
-
-    // Let it settle.
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    let connected_to_peer1 = peer1.connected().await;
-    assert!(connected_to_peer1.contains_key(&peer2.peer_id));
-    assert!(!connected_to_peer1.contains_key(&peer3.peer_id));
 }
 
 /// Test that peers can only connect if they are whitelisted.

@@ -716,10 +716,6 @@ impl Behaviour {
         });
     }
 
-    pub fn kademlia(&self) -> Option<&kad::Behaviour<MemoryStore>> {
-        self.inner.kademlia.as_ref()
-    }
-
     pub fn kademlia_mut(&mut self) -> Option<&mut kad::Behaviour<MemoryStore>> {
         self.inner.kademlia.as_mut()
     }
