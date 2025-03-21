@@ -19,19 +19,21 @@ pub async fn handle_command(
 ) {
     match command {
         TestCommand::GetPeersFromDHT(sender) => {
-            let peers = behavior
-                .kademlia_mut()
-                .kbuckets()
-                // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
-                .map(|kbucket_ref| {
-                    kbucket_ref
-                        .iter()
-                        .map(|entry_ref| *entry_ref.node.key.preimage())
-                        .collect::<Vec<_>>()
-                })
-                .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
-                .collect::<HashSet<_>>();
-            sender.send(peers).expect("Receiver not to be dropped")
+            if let Some(kad) = behavior.kademlia_mut() {
+                let peers = kad
+                    .kbuckets()
+                    // Cannot .into_iter() a KBucketRef, hence the inner collect followed by
+                    // flat_map
+                    .map(|kbucket_ref| {
+                        kbucket_ref
+                            .iter()
+                            .map(|entry_ref| *entry_ref.node.key.preimage())
+                            .collect::<Vec<_>>()
+                    })
+                    .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                    .collect::<HashSet<_>>();
+                sender.send(peers).expect("Receiver not to be dropped");
+            }
         }
         TestCommand::GetConnectedPeers(sender) => {
             let peers = behavior

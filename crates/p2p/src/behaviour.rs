@@ -8,6 +8,7 @@ use libp2p::core::Endpoint;
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::multiaddr::Protocol;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::behaviour::ConnectionEstablished;
 use libp2p::swarm::{
     CloseConnection,
@@ -57,7 +58,8 @@ pub struct Inner {
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
-    kademlia: kad::Behaviour<MemoryStore>,
+    /// Kademlia is **always** enabled outside tests.
+    kademlia: Toggle<kad::Behaviour<MemoryStore>>,
     header_sync: p2p_stream::Behaviour<codec::Headers>,
     class_sync: p2p_stream::Behaviour<codec::Classes>,
     state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
@@ -446,8 +448,11 @@ impl Behaviour {
         Builder::new(identity, chain_id, cfg)
     }
 
-    pub fn get_closest_peers(&mut self, peer: PeerId) -> kad::QueryId {
-        self.inner.kademlia.get_closest_peers(peer)
+    pub fn get_closest_peers(&mut self, peer: PeerId) -> Option<kad::QueryId> {
+        self.inner
+            .kademlia
+            .as_mut()
+            .map(|kad| kad.get_closest_peers(peer))
     }
 
     /// Notify the behaviour of a ping event.
@@ -655,9 +660,7 @@ impl Behaviour {
     /// Prevent evicted peers from reconnecting too quickly.
     fn prevent_evicted_peer_reconnections(&self, peer_id: PeerId) -> Result<(), ConnectionDenied> {
         let timeout = if cfg!(test) {
-            // Needs to be large enough to mitigate the possibility of failing explicit
-            // dials in tests, due to implicit dials triggered by automatic bootstrapping.
-            Duration::from_secs(5)
+            Duration::from_millis(200)
         } else {
             Duration::from_secs(30)
         };
@@ -713,12 +716,8 @@ impl Behaviour {
         });
     }
 
-    pub fn kademlia(&self) -> &kad::Behaviour<MemoryStore> {
-        &self.inner.kademlia
-    }
-
-    pub fn kademlia_mut(&mut self) -> &mut kad::Behaviour<MemoryStore> {
-        &mut self.inner.kademlia
+    pub fn kademlia_mut(&mut self) -> Option<&mut kad::Behaviour<MemoryStore>> {
+        self.inner.kademlia.as_mut()
     }
 
     pub fn headers_sync_mut(&mut self) -> &mut p2p_stream::Behaviour<codec::Headers> {

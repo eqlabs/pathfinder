@@ -22,9 +22,10 @@ pub struct TestPeer {
     pub main_loop_jh: JoinHandle<()>,
 }
 
-#[derive(Default)]
 pub struct TestPeerBuilder {
+    pub keypair: Keypair,
     p2p_builder: Option<Builder>,
+    enable_kademlia: bool,
 }
 
 impl Config {
@@ -51,19 +52,48 @@ impl Config {
 }
 
 impl TestPeerBuilder {
+    pub fn new() -> Self {
+        Self {
+            keypair: Keypair::generate_ed25519(),
+            p2p_builder: None,
+            enable_kademlia: true,
+        }
+    }
+
+    pub fn keypair(mut self, keypair: Keypair) -> Self {
+        self.keypair = keypair;
+        self
+    }
+
     pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
         self.p2p_builder = Some(p2p_builder);
         self
     }
 
-    pub fn build(self, keypair: Keypair, cfg: Config) -> TestPeer {
-        let Self { p2p_builder } = self;
+    pub fn disable_kademlia(mut self) -> Self {
+        self.enable_kademlia = false;
+        self
+    }
+
+    pub fn build(self, cfg: Config) -> TestPeer {
+        let Self {
+            keypair,
+            p2p_builder,
+            enable_kademlia,
+        } = self;
 
         let peer_id = keypair.public().to_peer_id();
 
-        let (client, mut event_receiver, main_loop) = p2p_builder
-            .unwrap_or_else(|| crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET))
-            .build();
+        let p2p_builder = p2p_builder
+            .unwrap_or_else(|| crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET));
+
+        let p2p_builder = if enable_kademlia {
+            p2p_builder
+        } else {
+            p2p_builder.disable_kademlia_for_test()
+        };
+
+        let (client, mut event_receiver, main_loop) = p2p_builder.build();
 
         // Ensure that the channel keeps being polled to move the main loop forward.
         // Store the polled events into a buffered channel instead.
@@ -87,18 +117,18 @@ impl TestPeerBuilder {
 
 impl TestPeer {
     pub fn builder() -> TestPeerBuilder {
-        Default::default()
+        TestPeerBuilder::new()
     }
 
     /// Create a new peer with a random keypair
     #[must_use]
     pub fn new(cfg: Config) -> Self {
-        Self::builder().build(Keypair::generate_ed25519(), cfg)
+        Self::builder().build(cfg)
     }
 
     #[must_use]
     pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
-        Self::builder().build(keypair, cfg)
+        Self::builder().keypair(keypair).build(cfg)
     }
 
     /// Start listening on a specified address
@@ -135,6 +165,6 @@ impl TestPeer {
 impl Default for TestPeer {
     /// Create a new peer with a random keypair and default test config
     fn default() -> Self {
-        Self::builder().build(Keypair::generate_ed25519(), Config::for_test())
+        Self::new(Config::for_test())
     }
 }
