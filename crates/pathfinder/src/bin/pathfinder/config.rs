@@ -251,7 +251,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_name = "Seconds",
         long_help = "Timeout duration for all gateway and feeder-gateway requests",
         env = "PATHFINDER_GATEWAY_REQUEST_TIMEOUT",
-        default_value = "5"
+        default_value = "10"
     )]
     gateway_timeout: std::num::NonZeroU64,
 
