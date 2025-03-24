@@ -8,40 +8,61 @@ pub mod main_loop;
 
 use crate::{EmptyResultSender, TestCommand, TestEvent};
 
-pub trait ApplicationMainLoopHandler {
+/// Defines how an application-specific p2p protocol (like sync or consensus)
+/// interacts with the network:
+/// - Commands: Actions requested by the application to be executed by the
+///   network
+/// - Events: Notifications from the network that the application needs to
+///   handle
+/// - State: Data needed to track ongoing operations
+///
+/// This trait is implemented by application-specific network behaviors (like
+/// sync, consensus) to define their p2p protocol logic.
+pub trait P2PApplicationBehaviour {
+    /// The type of commands that can be sent to the p2p network.
     type Command;
+    /// The type of events that the p2p network can emit to the outside world.
     type Event;
-    type PendingStuff;
+    /// State needed to track pending network operations and their responses.
+    type State;
 
-    async fn handle_command(&mut self, command: Self::Command, pending: &mut Self::PendingStuff);
+    /// Handles a command from the outside world.
+    async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State);
 
-    async fn handle_event(&mut self, event: Self::Event, pending: &mut Self::PendingStuff);
+    /// Handles an event from the inside of the p2p network.
+    async fn handle_event(&mut self, event: Self::Event, state: &mut Self::State);
 }
 
+/// Commands that can be sent to the p2p network.
 #[derive(Debug)]
 pub enum Command<ApplicationCommand> {
-    StarListening {
+    /// Listen for incoming connections on a specific address.
+    Listen {
         addr: Multiaddr,
         sender: EmptyResultSender,
     },
+    /// Dial a specific peer.
     Dial {
         peer_id: PeerId,
         addr: Multiaddr,
         sender: EmptyResultSender,
     },
+    /// Disconnect from a specific peer.
     Disconnect {
         peer_id: PeerId,
         sender: EmptyResultSender,
     },
+    /// Get the closest peers to a specific peer.
     GetClosestPeers {
         peer: PeerId,
         sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
     },
+    /// Notify the p2p network that a peer is not useful.
     NotUseful {
         peer_id: PeerId,
         sender: oneshot::Sender<()>,
     },
-    /// Application behaviour commands go here
+    /// Application-specific command.
     Application(ApplicationCommand),
     /// For testing purposes only
     // TODO test commands could also be split into core and application specific although I'm not
@@ -49,6 +70,8 @@ pub enum Command<ApplicationCommand> {
     _Test(TestCommand),
 }
 
+/// Events that can be sent from the inside of the p2p network to the outside
+/// world.
 #[derive(Debug)]
 pub enum Event<ApplicationEvent> {
     /// Application behaviour events (notifications) go here
