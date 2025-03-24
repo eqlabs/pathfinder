@@ -13,7 +13,8 @@ use tokio::time::Duration;
 
 #[cfg(test)]
 use crate::test_utils;
-use crate::v2::core::{behaviour, Command, Event, P2PApplicationBehaviour};
+use crate::v2::core::behaviour::InnerEvent;
+use crate::v2::core::{behaviour, Command, P2PApplicationBehaviour};
 use crate::{EmptyResultSender, TestCommand, TestEvent};
 
 /// This is our main loop for P2P networking.
@@ -32,7 +33,9 @@ where
     /// Receives commands from the outside world.
     command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
     /// Sends events to the outside world.
-    event_sender: mpsc::Sender<Event<<B as P2PApplicationBehaviour>::Event>>,
+    event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+    /// Sends test events to the outside world.
+    test_event_sender: Option<mpsc::Sender<TestEvent>>,
     /// Keeps track of pending dials and allows us to notify the caller when a
     /// dial succeeds or fails.
     pending_dials: PendingDials,
@@ -60,7 +63,7 @@ type State<B> = <B as P2PApplicationBehaviour>::State;
 
 impl<B> MainLoop<B>
 where
-    B: NetworkBehaviour + P2PApplicationBehaviour<Event = <B as NetworkBehaviour>::ToSwarm>,
+    B: P2PApplicationBehaviour,
     <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
     <B as P2PApplicationBehaviour>::State: Default,
 {
@@ -75,12 +78,14 @@ where
     pub(crate) fn new(
         swarm: libp2p::swarm::Swarm<behaviour::Behaviour<B>>,
         command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
-        event_sender: mpsc::Sender<Event<<B as P2PApplicationBehaviour>::Event>>,
+        event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+        test_event_sender: Option<mpsc::Sender<TestEvent>>,
     ) -> Self {
         Self {
             swarm,
             command_receiver,
             event_sender,
+            test_event_sender,
             pending_dials: Default::default(),
             pending_queries: Default::default(),
             state: Default::default(),
@@ -100,7 +105,7 @@ where
         // Check the peer status every 30 seconds
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
 
-        let me = self.swarm.local_peer_id().clone();
+        let me = *self.swarm.local_peer_id();
         loop {
             let network_status_interval_tick = network_status_interval.tick();
             tokio::pin!(network_status_interval_tick);
@@ -190,14 +195,14 @@ where
                     tracing::debug!(%peer_id, "Established inbound connection");
                 }
 
-                send_test_event(
-                    &self.event_sender,
-                    TestEvent::ConnectionEstablished {
-                        outbound: endpoint.is_dialer(),
-                        remote: peer_id,
-                    },
-                )
-                .await;
+                //send_test_event(
+                //    &self.event_sender,
+                //    TestEvent::ConnectionEstablished {
+                //        outbound: endpoint.is_dialer(),
+                //        remote: peer_id,
+                //    },
+                //)
+                //.await;
             }
             // An outgoing connection fails to be established.
             // Notifies the caller that the dial failed.
@@ -231,11 +236,11 @@ where
             } => {
                 tracing::debug!(%peer_id, "Connection closed");
                 if num_established == 0 {
-                    send_test_event(
-                        &self.event_sender,
-                        TestEvent::ConnectionClosed { remote: peer_id },
-                    )
-                    .await;
+                    //send_test_event(
+                    //    &self.event_sender,
+                    //    TestEvent::ConnectionClosed { remote: peer_id },
+                    //)
+                    //.await;
                 }
             }
             // A peer is being dialed.
@@ -351,11 +356,11 @@ where
                                         Err(peer)
                                     }
                                 };
-                                send_test_event(
-                                    &self.event_sender,
-                                    TestEvent::KademliaBootstrapCompleted(result),
-                                )
-                                .await;
+                                //send_test_event(
+                                //    &self.event_sender,
+                                //    TestEvent::KademliaBootstrapCompleted(result),
+                                //)
+                                //.await;
                             }
                             QueryResult::GetClosestPeers(result) => {
                                 use libp2p::kad::GetClosestPeersOk;
@@ -391,11 +396,11 @@ where
                                 //    peers in the DHT is lower than 20. See `bootstrap_on_low_peers` for more details:
                                 //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
                                 if step.count == NonZeroUsize::new(1).expect("1>0") {
-                                    send_test_event(
-                                        &self.event_sender,
-                                        TestEvent::KademliaBootstrapStarted,
-                                    )
-                                    .await;
+                                    //send_test_event(
+                                    //    &self.event_sender,
+                                    //    TestEvent::KademliaBootstrapStarted,
+                                    //)
+                                    //.await;
                                 }
                             }
                             _ => self.test_query_progressed(id, result).await,
@@ -406,11 +411,11 @@ where
                     peer, is_new_peer, ..
                 } => {
                     if is_new_peer {
-                        send_test_event(
-                            &self.event_sender,
-                            TestEvent::PeerAddedToDHT { remote: peer },
-                        )
-                        .await
+                        //send_test_event(
+                        //    &self.test_event_sender,
+                        //    TestEvent::PeerAddedToDHT { remote: peer },
+                        //)
+                        //.await
                     }
                 }
                 _ => {}
@@ -430,11 +435,15 @@ where
             //
             // An application-specific event is received.
             // Forwards the event to the application behaviour implementation.
-            SwarmEvent::Behaviour(behaviour::Event::Application(application_event)) => {
+            SwarmEvent::Behaviour(InnerEvent::Application(application_event)) => {
                 self.swarm
                     .behaviour_mut()
                     .application_mut()
-                    .handle_event(application_event, &mut self.state)
+                    .handle_event(
+                        application_event,
+                        &mut self.state,
+                        self.event_sender.clone(),
+                    )
                     .await;
             }
             // ===========================
@@ -521,8 +530,6 @@ where
                     .handle_command(application_command, &mut self.state)
                     .await;
             }
-            // For testing purposes only.
-            Command::_Test(command) => self.handle_test_command(command).await,
         };
     }
 
@@ -589,10 +596,7 @@ where
 }
 
 /// No-op outside tests
-async fn send_test_event<ApplicationEvent>(
-    _event_sender: &mpsc::Sender<Event<ApplicationEvent>>,
-    _event: TestEvent,
-) {
+async fn send_test_event(_event_sender: &mpsc::Sender<TestEvent>, _event: TestEvent) {
     // FIXME
     // #[cfg(test)]
     // test_utils::main_loop::send_event(_event_sender, _event).await
