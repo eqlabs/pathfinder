@@ -437,10 +437,9 @@ impl<B> Behaviour<B>
 where
     B: NetworkBehaviour,
 {
-    // TODO the old behaviour uses a builder pattern
-    // pub fn builder(identity: identity::Keypair, chain_id: ChainId, cfg: Config)
-    // -> Builder {     Builder::new(identity, chain_id, cfg)
-    // }
+    //pub fn builder(identity: identity::Keypair, chain_id: ChainId, cfg: Config)
+    // -> Builder {    Builder::new(identity, chain_id, cfg)
+    //}
 
     pub fn get_closest_peers(&mut self, peer: PeerId) -> kad::QueryId {
         self.inner.kademlia.get_closest_peers(peer)
