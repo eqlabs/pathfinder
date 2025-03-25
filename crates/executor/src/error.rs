@@ -5,6 +5,7 @@ use blockifier::execution::errors::{
 };
 use blockifier::execution::stack_trace::gen_tx_execution_error_trace;
 use blockifier::state::errors::StateError;
+use blockifier::state::stateful_compression::CompressionError;
 use blockifier::transaction::errors::TransactionExecutionError as BlockifierTransactionExecutionError;
 
 use crate::error_stack::ErrorStack;
@@ -116,6 +117,16 @@ impl From<StateError> for TransactionExecutionError {
         match e {
             StateError::StateReadError(_) => Self::Internal(e.into()),
             _ => Self::Custom(anyhow::anyhow!("State error: {}", e)),
+        }
+    }
+}
+
+impl From<CompressionError> for TransactionExecutionError {
+    fn from(e: CompressionError) -> Self {
+        match e {
+            CompressionError::MissedAlias(_) => Self::Custom(anyhow::anyhow!(e)),
+            CompressionError::StateError(state_error) => state_error.into(),
+            CompressionError::StarknetApiError(starknet_api_error) => starknet_api_error.into(),
         }
     }
 }

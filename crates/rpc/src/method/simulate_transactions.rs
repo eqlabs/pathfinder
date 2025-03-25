@@ -228,6 +228,7 @@ pub(crate) mod tests {
     use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS};
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
     use crate::method::simulate_transactions::SimulateTransactionInput;
+    use crate::test_setup::OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS;
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
@@ -247,14 +248,76 @@ pub(crate) mod tests {
         let test_storage_key = StorageAddress::from_name(b"my_storage_var");
         let test_storage_value = storage_value!("0x09");
 
+        // State diff compression alias values.
+        let test_storage_alias_value = storage_value!("0xdeadbeef");
+        let alias_contract_address_0_13_4 = contract_address!("0x2");
+        let openzeppelin_account_contract_address =
+            StorageAddress::new(OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS.0).unwrap();
+        let eth_fee_token_address = StorageAddress::new(ETH_FEE_TOKEN_ADDRESS.0).unwrap();
+        let test_address1 = StorageAddress::new_or_panic(
+            Felt::from_hex_str(
+                "0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a",
+            )
+            .unwrap(),
+        );
+        let test_address2 = StorageAddress::new_or_panic(
+            Felt::from_hex_str(
+                "0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e",
+            )
+            .unwrap(),
+        );
+        let test_address3 = StorageAddress::new_or_panic(
+            Felt::from_hex_str(
+                "0x012592426632af714f43ccb05536b6044fc3e897fa55288f658731f93590e7e7",
+            )
+            .unwrap(),
+        );
+        let test_address4 = StorageAddress::new_or_panic(
+            Felt::from_hex_str(
+                "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+            )
+            .unwrap(),
+        );
+
         // set test storage variable
         let (storage, last_block_header, account_contract_address, universal_deployer_address) =
             crate::test_setup::test_storage(version, |state_update| {
-                state_update.with_storage_update(
-                    fixtures::DEPLOYED_CONTRACT_ADDRESS,
-                    test_storage_key,
-                    test_storage_value,
-                )
+                state_update
+                    .with_storage_update(
+                        fixtures::DEPLOYED_CONTRACT_ADDRESS,
+                        test_storage_key,
+                        test_storage_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        openzeppelin_account_contract_address,
+                        test_storage_alias_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        eth_fee_token_address,
+                        test_storage_alias_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        test_address1,
+                        test_storage_alias_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        test_address2,
+                        test_storage_alias_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        test_address3,
+                        test_storage_alias_value,
+                    )
+                    .with_storage_update(
+                        alias_contract_address_0_13_4,
+                        test_address4,
+                        test_storage_alias_value,
+                    )
             })
             .await;
 

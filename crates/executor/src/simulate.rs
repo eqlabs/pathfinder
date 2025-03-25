@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use blockifier::state::cached_state::CachedState;
+use blockifier::state::cached_state::{CachedState, StateMaps};
 use blockifier::state::errors::StateError;
+use blockifier::state::stateful_compression;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use blockifier::versioned_constants::VersionedConstants;
@@ -82,6 +83,17 @@ pub fn simulate(
     let block_number = execution_state.header.number;
 
     let (mut state, block_context) = execution_state.starknet_state()?;
+    let alias_contract_address = block_context
+        .versioned_constants()
+        .os_constants
+        .os_contract_addresses
+        .alias_contract_address();
+    if block_context
+        .versioned_constants()
+        .enable_stateful_compression
+    {
+        stateful_compression::allocate_aliases_in_storage(&mut state, alias_contract_address)?;
+    }
 
     transactions
         .into_iter()
@@ -114,7 +126,18 @@ pub fn simulate(
             } else {
                 execute_transaction(&tx, tx_index, &mut tx_state, &block_context, &ExecutionBehaviorOnRevert::Continue)?
             };
-            let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
+            let state_maps = {
+                let state_maps = tx_state.to_state_diff()?.state_maps;
+                if block_context
+                    .versioned_constants()
+                    .enable_stateful_compression
+                {
+                    stateful_compression::compress(&state_maps, &tx_state, alias_contract_address)?
+                } else {
+                    state_maps
+                }
+            };
+            let state_diff = to_state_diff(&mut tx_state, &state_maps, transaction_declared_deprecated_class(&tx))?;
             tx_state.commit();
 
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
@@ -145,6 +168,17 @@ pub fn trace(
     transactions: Vec<Transaction>,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
     let (mut state, block_context) = execution_state.starknet_state()?;
+    let alias_contract_address = block_context
+        .versioned_constants()
+        .os_constants
+        .os_contract_addresses
+        .alias_contract_address();
+    if block_context
+        .versioned_constants()
+        .enable_stateful_compression
+    {
+        stateful_compression::allocate_aliases_in_storage(&mut state, alias_contract_address)?;
+    }
 
     let sender = {
         let mut cache = cache.0.lock().unwrap();
@@ -198,12 +232,27 @@ pub fn trace(
             cache.cache_set(block_hash, CacheItem::CachedErr(err.clone()));
             err
         })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)
-            .inspect_err(|_| {
-                // Remove the cache entry so it's no longer inflight.
-                let mut cache = cache.0.lock().unwrap();
-                cache.cache_remove(&block_hash);
-            })?;
+        let state_maps = {
+            let state_maps = tx_state.to_state_diff()?.state_maps;
+            if block_context
+                .versioned_constants()
+                .enable_stateful_compression
+            {
+                stateful_compression::compress(&state_maps, &tx_state, alias_contract_address)?
+            } else {
+                state_maps
+            }
+        };
+        let state_diff = to_state_diff(
+            &mut tx_state,
+            &state_maps,
+            tx_declared_deprecated_class_hash,
+        )
+        .inspect_err(|_| {
+            // Remove the cache entry so it's no longer inflight.
+            let mut cache = cache.0.lock().unwrap();
+            cache.cache_remove(&block_hash);
+        })?;
         tx_state.commit();
 
         tracing::trace!("Transaction tracing finished");
@@ -271,17 +320,16 @@ fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<Cl
 
 fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     state: &mut blockifier::state::cached_state::CachedState<S>,
+    state_maps: &StateMaps,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
-    let state_diff = state.to_state_diff()?;
-
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
     // We need to check the previous class hash for a contract to decide if it's a
     // deployed contract or a replaced class.
-    for (address, class_hash) in state_diff.state_maps.class_hashes {
-        let previous_class_hash = state.state.get_class_hash_at(address)?;
+    for (address, class_hash) in &state_maps.class_hashes {
+        let previous_class_hash = state.state.get_class_hash_at(*address)?;
 
         if previous_class_hash.0.into_felt().is_zero() {
             deployed_contracts.push(DeployedContract {
@@ -297,7 +345,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     }
 
     let mut storage_diffs: BTreeMap<_, _> = Default::default();
-    for ((address, key), value) in state_diff.state_maps.storage {
+    for ((address, key), value) in &state_maps.storage {
         storage_diffs
             .entry(ContractAddress::new_or_panic(address.0.key().into_felt()))
             .and_modify(|map: &mut BTreeMap<StorageAddress, StorageValue>| {
@@ -333,19 +381,17 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
         deployed_contracts,
         // This info is not present in the state diff, so we need to pass it separately.
         deprecated_declared_classes: old_declared_contract.into_iter().collect(),
-        declared_classes: state_diff
-            .state_maps
+        declared_classes: state_maps
             .compiled_class_hashes
-            .into_iter()
+            .iter()
             .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
                 class_hash: SierraHash(class_hash.0.into_felt()),
                 compiled_class_hash: CasmHash(compiled_class_hash.0.into_felt()),
             })
             .collect(),
-        nonces: state_diff
-            .state_maps
+        nonces: state_maps
             .nonces
-            .into_iter()
+            .iter()
             .map(|(address, nonce)| {
                 (
                     ContractAddress::new_or_panic(address.0.key().into_felt()),
