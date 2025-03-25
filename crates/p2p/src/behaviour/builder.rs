@@ -1,6 +1,5 @@
-use std::time::Duration;
-
 use libp2p::kad::store::MemoryStore;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
@@ -20,6 +19,7 @@ pub struct Builder {
     state_diff_sync: Option<p2p_stream::Behaviour<codec::StateDiffs>>,
     transaction_sync: Option<p2p_stream::Behaviour<codec::Transactions>>,
     event_sync: Option<p2p_stream::Behaviour<codec::Events>>,
+    enable_kademlia: bool,
 }
 
 impl Builder {
@@ -33,6 +33,7 @@ impl Builder {
             state_diff_sync: None,
             transaction_sync: None,
             event_sync: None,
+            enable_kademlia: true,
         }
     }
 
@@ -78,6 +79,14 @@ impl Builder {
         self
     }
 
+    /// Disable Kademlia for in-crate tests. Kademlia is always enabled in
+    /// production.
+    #[cfg(test)]
+    pub(crate) fn disable_kademlia_for_test(mut self) -> Self {
+        self.enable_kademlia = false;
+        self
+    }
+
     pub fn build(self) -> BehaviourWithRelayTransport {
         let Self {
             identity,
@@ -88,30 +97,27 @@ impl Builder {
             state_diff_sync,
             transaction_sync,
             event_sync,
+            enable_kademlia,
         } = self;
-
-        const PROVIDER_PUBLICATION_INTERVAL: Duration = Duration::from_secs(600);
-
-        // This makes sure that the DHT we're implementing is incompatible with the
-        // "default" IPFS DHT from libp2p.
-        let protocol_name = cfg
-            .kad_name
-            .clone()
-            .map(|x| StreamProtocol::try_from_owned(x).expect("valid protocol name"))
-            .unwrap_or_else(|| kademlia_protocol_name(chain_id));
-
-        let mut kademlia_config = kad::Config::new(protocol_name);
-        kademlia_config.set_record_ttl(Some(Duration::from_secs(0)));
-        kademlia_config.set_provider_record_ttl(Some(PROVIDER_PUBLICATION_INTERVAL * 3));
-        kademlia_config.set_provider_publication_interval(Some(PROVIDER_PUBLICATION_INTERVAL));
-        kademlia_config.set_periodic_bootstrap_interval(cfg.bootstrap_period);
 
         let peer_id = identity.public().to_peer_id();
         let secret = Secret::new(&identity);
         let public_key = identity.public();
 
-        let kademlia =
-            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kademlia_config);
+        #[cfg(not(test))]
+        assert!(enable_kademlia, "Kademlia must be enabled in production");
+
+        let kademlia = Toggle::from(enable_kademlia.then_some({
+            // This makes sure that the DHT we're implementing is incompatible with the
+            // "default" IPFS DHT from libp2p.
+            let protocol_name = cfg
+                .kad_name
+                .clone()
+                .map(|x| StreamProtocol::try_from_owned(x).expect("Valid protocol name"))
+                .unwrap_or_else(|| kademlia_protocol_name(chain_id));
+            let config = kad::Config::new(protocol_name);
+            kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), config)
+        }));
 
         let (relay_transport, relay) = relay::client::new(peer_id);
 
