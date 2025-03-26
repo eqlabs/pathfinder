@@ -6,14 +6,14 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.82"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.97"
 axum = { version = "0.7.9", features = ["macros"] }
 futures = "0.3.31"
 metrics = "0.24.1"
-metrics-exporter-prometheus = "0.16.1"
-reqwest = { version = "0.12.12", features = ["json"] }
-serde = "1.0.217"
-serde_json = "1.0.135"
-tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros"] }
+metrics-exporter-prometheus = "0.16.2"
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls-native-roots"] }
+serde = "1.0.219"
+serde_json = "1.0.140"
+tokio = { version = "1.44.1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
