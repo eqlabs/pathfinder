@@ -28,7 +28,7 @@ fi
 do_sed() {
     local file=$1
     local pattern=$2
-    if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(uname -s)" == "Darwin" ]]; then
         sed -i '.bak' "$pattern" "$file"
         rm "${file}.bak"
     else
