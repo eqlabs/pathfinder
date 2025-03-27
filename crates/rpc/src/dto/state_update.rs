@@ -23,8 +23,8 @@ impl SerializeForVersion for StateUpdate<'_> {
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.serialize_field("block_hash", &self.0.block_hash)?;
-        serializer.serialize_field("old_root", &self.0.state_commitment.0)?;
-        serializer.serialize_field("new_root", &self.0.parent_state_commitment.0)?;
+        serializer.serialize_field("old_root", &self.0.parent_state_commitment.0)?;
+        serializer.serialize_field("new_root", &self.0.state_commitment.0)?;
         serializer.serialize_field("state_diff", &StateDiff(self.0))?;
 
         serializer.end()
