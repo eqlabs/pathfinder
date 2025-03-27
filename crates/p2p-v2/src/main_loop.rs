@@ -1,0 +1,487 @@
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+
+use futures::StreamExt;
+use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
+use libp2p::multiaddr::Protocol;
+use libp2p::swarm::dial_opts::DialOpts;
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
+use libp2p::{identify, PeerId};
+use tokio::sync::mpsc;
+use tokio::time::Duration;
+
+use crate::core::behaviour::CoreEvent;
+use crate::core::{behaviour, Command, P2PApplicationBehaviour};
+use crate::EmptyResultSender;
+
+/// This is our main loop for P2P networking.
+/// It handles the incoming events from the swarm and the commands from the
+/// outside world.
+///
+/// It's generic over the P2P `NetworkBehaviour`, which defines the internal
+/// logic of the p2p network, and our `P2PApplicationBehaviour` trait, which
+/// defines the commands and events that the application behaviour can handle.
+pub struct MainLoop<B>
+where
+    B: NetworkBehaviour + P2PApplicationBehaviour,
+{
+    /// Handles all internal networking for the p2p network.
+    swarm: libp2p::swarm::Swarm<behaviour::Behaviour<B>>,
+    /// Receives commands from the outside world.
+    command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
+    /// Sends events to the outside world.
+    event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+    /// Keeps track of pending dials and allows us to notify the caller when a
+    /// dial succeeds or fails.
+    pending_dials: PendingDials,
+    /// Keeps track of pending queries and allows us to send the response
+    /// payloads back to the caller.
+    pending_queries: PendingQueries,
+    /// State of the application behaviour.
+    state: State<B>,
+    //_pending_test_queries: TestQueries,
+}
+
+/// Used to notify the caller when a dial succeeds or fails.
+type PendingDials = HashMap<PeerId, EmptyResultSender>;
+
+/// Used to keep track of the different types of pending queries and allows us
+/// to send the response payloads back to the caller.
+#[derive(Debug, Default)]
+struct PendingQueries {
+    /// Keeps track of pending GetClosestPeers queries
+    pub get_closest_peers: HashMap<QueryId, mpsc::Sender<anyhow::Result<Vec<PeerId>>>>,
+}
+
+/// State of the application behaviour.
+type State<B> = <B as P2PApplicationBehaviour>::State;
+
+impl<B> MainLoop<B>
+where
+    B: P2PApplicationBehaviour,
+    <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
+    <B as P2PApplicationBehaviour>::State: Default,
+{
+    /// Create a new main loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `swarm` - The libp2p swarm, including the network behaviour for this
+    ///   loop.
+    /// * `command_receiver` - The receiver for commands from the outside world.
+    /// * `event_sender` - The sender for events to the outside world.
+    pub(crate) fn new(
+        swarm: libp2p::swarm::Swarm<behaviour::Behaviour<B>>,
+        command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
+        event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+    ) -> Self {
+        Self {
+            swarm,
+            command_receiver,
+            event_sender,
+            pending_dials: Default::default(),
+            pending_queries: Default::default(),
+            state: Default::default(),
+        }
+    }
+
+    /// Runs the main loop.
+    ///
+    /// This function handles and forwards the incoming events from the swarm,
+    /// as well as handling the commands from the outside world that are
+    /// sent to the p2p network.
+    ///
+    /// Note: This function will block until the main loop is stopped.
+    pub async fn run(mut self) {
+        // Check the network status every 5 seconds
+        let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
+        // Check the peer status every 30 seconds
+        let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
+
+        let me = *self.swarm.local_peer_id();
+        loop {
+            let network_status_interval_tick = network_status_interval.tick();
+            tokio::pin!(network_status_interval_tick);
+
+            let peer_status_interval_tick = peer_status_interval.tick();
+            tokio::pin!(peer_status_interval_tick);
+
+            tokio::select! {
+                // Check the network status
+                _ = network_status_interval_tick => {
+                    let network_info = self.swarm.network_info();
+                    let num_peers = network_info.num_peers();
+                    let connection_counters = network_info.connection_counters();
+                    let num_established_connections = connection_counters.num_established();
+                    let num_pending_connections = connection_counters.num_pending();
+                    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+                }
+                // Check the peer status
+                _ = peer_status_interval_tick => {
+                    let dht = self.swarm.behaviour_mut().kademlia_mut()
+                        .kbuckets()
+                        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
+                        .map(|kbucket_ref| {
+                            kbucket_ref
+                                .iter()
+                                .map(|entry_ref| *entry_ref.node.key.preimage())
+                                .collect::<Vec<_>>()
+                        })
+                        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                        .collect::<HashSet<_>>();
+                    let connected = self
+                        .swarm
+                        .behaviour_mut()
+                        .peers()
+                        .filter_map(|(peer_id, peer)| {
+                            if peer.is_connected() {
+                                Some(peer_id)
+                            } else {
+                                None
+                            }
+                        }).collect::<Vec<_>>();
+
+                    tracing::info!(
+                        "Peer status: me {}, connected {:?}, dht {:?}",
+                        me,
+                        connected,
+                        dht,
+                    );
+                }
+                // Handle commands from the outside world
+                command = self.command_receiver.recv() => {
+                    match command {
+                        Some(c) => self.handle_command(c).await,
+                        None => return,
+                    }
+                }
+                // Handle events from the inside of the p2p network
+                Some(event) = self.swarm.next() => self.handle_event(event).await,
+            }
+        }
+    }
+
+    /// Handles an incoming event from the p2p network.
+    ///
+    /// Connection management, kademlia, and other network-related events are
+    /// handled here. Application-specific events are forwarded to the
+    /// application behaviour implementation.
+    async fn handle_event(&mut self, event: SwarmEvent<CoreEvent<B>>) {
+        tracing::trace!(?event, "Handling swarm event");
+
+        match event {
+            // ===========================
+            // Connection management
+            // ===========================
+            //
+            // A connection is established.
+            // If the connection is outbound, notify the caller that the dial succeeded.
+            SwarmEvent::ConnectionEstablished {
+                peer_id, endpoint, ..
+            } => {
+                if endpoint.is_dialer() {
+                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
+                        let _ = sender.send(Ok(()));
+                        tracing::debug!(%peer_id, "Established outbound connection");
+                    }
+                } else {
+                    tracing::debug!(%peer_id, "Established inbound connection");
+                }
+            }
+            // An outgoing connection fails to be established.
+            // Notifies the caller that the dial failed.
+            SwarmEvent::OutgoingConnectionError {
+                connection_id,
+                peer_id,
+                error,
+            } => {
+                tracing::debug!(%connection_id, ?peer_id, %error, "Failed to establish outgoing connection");
+                if let Some(peer_id) = peer_id {
+                    if let Some(sender) = self.pending_dials.remove(&peer_id) {
+                        let _ = sender.send(Err(error.into()));
+                    }
+                }
+            }
+            // An incoming connection fails to be established.
+            SwarmEvent::IncomingConnectionError {
+                connection_id,
+                local_addr,
+                send_back_addr,
+                error,
+            } => {
+                tracing::debug!(%connection_id, %local_addr, %send_back_addr, %error, "Failed to establish incoming connection");
+            }
+            // A connection is closed.
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                connection_id: _, // TODO consider tracking connection IDs for peers
+                ..
+            } => {
+                tracing::debug!(%peer_id, "Connection closed");
+            }
+            // A peer is being dialed.
+            SwarmEvent::Dialing {
+                // The only API available to the caller [`crate::client::peer_aware::Client`] only
+                // allows for dialing **known** peers, so we can discard the `None`
+                // case here.
+                peer_id: Some(peer_id),
+                connection_id: _, // TODO consider tracking connection ids for peers
+            } => {
+                tracing::debug!(%peer_id, "Dialing peer");
+            }
+            // ===========================
+            // Identify
+            // ===========================
+            //
+            // A peer is identified.
+            // The peer's observed address is added to our swarm's external addresses.
+            // If the peer supports Kademlia (our DHT protocol), the peer's listening addresses
+            // are added to the DHT.
+            SwarmEvent::Behaviour(CoreEvent::Identify(e)) => {
+                if let identify::Event::Received {
+                    peer_id,
+                    info:
+                        identify::Info {
+                            listen_addrs,
+                            protocols,
+                            observed_addr,
+                            ..
+                        },
+                    ..
+                } = e
+                {
+                    // Important change in libp2p-v0.52 compared to v0.51:
+                    //
+                    // https://github.com/libp2p/rust-libp2p/releases/tag/libp2p-v0.52.0
+                    //
+                    // As a consequence, the observed address reported by identify is no longer
+                    // considered an external address but just an address candidate.
+                    //
+                    // https://github.com/libp2p/rust-libp2p/blob/master/protocols/identify/CHANGELOG.md#0430
+                    //
+                    // Observed addresses (aka. external address candidates) of the local node,
+                    // reported by a remote node via libp2p-identify,
+                    // are no longer automatically considered confirmed external addresses, in other
+                    // words they are no longer trusted by default.
+                    // Instead users need to confirm the reported observed address either manually,
+                    // or by using libp2p-autonat. In trusted environments users
+                    // can simply extract observed addresses from a
+                    // libp2p-identify::Event::Received { info: libp2p_identify::Info {
+                    // observed_addr }} and confirm them via Swarm::add_external_address.
+
+                    self.swarm.add_external_address(observed_addr);
+
+                    let my_kad_names = self.swarm.behaviour().kademlia().protocol_names();
+
+                    if protocols.iter().any(|p| my_kad_names.contains(p)) {
+                        for addr in &listen_addrs {
+                            self.swarm
+                                .behaviour_mut()
+                                .kademlia_mut()
+                                .add_address(&peer_id, addr.clone());
+                        }
+
+                        if listen_addrs.is_empty() {
+                            tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
+                        } else {
+                            tracing::debug!(%peer_id, "Added peer to DHT");
+                        }
+                    }
+                }
+            }
+            // ===========================
+            // Pings
+            // ===========================
+            //
+            // A ping is received.
+            // Forwards the ping to the network behaviour implementation.
+            SwarmEvent::Behaviour(CoreEvent::Ping(event)) => {
+                self.swarm.behaviour_mut().pinged(event);
+            }
+            // ===========================
+            // Discovery
+            // ===========================
+            //
+            // A Kademlia event is received.
+            // These events represent the progress of Kademlia DHT queries:
+            // - Bootstrap queries: Used when joining the network. -> We just log the success or
+            //   failure of the bootstrap.
+            // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
+            //   the response (the list of closest peers) back to the caller.
+            // - RoutingUpdated: A peer is added to the DHT.
+            SwarmEvent::Behaviour(CoreEvent::Kademlia(e)) => match e {
+                kad::Event::OutboundQueryProgressed {
+                    step, result, id, ..
+                } => {
+                    // We're mostly interested in the final result of the query.
+                    if step.last {
+                        match result {
+                            libp2p::kad::QueryResult::Bootstrap(result) => {
+                                let network_info = self.swarm.network_info();
+                                let num_peers = network_info.num_peers();
+                                let connection_counters = network_info.connection_counters();
+                                let num_connections = connection_counters.num_connections();
+
+                                let result = match result {
+                                    Ok(BootstrapOk { peer, .. }) => {
+                                        tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
+                                        Ok(peer)
+                                    }
+                                    Err(BootstrapError::Timeout { peer, .. }) => {
+                                        tracing::warn!(%num_peers, %num_connections, "Periodic bootstrap failed");
+                                        Err(peer)
+                                    }
+                                };
+                            }
+                            QueryResult::GetClosestPeers(result) => {
+                                use libp2p::kad::GetClosestPeersOk;
+
+                                let result = match result {
+                                    Ok(GetClosestPeersOk { peers, .. }) => {
+                                        Ok(peers.into_iter().map(|p| p.peer_id).collect())
+                                    }
+                                    Err(e) => Err(e.into()),
+                                };
+
+                                let sender = self
+                                    .pending_queries
+                                    .get_closest_peers
+                                    .remove(&id)
+                                    .expect("Query to be pending");
+
+                                sender
+                                    .send(result)
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            },
+            // ===========================
+            // NAT hole punching
+            // ===========================
+            //
+            // A DCUtR event is received.
+            SwarmEvent::Behaviour(CoreEvent::Dcutr(event)) => {
+                tracing::debug!(?event, "DCUtR event");
+            }
+            // ===========================
+            // Application behaviour
+            // specific events
+            // ===========================
+            //
+            // An application-specific event is received.
+            // Forwards the event to the application behaviour implementation.
+            SwarmEvent::Behaviour(CoreEvent::Application(application_event)) => {
+                self.swarm
+                    .behaviour_mut()
+                    .application_mut()
+                    .handle_event(
+                        application_event,
+                        &mut self.state,
+                        self.event_sender.clone(),
+                    )
+                    .await;
+            }
+            // ===========================
+            // Ignored or forwarded for
+            // test purposes
+            // ===========================
+            event => {
+                match &event {
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let my_peerid = *self.swarm.local_peer_id();
+                        let address = address.clone().with(Protocol::P2p(my_peerid));
+
+                        tracing::debug!(%address, "New listen");
+                    }
+                    _ => tracing::trace!(?event, "Ignoring event"),
+                }
+            }
+        }
+    }
+
+    /// Handles a command from the outside world.
+    async fn handle_command(&mut self, command: Command<<B as P2PApplicationBehaviour>::Command>) {
+        match command {
+            // Instruct the swarm to listen on a given address.
+            Command::Listen { addr, sender } => {
+                let _ = match self.swarm.listen_on(addr.clone()) {
+                    Ok(_) => {
+                        tracing::debug!(%addr, "Started listening");
+                        sender.send(Ok(()))
+                    }
+                    Err(e) => sender.send(Err(e.into())),
+                };
+            }
+            // Instruct the swarm to dial a given peer.
+            Command::Dial {
+                peer_id,
+                addr,
+                sender,
+            } => {
+                if let std::collections::hash_map::Entry::Vacant(e) =
+                    self.pending_dials.entry(peer_id)
+                {
+                    match self.swarm.dial(
+                        // Dial a known peer with a given address only if it's not connected yet
+                        // and we haven't started dialing yet.
+                        DialOpts::peer_id(peer_id)
+                            .addresses(vec![addr.clone()])
+                            .build(),
+                    ) {
+                        Ok(_) => {
+                            tracing::debug!(%addr, "Dialed peer");
+                            e.insert(sender);
+                        }
+                        Err(e) => {
+                            let _ = sender.send(Err(e.into()));
+                        }
+                    };
+                } else {
+                    let _ = sender.send(Err(anyhow::anyhow!("Dialing is already pending")));
+                }
+            }
+            // Disconnects the swarm from a given peer.
+            Command::Disconnect { peer_id, sender } => {
+                let _ = sender.send(self.disconnect(peer_id).await);
+            }
+            // Request the closest peers from a given peer.
+            Command::GetClosestPeers { peer, sender } => {
+                let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
+                self.pending_queries
+                    .get_closest_peers
+                    .insert(query_id, sender);
+            }
+            // Notifies the swarm that a peer is not useful.
+            Command::NotUseful { peer_id, sender } => {
+                self.swarm.behaviour_mut().not_useful(peer_id);
+                let _ = sender.send(());
+            }
+            // Application-specific commands.
+            Command::Application(application_command) => {
+                self.swarm
+                    .behaviour_mut()
+                    .application_mut()
+                    .handle_command(application_command, &mut self.state)
+                    .await;
+            }
+        };
+    }
+
+    /// Disconnects the swarm from a given peer.
+    async fn disconnect(&mut self, peer_id: PeerId) -> anyhow::Result<()> {
+        self.pending_dials.remove(&peer_id);
+        match self.swarm.disconnect_peer_id(peer_id) {
+            Ok(()) => {
+                tracing::debug!(%peer_id, "Disconnected");
+                Ok(())
+            }
+            Err(()) => Err(anyhow::anyhow!("Failed to disconnect: peer not connected")),
+        }
+    }
+
+}

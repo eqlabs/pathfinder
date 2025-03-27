@@ -13,6 +13,7 @@ members = [
     "crates/gateway-types",
     "crates/merkle-tree",
     "crates/p2p",
+    "crates/p2p-v2",
     "crates/p2p_proto",
     "crates/p2p_proto_derive",
     "crates/p2p_stream",
