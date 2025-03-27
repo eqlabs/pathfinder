@@ -8039,6 +8039,7 @@ dependencies = [
  "mockall",
  "p2p",
  "p2p_proto",
+ "paste",
  "pathfinder-block-hashes",
  "pathfinder-class-hash",
  "pathfinder-common",
