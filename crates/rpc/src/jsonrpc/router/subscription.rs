@@ -290,13 +290,7 @@ where
                 tracing::trace!(error=?e, "Error sending first subscription message, closing subscription");
                 return;
             }
-            let mut last_block = first_msg.block_number;
             while let Some(msg) = rx1.recv().await {
-                if msg.block_number.get() > last_block.get() + 1 {
-                    // One or more blocks have been skipped. This is likely due to a race
-                    // condition resulting from a reorg. This message should be ignored.
-                    continue;
-                }
                 tracing::trace!(block_number=%msg.block_number, notification=?msg.notification, "Sending subscription notification");
                 if let Err(e) = tx
                     .send(msg.notification, msg.subscription_name)
@@ -306,7 +300,6 @@ where
                     tracing::trace!(error=?e, "Error sending subscription message, closing subscription");
                     break;
                 }
-                last_block = msg.block_number;
             }
         }.instrument(tracing::debug_span!("subscription", subscription_id=%subscription_id.0))))
     }
