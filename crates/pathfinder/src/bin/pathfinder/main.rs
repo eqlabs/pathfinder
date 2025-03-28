@@ -26,6 +26,9 @@ use tracing::{info, warn};
 use crate::config::{NetworkConfig, StateTries};
 
 mod config;
+// mod consensus_p2p;
+// mod sync_p2p;
+mod p2p;
 mod update;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
@@ -283,20 +286,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // and wait for them to finish. Only then can we exit the process and return an
     // error if some of the tasks failed or no error if we have received a signal.
 
-    let (p2p_handle, p2p_client) = start_p2p(
+    let (sync_p2p_handle, sync_p2p_client) = p2p::sync::start(
         pathfinder_context.network_id,
         p2p_storage,
-        config.p2p.clone(),
+        config.sync_p2p.clone(),
     )
-    .await
-    .unwrap_or_else(|error| {
-        (
-            tokio::task::spawn(std::future::ready(
-                Err(error.context("P2P failed to start")),
-            )),
-            None,
-        )
-    });
+    .await;
+
+    let (consensus_p2p_handle, _consensus_p2p_client) =
+        p2p::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone()).await;
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -309,7 +307,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             rpc_server.get_topic_broadcasters().cloned(),
             notifications,
             gateway_public_key,
-            p2p_client,
+            sync_p2p_client,
             config.verify_tree_hashes,
         )
     } else {
@@ -345,7 +343,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let main_result = tokio::select! {
         result = sync_handle => handle_critical_task_result("Sync", result),
         result = rpc_handle => handle_critical_task_result("RPC", result),
-        result = p2p_handle => handle_critical_task_result("P2P", result),
+        result = sync_p2p_handle => handle_critical_task_result("Sync P2P", result),
+        result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P", result),
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received");
             Ok(())
@@ -460,98 +459,6 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
 }
 
 #[cfg(feature = "p2p")]
-async fn start_p2p(
-    chain_id: ChainId,
-    storage: Storage,
-    config: config::p2p::P2PSyncConfig,
-) -> anyhow::Result<(
-    tokio::task::JoinHandle<anyhow::Result<()>>,
-    Option<p2p::client::peer_agnostic::Client>,
-)> {
-    use std::path::Path;
-    use std::time::Duration;
-
-    use p2p::libp2p::identity::Keypair;
-    use pathfinder_lib::p2p_network::P2PContext;
-    use serde::Deserialize;
-    use zeroize::Zeroizing;
-
-    #[derive(Clone, Deserialize)]
-    struct IdentityConfig {
-        pub private_key: String,
-    }
-
-    impl IdentityConfig {
-        pub fn from_file(path: &Path) -> anyhow::Result<Self> {
-            Ok(serde_json::from_str(&std::fs::read_to_string(path)?)?)
-        }
-    }
-
-    impl zeroize::Zeroize for IdentityConfig {
-        fn zeroize(&mut self) {
-            self.private_key.zeroize()
-        }
-    }
-
-    let keypair = match config.core.identity_config_file {
-        Some(path) => {
-            let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
-            let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
-            Keypair::from_protobuf_encoding(&private_key)?
-        }
-        None => {
-            tracing::info!("No private key configured, generating a new one");
-            Keypair::generate_ed25519()
-        }
-    };
-
-    let context = P2PContext {
-        cfg: p2p::Config {
-            direct_connection_timeout: config.core.direct_connection_timeout,
-            relay_connection_timeout: Duration::from_secs(10),
-            max_inbound_direct_peers: config.core.max_inbound_direct_connections,
-            max_inbound_relayed_peers: config.core.max_inbound_relayed_connections,
-            max_outbound_peers: config.core.max_outbound_connections,
-            ip_whitelist: config.core.ip_whitelist,
-            bootstrap_period: Some(Duration::from_secs(2 * 60)),
-            eviction_timeout: config.core.eviction_timeout,
-            inbound_connections_rate_limit: p2p::RateLimit {
-                max: 10,
-                interval: Duration::from_secs(1),
-            },
-            kad_name: config.core.kad_name,
-            stream_timeout: config.stream_timeout,
-            response_timeout: config.response_timeout,
-            max_concurrent_streams: config.max_concurrent_streams,
-        },
-        chain_id,
-        storage,
-        keypair,
-        listen_on: config.core.listen_on,
-        bootstrap_addresses: config.core.bootstrap_addresses,
-        predefined_peers: config.core.predefined_peers,
-    };
-
-    let (p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(context).await?;
-
-    Ok((p2p_handle, Some(p2p_client)))
-}
-
-#[cfg(not(feature = "p2p"))]
-async fn start_p2p(
-    _: ChainId,
-    _: Storage,
-    _: config::p2p::P2PSyncConfig,
-) -> anyhow::Result<(
-    tokio::task::JoinHandle<anyhow::Result<()>>,
-    Option<p2p::client::peer_agnostic::Client>,
-)> {
-    let join_handle = tokio::task::spawn(futures::future::pending());
-
-    Ok((join_handle, None))
-}
-
-#[cfg(feature = "p2p")]
 #[allow(clippy::too_many_arguments)]
 fn start_sync(
     storage: Storage,
@@ -563,10 +470,10 @@ fn start_sync(
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
-    p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    p2p_client: Option<::p2p::client::peer_agnostic::Client>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    if config.p2p.proxy {
+    if config.sync_p2p.proxy {
         start_feeder_gateway_sync(
             storage,
             pathfinder_context,
@@ -586,7 +493,7 @@ fn start_sync(
             ethereum_client,
             p2p_client,
             gateway_public_key,
-            config.p2p.l1_checkpoint_override,
+            config.sync_p2p.l1_checkpoint_override,
             verify_tree_hashes,
         )
     }
@@ -604,7 +511,7 @@ fn start_sync(
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
-    _p2p_client: Option<p2p::client::peer_agnostic::Client>,
+    _p2p_client: Option<::p2p::client::peer_agnostic::Client>,
     _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
@@ -662,7 +569,7 @@ fn start_p2p_sync(
     storage: Storage,
     pathfinder_context: PathfinderContext,
     ethereum_client: EthereumClient,
-    p2p_client: p2p::client::peer_agnostic::Client,
+    p2p_client: ::p2p::client::peer_agnostic::Client,
     gateway_public_key: pathfinder_common::PublicKey,
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     verify_tree_hashes: bool,

@@ -6,6 +6,7 @@ use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use tracing::Instrument;
 
+pub mod identity;
 mod sync_handlers;
 
 use sync_handlers::{get_classes, get_events, get_headers, get_state_diffs, get_transactions};
