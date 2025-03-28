@@ -125,7 +125,9 @@ impl RpcRouter {
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
 
-        let method = method.invoke(self.context.clone(), request.params, self.version).instrument(tracing::debug_span!("rpc_call", method=%method_name));
+        let method = method
+            .invoke(self.context.clone(), request.params, self.version)
+            .instrument(tracing::debug_span!("rpc_call", method=%method_name));
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
