@@ -288,12 +288,12 @@ where
             }
 
             // Send the first subscription message and then forward the rest.
-            if tx
+            if let Err(e) = tx
                 .send(first_msg.notification, first_msg.subscription_name)
                 .await
-                .is_err()
             {
                 // Subscription closing.
+                tracing::trace!(error=?e, "Error sending first subscription message, closing subscription");
                 return;
             }
             let mut last_block = first_msg.block_number;
@@ -303,12 +303,13 @@ where
                     // condition resulting from a reorg. This message should be ignored.
                     continue;
                 }
-                if tx
+                tracing::trace!(block_number=%msg.block_number, notification=?msg.notification, "Sending subscription notification");
+                if let Err(e) = tx
                     .send(msg.notification, msg.subscription_name)
                     .await
-                    .is_err()
                 {
                     // Subscription closing.
+                    tracing::trace!(error=?e, "Error sending subscription message, closing subscription");
                     break;
                 }
                 last_block = msg.block_number;
@@ -346,12 +347,13 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
         while let Some(msg) = sender_rx.recv().await {
             match msg {
                 Ok(msg) => {
-                    if ws_sender.send(msg).await.is_err() {
+                    if let Err(e) = ws_sender.send(msg).await {
+                        tracing::debug!(error=?e, "Error sending websocket message");
                         break;
                     }
                 }
                 Err(e) => {
-                    if ws_sender
+                    if let Err(e) = ws_sender
                         .send(Message::Text(
                             serde_json::to_string(
                                 &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
@@ -359,8 +361,8 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
                             .unwrap(),
                         ))
                         .await
-                        .is_err()
                     {
+                        tracing::debug!(error=?e, "Error sending websocket error message");
                         break;
                     }
                 }
@@ -371,7 +373,8 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     let (receiver_tx, receiver_rx) = mpsc::channel::<Result<Message, axum::Error>>(1024);
     util::task::spawn(async move {
         while let Some(msg) = ws_receiver.next().await {
-            if receiver_tx.send(msg).await.is_err() {
+            if let Err(e) = receiver_tx.send(msg).await {
+                tracing::debug!(error=?e, "Error sending incoming websocket over channel");
                 break;
             }
         }
@@ -394,12 +397,12 @@ pub fn handle_json_rpc_socket(
                 Some(Ok(Message::Binary(bytes))) => match String::from_utf8(bytes) {
                     Ok(msg) => msg,
                     Err(e) => {
-                        if ws_tx
+                        if let Err(e) = ws_tx
                             .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
-                            .is_err()
                         {
                             // Connection is closing.
+                            tracing::debug!(error=?e, "Error sending websocket decoding error message");
                             break;
                         }
                         continue;
@@ -435,12 +438,12 @@ pub fn handle_json_rpc_socket(
                 let raw_value: &RawValue = match serde_json::from_str(request) {
                     Ok(raw_value) => raw_value,
                     Err(e) => {
-                        if ws_tx
+                        if let Err(e) = ws_tx
                             .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
-                            .is_err()
                         {
                             // Connection is closing.
+                            tracing::debug!(error=?e, "Error sending websocket parse error message");
                             break;
                         }
                         continue;
@@ -456,7 +459,7 @@ pub fn handle_json_rpc_socket(
                 .await
                 {
                     Ok(Some(response)) | Err(response) => {
-                        if ws_tx
+                        if let Err(e) = ws_tx
                             .send(Ok(Message::Text(
                                 serde_json::to_string(
                                     &response
@@ -466,9 +469,9 @@ pub fn handle_json_rpc_socket(
                                 .unwrap(),
                             )))
                             .await
-                            .is_err()
                         {
                             // Connection is closing.
+                            tracing::debug!(error=?e, "Error sending websocket response message");
                             break;
                         }
                     }
@@ -482,12 +485,12 @@ pub fn handle_json_rpc_socket(
                 let requests = match serde_json::from_str::<Vec<&RawValue>>(request) {
                     Ok(requests) => requests,
                     Err(e) => {
-                        if ws_tx
+                        if let Err(e) = ws_tx
                             .send(Err(RpcResponse::parse_error(e.to_string(), state.version)))
                             .await
-                            .is_err()
                         {
                             // Connection is closing.
+                            tracing::debug!(error=?e, "Error sending websocket parse error message");
                             break;
                         }
                         continue;
@@ -496,15 +499,15 @@ pub fn handle_json_rpc_socket(
 
                 if requests.is_empty() {
                     // According to the JSON-RPC spec, a batch request cannot be empty.
-                    if ws_tx
+                    if let Err(e) = ws_tx
                         .send(Err(RpcResponse::invalid_request(
                             "A batch request must contain at least one request".to_owned(),
                             state.version,
                         )))
                         .await
-                        .is_err()
                     {
                         // Connection is closing.
+                        tracing::debug!(error=?e, "Error sending websocket invalid request message");
                         break;
                     }
                 }
@@ -548,12 +551,12 @@ pub fn handle_json_rpc_socket(
                     })
                     .collect::<Vec<_>>();
 
-                if ws_tx
+                if let Err(e) = ws_tx
                     .send(Ok(Message::Text(serde_json::to_string(&values).unwrap())))
                     .await
-                    .is_err()
                 {
                     // Connection is closing.
+                    tracing::debug!(error=?e, "Error sending websocket response message");
                     break;
                 }
             }
