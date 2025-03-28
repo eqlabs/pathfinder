@@ -63,7 +63,7 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// `params` field of the subscription request.
     type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
     /// The notification type to be sent to the client.
-    type Notification: crate::dto::SerializeForVersion + Send + Sync + 'static;
+    type Notification: crate::dto::SerializeForVersion + std::fmt::Debug + Send + Sync + 'static;
     /// The maximum number of blocks to catch up to in a single batch.
     const CATCH_UP_BATCH_SIZE: u64 = 64;
 
@@ -192,6 +192,7 @@ where
             let _lock_guard = lock.read().await;
 
             // Catch up to the latest block in batches of BATCH_SIZE.
+            tracing::trace!(%current_block, "Catching up");
             loop {
                 // -1 because the end is inclusive, otherwise we get batches of
                 // `CATCH_UP_BATCH_SIZE + 1` which probably doesn't really
@@ -260,6 +261,7 @@ where
             let end = first_msg.block_number.parent();
             match end {
                 Some(end) if current_block <= end => {
+                    tracing::trace!(%current_block, %end, "Catching up to the first subscription message");
                     let catch_up =
                         match T::catch_up(&router.context, &params, current_block, end).await {
                             Ok(messages) => messages,
