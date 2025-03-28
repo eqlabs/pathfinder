@@ -10,9 +10,8 @@ use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::core::behaviour::CoreEvent;
-use crate::core::{behaviour, Command, P2PApplicationBehaviour};
-use crate::EmptyResultSender;
+use crate::core::{Command, Event};
+use crate::P2PApplicationBehaviour;
 
 /// This is our main loop for P2P networking.
 /// It handles the incoming events from the swarm and the commands from the
@@ -71,7 +70,7 @@ where
     /// * `command_receiver` - The receiver for commands from the outside world.
     /// * `event_sender` - The sender for events to the outside world.
     pub(crate) fn new(
-        swarm: libp2p::swarm::Swarm<behaviour::Behaviour<B>>,
+        swarm: libp2p::swarm::Swarm<core::Behaviour<B>>,
         command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
         event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
     ) -> Self {
@@ -166,7 +165,7 @@ where
     /// Connection management, kademlia, and other network-related events are
     /// handled here. Application-specific events are forwarded to the
     /// application behaviour implementation.
-    async fn handle_event(&mut self, event: SwarmEvent<CoreEvent<B>>) {
+    async fn handle_event(&mut self, event: SwarmEvent<Event<B>>) {
         tracing::trace!(?event, "Handling swarm event");
 
         match event {
@@ -237,7 +236,7 @@ where
             // The peer's observed address is added to our swarm's external addresses.
             // If the peer supports Kademlia (our DHT protocol), the peer's listening addresses
             // are added to the DHT.
-            SwarmEvent::Behaviour(CoreEvent::Identify(e)) => {
+            SwarmEvent::Behaviour(Event::Identify(e)) => {
                 if let identify::Event::Received {
                     peer_id,
                     info:
@@ -295,7 +294,7 @@ where
             //
             // A ping is received.
             // Forwards the ping to the network behaviour implementation.
-            SwarmEvent::Behaviour(CoreEvent::Ping(event)) => {
+            SwarmEvent::Behaviour(Event::Ping(event)) => {
                 self.swarm.behaviour_mut().pinged(event);
             }
             // ===========================
@@ -309,7 +308,7 @@ where
             // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
             //   the response (the list of closest peers) back to the caller.
             // - RoutingUpdated: A peer is added to the DHT.
-            SwarmEvent::Behaviour(CoreEvent::Kademlia(e)) => match e {
+            SwarmEvent::Behaviour(Event::Kademlia(e)) => match e {
                 kad::Event::OutboundQueryProgressed {
                     step, result, id, ..
                 } => {
@@ -365,7 +364,7 @@ where
             // ===========================
             //
             // A DCUtR event is received.
-            SwarmEvent::Behaviour(CoreEvent::Dcutr(event)) => {
+            SwarmEvent::Behaviour(Event::Dcutr(event)) => {
                 tracing::debug!(?event, "DCUtR event");
             }
             // ===========================
@@ -375,7 +374,7 @@ where
             //
             // An application-specific event is received.
             // Forwards the event to the application behaviour implementation.
-            SwarmEvent::Behaviour(CoreEvent::Application(application_event)) => {
+            SwarmEvent::Behaviour(Event::Application(application_event)) => {
                 self.swarm
                     .behaviour_mut()
                     .application_mut()

@@ -2,7 +2,7 @@ use std::time::Duration;
 use ipnet::IpNet;
 
 
-/// P2P limitations.
+/// P2P configuration options and limits.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// A direct (not relayed) peer can only connect once in this period.

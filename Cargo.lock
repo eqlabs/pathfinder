@@ -7853,6 +7853,7 @@ dependencies = [
  "libp2p",
  "p2p_proto",
  "p2p_stream",
+ "pathfinder-common",
  "prost 0.13.3",
  "sha3",
  "tokio",

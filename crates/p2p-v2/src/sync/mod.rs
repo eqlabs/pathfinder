@@ -13,6 +13,8 @@ use tokio::sync::oneshot;
 mod behaviour;
 mod protocol;
 
+pub use behaviour::Behaviour;
+
 /// Commands for the sync behaviour.
 #[derive(Debug)]
 pub enum Command {

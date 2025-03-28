@@ -10,9 +10,7 @@ mod peers;
 mod secret;
 
 mod main_loop;
-
-
-type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
+pub use main_loop::MainLoop;
 
 /// Defines how an application-specific p2p protocol (like sync or consensus)
 /// interacts with the network:
@@ -24,7 +22,6 @@ type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
 ///
 /// This trait is implemented by application-specific network behaviors (like
 /// sync, consensus) to define their p2p protocol logic.
-#[warn(async_fn_in_trait)]
 pub trait P2PApplicationBehaviour: NetworkBehaviour {
     /// The type of commands that can be sent to the p2p network.
     type Command;
@@ -34,9 +31,11 @@ pub trait P2PApplicationBehaviour: NetworkBehaviour {
     type State;
 
     /// Handles a command from the outside world.
+    #[allow(async_fn_in_trait)]
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State);
 
     /// Handles an event from the inside of the p2p network.
+    #[allow(async_fn_in_trait)]
     async fn handle_event(
         &mut self,
         event: <Self as NetworkBehaviour>::ToSwarm,
@@ -45,3 +44,4 @@ pub trait P2PApplicationBehaviour: NetworkBehaviour {
     );
 }
 
+type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
