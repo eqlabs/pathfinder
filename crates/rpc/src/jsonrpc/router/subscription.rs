@@ -244,7 +244,7 @@ where
                         tx.send_err(e).await.ok();
                     }
                 }
-            });
+            }.in_current_span());
             let first_msg = match rx1.recv().await {
                 Some(msg) => msg,
                 None => {
@@ -313,7 +313,7 @@ where
                 }
                 last_block = msg.block_number;
             }
-        }))
+        }.instrument(tracing::debug_span!("subscription", subscription_id=%subscription_id.0))))
     }
 }
 
@@ -558,7 +558,7 @@ pub fn handle_json_rpc_socket(
                 }
             }
         }
-    });
+    }.in_current_span());
 }
 
 /// Handle a single request. Returns `Result` for convenience, so that the `?`
