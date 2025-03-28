@@ -9,6 +9,7 @@ use http::HeaderValue;
 use method::RpcMethodEndpoint;
 pub use subscription::{handle_json_rpc_socket, CatchUp, RpcSubscriptionFlow, SubscriptionMessage};
 use subscription::{split_ws, RpcSubscriptionEndpoint};
+use tracing::Instrument;
 
 use crate::context::RpcContext;
 use crate::jsonrpc::error::RpcError;
@@ -124,7 +125,7 @@ impl RpcRouter {
 
         metrics::increment_counter!("rpc_method_calls_total", "method" => method_name, "version" => self.version.to_str());
 
-        let method = method.invoke(self.context.clone(), request.params, self.version);
+        let method = method.invoke(self.context.clone(), request.params, self.version).instrument(tracing::debug_span!("rpc_call", method=%method_name));
         let result = std::panic::AssertUnwindSafe(method).catch_unwind().await;
 
         let output = match result {
