@@ -4,6 +4,7 @@ use pathfinder_storage::Storage;
 
 use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 
+pub const OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS: ContractAddress = contract_address!("0xc01");
 pub const OPENZEPPELIN_ACCOUNT_CLASS_HASH: ClassHash =
     class_hash!("0x019cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978");
 
@@ -80,11 +81,12 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
         .finalize_with_hash(block_hash!("0xb01"));
     tx.insert_block_header(&header).unwrap();
 
-    let account_contract_address = contract_address!("0xc01");
     let universal_deployer_address = contract_address!("0xc02");
 
-    let account_balance_key =
-        StorageAddress::from_map_name_and_key(b"ERC20_balances", account_contract_address.0);
+    let account_balance_key = StorageAddress::from_map_name_and_key(
+        b"ERC20_balances",
+        OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS.0,
+    );
 
     let state_update = StateUpdate::default()
         .with_block_hash(header.hash)
@@ -94,7 +96,10 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
             openzeppelin_account_sierra_hash,
             openzeppelin_account_casm_hash,
         )
-        .with_deployed_contract(account_contract_address, OPENZEPPELIN_ACCOUNT_CLASS_HASH)
+        .with_deployed_contract(
+            OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS,
+            OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+        )
         .with_deployed_contract(universal_deployer_address, universal_deployer_class_hash)
         .with_deployed_contract(ETH_FEE_TOKEN_ADDRESS, erc20_class_hash)
         .with_deployed_contract(STRK_FEE_TOKEN_ADDRESS, erc20_class_hash)
@@ -117,7 +122,7 @@ pub async fn test_storage<F: FnOnce(StateUpdate) -> StateUpdate>(
     (
         storage,
         header,
-        account_contract_address,
+        OPENZEPELLIN_ACCOUNT_CONTRACT_ADDRESS,
         universal_deployer_address,
     )
 }
