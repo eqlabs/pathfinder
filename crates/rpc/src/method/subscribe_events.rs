@@ -200,12 +200,23 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                             let block_number = block.block_number;
                             let block_hash = block.block_hash;
 
+                            tracing::trace!(%block_number, %block_hash, "Received new block");
+
                             if block_number != current_block {
+                                tracing::trace!(
+                                    %block_number,
+                                    %current_block,
+                                    "Clearing sent transactions"
+                                );
                                 sent_txs.clear();
                                 current_block = block_number;
                             }
                             for (receipt, events) in block.transaction_receipts.iter() {
                                 if sent_txs.contains(&receipt.transaction_hash) {
+                                    tracing::trace!(
+                                        transaction_hash=%receipt.transaction_hash,
+                                        "Transaction already sent, skipping"
+                                    );
                                     continue;
                                 }
                                 for event in events {
@@ -247,13 +258,23 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         break;
                     }
                     let pending = pending_data.borrow_and_update().clone();
+                    tracing::trace!(block_number=%pending.number, "Received pending block update");
                     let block_number = pending.number;
                     if block_number != current_block {
+                        tracing::trace!(
+                            %block_number,
+                            %current_block,
+                            "Clearing sent transactions"
+                        );
                         sent_txs.clear();
                         current_block = block_number;
                     }
                     for (receipt, events) in pending.block.transaction_receipts.iter() {
                         if sent_txs.contains(&receipt.transaction_hash) {
+                            tracing::trace!(
+                                transaction_hash=%receipt.transaction_hash,
+                                "Transaction already sent, skipping"
+                            );
                             continue;
                         }
                         for event in events {
@@ -262,6 +283,10 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 continue;
                             }
                             sent_txs.insert(receipt.transaction_hash);
+                            tracing::trace!(
+                                transaction_hash=%receipt.transaction_hash,
+                                "Sending event"
+                            );
                             if tx.send(SubscriptionMessage {
                                 notification: Notification::EmittedEvent(EmittedEvent {
                                     data: event.data.clone(),
