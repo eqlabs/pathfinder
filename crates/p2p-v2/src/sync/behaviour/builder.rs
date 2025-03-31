@@ -1,6 +1,6 @@
 use crate::sync::behaviour::Behaviour;
-use crate::sync::config::Config;
 use crate::sync::protocol::codec;
+use crate::sync::Config;
 
 pub struct Builder {
     cfg: Config,

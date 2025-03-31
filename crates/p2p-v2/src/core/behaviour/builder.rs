@@ -11,7 +11,7 @@ use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtoco
 use pathfinder_common::ChainId;
 
 use crate::core::behaviour::{kademlia_protocol_name, Behaviour, Inner};
-use crate::core::config::Config;
+use crate::core::Config;
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 

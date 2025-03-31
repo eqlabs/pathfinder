@@ -9,9 +9,8 @@ use rstest::rstest;
 
 use crate::sync::behaviour::Behaviour;
 use crate::sync::client::Client;
-use crate::sync::config::Config;
 use crate::sync::protocol::codec;
-use crate::sync::Event;
+use crate::sync::{Config, Event};
 use crate::test_utils::peer::TestPeerBuilder;
 use crate::test_utils::{consume_all_events_forever, filter_events};
 
@@ -20,7 +19,7 @@ type SyncTestPeer = crate::test_utils::peer::TestPeer<Behaviour>;
 fn create_peer() -> SyncTestPeer {
     TestPeerBuilder::new()
         .app_behaviour(Behaviour::new(Config::for_test()))
-        .build(crate::core::config::Config::for_test())
+        .build(crate::core::Config::for_test())
 }
 
 async fn create_peers() -> (SyncTestPeer, SyncTestPeer) {
@@ -245,7 +244,7 @@ mod propagate_codec_errors_to_caller {
 
         let bad = SyncTestPeer::builder()
             .app_behaviour(sync_behaviour_builder.build())
-            .build(crate::core::config::Config::for_test());
+            .build(crate::core::Config::for_test());
 
         let (mut server, client) = match bad_peer {
             BadPeer::Server => (bad, good),

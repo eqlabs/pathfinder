@@ -4,8 +4,7 @@ use libp2p::kad::{QueryId, QueryResult};
 use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use tokio::sync::mpsc;
 
-use crate::core::behaviour::{Behaviour, Event};
-use crate::core::{TestCommand, TestEvent};
+use crate::core::{Behaviour, Event, TestCommand, TestEvent};
 
 pub async fn handle_event<B: NetworkBehaviour>(
     event_sender: &mpsc::Sender<TestEvent>,

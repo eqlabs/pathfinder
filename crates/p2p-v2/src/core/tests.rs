@@ -5,7 +5,8 @@ use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
 
 use super::TestEvent;
-use crate::core::config::{Config, RateLimit};
+use crate::core::config::RateLimit;
+use crate::core::Config;
 use crate::test_utils::peer::TestPeer;
 use crate::test_utils::{consume_accumulated_events, consume_all_events_forever, wait_for_event};
 

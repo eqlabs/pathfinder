@@ -2,10 +2,12 @@ use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::mpsc;
 
 use super::protocol::codec;
-use crate::sync::config::Config;
+use crate::sync::Config;
 use crate::{sync, P2PApplicationBehaviour};
 
 mod builder;
+
+pub use builder::Builder;
 
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
@@ -18,11 +20,11 @@ pub struct Behaviour {
 
 impl Behaviour {
     pub fn new(config: Config) -> Self {
-        builder::Builder::new(config).build()
+        Builder::new(config).build()
     }
 
-    pub fn builder(config: Config) -> builder::Builder {
-        builder::Builder::new(config)
+    pub fn builder(config: Config) -> Builder {
+        Builder::new(config)
     }
 }
 

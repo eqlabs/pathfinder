@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
 use libp2p::PeerId;
@@ -12,10 +13,12 @@ use tokio::sync::oneshot;
 
 mod behaviour;
 mod client;
-mod config;
 pub mod protocol;
 #[cfg(test)]
 mod tests;
+
+pub use behaviour::{Behaviour, Builder};
+pub use client::Client;
 
 /// Commands for the sync behaviour.
 #[derive(Debug)]
@@ -117,4 +120,25 @@ pub struct PendingRequests {
         OutboundRequestId,
         oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
     >,
+}
+
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Timeout for an entire stream in p2p-stream
+    pub stream_timeout: Duration,
+    /// Timeout for a single response in p2p-stream
+    pub response_timeout: Duration,
+    /// Applies to each of the p2p-stream protocols separately
+    pub max_concurrent_streams: usize,
+}
+
+#[cfg(test)]
+impl Config {
+    pub fn for_test() -> Self {
+        Self {
+            stream_timeout: Duration::from_secs(10),
+            response_timeout: Duration::from_secs(10),
+            max_concurrent_streams: 100,
+        }
+    }
 }

@@ -11,8 +11,7 @@ use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::core::behaviour::{Behaviour, Event};
-use crate::core::{Command, TestCommand, TestEvent};
+use crate::core::{Behaviour, Command, Event, TestCommand, TestEvent};
 #[cfg(test)]
 use crate::test_utils;
 use crate::{EmptyResultSender, P2PApplicationBehaviour};
@@ -601,9 +600,7 @@ where
 {
     #[cfg(test)]
     pub fn take_test_event_receiver(&mut self) -> mpsc::Receiver<TestEvent> {
-        self._test_event_receiver
-            .take()
-            .expect("Test event receiver not to be taken")
+        Option::take(&mut self._test_event_receiver).expect("Test event receiver not to be taken")
     }
 }
 

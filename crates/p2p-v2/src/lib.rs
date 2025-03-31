@@ -1,13 +1,6 @@
-use core::behaviour::Event;
-use core::client::Client;
 use std::future::Future;
 
-use builder::Builder;
-use libp2p::identity::Keypair;
 use libp2p::swarm::NetworkBehaviour;
-use libp2p::PeerId;
-use main_loop::MainLoop;
-use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 
 pub mod consensus;
@@ -22,24 +15,7 @@ mod secret;
 mod test_utils;
 mod transport;
 
-/* FIXME
-pub fn new<B>(
-    keypair: Keypair,
-    cfg: Config,
-    chain_id: ChainId,
-) -> (
-    Client<<B as P2PApplicationBehaviour>::Command>,
-    mpsc::Receiver<Event<B>>,
-    MainLoop<B>,
-)
-where
-    B: P2PApplicationBehaviour<Event = Event<B>> + Default,
-    <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
-    <B as P2PApplicationBehaviour>::State: Default,
-{
-    Builder::new(keypair, cfg, chain_id).build()
-}
-*/
+pub use builder::Builder;
 
 /// Defines how an application-specific p2p protocol (like sync or consensus)
 /// interacts with the network:
