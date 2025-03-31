@@ -6,10 +6,11 @@ pub mod consensus;
 pub mod core;
 pub mod sync;
 
+mod main_loop;
 mod peers;
 mod secret;
-
-mod main_loop;
+#[cfg(test)]
+mod test_utils;
 
 /// Defines how an application-specific p2p protocol (like sync or consensus)
 /// interacts with the network:

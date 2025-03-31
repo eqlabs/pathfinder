@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 use libp2p::{Multiaddr, PeerId};
@@ -6,6 +7,7 @@ use tokio::sync::{mpsc, oneshot};
 // TODO fixup the imports and re-exports
 pub mod behaviour;
 
+use crate::peers::Peer;
 use crate::EmptyResultSender;
 
 /// Commands that can be sent to the p2p network.
@@ -39,4 +41,22 @@ pub enum Command<ApplicationCommand> {
     },
     /// Application-specific command.
     Application(ApplicationCommand),
+    /// For testing purposes only
+    _Test(TestCommand),
+}
+
+#[derive(Debug)]
+pub enum TestCommand {
+    GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
+    GetConnectedPeers(oneshot::Sender<HashMap<PeerId, Peer>>),
+}
+
+#[derive(Debug)]
+pub enum TestEvent {
+    NewListenAddress(Multiaddr),
+    KademliaBootstrapStarted,
+    KademliaBootstrapCompleted(Result<PeerId, PeerId>),
+    ConnectionEstablished { outbound: bool, remote: PeerId },
+    ConnectionClosed { remote: PeerId },
+    PeerAddedToDHT { remote: PeerId },
 }

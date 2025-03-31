@@ -11,7 +11,7 @@ use p2p_stream::OutboundRequestId;
 use tokio::sync::oneshot;
 
 mod behaviour;
-mod protocol;
+pub mod protocol;
 
 /// Commands for the sync behaviour.
 #[derive(Debug)]

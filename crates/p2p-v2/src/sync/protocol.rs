@@ -1,7 +1,6 @@
 //! request/streaming-response protocol and codec definitions for sync
 
-mod name {
-
+pub mod name {
     macro_rules! define_protocol {
         ($type_name:ident, $name:literal) => {
             #[derive(Debug, Clone, Default)]
@@ -24,6 +23,14 @@ mod name {
     define_protocol!(Classes, "/starknet/classes/0.1.0-rc.0");
     define_protocol!(Transactions, "/starknet/transactions/0.1.0-rc.0");
     define_protocol!(Events, "/starknet/events/0.1.0-rc.0");
+
+    pub const PROTOCOLS: &[&str] = &[
+        Headers::NAME,
+        StateDiffs::NAME,
+        Classes::NAME,
+        Transactions::NAME,
+        Events::NAME,
+    ];
 }
 
 pub(crate) mod codec {
@@ -103,6 +110,17 @@ pub(crate) mod codec {
     #[derive(Clone)]
     pub enum SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> {
         Prod(ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>),
+        #[cfg(test)]
+        ForTest(
+            crate::test_utils::sync::TestCodec<
+                Protocol,
+                Req,
+                Resp,
+                ProstReq,
+                ProstResp,
+                RESPONSE_SIZE_LIMIT,
+            >,
+        ),
     }
 
     impl<A, B, C, D, E, const F: usize> Default for SyncCodec<A, B, C, D, E, F> {
@@ -111,12 +129,12 @@ pub(crate) mod codec {
         }
     }
 
-    // #[cfg(test)]
-    // impl<A, B, C, D, E, const F: usize> SyncCodec<A, B, C, D, E, F> {
-    //     pub fn for_test() -> Self {
-    //         Self::ForTest(Default::default())
-    //     }
-    // }
+    #[cfg(test)]
+    impl<A, B, C, D, E, const F: usize> SyncCodec<A, B, C, D, E, F> {
+        pub fn for_test() -> Self {
+            Self::ForTest(Default::default())
+        }
+    }
 
     #[async_trait]
     impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
@@ -234,8 +252,8 @@ pub(crate) mod codec {
         {
             match self {
                 Self::Prod(codec) => codec.read_request(protocol, io).await,
-                // #[cfg(test)]
-                // Self::ForTest(codec) => codec.read_request(protocol, io).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.read_request(protocol, io).await,
             }
         }
 
@@ -249,8 +267,8 @@ pub(crate) mod codec {
         {
             match self {
                 Self::Prod(codec) => codec.read_response(protocol, io).await,
-                // #[cfg(test)]
-                // Self::ForTest(codec) => codec.read_response(protocol, io).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.read_response(protocol, io).await,
             }
         }
 
@@ -265,8 +283,8 @@ pub(crate) mod codec {
         {
             match self {
                 Self::Prod(codec) => codec.write_request(protocol, io, request).await,
-                // #[cfg(test)]
-                // Self::ForTest(codec) => codec.write_request(protocol, io, request).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.write_request(protocol, io, request).await,
             }
         }
 
@@ -281,8 +299,8 @@ pub(crate) mod codec {
         {
             match self {
                 Self::Prod(codec) => codec.write_response(protocol, io, response).await,
-                // #[cfg(test)]
-                // Self::ForTest(codec) => codec.write_response(protocol, io, response).await,
+                #[cfg(test)]
+                Self::ForTest(codec) => codec.write_response(protocol, io, response).await,
             }
         }
     }

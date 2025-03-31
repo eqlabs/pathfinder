@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 
 use futures::StreamExt;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
@@ -11,7 +12,9 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 
 use crate::core::behaviour::{Behaviour, Event};
-use crate::core::Command;
+use crate::core::{Command, TestCommand, TestEvent};
+#[cfg(test)]
+use crate::test_utils;
 use crate::{EmptyResultSender, P2PApplicationBehaviour};
 
 /// This is our main loop for P2P networking.
@@ -39,7 +42,9 @@ where
     pending_queries: PendingQueries,
     /// State of the application behaviour.
     state: State<B>,
-    //_pending_test_queries: TestQueries,
+    _test_event_sender: mpsc::Sender<TestEvent>,
+    _test_event_receiver: Option<mpsc::Receiver<TestEvent>>,
+    _pending_test_queries: TestQueries,
 }
 
 /// Used to notify the caller when a dial succeeds or fails.
@@ -75,6 +80,12 @@ where
         command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
         event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
     ) -> Self {
+        #[cfg(not(test))]
+        const TEST_EVENT_BUFFER_SIZE: usize = 1;
+        #[cfg(test)]
+        const TEST_EVENT_BUFFER_SIZE: usize = 1000;
+        let (_test_event_sender, rx) = mpsc::channel(TEST_EVENT_BUFFER_SIZE);
+
         Self {
             swarm,
             command_receiver,
@@ -82,6 +93,9 @@ where
             pending_dials: Default::default(),
             pending_queries: Default::default(),
             state: Default::default(),
+            _test_event_sender,
+            _test_event_receiver: Some(rx),
+            _pending_test_queries: Default::default(),
         }
     }
 
@@ -147,6 +161,15 @@ where
                 } else {
                     tracing::debug!(%peer_id, "Established inbound connection");
                 }
+
+                send_test_event(
+                    &self._test_event_sender,
+                    TestEvent::ConnectionEstablished {
+                        outbound: endpoint.is_dialer(),
+                        remote: peer_id,
+                    },
+                )
+                .await;
             }
             // An outgoing connection fails to be established.
             // Notifies the caller that the dial failed.
@@ -174,10 +197,18 @@ where
             // A connection is closed.
             SwarmEvent::ConnectionClosed {
                 peer_id,
+                num_established,
                 connection_id: _, // TODO consider tracking connection IDs for peers
                 ..
             } => {
                 tracing::debug!(%peer_id, "Connection closed");
+                if num_established == 0 {
+                    send_test_event(
+                        &self._test_event_sender,
+                        TestEvent::ConnectionClosed { remote: peer_id },
+                    )
+                    .await;
+                }
             }
             // A peer is being dialed.
             SwarmEvent::Dialing {
@@ -268,13 +299,10 @@ where
             // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
             //   the response (the list of closest peers) back to the caller.
             // - RoutingUpdated: A peer is added to the DHT.
-            #[allow(clippy::single_match)]
-            // TODO remove this allow once test event handling is implemented
             SwarmEvent::Behaviour(Event::Kademlia(e)) => match e {
                 kad::Event::OutboundQueryProgressed {
                     step, result, id, ..
                 } => {
-                    // We're mostly interested in the final result of the query.
                     if step.last {
                         match result {
                             libp2p::kad::QueryResult::Bootstrap(result) => {
@@ -283,7 +311,7 @@ where
                                 let connection_counters = network_info.connection_counters();
                                 let num_connections = connection_counters.num_connections();
 
-                                let _result = match result {
+                                let result = match result {
                                     Ok(BootstrapOk { peer, .. }) => {
                                         tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
                                         Ok(peer)
@@ -293,6 +321,11 @@ where
                                         Err(peer)
                                     }
                                 };
+                                send_test_event(
+                                    &self._test_event_sender,
+                                    TestEvent::KademliaBootstrapCompleted(result),
+                                )
+                                .await;
                             }
                             QueryResult::GetClosestPeers(result) => {
                                 use libp2p::kad::GetClosestPeersOk;
@@ -315,8 +348,39 @@ where
                                     .await
                                     .expect("Receiver not to be dropped");
                             }
-                            _ => {}
+                            _ => self.test_query_completed(id, result).await,
                         }
+                    } else {
+                        match result {
+                            QueryResult::Bootstrap(_) => {
+                                tracing::debug!("Checking low watermark");
+                                // Starting from libp2p-v0.54.1 bootstrap queries are started
+                                // automatically in the kad behaviour:
+                                // 1. periodically,
+                                // 2. after a peer is added to the routing table, if the number of
+                                //    peers in the DHT is lower than 20. See `bootstrap_on_low_peers` for more details:
+                                //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
+                                if step.count == NonZeroUsize::new(1).expect("1>0") {
+                                    send_test_event(
+                                        &self._test_event_sender,
+                                        TestEvent::KademliaBootstrapStarted,
+                                    )
+                                    .await;
+                                }
+                            }
+                            _ => self.test_query_progressed(id, result).await,
+                        }
+                    }
+                }
+                kad::Event::RoutingUpdated {
+                    peer, is_new_peer, ..
+                } => {
+                    if is_new_peer {
+                        send_test_event(
+                            &self._test_event_sender,
+                            TestEvent::PeerAddedToDHT { remote: peer },
+                        )
+                        .await
                     }
                 }
                 _ => {}
@@ -351,15 +415,18 @@ where
             // Ignored or forwarded for
             // test purposes
             // ===========================
-            event => match &event {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    let my_peerid = *self.swarm.local_peer_id();
-                    let address = address.clone().with(Protocol::P2p(my_peerid));
+            event => {
+                match &event {
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        let my_peerid = *self.swarm.local_peer_id();
+                        let address = address.clone().with(Protocol::P2p(my_peerid));
 
-                    tracing::debug!(%address, "New listen");
+                        tracing::debug!(%address, "New listen");
+                    }
+                    _ => tracing::trace!(?event, "Ignoring event"),
                 }
-                _ => tracing::trace!(?event, "Ignoring event"),
-            },
+                self.handle_event_for_test(event).await;
+            }
         }
     }
 
@@ -432,6 +499,7 @@ where
                     .handle_command(application_command, &mut self.state)
                     .await;
             }
+            Command::_Test(command) => self.handle_test_command(command).await,
         };
     }
 
@@ -445,6 +513,42 @@ where
             }
             Err(()) => Err(anyhow::anyhow!("Failed to disconnect: peer not connected")),
         }
+    }
+
+    /// No-op outside tests
+    async fn handle_event_for_test(&mut self, _event: SwarmEvent<Event<B>>) {
+        #[cfg(test)]
+        test_utils::main_loop::handle_event(&self._test_event_sender, _event).await
+    }
+
+    /// No-op outside tests
+    async fn handle_test_command(&mut self, _command: TestCommand) {
+        #[cfg(test)]
+        test_utils::main_loop::handle_command(
+            self.swarm.behaviour_mut(),
+            _command,
+            &mut self._pending_test_queries.inner,
+        )
+        .await;
+    }
+
+    /// Handle the final stage of the query, no-op outside tests
+    async fn test_query_completed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        test_utils::main_loop::query_completed(
+            &mut self._pending_test_queries.inner,
+            &self._test_event_sender,
+            _id,
+            _result,
+        )
+        .await;
+    }
+
+    /// Handle all stages except the final one, no-op outside tests
+    async fn test_query_progressed(&mut self, _id: QueryId, _result: QueryResult) {
+        #[cfg(test)]
+        test_utils::main_loop::query_progressed(&self._pending_test_queries.inner, _id, _result)
+            .await
     }
 
     fn dump_network_status(&self) {
@@ -489,4 +593,16 @@ where
 
         tracing::info!(%me, ?connected, "Connected peers");
     }
+}
+
+/// No-op outside tests
+async fn send_test_event(_event_sender: &mpsc::Sender<TestEvent>, _event: TestEvent) {
+    #[cfg(test)]
+    test_utils::main_loop::send_event(_event_sender, _event).await
+}
+
+#[derive(Debug, Default)]
+struct TestQueries {
+    #[cfg(test)]
+    inner: test_utils::main_loop::PendingQueries,
 }
