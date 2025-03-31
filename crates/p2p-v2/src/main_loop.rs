@@ -10,8 +10,8 @@ use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::core::behaviour::Behaviour;
-use crate::core::{Command, Event};
+use crate::core::behaviour::{Behaviour, Event};
+use crate::core::Command;
 use crate::{EmptyResultSender, P2PApplicationBehaviour};
 
 /// This is our main loop for P2P networking.

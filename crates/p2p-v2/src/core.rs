@@ -40,11 +40,3 @@ pub enum Command<ApplicationCommand> {
     /// Application-specific command.
     Application(ApplicationCommand),
 }
-
-/// Events emitted by the p2p network.
-pub use behaviour::Event;
-
-/// State of the p2p network.
-pub struct State {
-    // TODO: state types go here
-}

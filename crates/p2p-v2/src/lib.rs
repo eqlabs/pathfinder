@@ -10,7 +10,6 @@ mod peers;
 mod secret;
 
 mod main_loop;
-pub use main_loop::MainLoop;
 
 /// Defines how an application-specific p2p protocol (like sync or consensus)
 /// interacts with the network:
