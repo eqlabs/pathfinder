@@ -1,3 +1,4 @@
+//! Core behaviour and other related utilities for p2p networks.
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 

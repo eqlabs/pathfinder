@@ -12,6 +12,7 @@ use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::builder_phase::*;
 use crate::core::{Client, Config, TestEvent};
 use crate::peers::Peer;
 use crate::ApplicationBehaviour;
@@ -30,9 +31,6 @@ where
     pub test_event_receiver: mpsc::Receiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
-
-pub struct AppBehaviourUnset;
-pub struct AppBehaviourSet;
 
 pub struct TestPeerBuilder<B, Phase = AppBehaviourUnset> {
     pub keypair: Keypair,

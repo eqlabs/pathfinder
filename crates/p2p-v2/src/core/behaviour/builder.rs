@@ -10,13 +10,11 @@ use libp2p::swarm::NetworkBehaviour;
 use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
+use crate::builder_phase::*;
 use crate::core::behaviour::{kademlia_protocol_name, Behaviour, Inner};
 use crate::core::Config;
 use crate::peers::PeerSet;
 use crate::secret::Secret;
-
-pub struct AppBehaviourUnset;
-pub struct AppBehaviourSet;
 
 pub struct Builder<B, Phase = AppBehaviourUnset> {
     keypair: Keypair,

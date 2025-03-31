@@ -8,12 +8,10 @@ use libp2p::{swarm, Swarm};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
 
+use crate::builder_phase::*;
 use crate::core::{Client, Config};
 use crate::main_loop::MainLoop;
 use crate::{core, transport, ApplicationBehaviour};
-
-pub struct AppBehaviourUnset;
-pub struct AppBehaviourSet;
 
 /// Builder for the p2p network.
 pub struct Builder<B, Phase> {

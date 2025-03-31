@@ -1,3 +1,5 @@
+//! Consensus behaviour and other related utilities for the consensus p2p
+//! network.
 mod behaviour;
 
 /// Commands for the consensus behaviour.

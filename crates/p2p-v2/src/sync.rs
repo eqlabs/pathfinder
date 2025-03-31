@@ -1,3 +1,4 @@
+//! Sync behaviour and other related utilities for the sync p2p network.
 use std::collections::HashMap;
 use std::time::Duration;
 

@@ -21,6 +21,11 @@ mod transport;
 
 pub use builder::Builder;
 
+pub mod builder_phase {
+    pub struct AppBehaviourUnset;
+    pub struct AppBehaviourSet;
+}
+
 /// Defines how an application-specific p2p protocol (like sync or consensus)
 /// interacts with the network:
 /// - Commands: Actions requested by the application to be executed by the
