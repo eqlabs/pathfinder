@@ -1,4 +1,3 @@
-// mod v2 {
 use std::marker::PhantomData;
 
 use libp2p::identity::Keypair;
@@ -11,11 +10,12 @@ use tokio::sync::mpsc;
 
 use crate::core::{Client, Config};
 use crate::main_loop::MainLoop;
-use crate::{core, transport, P2PApplicationBehaviour};
+use crate::{core, transport, ApplicationBehaviour};
 
 pub struct AppBehaviourUnset;
 pub struct AppBehaviourSet;
 
+/// Builder for the p2p network.
 pub struct Builder<B, Phase> {
     keypair: Keypair,
     cfg: Config,
@@ -68,14 +68,14 @@ impl<B> Builder<B, AppBehaviourSet> {
     pub fn build(
         self,
     ) -> (
-        Client<<B as P2PApplicationBehaviour>::Command>,
-        mpsc::Receiver<<B as P2PApplicationBehaviour>::Event>,
+        Client<<B as ApplicationBehaviour>::Command>,
+        mpsc::Receiver<<B as ApplicationBehaviour>::Event>,
         MainLoop<B>,
     )
     where
-        B: P2PApplicationBehaviour,
+        B: ApplicationBehaviour,
         <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
-        <B as P2PApplicationBehaviour>::State: Default,
+        <B as ApplicationBehaviour>::State: Default,
     {
         let Self {
             keypair,
@@ -125,7 +125,7 @@ impl<B> Builder<B, AppBehaviourSet> {
 }
 
 #[cfg(test)]
-impl P2PApplicationBehaviour for dummy::Behaviour {
+impl ApplicationBehaviour for dummy::Behaviour {
     type Command = ();
     type Event = ();
     type State = ();

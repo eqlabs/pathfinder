@@ -2,14 +2,14 @@ use libp2p::gossipsub;
 use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::mpsc;
 
-use crate::{consensus, P2PApplicationBehaviour};
+use crate::{consensus, ApplicationBehaviour};
 
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     gossipsub: gossipsub::Behaviour,
 }
 
-impl P2PApplicationBehaviour for Behaviour {
+impl ApplicationBehaviour for Behaviour {
     type Command = consensus::Command;
     type Event = consensus::Event;
     type State = consensus::State;

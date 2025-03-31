@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use super::protocol::codec;
 use crate::sync::Config;
-use crate::{sync, P2PApplicationBehaviour};
+use crate::{sync, ApplicationBehaviour};
 
 mod builder;
 
@@ -28,7 +28,7 @@ impl Behaviour {
     }
 }
 
-impl P2PApplicationBehaviour for Behaviour {
+impl ApplicationBehaviour for Behaviour {
     type Command = sync::Command;
     type Event = sync::Event;
     type State = sync::State;

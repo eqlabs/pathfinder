@@ -88,11 +88,7 @@ pub struct Inner<B: NetworkBehaviour> {
 pub type Event<B> = InnerEvent<B>;
 
 impl<B: NetworkBehaviour> Behaviour<B> {
-    pub fn builder(
-        keypair: identity::Keypair,
-        chain_id: ChainId,
-        cfg: Config,
-    ) -> Builder<B, AppBehaviourUnset> {
+    pub fn builder(keypair: identity::Keypair, chain_id: ChainId, cfg: Config) -> Builder<B> {
         Builder::new(keypair, chain_id, cfg)
     }
 

@@ -1,11 +1,5 @@
-//! _Low level_ client for p2p interaction. Caller has to manage peers manually.
-//! For syncing use [`crate::client::peer_agnostic::Client`] instead, which
-//! manages peers "under the hood".
-use std::collections::HashSet;
-
-use anyhow::Context;
 use futures::channel::mpsc::Receiver as ResponseReceiver;
-use libp2p::{Multiaddr, PeerId};
+use libp2p::PeerId;
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
@@ -15,18 +9,19 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::core;
 use crate::sync::Command;
-#[cfg(test)]
-use crate::test_utils;
 
 #[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<core::Command<Command>>,
-    peer_id: PeerId,
+    local_peer_id: PeerId,
 }
 
 impl From<(PeerId, mpsc::Sender<core::Command<Command>>)> for Client {
     fn from((peer_id, sender): (PeerId, mpsc::Sender<core::Command<Command>>)) -> Self {
-        Self { sender, peer_id }
+        Self {
+            sender,
+            local_peer_id: peer_id,
+        }
     }
 }
 
@@ -52,12 +47,8 @@ macro_rules! impl_send {
 }
 
 impl Client {
-    pub(crate) fn new(sender: mpsc::Sender<core::Command<Command>>, peer_id: PeerId) -> Self {
-        Self { sender, peer_id }
-    }
-
-    pub fn peer_id(&self) -> &PeerId {
-        &self.peer_id
+    pub fn local_peer_id(&self) -> &PeerId {
+        &self.local_peer_id
     }
 
     impl_send!(

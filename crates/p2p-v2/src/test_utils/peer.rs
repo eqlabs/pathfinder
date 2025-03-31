@@ -12,22 +12,21 @@ use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::core::config::RateLimit;
 use crate::core::{Client, Config, TestEvent};
 use crate::peers::Peer;
-use crate::P2PApplicationBehaviour;
+use crate::ApplicationBehaviour;
 
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct TestPeer<B>
 where
-    B: P2PApplicationBehaviour,
-    <B as P2PApplicationBehaviour>::Command: Debug,
+    B: ApplicationBehaviour,
+    <B as ApplicationBehaviour>::Command: Debug,
 {
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub client: Client<<B as P2PApplicationBehaviour>::Command>,
-    pub app_event_receiver: mpsc::Receiver<<B as P2PApplicationBehaviour>::Event>,
+    pub client: Client<<B as ApplicationBehaviour>::Command>,
+    pub app_event_receiver: mpsc::Receiver<<B as ApplicationBehaviour>::Event>,
     pub test_event_receiver: mpsc::Receiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
@@ -37,7 +36,6 @@ pub struct AppBehaviourSet;
 
 pub struct TestPeerBuilder<B, Phase = AppBehaviourUnset> {
     pub keypair: Keypair,
-    // p2p_builder: Option<Builder>,
     enable_kademlia: bool,
     app_behaviour: Option<B>,
     _phase: PhantomData<Phase>,
@@ -47,7 +45,6 @@ impl<B> TestPeerBuilder<B, AppBehaviourUnset> {
     pub fn new() -> Self {
         Self {
             keypair: Keypair::generate_ed25519(),
-            // p2p_builder: None,
             enable_kademlia: true,
             app_behaviour: None,
             _phase: PhantomData,
@@ -78,16 +75,15 @@ impl<B, AnyPhase> TestPeerBuilder<B, AnyPhase> {
 
 impl<B> TestPeerBuilder<B, AppBehaviourSet>
 where
-    B: P2PApplicationBehaviour + Send,
+    B: ApplicationBehaviour + Send,
     <B as NetworkBehaviour>::ToSwarm: Debug,
-    <B as P2PApplicationBehaviour>::Command: Debug + Send,
-    <B as P2PApplicationBehaviour>::Event: Send,
-    <B as P2PApplicationBehaviour>::State: Default + Send,
+    <B as ApplicationBehaviour>::Command: Debug + Send,
+    <B as ApplicationBehaviour>::Event: Send,
+    <B as ApplicationBehaviour>::State: Default + Send,
 {
     pub fn build(self, cfg: Config) -> TestPeer<B> {
         let Self {
             keypair,
-            // p2p_builder,
             enable_kademlia,
             app_behaviour,
             ..
@@ -151,11 +147,11 @@ impl TestPeer<dummy::Behaviour> {
 
 impl<B> TestPeer<B>
 where
-    B: P2PApplicationBehaviour + Send,
+    B: ApplicationBehaviour + Send,
     <B as NetworkBehaviour>::ToSwarm: Debug,
-    <B as P2PApplicationBehaviour>::Command: Debug + Send,
-    <B as P2PApplicationBehaviour>::Event: Send,
-    <B as P2PApplicationBehaviour>::State: Default + Send,
+    <B as ApplicationBehaviour>::Command: Debug + Send,
+    <B as ApplicationBehaviour>::Event: Send,
+    <B as ApplicationBehaviour>::State: Default + Send,
 {
     pub fn builder() -> TestPeerBuilder<B> {
         TestPeerBuilder::new()

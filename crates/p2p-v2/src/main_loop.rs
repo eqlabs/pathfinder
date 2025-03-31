@@ -14,25 +14,24 @@ use tokio::time::Duration;
 use crate::core::{Behaviour, Command, Event, TestCommand, TestEvent};
 #[cfg(test)]
 use crate::test_utils;
-use crate::{EmptyResultSender, P2PApplicationBehaviour};
+use crate::{ApplicationBehaviour, EmptyResultSender};
 
 /// This is our main loop for P2P networking.
 /// It handles the incoming events from the swarm and the commands from the
-/// outside world.
+/// outside world (most likely a p2p client).
 ///
-/// It's generic over the P2P `NetworkBehaviour`, which defines the internal
-/// logic of the p2p network, and our `P2PApplicationBehaviour` trait, which
+/// It's generic over the application specific P2P `ApplicationBehaviour`, which
 /// defines the commands and events that the application behaviour can handle.
 pub struct MainLoop<B>
 where
-    B: P2PApplicationBehaviour,
+    B: ApplicationBehaviour,
 {
     /// Handles all internal networking for the p2p network.
     swarm: libp2p::swarm::Swarm<Behaviour<B>>,
     /// Receives commands from the outside world.
-    command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
+    command_receiver: mpsc::Receiver<Command<<B as ApplicationBehaviour>::Command>>,
     /// Sends events to the outside world.
-    event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+    event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
     /// Keeps track of pending dials and allows us to notify the caller when a
     /// dial succeeds or fails.
     pending_dials: PendingDials,
@@ -58,13 +57,13 @@ struct PendingQueries {
 }
 
 /// State of the application behaviour.
-type State<B> = <B as P2PApplicationBehaviour>::State;
+type State<B> = <B as ApplicationBehaviour>::State;
 
 impl<B> MainLoop<B>
 where
-    B: P2PApplicationBehaviour,
+    B: ApplicationBehaviour,
     <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
-    <B as P2PApplicationBehaviour>::State: Default,
+    <B as ApplicationBehaviour>::State: Default,
 {
     /// Create a new main loop.
     ///
@@ -76,9 +75,11 @@ where
     /// * `event_sender` - The sender for events to the outside world.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
-        command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
-        event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
+        command_receiver: mpsc::Receiver<Command<<B as ApplicationBehaviour>::Command>>,
+        event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
     ) -> Self {
+        // Test event buffer is not used outside tests, so we can make it as small as
+        // possible
         #[cfg(not(test))]
         const TEST_EVENT_BUFFER_SIZE: usize = 1;
         #[cfg(test)]
@@ -211,7 +212,7 @@ where
             }
             // A peer is being dialed.
             SwarmEvent::Dialing {
-                // The only API available to the caller [`crate::client::peer_aware::Client`] only
+                // The only API available to the caller [`crate::core::Client`] only
                 // allows for dialing **known** peers, so we can discard the `None`
                 // case here.
                 peer_id: Some(peer_id),
@@ -430,7 +431,7 @@ where
     }
 
     /// Handles a command from the outside world.
-    async fn handle_command(&mut self, command: Command<<B as P2PApplicationBehaviour>::Command>) {
+    async fn handle_command(&mut self, command: Command<<B as ApplicationBehaviour>::Command>) {
         match command {
             // Instruct the swarm to listen on a given address.
             Command::Listen { addr, sender } => {
@@ -596,11 +597,12 @@ where
 
 impl<B> MainLoop<B>
 where
-    B: P2PApplicationBehaviour,
+    B: ApplicationBehaviour,
 {
     #[cfg(test)]
     pub fn take_test_event_receiver(&mut self) -> mpsc::Receiver<TestEvent> {
-        Option::take(&mut self._test_event_receiver).expect("Test event receiver not to be taken")
+        Option::take(&mut self._test_event_receiver)
+            .expect("Test event receiver not to have been taken before")
     }
 }
 

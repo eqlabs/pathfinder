@@ -3,8 +3,12 @@ use std::future::Future;
 use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::{mpsc, oneshot};
 
+/// Application-specific p2p network behaviour. This one handles consensus.
 pub mod consensus;
+/// Core p2p network behaviour. This is the foundation for all the other
+/// application-specific behaviours.
 pub mod core;
+/// Application-specific p2p network behaviour. This one handles sync.
 pub mod sync;
 
 mod builder;
@@ -27,7 +31,7 @@ pub use builder::Builder;
 ///
 /// This trait is implemented by application-specific network behaviors (like
 /// sync, consensus) to define their p2p protocol logic.
-pub trait P2PApplicationBehaviour: NetworkBehaviour {
+pub trait ApplicationBehaviour: NetworkBehaviour {
     /// The type of commands that can be sent to the p2p network.
     type Command;
     /// The type of events that the p2p network can emit to the outside world.

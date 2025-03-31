@@ -1,6 +1,3 @@
-//! _Low level_ client for p2p interaction. Caller has to manage peers manually.
-//! For syncing use [`crate::client::peer_agnostic::Client`] instead, which
-//! manages peers "under the hood".
 use std::collections::HashSet;
 
 use anyhow::Context;
