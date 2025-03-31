@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 
 use crate::core::behaviour::Behaviour;
-use crate::core::{self, Command, Event};
+use crate::core::{Command, Event};
 use crate::{EmptyResultSender, P2PApplicationBehaviour};
 
 /// This is our main loop for P2P networking.
@@ -281,7 +281,7 @@ where
                                 let connection_counters = network_info.connection_counters();
                                 let num_connections = connection_counters.num_connections();
 
-                                let result = match result {
+                                let _result = match result {
                                     Ok(BootstrapOk { peer, .. }) => {
                                         tracing::debug!(%num_peers, %num_connections, "Periodic bootstrap completed");
                                         Ok(peer)

@@ -37,6 +37,7 @@ impl<B> Builder<B> {
 
     /// Disable Kademlia for in-crate tests. Kademlia is always enabled in
     /// production.
+    #[allow(unused)]
     #[cfg(test)]
     pub(crate) fn disable_kademlia_for_test(mut self) -> Self {
         self.enable_kademlia = false;
