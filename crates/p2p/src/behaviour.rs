@@ -745,7 +745,7 @@ impl Behaviour {
     }
 
     /// Outbound peers connected to us.
-    pub fn outbound_peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
+    fn outbound_peers(&self) -> impl Iterator<Item = (PeerId, &Peer)> {
         self.peers
             .iter()
             .filter(|(_, peer)| peer.is_connected() && peer.is_outbound())

@@ -6,7 +6,7 @@ use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtoco
 use pathfinder_common::ChainId;
 
 use crate::config::Config;
-use crate::core::behaviour::{kademlia_protocol_name, Behaviour, CoreBehaviour};
+use crate::core::behaviour::{kademlia_protocol_name, Behaviour, Inner};
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 
@@ -84,7 +84,7 @@ impl<B> Builder<B> {
                 cfg,
                 secret,
                 pending_events: Default::default(),
-                core: CoreBehaviour {
+                inner: Inner {
                     relay,
                     autonat: autonat::Behaviour::new(peer_id, Default::default()),
                     dcutr: dcutr::Behaviour::new(peer_id),
