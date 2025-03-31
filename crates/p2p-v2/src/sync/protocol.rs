@@ -24,7 +24,6 @@ mod protocol {
     define_protocol!(Classes, "/starknet/classes/0.1.0-rc.0");
     define_protocol!(Transactions, "/starknet/transactions/0.1.0-rc.0");
     define_protocol!(Events, "/starknet/events/0.1.0-rc.0");
-
 }
 
 pub(crate) mod codec {

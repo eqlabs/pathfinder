@@ -1,9 +1,8 @@
 use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::mpsc;
 
-use crate::sync;
 use super::protocol::codec;
-use crate::P2PApplicationBehaviour;
+use crate::{sync, P2PApplicationBehaviour};
 
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {

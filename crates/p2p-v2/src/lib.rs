@@ -1,10 +1,10 @@
 use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::{mpsc, oneshot};
 
+pub mod config;
 pub mod consensus;
 pub mod core;
 pub mod sync;
-pub mod config;
 
 mod peers;
 mod secret;

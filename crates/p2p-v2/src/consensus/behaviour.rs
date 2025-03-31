@@ -2,8 +2,7 @@ use libp2p::gossipsub;
 use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::mpsc;
 
-use crate::consensus;
-use crate::P2PApplicationBehaviour;
+use crate::{consensus, P2PApplicationBehaviour};
 
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
