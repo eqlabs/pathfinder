@@ -10,8 +10,9 @@ use libp2p::{identify, PeerId};
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::core::{Command, Event};
-use crate::P2PApplicationBehaviour;
+use crate::core::behaviour::Behaviour;
+use crate::core::{self, Command, Event};
+use crate::{EmptyResultSender, P2PApplicationBehaviour};
 
 /// This is our main loop for P2P networking.
 /// It handles the incoming events from the swarm and the commands from the
@@ -25,7 +26,7 @@ where
     B: NetworkBehaviour + P2PApplicationBehaviour,
 {
     /// Handles all internal networking for the p2p network.
-    swarm: libp2p::swarm::Swarm<behaviour::Behaviour<B>>,
+    swarm: libp2p::swarm::Swarm<Behaviour<B>>,
     /// Receives commands from the outside world.
     command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
     /// Sends events to the outside world.
@@ -69,8 +70,8 @@ where
     ///   loop.
     /// * `command_receiver` - The receiver for commands from the outside world.
     /// * `event_sender` - The sender for events to the outside world.
-    pub(crate) fn new(
-        swarm: libp2p::swarm::Swarm<core::Behaviour<B>>,
+    pub fn new(
+        swarm: libp2p::swarm::Swarm<Behaviour<B>>,
         command_receiver: mpsc::Receiver<Command<<B as P2PApplicationBehaviour>::Command>>,
         event_sender: mpsc::Sender<<B as P2PApplicationBehaviour>::Event>,
     ) -> Self {
@@ -97,56 +98,16 @@ where
         // Check the peer status every 30 seconds
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
 
-        let me = *self.swarm.local_peer_id();
         loop {
-            let network_status_interval_tick = network_status_interval.tick();
-            tokio::pin!(network_status_interval_tick);
+            let network_status_tick = network_status_interval.tick();
+            tokio::pin!(network_status_tick);
 
-            let peer_status_interval_tick = peer_status_interval.tick();
-            tokio::pin!(peer_status_interval_tick);
+            let peer_status_tick = peer_status_interval.tick();
+            tokio::pin!(peer_status_tick);
 
             tokio::select! {
-                // Check the network status
-                _ = network_status_interval_tick => {
-                    let network_info = self.swarm.network_info();
-                    let num_peers = network_info.num_peers();
-                    let connection_counters = network_info.connection_counters();
-                    let num_established_connections = connection_counters.num_established();
-                    let num_pending_connections = connection_counters.num_pending();
-                    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
-                }
-                // Check the peer status
-                _ = peer_status_interval_tick => {
-                    let dht = self.swarm.behaviour_mut().kademlia_mut()
-                        .kbuckets()
-                        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by flat_map
-                        .map(|kbucket_ref| {
-                            kbucket_ref
-                                .iter()
-                                .map(|entry_ref| *entry_ref.node.key.preimage())
-                                .collect::<Vec<_>>()
-                        })
-                        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
-                        .collect::<HashSet<_>>();
-                    let connected = self
-                        .swarm
-                        .behaviour_mut()
-                        .peers()
-                        .filter_map(|(peer_id, peer)| {
-                            if peer.is_connected() {
-                                Some(peer_id)
-                            } else {
-                                None
-                            }
-                        }).collect::<Vec<_>>();
-
-                    tracing::info!(
-                        "Peer status: me {}, connected {:?}, dht {:?}",
-                        me,
-                        connected,
-                        dht,
-                    );
-                }
+                _ = network_status_tick => self.dump_network_status(),
+                _ = peer_status_tick => self.dump_dht_and_connected_peers(),
                 // Handle commands from the outside world
                 command = self.command_receiver.recv() => {
                     match command {
@@ -270,20 +231,19 @@ where
 
                     self.swarm.add_external_address(observed_addr);
 
-                    let my_kad_names = self.swarm.behaviour().kademlia().protocol_names();
+                    if let Some(kad) = self.swarm.behaviour_mut().kademlia_mut().as_mut() {
+                        let my_kad_names = kad.protocol_names();
 
-                    if protocols.iter().any(|p| my_kad_names.contains(p)) {
-                        for addr in &listen_addrs {
-                            self.swarm
-                                .behaviour_mut()
-                                .kademlia_mut()
-                                .add_address(&peer_id, addr.clone());
-                        }
+                        if protocols.iter().any(|p| my_kad_names.contains(p)) {
+                            for addr in &listen_addrs {
+                                kad.add_address(&peer_id, addr.clone());
+                            }
 
-                        if listen_addrs.is_empty() {
-                            tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
-                        } else {
-                            tracing::debug!(%peer_id, "Added peer to DHT");
+                            if listen_addrs.is_empty() {
+                                tracing::warn!(%peer_id, "Failed to add peer to DHT, no listening addresses");
+                            } else {
+                                tracing::debug!(%peer_id, "Added peer to DHT");
+                            }
                         }
                     }
                 }
@@ -389,17 +349,15 @@ where
             // Ignored or forwarded for
             // test purposes
             // ===========================
-            event => {
-                match &event {
-                    SwarmEvent::NewListenAddr { address, .. } => {
-                        let my_peerid = *self.swarm.local_peer_id();
-                        let address = address.clone().with(Protocol::P2p(my_peerid));
+            event => match &event {
+                SwarmEvent::NewListenAddr { address, .. } => {
+                    let my_peerid = *self.swarm.local_peer_id();
+                    let address = address.clone().with(Protocol::P2p(my_peerid));
 
-                        tracing::debug!(%address, "New listen");
-                    }
-                    _ => tracing::trace!(?event, "Ignoring event"),
+                    tracing::debug!(%address, "New listen");
                 }
-            }
+                _ => tracing::trace!(?event, "Ignoring event"),
+            },
         }
     }
 
@@ -450,10 +408,14 @@ where
             }
             // Request the closest peers from a given peer.
             Command::GetClosestPeers { peer, sender } => {
-                let query_id = self.swarm.behaviour_mut().get_closest_peers(peer);
-                self.pending_queries
-                    .get_closest_peers
-                    .insert(query_id, sender);
+                self.swarm
+                    .behaviour_mut()
+                    .get_closest_peers(peer)
+                    .map(|query_id| {
+                        self.pending_queries
+                            .get_closest_peers
+                            .insert(query_id, sender)
+                    });
             }
             // Notifies the swarm that a peer is not useful.
             Command::NotUseful { peer_id, sender } => {
@@ -483,4 +445,46 @@ where
         }
     }
 
+    fn dump_network_status(&self) {
+        let network_info = self.swarm.network_info();
+        let num_peers = network_info.num_peers();
+        let connection_counters = network_info.connection_counters();
+        let num_established_connections = connection_counters.num_established();
+        let num_pending_connections = connection_counters.num_pending();
+        tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+    }
+
+    fn dump_dht_and_connected_peers(&mut self) {
+        let me = *self.swarm.local_peer_id();
+        if let Some(kad) = self.swarm.behaviour_mut().kademlia_mut() {
+            let dht = kad
+                .kbuckets()
+                // Cannot .into_iter() a KBucketRef, hence the inner collect followed by
+                // flat_map
+                .map(|kbucket_ref| {
+                    kbucket_ref
+                        .iter()
+                        .map(|entry_ref| *entry_ref.node.key.preimage())
+                        .collect::<Vec<_>>()
+                })
+                .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+                .collect::<HashSet<_>>();
+            tracing::info!(%me, ?dht, "Local DHT");
+        }
+
+        let connected = self
+            .swarm
+            .behaviour()
+            .peers()
+            .filter_map(|(peer_id, peer)| {
+                if peer.is_connected() {
+                    Some(peer_id)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        tracing::info!(%me, ?connected, "Connected peers");
+    }
 }

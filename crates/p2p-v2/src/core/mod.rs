@@ -3,11 +3,8 @@ use std::fmt::Debug;
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{mpsc, oneshot};
 
-mod behaviour;
-mod builder;
-
-pub use behaviour::{Behaviour, CoreBehaviour};
-pub use builder::Builder;
+// TODO fixup the imports and re-exports
+pub mod behaviour;
 
 use crate::EmptyResultSender;
 

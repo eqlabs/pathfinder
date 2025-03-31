@@ -1,6 +1,6 @@
 use std::time::Duration;
-use ipnet::IpNet;
 
+use ipnet::IpNet;
 
 /// P2P configuration options and limits.
 #[derive(Debug, Clone)]
@@ -25,12 +25,6 @@ pub struct Config {
     pub inbound_connections_rate_limit: RateLimit,
     /// Custom protocol name for Kademlia
     pub kad_name: Option<String>,
-    /// Timeout for an entire stream in p2p-stream
-    pub stream_timeout: Duration,
-    /// Timeout for a single response in p2p-stream
-    pub response_timeout: Duration,
-    /// Applies to each of the p2p-stream protocols separately
-    pub max_concurrent_streams: usize,
 }
 
 #[derive(Debug, Clone)]
