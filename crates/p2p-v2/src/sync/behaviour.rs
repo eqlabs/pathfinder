@@ -2,6 +2,7 @@ use libp2p::swarm::NetworkBehaviour;
 use tokio::sync::mpsc;
 
 use super::protocol::codec;
+use crate::sync::config::Config;
 use crate::{sync, P2PApplicationBehaviour};
 
 mod builder;
@@ -13,6 +14,16 @@ pub struct Behaviour {
     state_diff_sync: p2p_stream::Behaviour<codec::StateDiffs>,
     transaction_sync: p2p_stream::Behaviour<codec::Transactions>,
     event_sync: p2p_stream::Behaviour<codec::Events>,
+}
+
+impl Behaviour {
+    pub fn new(config: Config) -> Self {
+        builder::Builder::new(config).build()
+    }
+
+    pub fn builder(config: Config) -> builder::Builder {
+        builder::Builder::new(config)
+    }
 }
 
 impl P2PApplicationBehaviour for Behaviour {

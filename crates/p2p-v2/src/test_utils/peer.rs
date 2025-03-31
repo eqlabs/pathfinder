@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use libp2p::identity::Keypair;
-use libp2p::swarm::dummy;
+use libp2p::swarm::{dummy, NetworkBehaviour};
 use libp2p::{Multiaddr, PeerId};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
@@ -15,61 +16,58 @@ use crate::core::client::Client;
 use crate::core::config::{Config, RateLimit};
 use crate::core::TestEvent;
 use crate::peers::Peer;
-use crate::{Builder, P2PApplicationBehaviour};
+use crate::P2PApplicationBehaviour;
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct TestPeer {
+pub struct TestPeer<B>
+where
+    B: P2PApplicationBehaviour,
+    <B as P2PApplicationBehaviour>::Command: Debug,
+{
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub client: Client<<dummy::Behaviour as P2PApplicationBehaviour>::Command>,
-    pub app_event_receiver: mpsc::Receiver<<dummy::Behaviour as P2PApplicationBehaviour>::Event>,
+    pub client: Client<<B as P2PApplicationBehaviour>::Command>,
+    pub app_event_receiver: mpsc::Receiver<<B as P2PApplicationBehaviour>::Event>,
     pub test_event_receiver: mpsc::Receiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
 
-pub struct TestPeerBuilder {
+pub struct AppBehaviourUnset;
+pub struct AppBehaviourSet;
+
+pub struct TestPeerBuilder<B, Phase = AppBehaviourUnset> {
     pub keypair: Keypair,
-    p2p_builder: Option<Builder>,
+    // p2p_builder: Option<Builder>,
     enable_kademlia: bool,
+    app_behaviour: Option<B>,
+    _phase: PhantomData<Phase>,
 }
 
-impl Config {
-    pub fn for_test() -> Self {
-        Self {
-            direct_connection_timeout: Duration::from_secs(0),
-            relay_connection_timeout: Duration::from_secs(0),
-            max_inbound_direct_peers: 10,
-            max_inbound_relayed_peers: 10,
-            max_outbound_peers: 10,
-            ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
-            bootstrap_period: None,
-            eviction_timeout: Duration::from_secs(15 * 60),
-            inbound_connections_rate_limit: RateLimit {
-                max: 1000,
-                interval: Duration::from_secs(1),
-            },
-            kad_name: Default::default(),
-        }
-    }
-}
-
-impl TestPeerBuilder {
+impl<B> TestPeerBuilder<B, AppBehaviourUnset> {
     pub fn new() -> Self {
         Self {
             keypair: Keypair::generate_ed25519(),
-            p2p_builder: None,
+            // p2p_builder: None,
             enable_kademlia: true,
+            app_behaviour: None,
+            _phase: PhantomData,
         }
     }
 
+    pub fn app_behaviour(self, app_behaviour: B) -> TestPeerBuilder<B, AppBehaviourSet> {
+        TestPeerBuilder {
+            keypair: self.keypair,
+            enable_kademlia: self.enable_kademlia,
+            app_behaviour: Some(app_behaviour),
+            _phase: PhantomData,
+        }
+    }
+}
+
+impl<B, AnyPhase> TestPeerBuilder<B, AnyPhase> {
     pub fn keypair(mut self, keypair: Keypair) -> Self {
         self.keypair = keypair;
-        self
-    }
-
-    pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
-        self.p2p_builder = Some(p2p_builder);
         self
     }
 
@@ -77,18 +75,32 @@ impl TestPeerBuilder {
         self.enable_kademlia = false;
         self
     }
+}
+// pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
+//     self.p2p_builder = Some(p2p_builder);
+//     self
+// }
 
-    pub fn build(self, cfg: Config) -> TestPeer {
+impl<B> TestPeerBuilder<B, AppBehaviourSet>
+where
+    B: P2PApplicationBehaviour + Send,
+    <B as NetworkBehaviour>::ToSwarm: Debug,
+    <B as P2PApplicationBehaviour>::Command: Debug + Send,
+    <B as P2PApplicationBehaviour>::Event: Send,
+    <B as P2PApplicationBehaviour>::State: Default + Send,
+{
+    pub fn build(self, cfg: Config) -> TestPeer<B> {
         let Self {
             keypair,
-            p2p_builder,
+            // p2p_builder,
             enable_kademlia,
+            app_behaviour,
+            ..
         } = self;
 
         let peer_id = keypair.public().to_peer_id();
 
-        let p2p_builder = p2p_builder
-            .unwrap_or_else(|| crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET));
+        let p2p_builder = crate::Builder::new(keypair.clone(), cfg, ChainId::SEPOLIA_TESTNET);
 
         let p2p_builder = if enable_kademlia {
             p2p_builder
@@ -96,7 +108,9 @@ impl TestPeerBuilder {
             p2p_builder.disable_kademlia_for_test()
         };
 
-        let (client, mut event_receiver, mut main_loop) = p2p_builder.build();
+        let (client, mut event_receiver, mut main_loop) = p2p_builder
+            .app_behaviour(app_behaviour.expect("App behaviour to be set in this phase"))
+            .build();
 
         // Ensure that the channel keeps being polled to move the main loop forward.
         // Store the polled events into a buffered channel instead.
@@ -121,11 +135,13 @@ impl TestPeerBuilder {
     }
 }
 
-impl TestPeer {
-    pub fn builder() -> TestPeerBuilder {
-        TestPeerBuilder::new()
+impl TestPeerBuilder<dummy::Behaviour, AppBehaviourUnset> {
+    pub fn build(self, cfg: Config) -> TestPeer<dummy::Behaviour> {
+        self.app_behaviour(dummy::Behaviour).build(cfg)
     }
+}
 
+impl TestPeer<dummy::Behaviour> {
     /// Create a new peer with a random keypair
     #[must_use]
     pub fn new(cfg: Config) -> Self {
@@ -135,6 +151,19 @@ impl TestPeer {
     #[must_use]
     pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
         Self::builder().keypair(keypair).build(cfg)
+    }
+}
+
+impl<B> TestPeer<B>
+where
+    B: P2PApplicationBehaviour + Send,
+    <B as NetworkBehaviour>::ToSwarm: Debug,
+    <B as P2PApplicationBehaviour>::Command: Debug + Send,
+    <B as P2PApplicationBehaviour>::Event: Send,
+    <B as P2PApplicationBehaviour>::State: Default + Send,
+{
+    pub fn builder() -> TestPeerBuilder<B> {
+        TestPeerBuilder::new()
     }
 
     /// Start listening on a specified address
@@ -168,7 +197,7 @@ impl TestPeer {
     }
 }
 
-impl Default for TestPeer {
+impl Default for TestPeer<dummy::Behaviour> {
     fn default() -> Self {
         Self::new(Config::for_test())
     }

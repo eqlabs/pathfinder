@@ -3,6 +3,7 @@ use std::net::{IpAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
+use builder::AppBehaviourUnset;
 use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
 use libp2p::kad::store::MemoryStore;
@@ -87,8 +88,12 @@ pub struct Inner<B: NetworkBehaviour> {
 pub type Event<B> = InnerEvent<B>;
 
 impl<B: NetworkBehaviour> Behaviour<B> {
-    pub fn builder(identity: identity::Keypair, chain_id: ChainId, cfg: Config) -> Builder {
-        Builder::new(identity, chain_id, cfg)
+    pub fn builder(
+        keypair: identity::Keypair,
+        chain_id: ChainId,
+        cfg: Config,
+    ) -> Builder<B, AppBehaviourUnset> {
+        Builder::new(keypair, chain_id, cfg)
     }
 
     pub fn kademlia(&self) -> Option<&kad::Behaviour<MemoryStore>> {

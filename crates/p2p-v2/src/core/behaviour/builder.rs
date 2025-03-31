@@ -1,7 +1,12 @@
+use std::marker::PhantomData;
+
+use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::relay::client::Transport;
 use libp2p::swarm::behaviour::toggle::Toggle;
+#[cfg(test)]
 use libp2p::swarm::dummy;
+use libp2p::swarm::NetworkBehaviour;
 use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
@@ -10,43 +15,74 @@ use crate::core::config::Config;
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 
-pub struct Builder {
-    identity: identity::Keypair,
+pub struct AppBehaviourUnset;
+pub struct AppBehaviourSet;
+
+pub struct Builder<B, Phase = AppBehaviourUnset> {
+    keypair: Keypair,
     chain_id: ChainId,
     cfg: Config,
     enable_kademlia: bool,
+    app_behaviour: Option<B>,
+    _phase: PhantomData<Phase>,
 }
 
-impl Builder {
-    pub fn new(identity: identity::Keypair, chain_id: ChainId, cfg: Config) -> Self {
+impl<B> Builder<B, AppBehaviourUnset> {
+    pub fn new(keypair: identity::Keypair, chain_id: ChainId, cfg: Config) -> Self {
         Self {
-            identity,
+            keypair,
             chain_id,
             cfg,
             enable_kademlia: true,
+            app_behaviour: None,
+            _phase: PhantomData,
         }
     }
 
-    /// Disable Kademlia for in-crate tests. Kademlia is always enabled in
-    /// production.
-    #[allow(unused)]
-    #[cfg(test)]
+    pub fn app_behaviour(self, app_behaviour: B) -> Builder<B, AppBehaviourSet> {
+        Builder {
+            keypair: self.keypair,
+            chain_id: self.chain_id,
+            cfg: self.cfg,
+            enable_kademlia: self.enable_kademlia,
+            app_behaviour: Some(app_behaviour),
+            _phase: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+impl<B, AnyPhase> Builder<B, AnyPhase> {
     pub(crate) fn disable_kademlia_for_test(mut self) -> Self {
         self.enable_kademlia = false;
         self
     }
+}
 
-    pub fn build(self) -> (Behaviour<dummy::Behaviour>, Transport) {
+#[cfg(test)]
+impl Builder<dummy::Behaviour, AppBehaviourUnset> {
+    pub fn dummy_app_behaviour_for_test(self) -> Builder<dummy::Behaviour, AppBehaviourSet> {
+        self.app_behaviour(dummy::Behaviour)
+    }
+}
+
+impl<B> Builder<B, AppBehaviourSet>
+where
+    B: NetworkBehaviour,
+{
+    pub fn build(self) -> (Behaviour<B>, Transport) {
         let Self {
-            identity,
+            keypair,
             chain_id,
             cfg,
             enable_kademlia,
+            app_behaviour,
+            ..
         } = self;
 
-        let peer_id = identity.public().to_peer_id();
-        let secret = Secret::new(&identity);
-        let public_key = identity.public();
+        let peer_id = keypair.public().to_peer_id();
+        let secret = Secret::new(&keypair);
+        let public_key = keypair.public();
 
         #[cfg(not(test))]
         assert!(enable_kademlia, "Kademlia must be enabled in production");
@@ -84,7 +120,7 @@ impl Builder {
                             )),
                     ),
                     kademlia,
-                    application: dummy::Behaviour,
+                    application: app_behaviour.expect("App behaviour is set in this phase"),
                 },
             },
             relay_transport,

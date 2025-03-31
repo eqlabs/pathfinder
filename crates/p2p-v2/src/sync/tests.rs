@@ -1,22 +1,31 @@
-use std::fmt::Debug;
-
 use fake::{Fake, Faker};
-use futures::SinkExt;
+use futures::{FutureExt, SinkExt, StreamExt};
 use p2p_proto::class::{ClassesRequest, ClassesResponse};
 use p2p_proto::event::{EventsRequest, EventsResponse};
 use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
 use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
 use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
 use rstest::rstest;
-use tokio::sync::mpsc;
 
+use crate::sync::behaviour::Behaviour;
+use crate::sync::client::Client;
+use crate::sync::config::Config;
+use crate::sync::protocol::codec;
 use crate::sync::Event;
-use crate::test_utils::peer::TestPeer;
+use crate::test_utils::peer::TestPeerBuilder;
 use crate::test_utils::{consume_all_events_forever, filter_events};
 
-async fn create_peers() -> (TestPeer, TestPeer) {
-    let mut server = TestPeer::default();
-    let client = TestPeer::default();
+type SyncTestPeer = crate::test_utils::peer::TestPeer<Behaviour>;
+
+fn create_peer() -> SyncTestPeer {
+    TestPeerBuilder::new()
+        .app_behaviour(Behaviour::new(Config::for_test()))
+        .build(crate::core::config::Config::for_test())
+}
+
+async fn create_peers() -> (SyncTestPeer, SyncTestPeer) {
+    let mut server = create_peer();
+    let client = create_peer();
 
     let server_addr = server.start_listening().await.unwrap();
 
@@ -32,11 +41,11 @@ async fn create_peers() -> (TestPeer, TestPeer) {
     (server, client)
 }
 
-async fn server_to_client() -> (TestPeer, TestPeer) {
+async fn server_to_client() -> (SyncTestPeer, SyncTestPeer) {
     create_peers().await
 }
 
-async fn client_to_server() -> (TestPeer, TestPeer) {
+async fn client_to_server() -> (SyncTestPeer, SyncTestPeer) {
     let (s, c) = create_peers().await;
     (c, s)
 }
@@ -57,7 +66,7 @@ mod successful_sync {
             #[case::server_to_client(server_to_client().await)]
             #[case::client_to_server(client_to_server().await)]
             #[test_log::test(tokio::test)]
-            async fn $test_name(#[case] peers: (TestPeer, TestPeer)) {
+            async fn $test_name(#[case] peers: (SyncTestPeer, SyncTestPeer)) {
                 let (peer1, peer2) = peers;
                 // Fake some request for peer2 to send to peer1
                 let expected_request = Faker.fake::<$req_type>();
@@ -85,9 +94,7 @@ mod successful_sync {
                 consume_all_events_forever(peer2.app_event_receiver);
 
                 // Peer2 sends the request to peer1, and waits for the response receiver
-                let mut rx = peer2
-                    .client
-                    .app_client()
+                let mut rx = Client::from(peer2.client.as_pair())
                     .$req_fn(peer1.peer_id, expected_request)
                     .await
                     .expect(&format!(
@@ -132,7 +139,7 @@ mod successful_sync {
         BlockHeadersRequest,
         BlockHeadersResponse,
         InboundHeadersRequest,
-        send_headers_sync_request
+        send_headers_request
     );
 
     define_test!(
@@ -140,7 +147,7 @@ mod successful_sync {
         ClassesRequest,
         ClassesResponse,
         InboundClassesRequest,
-        send_classes_sync_request
+        send_classes_request
     );
 
     define_test!(
@@ -148,7 +155,7 @@ mod successful_sync {
         StateDiffsRequest,
         StateDiffsResponse,
         InboundStateDiffsRequest,
-        send_state_diffs_sync_request
+        send_state_diffs_request
     );
 
     define_test!(
@@ -156,7 +163,7 @@ mod successful_sync {
         TransactionsRequest,
         TransactionsResponse,
         InboundTransactionsRequest,
-        send_transactions_sync_request
+        send_transactions_request
     );
 
     define_test!(
@@ -164,11 +171,10 @@ mod successful_sync {
         EventsRequest,
         EventsResponse,
         InboundEventsRequest,
-        send_events_sync_request
+        send_events_request
     );
 }
 
-#[cfg(fixme)]
 mod propagate_codec_errors_to_caller {
     use super::*;
     use crate::test_utils::sync::TypeErasedReadFactory;
@@ -200,47 +206,46 @@ mod propagate_codec_errors_to_caller {
         })
     }
 
-    async fn create_peers(bad_peer: BadPeer, bad_codec: BadCodec) -> (TestPeer, TestPeer) {
-        let good = TestPeer::default();
+    async fn create_peers(bad_peer: BadPeer, bad_codec: BadCodec) -> (SyncTestPeer, SyncTestPeer) {
+        let good = create_peer();
 
-        let keypair = Keypair::generate_ed25519();
-        let cfg = Config::for_test();
-        let chain_id = ChainId::SEPOLIA_TESTNET;
-
-        let bb = crate::behaviour::Builder::new(keypair.clone(), chain_id, cfg.clone());
-        let bb = match bad_codec {
-            BadCodec::Headers => bb.header_sync_behaviour(p2p_stream::Behaviour::with_codec(
-                codec::Headers::for_test().set_read_response_factory(error_factory()),
-                Default::default(),
-            )),
-            BadCodec::Transactions => {
-                bb.transaction_sync_behaviour(p2p_stream::Behaviour::with_codec(
-                    codec::Transactions::for_test().set_read_response_factory(error_factory()),
+        let sync_behaviour_builder = Behaviour::builder(Config::for_test());
+        let sync_behaviour_builder = match bad_codec {
+            BadCodec::Headers => {
+                sync_behaviour_builder.header_sync_behaviour(p2p_stream::Behaviour::with_codec(
+                    codec::Headers::for_test().set_read_response_factory(error_factory()),
                     Default::default(),
                 ))
             }
+            BadCodec::Transactions => sync_behaviour_builder.transaction_sync_behaviour(
+                p2p_stream::Behaviour::with_codec(
+                    codec::Transactions::for_test().set_read_response_factory(error_factory()),
+                    Default::default(),
+                ),
+            ),
             BadCodec::StateDiffs => {
-                bb.state_diff_sync_behaviour(p2p_stream::Behaviour::with_codec(
+                sync_behaviour_builder.state_diff_sync_behaviour(p2p_stream::Behaviour::with_codec(
                     codec::StateDiffs::for_test().set_read_response_factory(error_factory()),
                     Default::default(),
                 ))
             }
-            BadCodec::Classes => bb.class_sync_behaviour(p2p_stream::Behaviour::with_codec(
-                codec::Classes::for_test().set_read_response_factory(error_factory()),
-                Default::default(),
-            )),
-            BadCodec::Events => bb.event_sync_behaviour(p2p_stream::Behaviour::with_codec(
-                codec::Events::for_test().set_read_response_factory(error_factory()),
-                Default::default(),
-            )),
+            BadCodec::Classes => {
+                sync_behaviour_builder.class_sync_behaviour(p2p_stream::Behaviour::with_codec(
+                    codec::Classes::for_test().set_read_response_factory(error_factory()),
+                    Default::default(),
+                ))
+            }
+            BadCodec::Events => {
+                sync_behaviour_builder.event_sync_behaviour(p2p_stream::Behaviour::with_codec(
+                    codec::Events::for_test().set_read_response_factory(error_factory()),
+                    Default::default(),
+                ))
+            }
         };
 
-        let p2p_builder =
-            crate::Builder::new(keypair.clone(), cfg.clone(), chain_id).behaviour_builder(bb);
-        let bad = TestPeer::builder()
-            .keypair(keypair)
-            .p2p_builder(p2p_builder)
-            .build(cfg);
+        let bad = SyncTestPeer::builder()
+            .app_behaviour(sync_behaviour_builder.build())
+            .build(crate::core::config::Config::for_test());
 
         let (mut server, client) = match bad_peer {
             BadPeer::Server => (bad, good),
@@ -261,11 +266,11 @@ mod propagate_codec_errors_to_caller {
         (server, client)
     }
 
-    async fn server_to_bad_client(bad_codec: BadCodec) -> (TestPeer, TestPeer) {
+    async fn server_to_bad_client(bad_codec: BadCodec) -> (SyncTestPeer, SyncTestPeer) {
         create_peers(BadPeer::Client, bad_codec).await
     }
 
-    async fn client_to_bad_server(bad_codec: BadCodec) -> (TestPeer, TestPeer) {
+    async fn client_to_bad_server(bad_codec: BadCodec) -> (SyncTestPeer, SyncTestPeer) {
         let (s, c) = create_peers(BadPeer::Server, bad_codec).await;
         (c, s)
     }
@@ -286,7 +291,7 @@ mod propagate_codec_errors_to_caller {
             #[case::server_to_client(server_to_bad_client($bad_codec).await)]
             #[case::client_to_server(client_to_bad_server($bad_codec).await)]
             #[test_log::test(tokio::test)]
-            async fn $test_name(#[case] peers: (TestPeer, TestPeer)) {
+            async fn $test_name(#[case] peers: (SyncTestPeer, SyncTestPeer)) {
                 let (peer1, peer2) = peers;
 
                 // Fake some request for peer2 to send to peer1
@@ -314,9 +319,7 @@ mod propagate_codec_errors_to_caller {
                 consume_all_events_forever(peer2.app_event_receiver);
 
                 // Peer2 sends the request to peer1, and waits for the response receiver
-                let mut rx = peer2
-                    .client
-                    .app_client()
+                let mut rx = Client::from(peer2.client.as_pair())
                     .$req_fn(peer1.peer_id, expected_request)
                     .await
                     .unwrap_or_else(|_| {
@@ -358,7 +361,7 @@ mod propagate_codec_errors_to_caller {
         BlockHeadersRequest,
         BlockHeadersResponse,
         InboundHeadersRequest,
-        send_headers_sync_request,
+        send_headers_request,
         BadCodec::Headers
     );
 
@@ -367,7 +370,7 @@ mod propagate_codec_errors_to_caller {
         ClassesRequest,
         ClassesResponse,
         InboundClassesRequest,
-        send_classes_sync_request,
+        send_classes_request,
         BadCodec::Classes
     );
 
@@ -376,7 +379,7 @@ mod propagate_codec_errors_to_caller {
         StateDiffsRequest,
         StateDiffsResponse,
         InboundStateDiffsRequest,
-        send_state_diffs_sync_request,
+        send_state_diffs_request,
         BadCodec::StateDiffs
     );
 
@@ -385,7 +388,7 @@ mod propagate_codec_errors_to_caller {
         TransactionsRequest,
         TransactionsResponse,
         InboundTransactionsRequest,
-        send_transactions_sync_request,
+        send_transactions_request,
         BadCodec::Transactions
     );
 
@@ -394,7 +397,7 @@ mod propagate_codec_errors_to_caller {
         EventsRequest,
         EventsResponse,
         InboundEventsRequest,
-        send_events_sync_request,
+        send_events_request,
         BadCodec::Events
     );
 }

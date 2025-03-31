@@ -24,6 +24,12 @@ pub struct Client {
     peer_id: PeerId,
 }
 
+impl From<(PeerId, mpsc::Sender<core::Command<Command>>)> for Client {
+    fn from((peer_id, sender): (PeerId, mpsc::Sender<core::Command<Command>>)) -> Self {
+        Self { sender, peer_id }
+    }
+}
+
 macro_rules! impl_send {
     ($fn_name_req: ident, $req_command: ident, $req_type: ty, $res_type: ty) => {
         pub async fn $fn_name_req(

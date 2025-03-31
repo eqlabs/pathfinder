@@ -33,3 +33,24 @@ pub struct RateLimit {
     pub max: usize,
     pub interval: Duration,
 }
+
+#[cfg(test)]
+impl Config {
+    pub fn for_test() -> Self {
+        Self {
+            direct_connection_timeout: Duration::from_secs(0),
+            relay_connection_timeout: Duration::from_secs(0),
+            max_inbound_direct_peers: 10,
+            max_inbound_relayed_peers: 10,
+            max_outbound_peers: 10,
+            ip_whitelist: vec!["::1/0".parse().unwrap(), "0.0.0.0/0".parse().unwrap()],
+            bootstrap_period: None,
+            eviction_timeout: Duration::from_secs(15 * 60),
+            inbound_connections_rate_limit: RateLimit {
+                max: 1000,
+                interval: Duration::from_secs(1),
+            },
+            kad_name: Default::default(),
+        }
+    }
+}

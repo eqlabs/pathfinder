@@ -75,11 +75,4 @@ pub trait P2PApplicationBehaviour: NetworkBehaviour {
     ) -> impl Future<Output = ()> + Send;
 }
 
-pub trait AppClientProvider {
-    type Client;
-    type Command;
-
-    fn client(command_sender: mpsc::Sender<Self::Command>, local_peer_id: PeerId) -> Self::Client;
-}
-
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;

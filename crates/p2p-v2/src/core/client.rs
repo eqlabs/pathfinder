@@ -10,7 +10,6 @@ use tokio::sync::{mpsc, oneshot};
 use crate::core::Command;
 #[cfg(test)]
 use crate::test_utils;
-use crate::AppClientProvider;
 
 #[derive(Clone, Debug)]
 pub struct Client<A> {
@@ -25,6 +24,10 @@ impl<A> Client<A> {
 
     pub fn peer_id(&self) -> &PeerId {
         &self.peer_id
+    }
+
+    pub fn as_pair(&self) -> (PeerId, mpsc::Sender<Command<A>>) {
+        (self.peer_id, self.sender.clone())
     }
 
     pub async fn start_listening(&self, addr: Multiaddr) -> anyhow::Result<()> {
@@ -91,13 +94,6 @@ impl<A> Client<A> {
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
-    }
-
-    pub fn app_client<P>(&self) -> <P as AppClientProvider>::Client
-    where
-        P: AppClientProvider<Command = Command<A>>,
-    {
-        P::client(self.sender.clone(), self.peer_id)
     }
 
     #[cfg(test)]

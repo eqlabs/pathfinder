@@ -88,6 +88,7 @@ pub enum Event {
 }
 
 /// State of the sync behaviour.
+#[derive(Default)]
 pub struct State {
     pub pending_requests: PendingRequests,
 }
