@@ -6,6 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 
 pub mod behaviour;
 pub mod client;
+pub mod config;
 #[cfg(test)]
 mod tests;
 

@@ -1,12 +1,12 @@
 use libp2p::kad::store::MemoryStore;
 use libp2p::relay::client::Transport;
 use libp2p::swarm::behaviour::toggle::Toggle;
-use libp2p::swarm::{dummy, NetworkBehaviour};
+use libp2p::swarm::dummy;
 use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
-use crate::config::Config;
 use crate::core::behaviour::{kademlia_protocol_name, Behaviour, Inner};
+use crate::core::config::Config;
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 

@@ -11,13 +11,17 @@ use p2p_stream::OutboundRequestId;
 use tokio::sync::oneshot;
 
 mod behaviour;
+mod client;
+mod config;
 pub mod protocol;
+#[cfg(test)]
+mod tests;
 
 /// Commands for the sync behaviour.
 #[derive(Debug)]
 pub enum Command {
     /// Request headers from a peer.
-    Headers {
+    SendHeadersRequest {
         peer_id: PeerId,
         request: BlockHeadersRequest,
         sender: oneshot::Sender<
@@ -25,20 +29,20 @@ pub enum Command {
         >,
     },
     /// Request classes from a peer.
-    Classes {
+    SendClassesRequest {
         peer_id: PeerId,
         request: ClassesRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
     },
     /// Request state diffs from a peer.
-    StateDiffs {
+    SendStateDiffsRequest {
         peer_id: PeerId,
         request: StateDiffsRequest,
         sender:
             oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
     },
     /// Request transactions from a peer.
-    Transactions {
+    SendTransactionsRequest {
         peer_id: PeerId,
         request: TransactionsRequest,
         sender: oneshot::Sender<
@@ -46,7 +50,7 @@ pub enum Command {
         >,
     },
     /// Request events from a peer.
-    Events {
+    SendEventsRequest {
         peer_id: PeerId,
         request: EventsRequest,
         sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
@@ -56,27 +60,27 @@ pub enum Command {
 /// Events emitted by the sync behaviour.
 #[derive(Debug)]
 pub enum Event {
-    Headers {
+    InboundHeadersRequest {
         from: PeerId,
         request: BlockHeadersRequest,
         channel: ResponseSender<BlockHeadersResponse>,
     },
-    Classes {
+    InboundClassesRequest {
         from: PeerId,
         request: ClassesRequest,
         channel: ResponseSender<ClassesResponse>,
     },
-    StateDiffs {
+    InboundStateDiffsRequest {
         from: PeerId,
         request: StateDiffsRequest,
         channel: ResponseSender<StateDiffsResponse>,
     },
-    Transactions {
+    InboundTransactionsRequest {
         from: PeerId,
         request: TransactionsRequest,
         channel: ResponseSender<TransactionsResponse>,
     },
-    Events {
+    InboundEventsRequest {
         from: PeerId,
         request: EventsRequest,
         channel: ResponseSender<EventsResponse>,

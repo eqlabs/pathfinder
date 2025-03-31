@@ -3,14 +3,13 @@ use core::client::Client;
 use std::future::Future;
 
 use builder::Builder;
-use config::Config;
 use libp2p::identity::Keypair;
 use libp2p::swarm::NetworkBehaviour;
+use libp2p::PeerId;
 use main_loop::MainLoop;
 use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 
-pub mod config;
 pub mod consensus;
 pub mod core;
 pub mod sync;
@@ -74,6 +73,13 @@ pub trait P2PApplicationBehaviour: NetworkBehaviour {
         state: &mut Self::State,
         event_sender: mpsc::Sender<Self::Event>,
     ) -> impl Future<Output = ()> + Send;
+}
+
+pub trait AppClientProvider {
+    type Client;
+    type Command;
+
+    fn client(command_sender: mpsc::Sender<Self::Command>, local_peer_id: PeerId) -> Self::Client;
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;

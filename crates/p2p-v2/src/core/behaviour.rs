@@ -40,7 +40,7 @@ mod builder;
 
 pub use builder::Builder;
 
-use crate::config::Config;
+use crate::core::config::Config;
 use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer, PeerSet};
 use crate::secret::Secret;
 

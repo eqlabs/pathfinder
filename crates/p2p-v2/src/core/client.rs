@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::core::Command;
 #[cfg(test)]
 use crate::test_utils;
+use crate::AppClientProvider;
 
 #[derive(Clone, Debug)]
 pub struct Client<A> {
@@ -90,6 +91,13 @@ impl<A> Client<A> {
             .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
+    }
+
+    pub fn app_client<P>(&self) -> <P as AppClientProvider>::Client
+    where
+        P: AppClientProvider<Command = Command<A>>,
+    {
+        P::client(self.sender.clone(), self.peer_id)
     }
 
     #[cfg(test)]

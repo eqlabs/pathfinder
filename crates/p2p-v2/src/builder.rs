@@ -4,8 +4,8 @@ use libp2p::{swarm, Swarm};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
 
-use crate::config::Config;
 use crate::core::client::Client;
+use crate::core::config::Config;
 use crate::main_loop::MainLoop;
 use crate::{core, transport, P2PApplicationBehaviour};
 

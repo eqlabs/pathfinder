@@ -1,93 +1,13 @@
-use std::fmt::Debug;
 use std::time::Duration;
 
 use futures::future::join;
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
-use tokio::sync::mpsc;
 
 use super::TestEvent;
-use crate::config::{Config, RateLimit};
+use crate::core::config::{Config, RateLimit};
 use crate::test_utils::peer::TestPeer;
-
-/// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
-/// all events as soon as they're sent otherwise the main loop will stall.
-/// `f` should return `Some(data)` where `data` is extracted from
-/// the event type of interest. For other events that should be ignored
-/// `f` should return `None`. This function returns a receiver to the filtered
-/// events' data channel.
-fn filter_events<T: Debug + Send + 'static>(
-    mut event_receiver: mpsc::Receiver<TestEvent>,
-    f: impl FnOnce(TestEvent) -> Option<T> + Copy + Send + 'static,
-) -> mpsc::Receiver<T> {
-    let (tx, rx) = mpsc::channel(1000);
-
-    tokio::spawn(async move {
-        while let Some(event) = event_receiver.recv().await {
-            if let Some(data) = f(event) {
-                tx.try_send(data).unwrap();
-            }
-        }
-    });
-
-    rx
-}
-
-/// Wait for a specific event to happen.
-async fn wait_for_event<T: Debug + Send + 'static>(
-    event_receiver: &mut mpsc::Receiver<TestEvent>,
-    mut f: impl FnMut(TestEvent) -> Option<T>,
-) -> Option<T> {
-    while let Some(event) = event_receiver.recv().await {
-        if let Some(data) = f(event) {
-            return Some(data);
-        }
-    }
-    None
-}
-
-/// Consume all events that have accumulated for the peer so far. You don't care
-/// about any of those events in the queue __right now__, but later you may do
-/// something that triggers new events for this peer, which you may care for.
-async fn consume_accumulated_events(event_receiver: &mut mpsc::Receiver<TestEvent>) {
-    while event_receiver.try_recv().is_ok() {}
-}
-
-/// Consume all events from a peer to keep its main loop going. You don't care
-/// about any of those events.
-///
-/// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
-/// all events as soon as they're sent otherwise the main loop will stall
-fn consume_all_events_forever(mut event_receiver: mpsc::Receiver<TestEvent>) {
-    tokio::spawn(async move { while (event_receiver.recv().await).is_some() {} });
-}
-
-async fn create_peers() -> (TestPeer, TestPeer) {
-    let mut server = TestPeer::default();
-    let client = TestPeer::default();
-
-    let server_addr = server.start_listening().await.unwrap();
-
-    tracing::info!(%server.peer_id, %server_addr, "Server");
-    tracing::info!(%client.peer_id, "Client");
-
-    client
-        .client
-        .dial(server.peer_id, server_addr)
-        .await
-        .unwrap();
-
-    (server, client)
-}
-
-async fn server_to_client() -> (TestPeer, TestPeer) {
-    create_peers().await
-}
-
-async fn client_to_server() -> (TestPeer, TestPeer) {
-    let (s, c) = create_peers().await;
-    (c, s)
-}
+use crate::test_utils::{consume_accumulated_events, consume_all_events_forever, wait_for_event};
 
 #[test_log::test(tokio::test)]
 async fn dial() {

@@ -5,14 +5,14 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use libp2p::identity::Keypair;
-use libp2p::swarm::{dummy, NetworkBehaviour};
+use libp2p::swarm::dummy;
 use libp2p::{Multiaddr, PeerId};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::config::{Config, RateLimit};
 use crate::core::client::Client;
+use crate::core::config::{Config, RateLimit};
 use crate::core::TestEvent;
 use crate::peers::Peer;
 use crate::{Builder, P2PApplicationBehaviour};

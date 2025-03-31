@@ -4,6 +4,8 @@ use tokio::sync::mpsc;
 use super::protocol::codec;
 use crate::{sync, P2PApplicationBehaviour};
 
+mod builder;
+
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     header_sync: p2p_stream::Behaviour<codec::Headers>,
@@ -21,7 +23,7 @@ impl P2PApplicationBehaviour for Behaviour {
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State) {
         use sync::Command::*;
         match command {
-            Headers {
+            SendHeadersRequest {
                 peer_id,
                 request,
                 sender,
@@ -30,7 +32,7 @@ impl P2PApplicationBehaviour for Behaviour {
                 let request_id = self.header_sync.send_request(&peer_id, request);
                 state.pending_requests.headers.insert(request_id, sender);
             }
-            Classes {
+            SendClassesRequest {
                 peer_id,
                 request,
                 sender,
@@ -39,7 +41,7 @@ impl P2PApplicationBehaviour for Behaviour {
                 let request_id = self.class_sync.send_request(&peer_id, request);
                 state.pending_requests.classes.insert(request_id, sender);
             }
-            StateDiffs {
+            SendStateDiffsRequest {
                 peer_id,
                 request,
                 sender,
@@ -51,7 +53,7 @@ impl P2PApplicationBehaviour for Behaviour {
                     .state_diffs
                     .insert(request_id, sender);
             }
-            Transactions {
+            SendTransactionsRequest {
                 peer_id,
                 request,
                 sender,
@@ -63,7 +65,7 @@ impl P2PApplicationBehaviour for Behaviour {
                     .transactions
                     .insert(request_id, sender);
             }
-            Events {
+            SendEventsRequest {
                 peer_id,
                 request,
                 sender,
@@ -91,7 +93,7 @@ impl P2PApplicationBehaviour for Behaviour {
             }) => {
                 tracing::debug!(?request, %peer, %request_id, "Received headers sync request");
                 event_sender
-                    .send(sync::Event::Headers {
+                    .send(sync::Event::InboundHeadersRequest {
                         from: peer,
                         request,
                         channel,
@@ -120,7 +122,7 @@ impl P2PApplicationBehaviour for Behaviour {
             }) => {
                 tracing::debug!(?request, %peer, %request_id, "Received classes sync request");
                 event_sender
-                    .send(sync::Event::Classes {
+                    .send(sync::Event::InboundClassesRequest {
                         from: peer,
                         request,
                         channel,
@@ -149,7 +151,7 @@ impl P2PApplicationBehaviour for Behaviour {
             }) => {
                 tracing::debug!(?request, %peer, %request_id, "Received state diffs sync request");
                 event_sender
-                    .send(sync::Event::StateDiffs {
+                    .send(sync::Event::InboundStateDiffsRequest {
                         from: peer,
                         request,
                         channel,
@@ -180,7 +182,7 @@ impl P2PApplicationBehaviour for Behaviour {
             }) => {
                 tracing::debug!(?request, %peer, %request_id, "Received transaction sync request");
                 event_sender
-                    .send(sync::Event::Transactions {
+                    .send(sync::Event::InboundTransactionsRequest {
                         from: peer,
                         request,
                         channel,
@@ -211,7 +213,7 @@ impl P2PApplicationBehaviour for Behaviour {
             }) => {
                 tracing::debug!(?request, %peer, %request_id, "Received event sync request");
                 event_sender
-                    .send(sync::Event::Events {
+                    .send(sync::Event::InboundEventsRequest {
                         from: peer,
                         request,
                         channel,
