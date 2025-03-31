@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use ipnet::IpNet;
 
+/// TODO this is the CORE config, so put it where it should belong
 /// P2P configuration options and limits.
 #[derive(Debug, Clone)]
 pub struct Config {

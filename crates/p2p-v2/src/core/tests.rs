@@ -1,22 +1,14 @@
 use std::fmt::Debug;
 use std::time::Duration;
 
-use fake::{Fake, Faker};
 use futures::future::join;
-use futures::{FutureExt, SinkExt, StreamExt};
 use libp2p::identity::Keypair;
 use libp2p::multiaddr::Protocol;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
-use pathfinder_common::ChainId;
-use rstest::rstest;
+use tokio::sync::mpsc;
 
-// use crate::sync::codec;
+use super::TestEvent;
+use crate::config::{Config, RateLimit};
 use crate::test_utils::peer::TestPeer;
-use crate::{Config, Event, EventReceiver, RateLimit, TestEvent};
 
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall.
@@ -25,10 +17,10 @@ use crate::{Config, Event, EventReceiver, RateLimit, TestEvent};
 /// `f` should return `None`. This function returns a receiver to the filtered
 /// events' data channel.
 fn filter_events<T: Debug + Send + 'static>(
-    mut event_receiver: EventReceiver,
-    f: impl FnOnce(Event) -> Option<T> + Copy + Send + 'static,
-) -> tokio::sync::mpsc::Receiver<T> {
-    let (tx, rx) = tokio::sync::mpsc::channel(1000);
+    mut event_receiver: mpsc::Receiver<TestEvent>,
+    f: impl FnOnce(TestEvent) -> Option<T> + Copy + Send + 'static,
+) -> mpsc::Receiver<T> {
+    let (tx, rx) = mpsc::channel(1000);
 
     tokio::spawn(async move {
         while let Some(event) = event_receiver.recv().await {
@@ -43,8 +35,8 @@ fn filter_events<T: Debug + Send + 'static>(
 
 /// Wait for a specific event to happen.
 async fn wait_for_event<T: Debug + Send + 'static>(
-    event_receiver: &mut EventReceiver,
-    mut f: impl FnMut(Event) -> Option<T>,
+    event_receiver: &mut mpsc::Receiver<TestEvent>,
+    mut f: impl FnMut(TestEvent) -> Option<T>,
 ) -> Option<T> {
     while let Some(event) = event_receiver.recv().await {
         if let Some(data) = f(event) {
@@ -57,7 +49,7 @@ async fn wait_for_event<T: Debug + Send + 'static>(
 /// Consume all events that have accumulated for the peer so far. You don't care
 /// about any of those events in the queue __right now__, but later you may do
 /// something that triggers new events for this peer, which you may care for.
-async fn consume_accumulated_events(event_receiver: &mut EventReceiver) {
+async fn consume_accumulated_events(event_receiver: &mut mpsc::Receiver<TestEvent>) {
     while event_receiver.try_recv().is_ok() {}
 }
 
@@ -66,7 +58,7 @@ async fn consume_accumulated_events(event_receiver: &mut EventReceiver) {
 ///
 /// [`MainLoop`](p2p::MainLoop)'s event channel size is 1, so we need to consume
 /// all events as soon as they're sent otherwise the main loop will stall
-fn consume_all_events_forever(mut event_receiver: EventReceiver) {
+fn consume_all_events_forever(mut event_receiver: mpsc::Receiver<TestEvent>) {
     tokio::spawn(async move { while (event_receiver.recv().await).is_some() {} });
 }
 
@@ -108,7 +100,7 @@ async fn dial() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    consume_accumulated_events(&mut peer1.event_receiver).await;
+    consume_accumulated_events(&mut peer1.test_event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -127,7 +119,7 @@ async fn disconnect() {
 
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
-    consume_accumulated_events(&mut peer1.event_receiver).await;
+    consume_accumulated_events(&mut peer1.test_event_receiver).await;
 
     let peers_of1: Vec<_> = peer1.connected().await.into_keys().collect();
     let peers_of2: Vec<_> = peer2.connected().await.into_keys().collect();
@@ -137,14 +129,14 @@ async fn disconnect() {
 
     peer2.client.disconnect(peer1.peer_id).await.unwrap();
 
-    wait_for_event(&mut peer1.event_receiver, move |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+    wait_for_event(&mut peer1.test_event_receiver, move |event| match event {
+        TestEvent::ConnectionClosed { remote } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer2.event_receiver, move |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+    wait_for_event(&mut peer2.test_event_receiver, move |event| match event {
+        TestEvent::ConnectionClosed { remote } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -186,34 +178,35 @@ async fn periodic_bootstrap() {
         .unwrap();
 
     let filter_kademlia_bootstrap_completed = |event| match event {
-        Event::Test(TestEvent::KademliaBootstrapCompleted(_)) => Some(()),
+        TestEvent::KademliaBootstrapCompleted(_) => Some(()),
         _ => None,
     };
 
-    consume_all_events_forever(boot.event_receiver);
+    consume_all_events_forever(boot.test_event_receiver);
 
     let peer_id2 = peer2.peer_id;
 
     let peer2_added_to_dht_of_peer1 =
-        wait_for_event(&mut peer1.event_receiver, move |event| match event {
-            Event::Test(TestEvent::PeerAddedToDHT { remote }) if remote == peer_id2 => Some(()),
+        wait_for_event(&mut peer1.test_event_receiver, move |event| match event {
+            TestEvent::PeerAddedToDHT { remote } if remote == peer_id2 => Some(()),
             _ => None,
         });
 
     join(peer2_added_to_dht_of_peer1, async {
         wait_for_event(
-            &mut peer2.event_receiver,
+            &mut peer2.test_event_receiver,
             filter_kademlia_bootstrap_completed,
         )
         .await;
         wait_for_event(
-            &mut peer2.event_receiver,
+            &mut peer2.test_event_receiver,
             filter_kademlia_bootstrap_completed,
         )
         .await;
-    });
+    })
+    .await;
 
-    consume_all_events_forever(peer1.event_receiver);
+    consume_all_events_forever(peer1.test_event_receiver);
 
     assert_eq!(
         boot.client.for_test().get_peers_from_dht().await,
@@ -252,18 +245,14 @@ async fn reconnect_too_quickly() {
         .await
         .unwrap();
 
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer2.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -277,14 +266,14 @@ async fn reconnect_too_quickly() {
     // Close the connection.
     peer1.client.disconnect(peer2.peer_id).await.unwrap();
 
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer2.peer_id => Some(()),
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote }) if remote == peer1.peer_id => Some(()),
+    wait_for_event(&mut peer2.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -299,18 +288,14 @@ async fn reconnect_too_quickly() {
     assert!(result.is_ok());
 
     // The connection is established.
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer2.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -340,18 +325,14 @@ async fn duplicate_connection() {
         .await
         .unwrap();
 
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer2.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -368,18 +349,14 @@ async fn duplicate_connection() {
         .await
         .unwrap();
 
-    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionEstablished { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1_copy.test_event_receiver, |event| match event {
+        TestEvent::ConnectionEstablished { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
 
-    wait_for_event(&mut peer1_copy.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1_copy.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -418,11 +395,11 @@ async fn outbound_peer_eviction() {
     let outbound_addr4 = outbound4.start_listening().await.unwrap();
     tracing::info!(%outbound4.peer_id, %outbound_addr4);
 
-    consume_all_events_forever(outbound1.event_receiver);
-    consume_all_events_forever(outbound2.event_receiver);
-    consume_all_events_forever(outbound3.event_receiver);
-    consume_all_events_forever(outbound4.event_receiver);
-    consume_all_events_forever(inbound1.event_receiver);
+    consume_all_events_forever(outbound1.test_event_receiver);
+    consume_all_events_forever(outbound2.test_event_receiver);
+    consume_all_events_forever(outbound3.test_event_receiver);
+    consume_all_events_forever(outbound4.test_event_receiver);
+    consume_all_events_forever(inbound1.test_event_receiver);
 
     // Open one inbound connection. This connection is never touched.
     inbound1
@@ -441,7 +418,7 @@ async fn outbound_peer_eviction() {
         .await
         .unwrap();
 
-    consume_accumulated_events(&mut peer.event_receiver).await;
+    consume_accumulated_events(&mut peer.test_event_receiver).await;
 
     // Trying to open another one fails, because no peers are marked as not useful,
     // and hence no peer can be evicted.
@@ -476,10 +453,8 @@ async fn outbound_peer_eviction() {
     assert!(peers.contains_key(&inbound1.peer_id));
 
     // Ensure that outbound1 actually got disconnected.
-    wait_for_event(&mut peer.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == outbound1.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. } if remote == outbound1.peer_id => Some(()),
         _ => None,
     })
     .await
@@ -546,7 +521,7 @@ async fn inbound_peer_eviction() {
     assert_eq!(connected.len(), 26);
     assert!(connected.contains_key(&outbound1.peer_id));
 
-    consume_accumulated_events(&mut peer.event_receiver).await;
+    consume_accumulated_events(&mut peer.test_event_receiver).await;
 
     // Trying to open another one causes an eviction.
     inbound_peers
@@ -558,8 +533,8 @@ async fn inbound_peer_eviction() {
         .unwrap();
 
     // Ensure that a peer got disconnected.
-    let disconnected = wait_for_event(&mut peer.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. })
+    let disconnected = wait_for_event(&mut peer.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. }
             if inbound_peers.iter().take(25).any(|p| p.peer_id == remote) =>
         {
             Some(remote)
@@ -610,10 +585,8 @@ async fn evicted_peer_reconnection() {
     peer1.client.dial(peer3.peer_id, addr3).await.unwrap();
 
     // Check that peer2 got evicted.
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer2.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. } if remote == peer2.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -625,7 +598,7 @@ async fn evicted_peer_reconnection() {
     let result = peer1.client.dial(peer2.peer_id, addr2.clone()).await;
     assert!(result.is_err());
 
-    consume_accumulated_events(&mut peer2.event_receiver).await;
+    consume_accumulated_events(&mut peer2.test_event_receiver).await;
 
     // In this case there is no peer ID when connecting, so the connection gets
     // closed after being established.
@@ -634,10 +607,8 @@ async fn evicted_peer_reconnection() {
         .dial(peer1.peer_id, addr1.clone())
         .await
         .unwrap();
-    wait_for_event(&mut peer2.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer1.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer2.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. } if remote == peer1.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -647,10 +618,8 @@ async fn evicted_peer_reconnection() {
     peer1.client.dial(peer2.peer_id, addr2).await.unwrap();
 
     // peer3 gets evicted.
-    wait_for_event(&mut peer1.event_receiver, |event| match event {
-        Event::Test(TestEvent::ConnectionClosed { remote, .. }) if remote == peer3.peer_id => {
-            Some(())
-        }
+    wait_for_event(&mut peer1.test_event_receiver, |event| match event {
+        TestEvent::ConnectionClosed { remote, .. } if remote == peer3.peer_id => Some(()),
         _ => None,
     })
     .await;
@@ -669,7 +638,7 @@ async fn ip_whitelist() {
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
 
-    consume_all_events_forever(peer2.event_receiver);
+    consume_all_events_forever(peer2.test_event_receiver);
 
     // Can't open the connection because peer2 is bound to 127.0.0.1 and peer1 only
     // allows 127.0.0.2.
@@ -712,10 +681,10 @@ async fn rate_limit() {
     let addr1 = peer1.start_listening().await.unwrap();
     tracing::info!(%peer1.peer_id, %addr1);
 
-    consume_all_events_forever(peer1.event_receiver);
-    consume_all_events_forever(peer2.event_receiver);
-    consume_all_events_forever(peer3.event_receiver);
-    consume_all_events_forever(peer4.event_receiver);
+    consume_all_events_forever(peer1.test_event_receiver);
+    consume_all_events_forever(peer2.test_event_receiver);
+    consume_all_events_forever(peer3.test_event_receiver);
+    consume_all_events_forever(peer4.test_event_receiver);
 
     // Two connections can be opened, but the third one is rate limited.
 

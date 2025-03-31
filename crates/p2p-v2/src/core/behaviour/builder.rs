@@ -1,7 +1,7 @@
 use libp2p::kad::store::MemoryStore;
 use libp2p::relay::client::Transport;
 use libp2p::swarm::behaviour::toggle::Toggle;
-use libp2p::swarm::NetworkBehaviour;
+use libp2p::swarm::{dummy, NetworkBehaviour};
 use libp2p::{autonat, dcutr, identify, identity, kad, ping, relay, StreamProtocol};
 use pathfinder_common::ChainId;
 
@@ -10,29 +10,21 @@ use crate::core::behaviour::{kademlia_protocol_name, Behaviour, Inner};
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 
-pub struct Builder<B> {
+pub struct Builder {
     identity: identity::Keypair,
     chain_id: ChainId,
     cfg: Config,
     enable_kademlia: bool,
-    app_behaviour: Option<B>,
 }
 
-impl<B> Builder<B> {
+impl Builder {
     pub fn new(identity: identity::Keypair, chain_id: ChainId, cfg: Config) -> Self {
         Self {
             identity,
             chain_id,
             cfg,
             enable_kademlia: true,
-            app_behaviour: None,
         }
-    }
-
-    #[allow(unused)]
-    pub fn app_behaviour(mut self, behaviour: B) -> Self {
-        self.app_behaviour = Some(behaviour);
-        self
     }
 
     /// Disable Kademlia for in-crate tests. Kademlia is always enabled in
@@ -44,16 +36,12 @@ impl<B> Builder<B> {
         self
     }
 
-    pub fn build(self) -> (Behaviour<B>, Transport)
-    where
-        B: NetworkBehaviour + Default,
-    {
+    pub fn build(self) -> (Behaviour<dummy::Behaviour>, Transport) {
         let Self {
             identity,
             chain_id,
             cfg,
             enable_kademlia,
-            app_behaviour,
         } = self;
 
         let peer_id = identity.public().to_peer_id();
@@ -77,8 +65,6 @@ impl<B> Builder<B> {
 
         let (relay_transport, relay) = relay::client::new(peer_id);
 
-        let application = app_behaviour.unwrap_or_default();
-
         (
             Behaviour {
                 peers: PeerSet::new(cfg.eviction_timeout),
@@ -98,7 +84,7 @@ impl<B> Builder<B> {
                             )),
                     ),
                     kademlia,
-                    application,
+                    application: dummy::Behaviour,
                 },
             },
             relay_transport,

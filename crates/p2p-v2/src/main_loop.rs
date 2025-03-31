@@ -26,7 +26,7 @@ use crate::{EmptyResultSender, P2PApplicationBehaviour};
 /// defines the commands and events that the application behaviour can handle.
 pub struct MainLoop<B>
 where
-    B: NetworkBehaviour + P2PApplicationBehaviour,
+    B: P2PApplicationBehaviour,
 {
     /// Handles all internal networking for the p2p network.
     swarm: libp2p::swarm::Swarm<Behaviour<B>>,
@@ -592,6 +592,18 @@ where
             .collect::<Vec<_>>();
 
         tracing::info!(%me, ?connected, "Connected peers");
+    }
+}
+
+impl<B> MainLoop<B>
+where
+    B: P2PApplicationBehaviour,
+{
+    #[cfg(test)]
+    pub fn take_test_event_receiver(&mut self) -> mpsc::Receiver<TestEvent> {
+        self._test_event_receiver
+            .take()
+            .expect("Test event receiver not to be taken")
     }
 }
 

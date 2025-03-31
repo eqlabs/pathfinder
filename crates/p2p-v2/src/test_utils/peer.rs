@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use libp2p::identity::Keypair;
-use libp2p::swarm::dummy;
+use libp2p::swarm::{dummy, NetworkBehaviour};
 use libp2p::{Multiaddr, PeerId};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
@@ -15,21 +15,22 @@ use crate::config::{Config, RateLimit};
 use crate::core::client::Client;
 use crate::core::TestEvent;
 use crate::peers::Peer;
-use crate::Builder;
+use crate::{Builder, P2PApplicationBehaviour};
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct TestPeer<A> {
+pub struct TestPeer {
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub client: Client<A>,
-    pub event_receiver: mpsc::Receiver<TestEvent>,
+    pub client: Client<<dummy::Behaviour as P2PApplicationBehaviour>::Command>,
+    pub app_event_receiver: mpsc::Receiver<<dummy::Behaviour as P2PApplicationBehaviour>::Event>,
+    pub test_event_receiver: mpsc::Receiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
 
-pub struct TestPeerBuilder<B = dummy::Behaviour> {
+pub struct TestPeerBuilder {
     pub keypair: Keypair,
-    p2p_builder: Option<Builder<B>>,
+    p2p_builder: Option<Builder>,
     enable_kademlia: bool,
 }
 
@@ -53,7 +54,7 @@ impl Config {
     }
 }
 
-impl<B> TestPeerBuilder<B> {
+impl TestPeerBuilder {
     pub fn new() -> Self {
         Self {
             keypair: Keypair::generate_ed25519(),
@@ -67,7 +68,7 @@ impl<B> TestPeerBuilder<B> {
         self
     }
 
-    pub fn p2p_builder(mut self, p2p_builder: Builder<B>) -> Self {
+    pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
         self.p2p_builder = Some(p2p_builder);
         self
     }
@@ -77,7 +78,7 @@ impl<B> TestPeerBuilder<B> {
         self
     }
 
-    pub fn build<A>(self, cfg: Config) -> TestPeer<A> {
+    pub fn build(self, cfg: Config) -> TestPeer {
         let Self {
             keypair,
             p2p_builder,
@@ -95,42 +96,45 @@ impl<B> TestPeerBuilder<B> {
             p2p_builder.disable_kademlia_for_test()
         };
 
-        let (client, mut event_receiver, main_loop) = p2p_builder.build();
+        let (client, mut event_receiver, mut main_loop) = p2p_builder.build();
 
         // Ensure that the channel keeps being polled to move the main loop forward.
         // Store the polled events into a buffered channel instead.
-        let (buf_sender, buf_receiver) = tokio::sync::mpsc::channel(1024);
+        let (buf_sender, app_event_receiver) = tokio::sync::mpsc::channel(1024);
         tokio::spawn(async move {
             while let Some(event) = event_receiver.recv().await {
                 buf_sender.send(event).await.unwrap();
             }
         });
 
+        let test_event_receiver = main_loop.take_test_event_receiver();
+
         let main_loop_jh = tokio::spawn(main_loop.run());
         TestPeer {
             keypair,
             peer_id,
             client,
-            event_receiver: buf_receiver,
+            app_event_receiver,
+            test_event_receiver,
             main_loop_jh,
         }
     }
 }
 
-impl<A> TestPeer<A> {
-    pub fn builder<B>() -> TestPeerBuilder<B> {
-        TestPeerBuilder::<B>::new()
+impl TestPeer {
+    pub fn builder() -> TestPeerBuilder {
+        TestPeerBuilder::new()
     }
 
     /// Create a new peer with a random keypair
     #[must_use]
-    pub fn new<B>(cfg: Config) -> Self {
-        Self::builder::<B>().build(cfg)
+    pub fn new(cfg: Config) -> Self {
+        Self::builder().build(cfg)
     }
 
     #[must_use]
-    pub fn with_keypair<B>(keypair: Keypair, cfg: Config) -> Self {
-        Self::builder::<B>().keypair(keypair).build(cfg)
+    pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
+        Self::builder().keypair(keypair).build(cfg)
     }
 
     /// Start listening on a specified address
@@ -140,13 +144,13 @@ impl<A> TestPeer<A> {
             .await
             .context("Start listening failed")?;
 
-        let event = tokio::time::timeout(Duration::from_secs(1), self.event_receiver.recv())
+        let event = tokio::time::timeout(Duration::from_secs(1), self.test_event_receiver.recv())
             .await
             .context("Timedout while waiting for new listen address")?
             .context("Event channel closed")?;
 
         let addr = match event {
-            Event::Test(TestEvent::NewListenAddress(addr)) => addr,
+            TestEvent::NewListenAddress(addr) => addr,
             _ => anyhow::bail!("Unexpected event: {event:?}"),
         };
         Ok(addr)
@@ -164,8 +168,7 @@ impl<A> TestPeer<A> {
     }
 }
 
-impl<A> Default for TestPeer<A> {
-    /// Create a new peer with a random keypair and default test config
+impl Default for TestPeer {
     fn default() -> Self {
         Self::new(Config::for_test())
     }
