@@ -1,6 +1,6 @@
 //! request/streaming-response protocol and codec definitions for sync
 
-mod protocol {
+mod name {
 
     macro_rules! define_protocol {
         ($type_name:ident, $name:literal) => {
@@ -34,13 +34,13 @@ pub(crate) mod codec {
     use p2p_proto::{class, event, header, proto, state, transaction, ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
 
-    use super::protocol;
+    use super::name;
 
     pub const ONE_MIB: usize = 1024 * 1024;
     pub const FOUR_MIB: usize = 4 * ONE_MIB;
 
     pub type Headers = SyncCodec<
-        protocol::Headers,
+        name::Headers,
         header::BlockHeadersRequest,
         header::BlockHeadersResponse,
         proto::header::BlockHeadersRequest,
@@ -49,7 +49,7 @@ pub(crate) mod codec {
     >;
 
     pub type StateDiffs = SyncCodec<
-        protocol::StateDiffs,
+        name::StateDiffs,
         state::StateDiffsRequest,
         state::StateDiffsResponse,
         proto::state::StateDiffsRequest,
@@ -58,7 +58,7 @@ pub(crate) mod codec {
     >;
 
     pub type Classes = SyncCodec<
-        protocol::Classes,
+        name::Classes,
         class::ClassesRequest,
         class::ClassesResponse,
         proto::class::ClassesRequest,
@@ -67,7 +67,7 @@ pub(crate) mod codec {
     >;
 
     pub type Transactions = SyncCodec<
-        protocol::Transactions,
+        name::Transactions,
         transaction::TransactionsRequest,
         transaction::TransactionsResponse,
         proto::transaction::TransactionsRequest,
@@ -76,7 +76,7 @@ pub(crate) mod codec {
     >;
 
     pub type Events = SyncCodec<
-        protocol::Events,
+        name::Events,
         event::EventsRequest,
         event::EventsResponse,
         proto::event::EventsRequest,

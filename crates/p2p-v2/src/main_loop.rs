@@ -268,6 +268,8 @@ where
             // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
             //   the response (the list of closest peers) back to the caller.
             // - RoutingUpdated: A peer is added to the DHT.
+            #[allow(clippy::single_match)]
+            // TODO remove this allow once test event handling is implemented
             SwarmEvent::Behaviour(Event::Kademlia(e)) => match e {
                 kad::Event::OutboundQueryProgressed {
                     step, result, id, ..
