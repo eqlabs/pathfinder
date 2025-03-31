@@ -4,8 +4,8 @@ use std::fmt::Debug;
 use libp2p::{Multiaddr, PeerId};
 use tokio::sync::{mpsc, oneshot};
 
-// TODO fixup the imports and re-exports
 pub mod behaviour;
+pub mod client;
 
 use crate::peers::Peer;
 use crate::EmptyResultSender;

@@ -3,21 +3,19 @@ use std::collections::{HashMap, HashSet};
 use libp2p::PeerId;
 use tokio::sync::{mpsc, oneshot};
 
+use crate::core::{Command, TestCommand};
 use crate::peers::Peer;
-use crate::{Command, TestCommand};
 
 #[derive(Clone)]
-pub struct Client {
-    sender: mpsc::Sender<Command>,
+pub struct Client<A> {
+    sender: mpsc::Sender<Command<A>>,
 }
 
-impl Client {
-    pub fn new(sender: mpsc::Sender<Command>) -> Self {
+impl<A> Client<A> {
+    pub fn new(sender: mpsc::Sender<Command<A>>) -> Self {
         Self { sender }
     }
-}
 
-impl Client {
     pub async fn get_peers_from_dht(&self) -> HashSet<PeerId> {
         let (sender, receiver) = oneshot::channel();
         self.sender
