@@ -3,7 +3,6 @@ use std::net::{IpAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::{cmp, task};
 
-use builder::AppBehaviourUnset;
 use libp2p::core::transport::PortUse;
 use libp2p::core::Endpoint;
 use libp2p::kad::store::MemoryStore;
@@ -52,19 +51,16 @@ pub fn kademlia_protocol_name(chain_id: ChainId) -> StreamProtocol {
 }
 
 /// The core behaviour for a p2p network.
-///
-/// This outer struct takes care of connection management while [`Inner`] is the
-/// actual behaviour that groups all the core behaviours common for all p2p
-/// network implementations. `AppBehaviour` is the application-specific
-/// behaviour that utilizes its own protocols fit for a particular type of a p2p
-/// network, working on the top of the core behaviour protocol stack.
 pub struct Behaviour<B: NetworkBehaviour> {
     cfg: Config,
     peers: PeerSet,
     secret: Secret,
     pending_events: VecDeque<ToSwarm<<Self as NetworkBehaviour>::ToSwarm, THandlerInEvent<Self>>>,
-    /// The de-facto core behaviour, which also includes _some_
-    /// application-specific behaviour.
+    /// The outer struct takes care of connection management while [`Inner`] is
+    /// the actual behaviour that groups all the core behaviours common for
+    /// all p2p network implementations. `B` is the application-specific
+    /// behaviour that utilizes its own protocols fit for a particular type of a
+    /// p2p network, working on the top of the core behaviour protocol stack.
     inner: Inner<B>,
 }
 

@@ -130,20 +130,12 @@ impl ApplicationBehaviour for dummy::Behaviour {
     type Event = ();
     type State = ();
 
-    fn handle_command(
-        &mut self,
-        _: Self::Command,
-        _: &mut Self::State,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async {}
-    }
-
-    fn handle_event(
+    async fn handle_command(&mut self, _: Self::Command, _: &mut Self::State) {}
+    async fn handle_event(
         &mut self,
         _: <Self as NetworkBehaviour>::ToSwarm,
         _: &mut Self::State,
         _: mpsc::Sender<Self::Event>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async {}
+    ) {
     }
 }
