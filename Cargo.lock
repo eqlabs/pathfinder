@@ -7848,6 +7848,7 @@ version = "0.16.2"
 dependencies = [
  "anyhow",
  "async-trait",
+ "fake",
  "futures",
  "ipnet",
  "libp2p",
@@ -7855,7 +7856,9 @@ dependencies = [
  "p2p_stream",
  "pathfinder-common",
  "prost 0.13.3",
+ "rstest",
  "sha3",
+ "test-log",
  "tokio",
  "tokio-stream",
  "tracing",

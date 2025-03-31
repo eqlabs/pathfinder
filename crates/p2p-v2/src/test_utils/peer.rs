@@ -5,26 +5,31 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use libp2p::identity::Keypair;
+use libp2p::swarm::dummy;
 use libp2p::{Multiaddr, PeerId};
 use pathfinder_common::ChainId;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::config::{Config, RateLimit};
+use crate::core::client::Client;
+use crate::core::TestEvent;
 use crate::peers::Peer;
-use crate::{Builder, Config, Event, RateLimit, TestEvent};
+use crate::Builder;
 
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct TestPeer {
+pub struct TestPeer<A> {
     pub keypair: Keypair,
     pub peer_id: PeerId,
-    pub client: crate::Client,
-    pub event_receiver: crate::EventReceiver,
+    pub client: Client<A>,
+    pub event_receiver: mpsc::Receiver<TestEvent>,
     pub main_loop_jh: JoinHandle<()>,
 }
 
-pub struct TestPeerBuilder {
+pub struct TestPeerBuilder<B = dummy::Behaviour> {
     pub keypair: Keypair,
-    p2p_builder: Option<Builder>,
+    p2p_builder: Option<Builder<B>>,
     enable_kademlia: bool,
 }
 
@@ -44,14 +49,11 @@ impl Config {
                 interval: Duration::from_secs(1),
             },
             kad_name: Default::default(),
-            stream_timeout: Duration::from_secs(10),
-            response_timeout: Duration::from_secs(10),
-            max_concurrent_streams: 100,
         }
     }
 }
 
-impl TestPeerBuilder {
+impl<B> TestPeerBuilder<B> {
     pub fn new() -> Self {
         Self {
             keypair: Keypair::generate_ed25519(),
@@ -65,7 +67,7 @@ impl TestPeerBuilder {
         self
     }
 
-    pub fn p2p_builder(mut self, p2p_builder: Builder) -> Self {
+    pub fn p2p_builder(mut self, p2p_builder: Builder<B>) -> Self {
         self.p2p_builder = Some(p2p_builder);
         self
     }
@@ -75,7 +77,7 @@ impl TestPeerBuilder {
         self
     }
 
-    pub fn build(self, cfg: Config) -> TestPeer {
+    pub fn build<A>(self, cfg: Config) -> TestPeer<A> {
         let Self {
             keypair,
             p2p_builder,
@@ -115,20 +117,20 @@ impl TestPeerBuilder {
     }
 }
 
-impl TestPeer {
-    pub fn builder() -> TestPeerBuilder {
-        TestPeerBuilder::new()
+impl<A> TestPeer<A> {
+    pub fn builder<B>() -> TestPeerBuilder<B> {
+        TestPeerBuilder::<B>::new()
     }
 
     /// Create a new peer with a random keypair
     #[must_use]
-    pub fn new(cfg: Config) -> Self {
-        Self::builder().build(cfg)
+    pub fn new<B>(cfg: Config) -> Self {
+        Self::builder::<B>().build(cfg)
     }
 
     #[must_use]
-    pub fn with_keypair(keypair: Keypair, cfg: Config) -> Self {
-        Self::builder().keypair(keypair).build(cfg)
+    pub fn with_keypair<B>(keypair: Keypair, cfg: Config) -> Self {
+        Self::builder::<B>().keypair(keypair).build(cfg)
     }
 
     /// Start listening on a specified address
@@ -162,7 +164,7 @@ impl TestPeer {
     }
 }
 
-impl Default for TestPeer {
+impl<A> Default for TestPeer<A> {
     /// Create a new peer with a random keypair and default test config
     fn default() -> Self {
         Self::new(Config::for_test())

@@ -6,6 +6,8 @@ use tokio::sync::{mpsc, oneshot};
 
 pub mod behaviour;
 pub mod client;
+#[cfg(test)]
+mod tests;
 
 use crate::peers::Peer;
 use crate::EmptyResultSender;

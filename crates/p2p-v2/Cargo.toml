@@ -40,3 +40,8 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 unsigned-varint = { workspace = true, features = ["futures"] }
 zeroize = { workspace = true }
+
+[dev-dependencies]
+fake = { workspace = true }
+rstest = { workspace = true }
+test-log = { workspace = true }

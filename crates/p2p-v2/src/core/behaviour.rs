@@ -38,7 +38,7 @@ use pathfinder_common::ChainId;
 
 mod builder;
 
-use builder::Builder;
+pub use builder::Builder;
 
 use crate::config::Config;
 use crate::peers::{Connectivity, Direction, KeyedNetworkGroup, Peer, PeerSet};
