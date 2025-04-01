@@ -23,7 +23,6 @@ impl Builder {
         }
     }
 
-    #[allow(unused)]
     pub fn header_sync_behaviour(
         mut self,
         behaviour: p2p_stream::Behaviour<codec::Headers>,
@@ -32,7 +31,6 @@ impl Builder {
         self
     }
 
-    #[allow(unused)]
     pub fn class_sync_behaviour(
         mut self,
         behaviour: p2p_stream::Behaviour<codec::Classes>,
@@ -41,7 +39,6 @@ impl Builder {
         self
     }
 
-    #[allow(unused)]
     pub fn state_diff_sync_behaviour(
         mut self,
         behaviour: p2p_stream::Behaviour<codec::StateDiffs>,
@@ -50,7 +47,6 @@ impl Builder {
         self
     }
 
-    #[allow(unused)]
     pub fn transaction_sync_behaviour(
         mut self,
         behaviour: p2p_stream::Behaviour<codec::Transactions>,
@@ -59,7 +55,6 @@ impl Builder {
         self
     }
 
-    #[allow(unused)]
     pub fn event_sync_behaviour(mut self, behaviour: p2p_stream::Behaviour<codec::Events>) -> Self {
         self.event_sync = Some(behaviour);
         self

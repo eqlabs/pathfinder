@@ -16,7 +16,7 @@ pub use client::Client;
 use crate::peers::Peer;
 use crate::EmptyResultSender;
 
-/// Commands that can be sent to the p2p network.
+/// Commands that can be sent to the p2p behaviour.
 #[derive(Debug)]
 pub enum Command<ApplicationCommand> {
     /// Listen for incoming connections on a specific address.
@@ -40,7 +40,7 @@ pub enum Command<ApplicationCommand> {
         peer: PeerId,
         sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
     },
-    /// Notify the p2p network that a peer is not useful.
+    /// Notify the p2p behaviour that a peer is not useful.
     NotUseful {
         peer_id: PeerId,
         sender: oneshot::Sender<()>,

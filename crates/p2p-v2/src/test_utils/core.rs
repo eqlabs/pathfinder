@@ -7,12 +7,12 @@ use crate::core::{Command, TestCommand};
 use crate::peers::Peer;
 
 #[derive(Clone)]
-pub struct Client<A> {
-    sender: mpsc::Sender<Command<A>>,
+pub struct Client<C> {
+    sender: mpsc::Sender<Command<C>>,
 }
 
-impl<A> Client<A> {
-    pub fn new(sender: mpsc::Sender<Command<A>>) -> Self {
+impl<C> Client<C> {
+    pub fn new(sender: mpsc::Sender<Command<C>>) -> Self {
         Self { sender }
     }
 

@@ -9,13 +9,13 @@ use crate::core::Command;
 use crate::test_utils;
 
 #[derive(Clone, Debug)]
-pub struct Client<A> {
-    sender: mpsc::Sender<Command<A>>,
+pub struct Client<C> {
+    sender: mpsc::Sender<Command<C>>,
     peer_id: PeerId,
 }
 
-impl<A> Client<A> {
-    pub(crate) fn new(sender: mpsc::Sender<Command<A>>, peer_id: PeerId) -> Self {
+impl<C> Client<C> {
+    pub(crate) fn new(sender: mpsc::Sender<Command<C>>, peer_id: PeerId) -> Self {
         Self { sender, peer_id }
     }
 
@@ -23,7 +23,7 @@ impl<A> Client<A> {
         &self.peer_id
     }
 
-    pub fn as_pair(&self) -> (PeerId, mpsc::Sender<Command<A>>) {
+    pub fn as_pair(&self) -> (PeerId, mpsc::Sender<Command<C>>) {
         (self.peer_id, self.sender.clone())
     }
 
@@ -94,7 +94,7 @@ impl<A> Client<A> {
     }
 
     #[cfg(test)]
-    pub(crate) fn for_test(&self) -> test_utils::core::Client<A> {
+    pub(crate) fn for_test(&self) -> test_utils::core::Client<C> {
         test_utils::core::Client::new(self.sender.clone())
     }
 }
