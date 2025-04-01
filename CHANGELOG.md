@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- The JSON-RPC 0.8.0 API can now be accessed under `/ws/rpc/v0_8` as well if Websockets are enabled. This is equivalent to the `/rpc/v0_8` path and is provided only as a convenience feature.
+
 ### Fixed
 
 - `starknet_subscribeEvents` subscriptions stop sending notifications.
