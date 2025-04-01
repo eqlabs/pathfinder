@@ -187,7 +187,6 @@ impl RpcServer {
             .with_state(v06_routes.clone())
             .route("/rpc/v0_7", post(rpc_handler))
             .with_state(v07_routes.clone())
-            // TODO Uncomment once RPC 0.8 is ready.
             .route("/rpc/v0_8", post(rpc_handler).get(rpc_handler))
             .with_state(v08_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
@@ -202,6 +201,8 @@ impl RpcServer {
                 .with_state(v06_routes)
                 .route("/ws/rpc/v0_7", get(websocket_handler))
                 .with_state(v07_routes)
+                .route("/ws/rpc/v0_8", post(rpc_handler).get(rpc_handler))
+                .with_state(v08_routes)
                 .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
                 .with_state(pathfinder_routes)
         } else {
@@ -973,6 +974,23 @@ mod tests {
     #[case::v0_8_write("/rpc/v0_8", "v08/starknet_write_api.json", &[], Api::Both)]
     #[case::v0_8_websocket(
         "/rpc/v0_8",
+        "v08/starknet_ws_api.json",
+        // "starknet_subscription*" methods are in fact notifications
+        &[
+            "starknet_subscriptionNewHeads",
+            "starknet_subscriptionPendingTransactions",
+            "starknet_subscriptionTransactionStatus",
+            "starknet_subscriptionEvents",
+            "starknet_subscriptionReorg"
+        ],
+        Api::WebsocketOnly)]
+    
+    #[case::v0_8_api_alternative_path("/ws/rpc/v0_8", "v08/starknet_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_8_executables_alternative_path("/ws/rpc/v0_8", "v08/starknet_executables.json", &[], Api::Both)]
+    #[case::v0_8_trace_alternative_path("/ws/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_8_write_alternative_path("/ws/rpc/v0_8", "v08/starknet_write_api.json", &[], Api::Both)]
+    #[case::v0_8_websocket_alternative_path(
+        "/ws/rpc/v0_8",
         "v08/starknet_ws_api.json",
         // "starknet_subscription*" methods are in fact notifications
         &[
