@@ -11,7 +11,7 @@ The JSON-RPC interface allows you to query Starknet data, send transactions, and
   Accessible at the `/rpc/v0_6` endpoint.
 - **Starknet v0.7.0**  
   Accessible at the `/rpc/v0_7` endpoint.
-- **Starknet v0.8.0-rc3**  
+- **Starknet v0.8.0**  
   Accessible at the `/rpc/v0_8` endpoint.
 - **Pathfinder Extension**  
   Exposed via `/rpc/pathfinder/v0_1`.
