@@ -463,7 +463,7 @@ fn permission_check(base: &std::path::Path) -> Result<(), anyhow::Error> {
 async fn start_p2p(
     chain_id: ChainId,
     storage: Storage,
-    config: config::P2PConfig,
+    config: config::p2p::P2PSyncConfig,
 ) -> anyhow::Result<(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Option<p2p::client::peer_agnostic::Client>,
@@ -493,7 +493,7 @@ async fn start_p2p(
         }
     }
 
-    let keypair = match config.identity_config_file {
+    let keypair = match config.core.identity_config_file {
         Some(path) => {
             let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
             let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
@@ -507,19 +507,19 @@ async fn start_p2p(
 
     let context = P2PContext {
         cfg: p2p::Config {
-            direct_connection_timeout: config.direct_connection_timeout,
+            direct_connection_timeout: config.core.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
-            max_inbound_direct_peers: config.max_inbound_direct_connections,
-            max_inbound_relayed_peers: config.max_inbound_relayed_connections,
-            max_outbound_peers: config.max_outbound_connections,
-            ip_whitelist: config.ip_whitelist,
+            max_inbound_direct_peers: config.core.max_inbound_direct_connections,
+            max_inbound_relayed_peers: config.core.max_inbound_relayed_connections,
+            max_outbound_peers: config.core.max_outbound_connections,
+            ip_whitelist: config.core.ip_whitelist,
             bootstrap_period: Some(Duration::from_secs(2 * 60)),
-            eviction_timeout: config.eviction_timeout,
+            eviction_timeout: config.core.eviction_timeout,
             inbound_connections_rate_limit: p2p::RateLimit {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
-            kad_name: config.kad_name,
+            kad_name: config.core.kad_name,
             stream_timeout: config.stream_timeout,
             response_timeout: config.response_timeout,
             max_concurrent_streams: config.max_concurrent_streams,
@@ -527,9 +527,9 @@ async fn start_p2p(
         chain_id,
         storage,
         keypair,
-        listen_on: config.listen_on,
-        bootstrap_addresses: config.bootstrap_addresses,
-        predefined_peers: config.predefined_peers,
+        listen_on: config.core.listen_on,
+        bootstrap_addresses: config.core.bootstrap_addresses,
+        predefined_peers: config.core.predefined_peers,
     };
 
     let (p2p_client, p2p_handle) = pathfinder_lib::p2p_network::start(context).await?;
@@ -541,7 +541,7 @@ async fn start_p2p(
 async fn start_p2p(
     _: ChainId,
     _: Storage,
-    _: config::P2PConfig,
+    _: config::p2p::P2PSyncConfig,
 ) -> anyhow::Result<(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Option<p2p::client::peer_agnostic::Client>,
