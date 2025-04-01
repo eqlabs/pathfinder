@@ -10,6 +10,10 @@ use tokio::sync::{mpsc, oneshot};
 use crate::core;
 use crate::sync::Command;
 
+pub mod conv;
+pub mod peer_agnostic;
+pub mod types;
+
 #[derive(Clone, Debug)]
 pub struct Client {
     sender: mpsc::Sender<core::Command<Command>>,

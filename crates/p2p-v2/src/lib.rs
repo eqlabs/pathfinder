@@ -13,6 +13,7 @@ pub mod sync;
 
 mod builder;
 mod main_loop;
+mod peer_data;
 mod peers;
 mod secret;
 #[cfg(test)]
@@ -20,6 +21,7 @@ mod test_utils;
 mod transport;
 
 pub use builder::Builder;
+pub use peer_data::PeerData;
 
 pub mod builder_phase {
     pub struct AppBehaviourUnset;
