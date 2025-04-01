@@ -43,6 +43,12 @@ where
     _test_event_sender: mpsc::Sender<TestEvent>,
     _test_event_receiver: Option<mpsc::Receiver<TestEvent>>,
     _pending_test_queries: TestQueries,
+    /// We keep a single command sender instance at all times so that receiver
+    /// can be polled even without any client instance available without
+    /// returning `Poll::Ready(None)`. This is important in cases when the node
+    /// does not initiate any actions via the client and all the client
+    /// instances are dropped.
+    _command_sender: mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
 }
 
 /// Used to notify the caller when a dial succeeds or fails.
@@ -75,9 +81,11 @@ where
     /// * `event_sender` - The sender for events to the outside world.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
-        command_receiver: mpsc::Receiver<Command<<B as ApplicationBehaviour>::Command>>,
         event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
-    ) -> Self {
+    ) -> (
+        Self,
+        mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
+    ) {
         // Test event buffer is not used outside tests, so we can make it as small as
         // possible
         #[cfg(not(test))]
@@ -86,17 +94,23 @@ where
         const TEST_EVENT_BUFFER_SIZE: usize = 1000;
         let (_test_event_sender, rx) = mpsc::channel(TEST_EVENT_BUFFER_SIZE);
 
-        Self {
-            swarm,
-            command_receiver,
-            event_sender,
-            pending_dials: Default::default(),
-            pending_queries: Default::default(),
-            state: Default::default(),
-            _test_event_sender,
-            _test_event_receiver: Some(rx),
-            _pending_test_queries: Default::default(),
-        }
+        let (command_sender, command_receiver) = mpsc::channel(1);
+
+        (
+            Self {
+                swarm,
+                command_receiver,
+                event_sender,
+                pending_dials: Default::default(),
+                pending_queries: Default::default(),
+                state: Default::default(),
+                _test_event_sender,
+                _test_event_receiver: Some(rx),
+                _pending_test_queries: Default::default(),
+                _command_sender: command_sender.clone(),
+            },
+            command_sender,
+        )
     }
 
     /// Runs the main loop.
@@ -123,12 +137,8 @@ where
                 _ = network_status_tick => self.dump_network_status(),
                 _ = peer_status_tick => self.dump_dht_and_connected_peers(),
                 // Handle commands from the outside world
-                command = self.command_receiver.recv() => {
-                    match command {
-                        Some(c) => self.handle_command(c).await,
-                        None => return,
-                    }
-                }
+                command = self.command_receiver.recv() => self.handle_command(
+                    command.expect("At least one sender is retained by the main loop")).await,
                 // Handle events from the inside of the p2p network
                 Some(event) = self.swarm.next() => self.handle_event(event).await,
             }

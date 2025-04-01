@@ -86,9 +86,6 @@ impl<B> Builder<B, AppBehaviourSet> {
 
         let local_peer_id = keypair.public().to_peer_id();
 
-        let (command_sender, command_receiver) = mpsc::channel(1);
-        let client = Client::new(command_sender, local_peer_id);
-
         #[cfg(not(test))]
         assert!(enable_kademlia, "Kademlia must be enabled in production");
 
@@ -113,12 +110,10 @@ impl<B> Builder<B, AppBehaviourSet> {
         );
 
         let (event_sender, event_receiver) = mpsc::channel(1);
+        let (main_loop, command_sender) = MainLoop::new(swarm, event_sender);
+        let client = Client::new(command_sender, local_peer_id);
 
-        (
-            client,
-            event_receiver,
-            MainLoop::new(swarm, command_receiver, event_sender),
-        )
+        (client, event_receiver, main_loop)
     }
 }
 
