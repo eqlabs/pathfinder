@@ -13,7 +13,7 @@ use p2p_stream::OutboundRequestId;
 use tokio::sync::oneshot;
 
 mod behaviour;
-mod client;
+pub mod client;
 pub mod protocol;
 #[cfg(test)]
 mod tests;

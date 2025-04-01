@@ -8074,7 +8074,6 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "mockall",
- "p2p",
  "p2p-v2",
  "p2p_proto",
  "paste",

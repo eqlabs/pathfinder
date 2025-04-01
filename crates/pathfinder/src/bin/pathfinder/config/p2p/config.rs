@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::CommandFactory;
 use ipnet::IpNet;
-use p2p::libp2p::Multiaddr;
+use p2p_v2::libp2p::Multiaddr;
 
 use super::cli::{P2PConsensusCli, P2PConsensusCoreCli, P2PSyncCli, P2PSyncCoreCli};
 use crate::config::Cli;
@@ -47,7 +47,7 @@ macro_rules! impl_from_p2p_cli {
                     use std::str::FromStr;
 
                     use clap::error::ErrorKind;
-                    use p2p::libp2p::multiaddr::Result;
+                    use p2p_v2::libp2p::multiaddr::Result;
 
                     let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
                         multiaddrs

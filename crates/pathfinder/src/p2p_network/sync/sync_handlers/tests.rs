@@ -46,7 +46,7 @@ mod boundary_conditions {
     use rstest::rstest;
 
     use super::I64_MAX;
-    use crate::p2p_network::sync_handlers::{
+    use crate::p2p_network::sync::sync_handlers::{
         get_classes,
         get_events,
         get_headers,
@@ -103,8 +103,6 @@ mod prop {
 
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p::client::types::Receipt;
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -121,6 +119,8 @@ mod prop {
         TransactionsRequest,
         TransactionsResponse,
     };
+    use p2p_v2::sync::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
+    use p2p_v2::sync::client::types::Receipt;
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
     use pathfinder_common::state_update::SystemContractUpdate;
@@ -129,7 +129,7 @@ mod prop {
     use proptest::prelude::*;
     use tokio::runtime::Runtime;
 
-    use crate::p2p_network::sync_handlers;
+    use crate::p2p_network::sync::sync_handlers;
 
     #[macro_export]
     macro_rules! prop_assert_eq_sorted {
@@ -503,7 +503,7 @@ mod prop {
         use pathfinder_storage::fake::{fill, generate, Block, Config};
         use pathfinder_storage::{Storage, StorageBuilder};
 
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::p2p_network::sync::sync_handlers::MAX_COUNT_IN_TESTS;
         use crate::state::block_hash::calculate_receipt_commitment;
 
         pub const MAX_NUM_BLOCKS: u64 = MAX_COUNT_IN_TESTS * 2;
@@ -532,7 +532,7 @@ mod prop {
         use p2p_proto::common::{Direction, Step};
         use pathfinder_storage::fake::Block;
 
-        use crate::p2p_network::sync_handlers::MAX_COUNT_IN_TESTS;
+        use crate::p2p_network::sync::sync_handlers::MAX_COUNT_IN_TESTS;
 
         pub fn get(
             from_db: Vec<Block>,
@@ -594,7 +594,7 @@ mod prop {
         use proptest::prelude::*;
 
         use super::fixtures::MAX_NUM_BLOCKS;
-        use crate::p2p_network::sync_handlers::tests::I64_MAX;
+        use crate::p2p_network::sync::sync_handlers::tests::I64_MAX;
 
         prop_compose! {
             fn inside(range: Range<u64>)(x in range) -> u64 { x }

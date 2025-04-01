@@ -7,6 +7,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ::p2p_v2::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
 use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -26,8 +27,6 @@ use tracing::{info, warn};
 use crate::config::{NetworkConfig, StateTries};
 
 mod config;
-// mod consensus_p2p;
-// mod sync_p2p;
 mod p2p;
 mod update;
 
@@ -470,7 +469,7 @@ fn start_sync(
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
-    p2p_client: Option<::p2p::client::peer_agnostic::Client>,
+    p2p_client: Option<P2PSyncClient>,
     verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     if config.sync_p2p.proxy {
@@ -511,7 +510,7 @@ fn start_sync(
     websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
-    _p2p_client: Option<::p2p::client::peer_agnostic::Client>,
+    _p2p_client: Option<P2PSyncClient>,
     _verify_tree_hashes: bool,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     start_feeder_gateway_sync(
@@ -569,7 +568,7 @@ fn start_p2p_sync(
     storage: Storage,
     pathfinder_context: PathfinderContext,
     ethereum_client: EthereumClient,
-    p2p_client: ::p2p::client::peer_agnostic::Client,
+    p2p_client: P2PSyncClient,
     gateway_public_key: pathfinder_common::PublicKey,
     l1_checkpoint_override: Option<pathfinder_ethereum::EthereumStateUpdate>,
     verify_tree_hashes: bool,

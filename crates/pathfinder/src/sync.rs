@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::Context;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
-use p2p::client::peer_agnostic::traits::{
+use p2p_v2::sync::client::peer_agnostic::traits::{
     BlockClient,
     ClassStream,
     EventStream,
@@ -14,7 +14,7 @@ use p2p::client::peer_agnostic::traits::{
     StreamItem,
     TransactionStream,
 };
-use p2p::PeerData;
+use p2p_v2::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::block_hash;
 use pathfinder_common::prelude::*;
@@ -297,15 +297,16 @@ mod tests {
     use fake::{Fake, Faker};
     use futures::stream;
     use http::header;
-    use p2p::client::types::{
+    use p2p_v2::libp2p::PeerId;
+    use p2p_v2::sync::client::types::{
         ClassDefinition,
         ClassDefinitionsError,
         EventsForBlockByTransaction,
         EventsResponseStreamFailure,
         Receipt as P2PReceipt,
         StateDiffsError,
+        TransactionData,
     };
-    use p2p::libp2p::PeerId;
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
     use pathfinder_common::receipt::Receipt;
@@ -766,8 +767,7 @@ mod tests {
             start: BlockNumber,
             stop: BlockNumber,
             _: impl Stream<Item = anyhow::Result<usize>> + Send + 'static,
-        ) -> impl Stream<Item = StreamItem<(p2p::client::types::TransactionData, BlockNumber)>> + Send
-        {
+        ) -> impl Stream<Item = StreamItem<(TransactionData, BlockNumber)>> + Send {
             let error_trigger = self.error_trigger.clone();
 
             stream::iter(self.blocks(start, stop, false, |mut b| {

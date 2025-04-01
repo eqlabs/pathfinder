@@ -4,8 +4,10 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use futures::{Stream, StreamExt, TryStreamExt};
-use p2p::client::conv::TryFromDto;
-use p2p::client::peer_agnostic::traits::{
+use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
+use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use p2p_v2::sync::client::conv::TryFromDto;
+use p2p_v2::sync::client::peer_agnostic::traits::{
     BlockClient,
     ClassStream,
     EventStream,
@@ -14,10 +16,8 @@ use p2p::client::peer_agnostic::traits::{
     StreamItem,
     TransactionStream,
 };
-use p2p::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
-use p2p::PeerData;
-use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
-use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use p2p_v2::sync::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
+use p2p_v2::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
@@ -990,8 +990,8 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::client::types::TransactionData;
-        use p2p::libp2p::PeerId;
+        use p2p_v2::libp2p::PeerId;
+        use p2p_v2::sync::client::types::TransactionData;
         use pathfinder_common::receipt::Receipt;
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};
@@ -1186,7 +1186,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::stream;
-        use p2p::libp2p::PeerId;
+        use p2p_v2::libp2p::PeerId;
         use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
         use pathfinder_common::transaction::DeployTransactionV0;
         use pathfinder_common::TransactionHash;
@@ -1354,7 +1354,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Dummy, Fake, Faker};
         use futures::{stream, SinkExt};
-        use p2p::libp2p::PeerId;
+        use p2p_v2::libp2p::PeerId;
         use pathfinder_common::event::Event;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::prelude::*;
@@ -1654,7 +1654,7 @@ mod tests {
         use assert_matches::assert_matches;
         use fake::{Fake, Faker};
         use futures::stream;
-        use p2p::libp2p::PeerId;
+        use p2p_v2::libp2p::PeerId;
         use pathfinder_common::event::Event;
         use pathfinder_common::transaction::TransactionVariant;
         use pathfinder_common::{StarknetVersion, TransactionHash};

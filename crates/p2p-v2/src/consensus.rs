@@ -2,6 +2,8 @@
 //! network.
 mod behaviour;
 
+pub use behaviour::Behaviour;
+
 /// Commands for the consensus behaviour.
 pub enum Command {}
 
@@ -10,3 +12,5 @@ pub enum Event {}
 
 /// State of the consensus behaviour.
 pub struct State {}
+
+pub struct Config {}
