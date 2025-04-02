@@ -41,7 +41,6 @@ pub fn new_sync(
         .build()
 }
 
-// TODO
 pub fn new_consensus(
     keypair: Keypair,
     core_config: core::Config,
