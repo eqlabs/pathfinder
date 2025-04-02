@@ -11,8 +11,8 @@ The WebSocket interface serves the same API versions and extension endpoints as 
   Accessible at `/ws/rpc/v0_6`.
 - **Starknet v0.7.0**  
   Accessible at `/ws/rpc/v0_7`.
-- **Starknet v0.8.0-rc1**  
-  Accessible at `/rpc/v0_8`.
+- **Starknet v0.8.0**  
+  Accessible at `/rpc/v0_8` and `/ws/rpc/v0_8`.
 - **Pathfinder Extension**  
   Exposed via `/ws/rpc/pathfinder/v0_1`
 
