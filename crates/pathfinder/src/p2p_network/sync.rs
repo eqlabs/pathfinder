@@ -1,9 +1,9 @@
 use anyhow::Context;
-use p2p_v2::libp2p::identity::Keypair;
-use p2p_v2::libp2p::multiaddr::{Multiaddr, Protocol};
-use p2p_v2::sync::client::peer_agnostic;
-use p2p_v2::sync::Event;
-use p2p_v2::{core, sync};
+use p2p::libp2p::identity::Keypair;
+use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
+use p2p::sync::client::peer_agnostic;
+use p2p::sync::Event;
+use p2p::{core, sync};
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use tracing::Instrument;
@@ -46,7 +46,7 @@ pub async fn start(context: P2PContext) -> anyhow::Result<P2PNetworkHandle> {
     tracing::info!(%peer_id, "🖧 Starting P2P");
 
     let (core_client, mut p2p_events, p2p_main_loop) =
-        p2p_v2::new_sync(keypair, core_config, sync_config, chain_id);
+        p2p::new_sync(keypair, core_config, sync_config, chain_id);
 
     let mut main_loop_handle = {
         let span = tracing::info_span!("behaviour");

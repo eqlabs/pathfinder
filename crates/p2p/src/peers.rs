@@ -19,8 +19,6 @@ pub struct Peer {
     pub min_ping: Option<Duration>,
     pub evicted: bool,
     pub useful: bool,
-    // TODO are we still able to maintain info about peers' sync heads?
-    // sync_status: Option<p2p_proto_v0::sync::Status>,
 }
 
 impl Peer {

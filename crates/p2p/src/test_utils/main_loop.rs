@@ -1,19 +1,22 @@
 use std::collections::HashSet;
 
 use libp2p::kad::{QueryId, QueryResult};
-use libp2p::swarm::SwarmEvent;
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use tokio::sync::mpsc;
 
-use crate::{behaviour, Event, TestCommand, TestEvent};
+use crate::core::{Behaviour, Event, TestCommand, TestEvent};
 
-pub async fn handle_event(event_sender: &mpsc::Sender<Event>, event: SwarmEvent<behaviour::Event>) {
+pub async fn handle_event<B: NetworkBehaviour>(
+    event_sender: &mpsc::Sender<TestEvent>,
+    event: SwarmEvent<Event<B>>,
+) {
     if let SwarmEvent::NewListenAddr { address, .. } = event {
         send_event(event_sender, TestEvent::NewListenAddress(address)).await;
     }
 }
 
-pub async fn handle_command(
-    behavior: &mut behaviour::Behaviour,
+pub async fn handle_command<B: NetworkBehaviour>(
+    behavior: &mut Behaviour<B>,
     command: TestCommand,
     _pending_test_queries: &mut PendingQueries,
 ) {
@@ -33,6 +36,10 @@ pub async fn handle_command(
                     .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
                     .collect::<HashSet<_>>();
                 sender.send(peers).expect("Receiver not to be dropped");
+            } else {
+                tracing::warn!(
+                    "Cannot handle `TestCommand::GetPeersFromDHT` because Kademlia is disabled"
+                );
             }
         }
         TestCommand::GetConnectedPeers(sender) => {
@@ -51,16 +58,16 @@ pub async fn handle_command(
     }
 }
 
-pub async fn send_event(event_sender: &mpsc::Sender<Event>, event: TestEvent) {
+pub async fn send_event(event_sender: &mpsc::Sender<TestEvent>, event: TestEvent) {
     event_sender
-        .send(Event::Test(event))
+        .send(event)
         .await
         .expect("Event receiver not to be dropped");
 }
 
 pub async fn query_completed(
     _pending_test_queries: &mut PendingQueries,
-    _event_sender: &mpsc::Sender<Event>,
+    _event_sender: &mpsc::Sender<TestEvent>,
     _id: QueryId,
     _result: QueryResult,
 ) {

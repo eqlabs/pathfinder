@@ -1,5 +1,6 @@
 use anyhow::Context;
 use futures::SinkExt;
+use p2p::sync::client::conv::ToDto;
 use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
 use p2p_proto::common::{
     Address,
@@ -20,7 +21,6 @@ use p2p_proto::state::{
     StateDiffsResponse,
 };
 use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
-use p2p_v2::sync::client::conv::ToDto;
 use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
 use tokio::sync::mpsc;
