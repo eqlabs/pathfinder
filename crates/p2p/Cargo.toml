@@ -11,7 +11,6 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
-clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 fake = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
@@ -21,6 +20,7 @@ libp2p = { workspace = true, features = [
     "dcutr",
     "dns",
     "identify",
+    "gossipsub",
     "kad",
     "macros",
     "noise",
@@ -34,7 +34,7 @@ libp2p = { workspace = true, features = [
 ] }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
-pathfinder-common = { path = "../common" }
+pathfinder-common = { version = "0.16.2", path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-tagged = { path = "../tagged" }
 pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
@@ -43,7 +43,6 @@ prost = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 sha3 = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = { workspace = true }
@@ -51,17 +50,10 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 unsigned-varint = { workspace = true, features = ["futures"] }
 util = { path = "../util" }
-void = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
-hex = { workspace = true }
-pathfinder-tagged = { path = "../tagged" }
-pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }
+fake = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
-rand = { workspace = true }
 rstest = { workspace = true }
 test-log = { workspace = true }
-tokio = { workspace = true, features = ["test-util"] }
-tracing-subscriber = { workspace = true, features = ["env-filter"] }

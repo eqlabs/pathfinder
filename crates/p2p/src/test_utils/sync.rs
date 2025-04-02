@@ -7,7 +7,7 @@ use futures::{AsyncRead, AsyncWrite};
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use p2p_stream::Codec;
 
-use crate::sync::codec::{ProdCodec, SyncCodec};
+use crate::sync::protocol::codec::{ProdCodec, SyncCodec};
 
 pub type TypeErasedReadFun<T> =
     Box<dyn FnMut(&mut TypeErasedAsyncRead<'_>) -> BoxFuture<'static, std::io::Result<T>> + Send>;

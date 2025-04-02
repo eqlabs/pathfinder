@@ -1,4 +1,4 @@
-use p2p_v2::sync::client::peer_agnostic::Client;
+use p2p::sync::client::peer_agnostic::Client;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
 use tokio::task::JoinHandle;
@@ -33,7 +33,7 @@ async fn start_inner(
     use pathfinder_lib::p2p_network::{identity, sync};
 
     let context = sync::P2PContext {
-        core_config: p2p_v2::core::Config {
+        core_config: p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
             max_inbound_direct_peers: config.core.max_inbound_direct_connections,
@@ -42,13 +42,13 @@ async fn start_inner(
             ip_whitelist: config.core.ip_whitelist,
             bootstrap_period: Some(Duration::from_secs(2 * 60)),
             eviction_timeout: config.core.eviction_timeout,
-            inbound_connections_rate_limit: p2p_v2::core::config::RateLimit {
+            inbound_connections_rate_limit: p2p::core::config::RateLimit {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
             kad_name: config.core.kad_name,
         },
-        sync_config: p2p_v2::sync::Config {
+        sync_config: p2p::sync::Config {
             stream_timeout: config.stream_timeout,
             response_timeout: config.response_timeout,
             max_concurrent_streams: config.max_concurrent_streams,
