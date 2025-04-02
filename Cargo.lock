@@ -6777,6 +6777,7 @@ dependencies = [
  "futures",
  "libp2p-core",
  "libp2p-dcutr",
+ "libp2p-gossipsub",
  "libp2p-identify",
  "libp2p-identity",
  "libp2p-kad",
@@ -7838,6 +7839,31 @@ dependencies = [
  "unsigned-varint 0.8.0",
  "util",
  "void",
+ "zeroize",
+]
+
+[[package]]
+name = "p2p-v2"
+version = "0.16.2"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "fake",
+ "futures",
+ "ipnet",
+ "libp2p",
+ "p2p_proto",
+ "p2p_stream",
+ "pathfinder-common",
+ "prost 0.13.3",
+ "rstest",
+ "sha3",
+ "test-log",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+ "unsigned-varint 0.8.0",
  "zeroize",
 ]
 
