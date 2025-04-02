@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use p2p::libp2p::PeerId;
-use p2p::PeerData;
+use p2p_v2::libp2p::PeerId;
+use p2p_v2::PeerData;
 use pathfinder_common::{BlockNumber, ClassHash, SignedBlockHeader};
 
 #[derive(Debug, thiserror::Error, Clone)]

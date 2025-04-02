@@ -1,6 +1,8 @@
 use std::future::Future;
 
+use libp2p::identity::Keypair;
 use libp2p::swarm::NetworkBehaviour;
+use pathfinder_common::ChainId;
 use tokio::sync::{mpsc, oneshot};
 
 /// Application-specific p2p network behaviour. This one handles consensus.
@@ -13,6 +15,7 @@ pub mod sync;
 
 mod builder;
 mod main_loop;
+mod peer_data;
 mod peers;
 mod secret;
 #[cfg(test)]
@@ -20,6 +23,40 @@ mod test_utils;
 mod transport;
 
 pub use builder::Builder;
+pub use libp2p;
+pub use peer_data::PeerData;
+
+pub fn new_sync(
+    keypair: Keypair,
+    core_config: core::Config,
+    sync_config: sync::Config,
+    chain_id: ChainId,
+) -> (
+    core::Client<sync::Command>,
+    mpsc::Receiver<sync::Event>,
+    main_loop::MainLoop<sync::Behaviour>,
+) {
+    Builder::new(keypair, core_config, chain_id)
+        .app_behaviour(sync::Behaviour::new(sync_config))
+        .build()
+}
+
+pub fn new_consensus(
+    keypair: Keypair,
+    core_config: core::Config,
+    _consensus_config: consensus::Config,
+    chain_id: ChainId,
+) -> (
+    core::Client<sync::Command>,
+    mpsc::Receiver<sync::Event>,
+    main_loop::MainLoop<sync::Behaviour>,
+) {
+    // TODO remove allow when behaviour is built properly
+    #[allow(unreachable_code)]
+    Builder::new(keypair, core_config, chain_id)
+        .app_behaviour(todo!())
+        .build()
+}
 
 pub mod builder_phase {
     pub struct AppBehaviourUnset;

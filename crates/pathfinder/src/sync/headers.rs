@@ -1,9 +1,9 @@
 #![allow(dead_code, unused_variables)]
 use anyhow::Context;
 use futures::StreamExt;
-use p2p::libp2p::PeerId;
-use p2p::PeerData;
 use p2p_proto::header;
+use p2p_v2::libp2p::PeerId;
+use p2p_v2::PeerData;
 use pathfinder_common::prelude::*;
 use pathfinder_storage::Storage;
 
