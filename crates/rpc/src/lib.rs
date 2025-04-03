@@ -18,7 +18,6 @@ pub mod v08;
 
 use std::net::SocketAddr;
 use std::result::Result;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 use anyhow::Context;
 use axum::error_handling::HandleErrorLayer;
@@ -109,7 +108,7 @@ impl RpcServer {
             Err(e) => {
                 return Err(e).context(format!(
                     "RPC address {} is already in use.
-    
+
             Hint: This usually means you are already running another instance of pathfinder.
             Hint: If this happens when upgrading, make sure to shut down the first one first.
             Hint: If you are looking to run two instances of pathfinder, you must configure them \
@@ -243,13 +242,6 @@ impl Default for SyncState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize)]
 pub(crate) struct SubscriptionId(pub u32);
-
-impl SubscriptionId {
-    pub fn next() -> Self {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        SubscriptionId(COUNTER.fetch_add(1, Ordering::Relaxed))
-    }
-}
 
 impl crate::dto::SerializeForVersion for SubscriptionId {
     fn serialize(
@@ -988,7 +980,7 @@ mod tests {
             "starknet_subscriptionReorg"
         ],
         Api::WebsocketOnly)]
-    
+
     #[case::v0_8_api_alternative_path("/ws/rpc/v0_8", "v08/starknet_api_openrpc.json", &[], Api::Both)]
     #[case::v0_8_executables_alternative_path("/ws/rpc/v0_8", "v08/starknet_executables.json", &[], Api::Both)]
     #[case::v0_8_trace_alternative_path("/ws/rpc/v0_8", "v08/starknet_trace_api_openrpc.json", &[], Api::Both)]
