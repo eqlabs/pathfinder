@@ -1,3 +1,4 @@
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message, WebSocket};
@@ -27,9 +28,43 @@ pub(super) struct InvokeParams {
     router: RpcRouter,
     input: serde_json::Value,
     subscription_id: SubscriptionId,
-    subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
+    subscriptions: Arc<Subscriptions>,
     ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
     lock: Arc<RwLock<()>>,
+}
+
+#[derive(Default, Debug)]
+pub struct Subscriptions {
+    subscriptions: DashMap<SubscriptionId, tokio::task::JoinHandle<()>>,
+    next_id: AtomicU32,
+}
+
+impl Subscriptions {
+    pub fn remove(
+        &self,
+        subscription_id: &SubscriptionId,
+    ) -> Option<(SubscriptionId, tokio::task::JoinHandle<()>)> {
+        self.subscriptions.remove(subscription_id)
+    }
+
+    pub fn contains_key(&self, subscription_id: &SubscriptionId) -> bool {
+        self.subscriptions.contains_key(subscription_id)
+    }
+
+    pub fn insert(
+        &self,
+        subscription_id: SubscriptionId,
+        handle: tokio::task::JoinHandle<()>,
+    ) -> Option<tokio::task::JoinHandle<()>> {
+        self.subscriptions.insert(subscription_id, handle)
+    }
+
+    pub fn next_id(&self) -> SubscriptionId {
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        SubscriptionId(id)
+    }
 }
 
 /// This trait is the main entry point for subscription endpoint
@@ -155,7 +190,7 @@ where
 
         let tx = SubscriptionSender {
             subscription_id,
-            subscriptions: subscriptions.clone(),
+            subscriptions: Arc::clone(&subscriptions),
             tx: ws_tx,
             version: router.version,
             _phantom: Default::default(),
@@ -309,7 +344,7 @@ where
 /// subscription task corresponding to that handle returns.
 struct SubscriptionsGuard {
     subscription_id: SubscriptionId,
-    subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
+    subscriptions: Arc<Subscriptions>,
 }
 
 impl Drop for SubscriptionsGuard {
@@ -374,8 +409,7 @@ pub fn handle_json_rpc_socket(
     ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
     mut ws_rx: mpsc::Receiver<Result<Message, axum::Error>>,
 ) {
-    let subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>> =
-        Default::default();
+    let subscriptions = Arc::new(Subscriptions::default());
     // Read and handle messages from the websocket.
     util::task::spawn(async move {
         loop {
@@ -439,7 +473,7 @@ pub fn handle_json_rpc_socket(
                 match handle_request(
                     &state,
                     raw_value,
-                    subscriptions.clone(),
+                    Arc::clone(&subscriptions),
                     ws_tx.clone(),
                     lock.clone(),
                 )
@@ -557,7 +591,7 @@ pub fn handle_json_rpc_socket(
 async fn handle_request(
     state: &RpcRouter,
     raw_request: &RawValue,
-    subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
+    subscriptions: Arc<Subscriptions>,
     ws_tx: mpsc::Sender<Result<Message, RpcResponse>>,
     lock: Arc<RwLock<()>>,
 ) -> Result<Option<RpcResponse>, RpcResponse> {
@@ -621,14 +655,14 @@ async fn handle_request(
 
     // Start the subscription.
     let router = state.clone();
-    let subscription_id = SubscriptionId::next();
+    let subscription_id = subscriptions.next_id();
     let ws_tx = ws_tx.clone();
     match endpoint
         .invoke(InvokeParams {
             router,
             input: params,
             subscription_id,
-            subscriptions: subscriptions.clone(),
+            subscriptions: Arc::clone(&subscriptions),
             ws_tx: ws_tx.clone(),
             lock,
         })
@@ -663,7 +697,7 @@ struct StarknetUnsubscribeParams {
 #[derive(Debug)]
 pub struct SubscriptionSender<T> {
     pub subscription_id: SubscriptionId,
-    pub subscriptions: Arc<DashMap<SubscriptionId, tokio::task::JoinHandle<()>>>,
+    pub subscriptions: Arc<Subscriptions>,
     pub tx: mpsc::Sender<Result<Message, RpcResponse>>,
     pub version: RpcVersion,
     pub _phantom: std::marker::PhantomData<T>,
