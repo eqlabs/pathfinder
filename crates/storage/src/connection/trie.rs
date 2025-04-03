@@ -548,7 +548,7 @@ impl Transaction<'_> {
                 }
                 // Leaves are not stored as separate nodes but are instead serialized in-line in
                 // their parents.
-                Node::LeafEdge { .. } | Node::LeafBinary { .. } => {}
+                Node::LeafEdge { .. } | Node::LeafBinary => {}
             }
         }
 

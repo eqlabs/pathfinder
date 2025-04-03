@@ -33,7 +33,7 @@ impl RpcError {
         match self {
             RpcError::ParseError(..) => -32700,
             RpcError::InvalidRequest(..) => -32600,
-            RpcError::MethodNotFound { .. } => -32601,
+            RpcError::MethodNotFound => -32601,
             RpcError::InvalidParams(..) => -32602,
             RpcError::InternalError(_) => -32603,
             RpcError::ApplicationError(err) => err.code(version),
@@ -45,7 +45,7 @@ impl RpcError {
         match self {
             RpcError::ParseError(..) => "Parse error".into(),
             RpcError::InvalidRequest(..) => "Invalid request".into(),
-            RpcError::MethodNotFound { .. } => "Method not found".into(),
+            RpcError::MethodNotFound => "Method not found".into(),
             RpcError::InvalidParams(..) => "Invalid params".into(),
             RpcError::InternalError(_) => "Internal error".into(),
             RpcError::ApplicationError(e) => e.message(version).into(),
