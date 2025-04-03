@@ -16,6 +16,7 @@ use crate::core::Config;
 use crate::peers::PeerSet;
 use crate::secret::Secret;
 
+/// Builder for the core p2p network.
 pub struct Builder<B, Phase = AppBehaviourUnset> {
     keypair: Keypair,
     chain_id: ChainId,
