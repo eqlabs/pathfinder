@@ -265,9 +265,7 @@ impl crate::dto::DeserializeForVersion for SubscriptionId {
         let id: String = value.deserialize()?;
         let id: u32 = id.parse().map_err(|_| {
             use serde::de::Error;
-            serde_json::Error::custom(format!(
-                "Failed to parse subscription id: {id:?}"
-            ))
+            serde_json::Error::custom(format!("Failed to parse subscription id: {id:?}"))
         })?;
         Ok(Self(id))
     }
