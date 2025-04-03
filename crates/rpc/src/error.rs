@@ -147,7 +147,7 @@ impl ApplicationError {
             ApplicationError::TooManyKeysInFilter { .. } => 34,
             ApplicationError::ContractError { .. } => 40,
             ApplicationError::TransactionExecutionError { .. } => 41,
-            ApplicationError::StorageProofNotSupported { .. } => 42,
+            ApplicationError::StorageProofNotSupported => 42,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
             ApplicationError::InvalidTransactionNonce => 52,
