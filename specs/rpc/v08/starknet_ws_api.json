@@ -303,7 +303,7 @@
         "name": "subscription id",
         "description": "An identifier for this subscription stream used to associate events with this subscription.",
         "schema": {
-          "type": "integer"
+          "type": "string"
         }
       },
       "SUBSCRIPTION_BLOCK_ID": {
