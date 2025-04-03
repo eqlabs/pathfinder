@@ -55,16 +55,18 @@ pub async fn trace_transaction(
         util::task::spawn_blocking(move |_| -> Result<LocalExecution, TraceTransactionError> {
             let _g = span.enter();
 
-            let mut db = context
+            let mut db_conn = context
                 .execution_storage
                 .connection()
                 .context("Creating database connection")?;
-            let db = db.transaction().context("Creating database transaction")?;
+            let db_tx = db_conn
+                .transaction()
+                .context("Creating database transaction")?;
 
             // Find the transaction's block.
             let pending = context
                 .pending_data
-                .get(&db)
+                .get(&db_tx)
                 .context("Querying pending data")?;
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
@@ -88,11 +90,11 @@ pub async fn trace_transaction(
                     pathfinder_executor::TraceCache::default(),
                 )
             } else {
-                let block_hash = db
+                let block_hash = db_tx
                     .transaction_block_hash(input.transaction_hash)?
                     .ok_or(TraceTransactionError::TxnHashNotFound)?;
 
-                let header = db
+                let header = db_tx
                     .block_header(block_hash.into())
                     .context("Fetching block header")?
                     .context("Block header is missing")?;
@@ -100,7 +102,7 @@ pub async fn trace_transaction(
                 if header.starknet_version
                     < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
                 {
-                    let transaction = db
+                    let transaction = db_tx
                         .transaction(input.transaction_hash)
                         .context("Fetching transaction data")?
                         .context("Transaction data missing")?;
@@ -108,7 +110,7 @@ pub async fn trace_transaction(
                     return Ok(LocalExecution::Unsupported(transaction));
                 }
 
-                let transactions = db
+                let transactions = db_tx
                     .transactions_for_block(header.number.into())
                     .context("Fetching block transactions")?
                     .context("Block transactions missing")?
@@ -120,7 +122,6 @@ pub async fn trace_transaction(
 
             let hash = header.hash;
             let state = pathfinder_executor::ExecutionState::trace(
-                &db,
                 context.chain_id,
                 header,
                 None,
@@ -132,10 +133,19 @@ pub async fn trace_transaction(
 
             let executor_transactions = transactions
                 .iter()
-                .map(|transaction| compose_executor_transaction(transaction, &db))
+                .map(|transaction| compose_executor_transaction(transaction, &db_tx))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
+            drop(db_tx);
+            drop(db_conn);
+
+            match pathfinder_executor::trace(
+                context.execution_storage.clone(),
+                state,
+                cache,
+                hash,
+                executor_transactions,
+            ) {
                 Ok(txs) => {
                     let trace = txs
                         .into_iter()
