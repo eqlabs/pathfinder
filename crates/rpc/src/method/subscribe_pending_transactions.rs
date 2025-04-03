@@ -172,7 +172,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => {
                 panic!("Expected text message");
@@ -261,7 +261,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => {
                 panic!("Expected text message");
@@ -314,7 +314,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => {
                 panic!("Expected text message");
@@ -363,7 +363,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => {
                 panic!("Expected text message");
@@ -429,7 +429,7 @@ mod tests {
             "method":"starknet_subscriptionPendingTransactions",
             "params": {
                 "result": hash,
-                "subscription_id": subscription_id
+                "subscription_id": subscription_id.to_string()
             }
         })
     }
@@ -452,7 +452,7 @@ mod tests {
                     "type": "DECLARE",
                     "version": "0x0"
                 },
-                "subscription_id": subscription_id
+                "subscription_id": subscription_id.to_string()
             }
         })
     }
