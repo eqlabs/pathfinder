@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use ::p2p_v2::sync::client::peer_agnostic::Client as P2PSyncClient;
+use ::p2p::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
 use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;

@@ -2,87 +2,128 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
 
-use futures::channel::mpsc::Receiver as ResponseReceiver;
 use futures::StreamExt;
 use libp2p::kad::{self, BootstrapError, BootstrapOk, QueryId, QueryResult};
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::SwarmEvent;
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
 use libp2p::{identify, PeerId};
-use p2p_proto::class::ClassesResponse;
-use p2p_proto::event::EventsResponse;
-use p2p_proto::header::BlockHeadersResponse;
-use p2p_proto::state::StateDiffsResponse;
-use p2p_proto::transaction::TransactionsResponse;
-use p2p_stream::{self, OutboundRequestId};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 
+use crate::core::{Behaviour, Command, Event, TestCommand, TestEvent};
 #[cfg(test)]
 use crate::test_utils;
-use crate::{behaviour, Command, EmptyResultSender, Event, TestCommand, TestEvent};
+use crate::{ApplicationBehaviour, EmptyResultSender};
 
-pub struct MainLoop {
-    swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
-    command_receiver: mpsc::Receiver<Command>,
-    event_sender: mpsc::Sender<Event>,
-    /// Match dial commands with their senders so that we can notify the caller
-    /// when the dial succeeds or fails.
-    pending_dials: HashMap<PeerId, EmptyResultSender>,
-    pending_sync_requests: PendingRequests,
+/// This is our main loop for P2P networking.
+/// It handles the incoming events from the swarm and the commands from the
+/// outside world (most likely a p2p client).
+///
+/// It's generic over the application specific P2P `ApplicationBehaviour`, which
+/// defines the commands and events that the application behaviour can handle.
+pub struct MainLoop<B>
+where
+    B: ApplicationBehaviour,
+{
+    /// Handles all internal networking for the p2p network.
+    swarm: libp2p::swarm::Swarm<Behaviour<B>>,
+    /// Receives commands from the outside world.
+    command_receiver: mpsc::Receiver<Command<<B as ApplicationBehaviour>::Command>>,
+    /// Sends events to the outside world.
+    event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
+    /// Keeps track of pending dials and allows us to notify the caller when a
+    /// dial succeeds or fails.
+    pending_dials: PendingDials,
+    /// Keeps track of pending queries and allows us to send the response
+    /// payloads back to the caller.
     pending_queries: PendingQueries,
+    /// State of the application behaviour.
+    state: State<B>,
+    _test_event_sender: mpsc::Sender<TestEvent>,
+    _test_event_receiver: Option<mpsc::Receiver<TestEvent>>,
     _pending_test_queries: TestQueries,
+    /// We keep a single command sender instance at all times so that receiver
+    /// can be polled even without any client instance available without
+    /// returning `Poll::Ready(None)`. This is important in cases when the node
+    /// does not initiate any actions via the client and all the client
+    /// instances are dropped.
+    _command_sender: mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
 }
 
-#[derive(Debug, Default)]
-struct PendingRequests {
-    pub headers: HashMap<
-        OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>>,
-    >,
-    pub classes: HashMap<
-        OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
-    >,
-    pub state_diffs: HashMap<
-        OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
-    >,
-    pub transactions: HashMap<
-        OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>>,
-    >,
-    pub events: HashMap<
-        OutboundRequestId,
-        oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
-    >,
-}
+/// Used to notify the caller when a dial succeeds or fails.
+type PendingDials = HashMap<PeerId, EmptyResultSender>;
 
+/// Used to keep track of the different types of pending queries and allows us
+/// to send the response payloads back to the caller.
 #[derive(Debug, Default)]
 struct PendingQueries {
-    pub get_providers: HashMap<QueryId, mpsc::Sender<anyhow::Result<HashSet<PeerId>>>>,
+    /// Keeps track of pending GetClosestPeers queries
     pub get_closest_peers: HashMap<QueryId, mpsc::Sender<anyhow::Result<Vec<PeerId>>>>,
 }
 
-impl MainLoop {
-    pub(crate) fn new(
-        swarm: libp2p::swarm::Swarm<behaviour::Behaviour>,
-        command_receiver: mpsc::Receiver<Command>,
-        event_sender: mpsc::Sender<Event>,
-    ) -> Self {
-        Self {
-            swarm,
-            command_receiver,
-            event_sender,
-            pending_dials: Default::default(),
-            pending_sync_requests: Default::default(),
-            pending_queries: Default::default(),
-            _pending_test_queries: Default::default(),
-        }
+/// State of the application behaviour.
+type State<B> = <B as ApplicationBehaviour>::State;
+
+impl<B> MainLoop<B>
+where
+    B: ApplicationBehaviour,
+    <B as NetworkBehaviour>::ToSwarm: std::fmt::Debug,
+    <B as ApplicationBehaviour>::State: Default,
+{
+    /// Create a new main loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `swarm` - The libp2p swarm, including the network behaviour for this
+    ///   loop.
+    /// * `command_receiver` - The receiver for commands from the outside world.
+    /// * `event_sender` - The sender for events to the outside world.
+    pub fn new(
+        swarm: libp2p::swarm::Swarm<Behaviour<B>>,
+        event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
+    ) -> (
+        Self,
+        mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
+    ) {
+        // Test event buffer is not used outside tests, so we can make it as small as
+        // possible
+        #[cfg(not(test))]
+        const TEST_EVENT_BUFFER_SIZE: usize = 1;
+        #[cfg(test)]
+        const TEST_EVENT_BUFFER_SIZE: usize = 1000;
+        let (_test_event_sender, rx) = mpsc::channel(TEST_EVENT_BUFFER_SIZE);
+
+        let (command_sender, command_receiver) = mpsc::channel(1);
+
+        (
+            Self {
+                swarm,
+                command_receiver,
+                event_sender,
+                pending_dials: Default::default(),
+                pending_queries: Default::default(),
+                state: Default::default(),
+                _test_event_sender,
+                _test_event_receiver: Some(rx),
+                _pending_test_queries: Default::default(),
+                _command_sender: command_sender.clone(),
+            },
+            command_sender,
+        )
     }
 
+    /// Runs the main loop.
+    ///
+    /// This function handles and forwards the incoming events from the swarm,
+    /// as well as handling the commands from the outside world that are
+    /// sent to the p2p network.
+    ///
+    /// Note: This function will block until the main loop is stopped.
     pub async fn run(mut self) {
+        // Check the network status every 5 seconds
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
+        // Check the peer status every 30 seconds
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
 
         loop {
@@ -95,24 +136,30 @@ impl MainLoop {
             tokio::select! {
                 _ = network_status_tick => self.dump_network_status(),
                 _ = peer_status_tick => self.dump_dht_and_connected_peers(),
-                command = self.command_receiver.recv() => {
-                    match command {
-                        Some(c) => self.handle_command(c).await,
-                        None => return,
-                    }
-                }
+                // Handle commands from the outside world
+                command = self.command_receiver.recv() => self.handle_command(
+                    command.expect("At least one sender is retained by the main loop")).await,
+                // Handle events from the inside of the p2p network
                 Some(event) = self.swarm.next() => self.handle_event(event).await,
             }
         }
     }
 
-    async fn handle_event(&mut self, event: SwarmEvent<behaviour::Event>) {
+    /// Handles an incoming event from the p2p network.
+    ///
+    /// Connection management, kademlia, and other network-related events are
+    /// handled here. Application-specific events are forwarded to the
+    /// application behaviour implementation.
+    async fn handle_event(&mut self, event: SwarmEvent<Event<B>>) {
         tracing::trace!(?event, "Handling swarm event");
 
         match event {
             // ===========================
             // Connection management
             // ===========================
+            //
+            // A connection is established.
+            // If the connection is outbound, notify the caller that the dial succeeded.
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
@@ -121,13 +168,12 @@ impl MainLoop {
                         let _ = sender.send(Ok(()));
                         tracing::debug!(%peer_id, "Established outbound connection");
                     }
-                    // FIXME else: trigger an error?
                 } else {
                     tracing::debug!(%peer_id, "Established inbound connection");
                 }
 
                 send_test_event(
-                    &self.event_sender,
+                    &self._test_event_sender,
                     TestEvent::ConnectionEstablished {
                         outbound: endpoint.is_dialer(),
                         remote: peer_id,
@@ -135,19 +181,21 @@ impl MainLoop {
                 )
                 .await;
             }
+            // An outgoing connection fails to be established.
+            // Notifies the caller that the dial failed.
             SwarmEvent::OutgoingConnectionError {
                 connection_id,
                 peer_id,
                 error,
             } => {
                 tracing::debug!(%connection_id, ?peer_id, %error, "Failed to establish outgoing connection");
-
                 if let Some(peer_id) = peer_id {
                     if let Some(sender) = self.pending_dials.remove(&peer_id) {
                         let _ = sender.send(Err(error.into()));
                     }
                 }
             }
+            // An incoming connection fails to be established.
             SwarmEvent::IncomingConnectionError {
                 connection_id,
                 local_addr,
@@ -156,6 +204,7 @@ impl MainLoop {
             } => {
                 tracing::debug!(%connection_id, %local_addr, %send_back_addr, %error, "Failed to establish incoming connection");
             }
+            // A connection is closed.
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 num_established,
@@ -165,14 +214,15 @@ impl MainLoop {
                 tracing::debug!(%peer_id, "Connection closed");
                 if num_established == 0 {
                     send_test_event(
-                        &self.event_sender,
+                        &self._test_event_sender,
                         TestEvent::ConnectionClosed { remote: peer_id },
                     )
                     .await;
                 }
             }
+            // A peer is being dialed.
             SwarmEvent::Dialing {
-                // The only API available to the caller [`crate::client::peer_aware::Client`] only
+                // The only API available to the caller [`crate::core::Client`] only
                 // allows for dialing **known** peers, so we can discard the `None`
                 // case here.
                 peer_id: Some(peer_id),
@@ -183,7 +233,12 @@ impl MainLoop {
             // ===========================
             // Identify
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Identify(e)) => {
+            //
+            // A peer is identified.
+            // The peer's observed address is added to our swarm's external addresses.
+            // If the peer supports Kademlia (our DHT protocol), the peer's listening addresses
+            // are added to the DHT.
+            SwarmEvent::Behaviour(Event::Identify(e)) => {
                 if let identify::Event::Received {
                     peer_id,
                     info:
@@ -237,13 +292,24 @@ impl MainLoop {
             // ===========================
             // Pings
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Ping(event)) => {
+            //
+            // A ping is received.
+            // Forwards the ping to the network behaviour implementation.
+            SwarmEvent::Behaviour(Event::Ping(event)) => {
                 self.swarm.behaviour_mut().pinged(event);
             }
             // ===========================
             // Discovery
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Kademlia(e)) => match e {
+            //
+            // A Kademlia event is received.
+            // These events represent the progress of Kademlia DHT queries:
+            // - Bootstrap queries: Used when joining the network. -> We just log the success or
+            //   failure of the bootstrap.
+            // - GetClosestPeers queries: Used to find the closest peers to a given peer. -> We send
+            //   the response (the list of closest peers) back to the caller.
+            // - RoutingUpdated: A peer is added to the DHT.
+            SwarmEvent::Behaviour(Event::Kademlia(e)) => match e {
                 kad::Event::OutboundQueryProgressed {
                     step, result, id, ..
                 } => {
@@ -266,34 +332,10 @@ impl MainLoop {
                                     }
                                 };
                                 send_test_event(
-                                    &self.event_sender,
+                                    &self._test_event_sender,
                                     TestEvent::KademliaBootstrapCompleted(result),
                                 )
                                 .await;
-                            }
-                            QueryResult::GetProviders(result) => {
-                                use libp2p::kad::GetProvidersOk;
-
-                                let result = match result {
-                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
-                                        Ok(providers)
-                                    }
-                                    Ok(GetProvidersOk::FinishedWithNoAdditionalRecord {
-                                        ..
-                                    }) => Ok(Default::default()),
-                                    Err(e) => Err(e.into()),
-                                };
-
-                                let sender = self
-                                    .pending_queries
-                                    .get_providers
-                                    .remove(&id)
-                                    .expect("Query to be pending");
-
-                                sender
-                                    .send(result)
-                                    .await
-                                    .expect("Receiver not to be dropped");
                             }
                             QueryResult::GetClosestPeers(result) => {
                                 use libp2p::kad::GetClosestPeersOk;
@@ -320,32 +362,6 @@ impl MainLoop {
                         }
                     } else {
                         match result {
-                            QueryResult::GetProviders(result) => {
-                                use libp2p::kad::GetProvidersOk;
-
-                                let result = match result {
-                                    Ok(GetProvidersOk::FoundProviders { providers, .. }) => {
-                                        Ok(providers)
-                                    }
-                                    Ok(_) => Ok(Default::default()),
-                                    Err(_) => {
-                                        unreachable!(
-                                            "when a query times out libp2p makes it the last stage"
-                                        )
-                                    }
-                                };
-
-                                let sender = self
-                                    .pending_queries
-                                    .get_providers
-                                    .get(&id)
-                                    .expect("Query to be pending");
-
-                                sender
-                                    .send(result)
-                                    .await
-                                    .expect("Receiver not to be dropped");
-                            }
                             QueryResult::Bootstrap(_) => {
                                 tracing::debug!("Checking low watermark");
                                 // Starting from libp2p-v0.54.1 bootstrap queries are started
@@ -356,7 +372,7 @@ impl MainLoop {
                                 //    https://github.com/libp2p/rust-libp2p/blob/d7beb55f672dce54017fa4b30f67ecb8d66b9810/protocols/kad/src/behaviour.rs#L1401).
                                 if step.count == NonZeroUsize::new(1).expect("1>0") {
                                     send_test_event(
-                                        &self.event_sender,
+                                        &self._test_event_sender,
                                         TestEvent::KademliaBootstrapStarted,
                                     )
                                     .await;
@@ -371,7 +387,7 @@ impl MainLoop {
                 } => {
                     if is_new_peer {
                         send_test_event(
-                            &self.event_sender,
+                            &self._test_event_sender,
                             TestEvent::PeerAddedToDHT { remote: peer },
                         )
                         .await
@@ -380,254 +396,30 @@ impl MainLoop {
                 _ => {}
             },
             // ===========================
-            // Block sync
-            // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
-                p2p_stream::Event::InboundRequest {
-                    request_id,
-                    request,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(?request, %peer, %request_id, "Received sync request");
-
-                self.event_sender
-                    .send(Event::InboundHeadersSyncRequest {
-                        from: peer,
-                        request,
-                        channel,
-                    })
-                    .await
-                    .expect("Event receiver not to be dropped");
-            }
-            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
-                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
-                    request_id,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(%peer, %request_id, "Header sync request sent");
-
-                let _ = self
-                    .pending_sync_requests
-                    .headers
-                    .remove(&request_id)
-                    .expect("Header sync request still to be pending")
-                    .send(Ok(channel));
-            }
-            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
-                p2p_stream::Event::InboundRequest {
-                    request_id,
-                    request,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(?request, %peer, %request_id, "Received sync request");
-
-                self.event_sender
-                    .send(Event::InboundClassesSyncRequest {
-                        from: peer,
-                        request,
-                        channel,
-                    })
-                    .await
-                    .expect("Event receiver not to be dropped");
-            }
-            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
-                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
-                    request_id,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(%peer, %request_id, "Classes sync request sent");
-
-                let _ = self
-                    .pending_sync_requests
-                    .classes
-                    .remove(&request_id)
-                    .expect("Classes sync request still to be pending")
-                    .send(Ok(channel));
-            }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
-                p2p_stream::Event::InboundRequest {
-                    request_id,
-                    request,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(?request, %peer, %request_id, "Received sync request");
-
-                self.event_sender
-                    .send(Event::InboundStateDiffsSyncRequest {
-                        from: peer,
-                        request,
-                        channel,
-                    })
-                    .await
-                    .expect("Event receiver not to be dropped");
-            }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
-                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
-                    request_id,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(%peer, %request_id, "State diff sync request sent");
-
-                let _ = self
-                    .pending_sync_requests
-                    .state_diffs
-                    .remove(&request_id)
-                    .expect("State diff sync request still to be pending")
-                    .send(Ok(channel));
-            }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
-                p2p_stream::Event::InboundRequest {
-                    request_id,
-                    request,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(?request, %peer, %request_id, "Received sync request");
-
-                self.event_sender
-                    .send(Event::InboundTransactionsSyncRequest {
-                        from: peer,
-                        request,
-                        channel,
-                    })
-                    .await
-                    .expect("Event receiver not to be dropped");
-            }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
-                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
-                    request_id,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(%peer, %request_id, "Transaction sync request sent");
-
-                let _ = self
-                    .pending_sync_requests
-                    .transactions
-                    .remove(&request_id)
-                    .expect("Transaction sync request still to be pending")
-                    .send(Ok(channel));
-            }
-            SwarmEvent::Behaviour(behaviour::Event::EventSync(
-                p2p_stream::Event::InboundRequest {
-                    request_id,
-                    request,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(?request, %peer, %request_id, "Received sync request");
-
-                self.event_sender
-                    .send(Event::InboundEventsSyncRequest {
-                        from: peer,
-                        request,
-                        channel,
-                    })
-                    .await
-                    .expect("Event receiver not to be dropped");
-            }
-            SwarmEvent::Behaviour(behaviour::Event::EventSync(
-                p2p_stream::Event::OutboundRequestSentAwaitingResponses {
-                    request_id,
-                    peer,
-                    channel,
-                },
-            )) => {
-                tracing::debug!(%peer, %request_id, "Event sync request sent");
-
-                let _ = self
-                    .pending_sync_requests
-                    .events
-                    .remove(&request_id)
-                    .expect("Event sync request still to be pending")
-                    .send(Ok(channel));
-            }
-            SwarmEvent::Behaviour(behaviour::Event::HeaderSync(
-                p2p_stream::Event::OutboundFailure {
-                    request_id, error, ..
-                },
-            )) => {
-                tracing::warn!(?request_id, ?error, "Outbound header sync request failed");
-                // If the remote hangs up we get an outbound stream error even if earlier the
-                // request was sent successfully and we got
-                // `OutboundRequestSentAwaitingResponses`. The same applies to the other sync
-                // protocols below.
-                //
-                // In that case there's no pending sync request in the map.
-                //
-                // TODO (p2p-stream) Shouldn't this stream be closed earlier anyway?
-                if let Some(sender) = self.pending_sync_requests.headers.remove(&request_id) {
-                    let _ = sender.send(Err(error.into()));
-                }
-            }
-            SwarmEvent::Behaviour(behaviour::Event::ClassSync(
-                p2p_stream::Event::OutboundFailure {
-                    request_id, error, ..
-                },
-            )) => {
-                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
-                if let Some(sender) = self.pending_sync_requests.classes.remove(&request_id) {
-                    let _ = sender.send(Err(error.into()));
-                }
-            }
-            SwarmEvent::Behaviour(behaviour::Event::StateDiffSync(
-                p2p_stream::Event::OutboundFailure {
-                    request_id, error, ..
-                },
-            )) => {
-                tracing::warn!(
-                    ?request_id,
-                    ?error,
-                    "Outbound state diff sync request failed"
-                );
-                if let Some(sender) = self.pending_sync_requests.state_diffs.remove(&request_id) {
-                    let _ = sender.send(Err(error.into()));
-                }
-            }
-            SwarmEvent::Behaviour(behaviour::Event::TransactionSync(
-                p2p_stream::Event::OutboundFailure {
-                    request_id, error, ..
-                },
-            )) => {
-                tracing::warn!(
-                    ?request_id,
-                    ?error,
-                    "Outbound transaction sync request failed"
-                );
-                if let Some(sender) = self.pending_sync_requests.transactions.remove(&request_id) {
-                    let _ = sender.send(Err(error.into()));
-                }
-            }
-            SwarmEvent::Behaviour(behaviour::Event::EventSync(
-                p2p_stream::Event::OutboundFailure {
-                    request_id, error, ..
-                },
-            )) => {
-                tracing::warn!(?request_id, ?error, "Outbound event sync request failed");
-                if let Some(sender) = self.pending_sync_requests.events.remove(&request_id) {
-                    let _ = sender.send(Err(error.into()));
-                }
-            }
-            // ===========================
             // NAT hole punching
             // ===========================
-            SwarmEvent::Behaviour(behaviour::Event::Dcutr(event)) => {
+            //
+            // A DCUtR event is received.
+            SwarmEvent::Behaviour(Event::Dcutr(event)) => {
                 tracing::debug!(?event, "DCUtR event");
+            }
+            // ===========================
+            // Application behaviour
+            // specific events
+            // ===========================
+            //
+            // An application-specific event is received.
+            // Forwards the event to the application behaviour implementation.
+            SwarmEvent::Behaviour(Event::Application(application_event)) => {
+                self.swarm
+                    .behaviour_mut()
+                    .application_mut()
+                    .handle_event(
+                        application_event,
+                        &mut self.state,
+                        self.event_sender.clone(),
+                    )
+                    .await;
             }
             // ===========================
             // Ignored or forwarded for
@@ -648,9 +440,11 @@ impl MainLoop {
         }
     }
 
-    async fn handle_command(&mut self, command: Command) {
+    /// Handles a command from the outside world.
+    async fn handle_command(&mut self, command: Command<<B as ApplicationBehaviour>::Command>) {
         match command {
-            Command::StarListening { addr, sender } => {
+            // Instruct the swarm to listen on a given address.
+            Command::Listen { addr, sender } => {
                 let _ = match self.swarm.listen_on(addr.clone()) {
                     Ok(_) => {
                         tracing::debug!(%addr, "Started listening");
@@ -659,6 +453,7 @@ impl MainLoop {
                     Err(e) => sender.send(Err(e.into())),
                 };
             }
+            // Instruct the swarm to dial a given peer.
             Command::Dial {
                 peer_id,
                 addr,
@@ -686,9 +481,11 @@ impl MainLoop {
                     let _ = sender.send(Err(anyhow::anyhow!("Dialing is already pending")));
                 }
             }
+            // Disconnects the swarm from a given peer.
             Command::Disconnect { peer_id, sender } => {
                 let _ = sender.send(self.disconnect(peer_id).await);
             }
+            // Request the closest peers from a given peer.
             Command::GetClosestPeers { peer, sender } => {
                 self.swarm
                     .behaviour_mut()
@@ -699,92 +496,24 @@ impl MainLoop {
                             .insert(query_id, sender)
                     });
             }
-            Command::SendHeadersSyncRequest {
-                peer_id,
-                request,
-                sender,
-            } => {
-                tracing::debug!(?request, "Sending sync request");
-
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .headers_sync_mut()
-                    .send_request(&peer_id, request);
-                self.pending_sync_requests
-                    .headers
-                    .insert(request_id, sender);
-            }
-            Command::SendClassesSyncRequest {
-                peer_id,
-                request,
-                sender,
-            } => {
-                tracing::debug!(?request, "Sending sync request");
-
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .classes_sync_mut()
-                    .send_request(&peer_id, request);
-                self.pending_sync_requests
-                    .classes
-                    .insert(request_id, sender);
-            }
-            Command::SendStateDiffsSyncRequest {
-                peer_id,
-                request,
-                sender,
-            } => {
-                tracing::debug!(?request, "Sending sync request");
-
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .state_diffs_sync_mut()
-                    .send_request(&peer_id, request);
-                self.pending_sync_requests
-                    .state_diffs
-                    .insert(request_id, sender);
-            }
-            Command::SendTransactionsSyncRequest {
-                peer_id,
-                request,
-                sender,
-            } => {
-                tracing::debug!(?request, "Sending sync request");
-
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .transactions_sync_mut()
-                    .send_request(&peer_id, request);
-                self.pending_sync_requests
-                    .transactions
-                    .insert(request_id, sender);
-            }
-            Command::SendEventsSyncRequest {
-                peer_id,
-                request,
-                sender,
-            } => {
-                tracing::debug!(?request, "Sending sync request");
-
-                let request_id = self
-                    .swarm
-                    .behaviour_mut()
-                    .events_sync_mut()
-                    .send_request(&peer_id, request);
-                self.pending_sync_requests.events.insert(request_id, sender);
-            }
+            // Notifies the swarm that a peer is not useful.
             Command::NotUseful { peer_id, sender } => {
                 self.swarm.behaviour_mut().not_useful(peer_id);
                 let _ = sender.send(());
+            }
+            // Application-specific commands.
+            Command::Application(application_command) => {
+                self.swarm
+                    .behaviour_mut()
+                    .application_mut()
+                    .handle_command(application_command, &mut self.state)
+                    .await;
             }
             Command::_Test(command) => self.handle_test_command(command).await,
         };
     }
 
+    /// Disconnects the swarm from a given peer.
     async fn disconnect(&mut self, peer_id: PeerId) -> anyhow::Result<()> {
         self.pending_dials.remove(&peer_id);
         match self.swarm.disconnect_peer_id(peer_id) {
@@ -797,9 +526,9 @@ impl MainLoop {
     }
 
     /// No-op outside tests
-    async fn handle_event_for_test(&mut self, _event: SwarmEvent<behaviour::Event>) {
+    async fn handle_event_for_test(&mut self, _event: SwarmEvent<Event<B>>) {
         #[cfg(test)]
-        test_utils::main_loop::handle_event(&self.event_sender, _event).await
+        test_utils::main_loop::handle_event(&self._test_event_sender, _event).await
     }
 
     /// No-op outside tests
@@ -818,7 +547,7 @@ impl MainLoop {
         #[cfg(test)]
         test_utils::main_loop::query_completed(
             &mut self._pending_test_queries.inner,
-            &self.event_sender,
+            &self._test_event_sender,
             _id,
             _result,
         )
@@ -876,8 +605,19 @@ impl MainLoop {
     }
 }
 
+impl<B> MainLoop<B>
+where
+    B: ApplicationBehaviour,
+{
+    #[cfg(test)]
+    pub fn take_test_event_receiver(&mut self) -> mpsc::Receiver<TestEvent> {
+        Option::take(&mut self._test_event_receiver)
+            .expect("Test event receiver not to have been taken before")
+    }
+}
+
 /// No-op outside tests
-async fn send_test_event(_event_sender: &mpsc::Sender<Event>, _event: TestEvent) {
+async fn send_test_event(_event_sender: &mpsc::Sender<TestEvent>, _event: TestEvent) {
     #[cfg(test)]
     test_utils::main_loop::send_event(_event_sender, _event).await
 }
