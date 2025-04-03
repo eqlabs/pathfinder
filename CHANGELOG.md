@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_subscribeEvents` subscriptions stop sending notifications.
+- Broken aggregate bloom filter migration has been updated to work properly. If you migrated from a database running in
+archived mode, please [re-download our latest snapshot](https://eqlabs.github.io/pathfinder/database-snapshots) and re-run the migrations.
 
 ## [0.16.2] - 2025-03-12
 
