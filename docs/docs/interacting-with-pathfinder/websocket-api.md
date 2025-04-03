@@ -7,11 +7,11 @@ sidebar_position: 2
 The WebSocket interface serves the same API versions and extension endpoints as HTTP, but in a stateful, two-way communication channel. This can be especially useful for real-time notifications, subscription-based events, or building interactive dashboards.
  
 ## Supported Versions
-- **Starknet v0.6.0**  
+- **JSON-RPC v0.6.0**  
   Accessible at `/ws/rpc/v0_6`.
-- **Starknet v0.7.0**  
+- **JSON-RPC v0.7.1**  
   Accessible at `/ws/rpc/v0_7`.
-- **Starknet v0.8.0**  
+- **JSON-RPC v0.8.1**  
   Accessible at `/rpc/v0_8` and `/ws/rpc/v0_8`.
 - **Pathfinder Extension**  
   Exposed via `/ws/rpc/pathfinder/v0_1`
