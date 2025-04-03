@@ -7,11 +7,11 @@ sidebar_position: 1
 The JSON-RPC interface allows you to query Starknet data, send transactions, and perform contract calls without going through a formal transaction on-chain. Pathfinder currently supports multiple API versions and a distinct set of custom extensions.
 
 ## Supported Versions
-- **Starknet v0.6.0**  
+- **JSON-RPC v0.6.0**  
   Accessible at the `/rpc/v0_6` endpoint.
-- **Starknet v0.7.0**  
+- **JSON-RPC v0.7.1**  
   Accessible at the `/rpc/v0_7` endpoint.
-- **Starknet v0.8.0**  
+- **JSON-RPC v0.8.1**  
   Accessible at the `/rpc/v0_8` endpoint.
 - **Pathfinder Extension**  
   Exposed via `/rpc/pathfinder/v0_1`.
