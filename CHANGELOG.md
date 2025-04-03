@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_subscribeEvents` subscriptions stop sending notifications.
 
+### Changed
+
+- JSON-RPC 0.8 `subscription_id` is now a string.
+
 ## [0.16.2] - 2025-03-12
 
 ### Added
