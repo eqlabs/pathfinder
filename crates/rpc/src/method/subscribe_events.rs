@@ -359,7 +359,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -423,7 +423,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -489,7 +489,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -556,7 +556,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -623,7 +623,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -763,12 +763,12 @@ mod tests {
             .await
             .unwrap();
         let res = sender_rx.recv().await.unwrap().unwrap();
-        let subscription_id = match res {
+        let subscription_id: u64 = match res {
             Message::Text(json) => {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -793,7 +793,7 @@ mod tests {
                         "keys": ["0x0", "0x1", "0x2"],
                         "transaction_hash": "0x0"
                     },
-                    "subscription_id": subscription_id
+                    "subscription_id": subscription_id.to_string()
                 }
             })
         );
@@ -828,7 +828,7 @@ mod tests {
                         "last_block_hash": "0x2",
                         "last_block_number": 2
                     },
-                    "subscription_id": subscription_id
+                    "subscription_id": subscription_id.to_string()
                 }
             })
         );
@@ -999,7 +999,7 @@ mod tests {
                     "block_hash": Felt::from_u64(block_number),
                     "transaction_hash": Felt::from_u64(block_number),
                 },
-                "subscription_id": subscription_id
+                "subscription_id": subscription_id.to_string()
             }
         })
     }
