@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - JSON-RPC 0.8 `subscription_id` is now a string.
+- Pathfinder now supports the JSON-RPC 0.8.1 specification. In this new version, the Websocket `subscription_id` type has been changed to `string`.
 
 ## [0.16.2] - 2025-03-12
 
