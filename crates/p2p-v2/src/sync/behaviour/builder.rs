@@ -2,6 +2,7 @@ use crate::sync::behaviour::Behaviour;
 use crate::sync::protocol::codec;
 use crate::sync::Config;
 
+/// Builder for the sync P2P network behaviour.
 pub struct Builder {
     cfg: Config,
     header_sync: Option<p2p_stream::Behaviour<codec::Headers>>,

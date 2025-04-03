@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::{consensus, ApplicationBehaviour};
 
+/// The consensus P2P network behaviour.
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     gossipsub: gossipsub::Behaviour,

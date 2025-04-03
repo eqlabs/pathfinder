@@ -9,6 +9,7 @@ mod builder;
 
 pub use builder::Builder;
 
+/// The sync P2P network behaviour.
 #[derive(NetworkBehaviour)]
 pub struct Behaviour {
     header_sync: p2p_stream::Behaviour<codec::Headers>,

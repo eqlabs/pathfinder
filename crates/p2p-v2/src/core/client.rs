@@ -8,6 +8,7 @@ use crate::core::Command;
 #[cfg(test)]
 use crate::test_utils;
 
+/// The core p2p network client.
 #[derive(Clone, Debug)]
 pub struct Client<C> {
     sender: mpsc::Sender<Command<C>>,

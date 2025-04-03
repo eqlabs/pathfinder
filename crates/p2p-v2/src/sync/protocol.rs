@@ -23,14 +23,6 @@ pub mod name {
     define_protocol!(Classes, "/starknet/classes/0.1.0-rc.0");
     define_protocol!(Transactions, "/starknet/transactions/0.1.0-rc.0");
     define_protocol!(Events, "/starknet/events/0.1.0-rc.0");
-
-    pub const PROTOCOLS: &[&str] = &[
-        Headers::NAME,
-        StateDiffs::NAME,
-        Classes::NAME,
-        Transactions::NAME,
-        Events::NAME,
-    ];
 }
 
 pub(crate) mod codec {

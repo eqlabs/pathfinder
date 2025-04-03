@@ -14,7 +14,8 @@ use tokio::sync::oneshot;
 
 mod behaviour;
 pub mod client;
-pub mod protocol;
+pub(crate) mod protocol;
+
 #[cfg(test)]
 mod tests;
 
@@ -123,6 +124,7 @@ pub struct PendingRequests {
     >,
 }
 
+/// Configuration for the sync P2P network.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Timeout for an entire stream in p2p-stream
