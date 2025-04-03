@@ -249,50 +249,50 @@
       ]
     },
     {
-        "name": "starknet_getMessagesStatus",
-        "summary": "Given an l1 tx hash, returns the associated l1_handler tx hashes and statuses for all L1 -> L2 messages sent by the l1 transaction, ordered by the l1 tx sending order",
-        "paramStructure": "by-name",
-        "params": [
-            {
-            "name": "transaction_hash",
-            "summary": "The hash of the L1 transaction that sent L1->L2 messages",
-            "required": true,
-            "schema": {
-                "title": "Transaction hash",
-                "$ref": "#/components/schemas/L1_TXN_HASH"
-            }
-            }
-        ],
-        "result": {
-            "name": "result",
-            "schema": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "title": "status",
-                    "properties": {
-                    "transaction_hash": {
-                        "$ref": "#/components/schemas/TXN_HASH"
-                    },
-                    "finality_status": {
-                        "title": "finality status",
-                        "$ref": "#/components/schemas/TXN_STATUS"
-                    },
-                    "failure_reason": {
-                        "title": "failure reason",
-                        "description": "the failure reason, only appears if finality_status is REJECTED",
-                        "type": "string"
-                    }
-                    },
-                    "required": ["transaction_hash", "finality_status"]
-                }
-            }
-        },
-        "errors": [
-            {
-            "$ref": "#/components/errors/TXN_HASH_NOT_FOUND"
-            }
-        ]
+      "name": "starknet_getMessagesStatus",
+      "summary": "Given an l1 tx hash, returns the associated l1_handler tx hashes and statuses for all L1 -> L2 messages sent by the l1 transaction, ordered by the l1 tx sending order",
+      "paramStructure": "by-name",
+      "params": [
+        {
+          "name": "transaction_hash",
+          "summary": "The hash of the L1 transaction that sent L1->L2 messages",
+          "required": true,
+          "schema": {
+            "title": "Transaction hash",
+            "$ref": "#/components/schemas/L1_TXN_HASH"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "title": "status",
+            "properties": {
+              "transaction_hash": {
+                "$ref": "#/components/schemas/TXN_HASH"
+              },
+              "finality_status": {
+                "title": "finality status",
+                "$ref": "#/components/schemas/TXN_STATUS"
+              },
+              "failure_reason": {
+                "title": "failure reason",
+                "description": "the failure reason, only appears if finality_status is REJECTED",
+                "type": "string"
+              }
+            },
+            "required": ["transaction_hash", "finality_status"]
+          }
+        }
+      },
+      "errors": [
+        {
+          "$ref": "#/components/errors/TXN_HASH_NOT_FOUND"
+        }
+      ]
     },
     {
       "name": "starknet_getTransactionByHash",
@@ -312,7 +312,7 @@
       "result": {
         "name": "result",
         "schema": {
-            "$ref": "#/components/schemas/TXN_WITH_HASH"
+          "$ref": "#/components/schemas/TXN_WITH_HASH"
         }
       },
       "errors": [
@@ -349,7 +349,7 @@
       "result": {
         "name": "transactionResult",
         "schema": {
-            "$ref": "#/components/schemas/TXN_WITH_HASH"
+          "$ref": "#/components/schemas/TXN_WITH_HASH"
         }
       },
       "errors": [
@@ -890,15 +890,15 @@
           "schema": {
             "title": "Block id",
             "allOf": [
-                {
-                    "$ref": "#/components/schemas/BLOCK_ID"
-                },
-                {
-                    "not": {
-                      "type": "string",
-                      "enum": ["pending"]
-                    }
+              {
+                "$ref": "#/components/schemas/BLOCK_ID"
+              },
+              {
+                "not": {
+                  "type": "string",
+                  "enum": ["pending"]
                 }
+              }
             ]
           }
         },
@@ -1008,10 +1008,19 @@
                   "$ref": "#/components/schemas/FELT"
                 }
               },
-              "required": ["contracts_tree_root", "classes_tree_root", "block_hash"]
+              "required": [
+                "contracts_tree_root",
+                "classes_tree_root",
+                "block_hash"
+              ]
             }
           },
-          "required": ["classes_proof", "contracts_proof", "contracts_storage_proofs", "global_roots"]
+          "required": [
+            "classes_proof",
+            "contracts_proof",
+            "contracts_storage_proofs",
+            "global_roots"
+          ]
         }
       },
       "errors": [
@@ -1949,7 +1958,14 @@
                 "$ref": "#/components/schemas/FELT"
               }
             },
-            "required": ["type", "sender_address", "max_fee", "version", "signature", "class_hash"]
+            "required": [
+              "type",
+              "sender_address",
+              "max_fee",
+              "version",
+              "signature",
+              "class_hash"
+            ]
           }
         ]
       },
@@ -1996,7 +2012,15 @@
                 "$ref": "#/components/schemas/FELT"
               }
             },
-            "required": ["type", "sender_address", "max_fee", "version", "signature", "nonce", "class_hash"]
+            "required": [
+              "type",
+              "sender_address",
+              "max_fee",
+              "version",
+              "signature",
+              "nonce",
+              "class_hash"
+            ]
           }
         ]
       },
@@ -2476,7 +2500,13 @@
                 "$ref": "#/components/schemas/FELT"
               }
             },
-            "required": ["version", "type", "constructor_calldata", "contract_address_salt", "class_hash"]
+            "required": [
+              "version",
+              "type",
+              "constructor_calldata",
+              "contract_address_salt",
+              "class_hash"
+            ]
           }
         ]
       },
@@ -2522,7 +2552,15 @@
             }
           }
         },
-        "required": ["type", "contract_address", "entry_point_selector", "calldata", "max_fee", "version", "signature"]
+        "required": [
+          "type",
+          "contract_address",
+          "entry_point_selector",
+          "calldata",
+          "max_fee",
+          "version",
+          "signature"
+        ]
       },
       "INVOKE_TXN_V1": {
         "title": "Invoke transaction V1",
@@ -2568,7 +2606,15 @@
                 "$ref": "#/components/schemas/FELT"
               }
             },
-            "required": ["type", "sender_address", "calldata", "max_fee", "version", "signature", "nonce"]
+            "required": [
+              "type",
+              "sender_address",
+              "calldata",
+              "max_fee",
+              "version",
+              "signature",
+              "nonce"
+            ]
           }
         ]
       },
@@ -3028,7 +3074,12 @@
             }
           }
         },
-        "required": ["from_address", "to_address", "payload", "entry_point_selector"]
+        "required": [
+          "from_address",
+          "to_address",
+          "payload",
+          "entry_point_selector"
+        ]
       },
       "TXN_STATUS_RESULT": {
         "title": "Transaction status result",
@@ -3156,7 +3207,11 @@
             "description": "The class ABI, as supplied by the user declaring the class"
           }
         },
-        "required": ["sierra_program", "contract_class_version", "entry_points_by_type"]
+        "required": [
+          "sierra_program",
+          "contract_class_version",
+          "entry_points_by_type"
+        ]
       },
       "DEPRECATED_CONTRACT_CLASS": {
         "title": "Deprecated contract class",
@@ -3465,7 +3520,16 @@
             "$ref": "#/components/schemas/PRICE_UNIT"
           }
         },
-        "required": ["l1_gas_consumed", "l1_gas_price", "l2_gas_consumed", "l2_gas_price","l1_data_gas_consumed", "l1_data_gas_price", "overall_fee", "unit"]
+        "required": [
+          "l1_gas_consumed",
+          "l1_gas_price",
+          "l2_gas_consumed",
+          "l2_gas_price",
+          "l1_data_gas_consumed",
+          "l1_data_gas_price",
+          "overall_fee",
+          "unit"
+        ]
       },
       "FEE_PAYMENT": {
         "title": "Fee Payment",

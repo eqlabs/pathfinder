@@ -144,8 +144,7 @@
           "$ref": "#/components/schemas/SUBSCRIPTION_ID"
         }
       },
-      "errors": [
-      ]
+      "errors": []
     },
     {
       "name": "starknet_subscriptionTransactionStatus",
@@ -370,7 +369,12 @@
             "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_NUMBER"
           }
         },
-        "required": ["starting_block_hash", "starting_block_number", "ending_block_hash", "ending_block_number"]
+        "required": [
+          "starting_block_hash",
+          "starting_block_number",
+          "ending_block_hash",
+          "ending_block_number"
+        ]
       }
     },
     "errors": {
