@@ -1,3 +1,4 @@
+use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
 use blockifier::transaction::transaction_execution::Transaction;
 use pathfinder_common::TransactionHash;
@@ -8,6 +9,7 @@ use util::percentage::Percentage;
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::FeeEstimate;
+use crate::execution_state::create_executor;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -17,13 +19,13 @@ use crate::transaction::{
 use crate::IntoFelt;
 
 pub fn estimate(
-    execution_state: ExecutionState<'_>,
+    db: pathfinder_storage::Storage,
+    execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
-
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let mut tx_executor = create_executor(db, execution_state)?;
 
     transactions
         .into_iter()
@@ -38,17 +40,20 @@ pub fn estimate(
             .entered();
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-            let tx_info = if l2_gas_accounting_enabled(
+
+            let (tx_info, _) = if l2_gas_accounting_enabled(
                 &tx,
-                &state,
-                &block_context,
+                tx_executor
+                    .block_state
+                    .as_ref()
+                    .expect(BLOCK_STATE_ACCESS_ERR),
+                &tx_executor.block_context,
                 &gas_vector_computation_mode,
             )? {
                 find_l2_gas_limit_and_execute_transaction(
                     &mut tx,
                     tx_index,
-                    &mut state,
-                    &block_context,
+                    &mut tx_executor,
                     ExecutionBehaviorOnRevert::Fail,
                     epsilon,
                 )?
@@ -56,9 +61,8 @@ pub fn estimate(
                 execute_transaction(
                     &tx,
                     tx_index,
-                    &mut state,
-                    &block_context,
-                    &ExecutionBehaviorOnRevert::Fail,
+                    &mut tx_executor,
+                    ExecutionBehaviorOnRevert::Fail,
                 )?
             };
 
@@ -72,7 +76,7 @@ pub fn estimate(
                 &tx,
                 &tx_info,
                 &gas_vector_computation_mode,
-                &block_context,
+                &tx_executor.block_context,
             ))
         })
         .collect()

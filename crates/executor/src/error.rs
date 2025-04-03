@@ -1,3 +1,4 @@
+use blockifier::blockifier::transaction_executor::TransactionExecutorError as BlockifierTransactionExecutorError;
 use blockifier::execution::errors::{
     ConstructorEntryPointExecutionError,
     EntryPointExecutionError as BlockifierEntryPointExecutionError,
@@ -101,6 +102,27 @@ impl From<anyhow::Error> for CallError {
 }
 
 #[derive(Debug)]
+pub struct TransactionExecutorError {
+    pub transaction_index: usize,
+    pub error: BlockifierTransactionExecutorError,
+}
+
+impl TransactionExecutorError {
+    pub fn new(transaction_index: usize, error: BlockifierTransactionExecutorError) -> Self {
+        Self {
+            transaction_index,
+            error,
+        }
+    }
+}
+
+impl std::fmt::Display for TransactionExecutorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Executor error: {}", self.error)
+    }
+}
+
+#[derive(Debug)]
 pub enum TransactionExecutionError {
     ExecutionError {
         transaction_index: usize,
@@ -109,6 +131,20 @@ pub enum TransactionExecutionError {
     },
     Internal(anyhow::Error),
     Custom(anyhow::Error),
+}
+
+impl From<TransactionExecutorError> for TransactionExecutionError {
+    fn from(error: TransactionExecutorError) -> Self {
+        match error.error {
+            BlockifierTransactionExecutorError::TransactionExecutionError(err) => {
+                TransactionExecutionError::new(error.transaction_index, err)
+            }
+            _ => TransactionExecutionError::Custom(anyhow::anyhow!(
+                "Transaction execution error: {}",
+                error
+            )),
+        }
+    }
 }
 
 impl From<StateError> for TransactionExecutionError {
