@@ -257,7 +257,11 @@
                 "enum": ["DEPLOY_ACCOUNT"]
               }
             },
-            "required": ["type", "execution_resources", "constructor_invocation"]
+            "required": [
+              "type",
+              "execution_resources",
+              "constructor_invocation"
+            ]
           },
           {
             "name": "L1_HANDLER_TXN_TRACE",
