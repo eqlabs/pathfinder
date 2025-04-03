@@ -1026,7 +1026,7 @@ mod tests {
                 .into_iter()
                 .take(10 - num_of_missing_counts)
                 .map(|block| block.header.header.event_count)
-                .chain(std::iter::repeat(0).take(num_of_missing_counts))
+                .chain(std::iter::repeat_n(0, num_of_missing_counts))
                 .collect::<Vec<_>>()
         );
     }

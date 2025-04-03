@@ -1066,7 +1066,6 @@ impl DebugConfig {
 }
 
 impl Config {
-    #[cfg_attr(not(feature = "p2p"), allow(clippy::unit_arg))]
     pub fn parse() -> Self {
         let cli = Cli::parse();
 
