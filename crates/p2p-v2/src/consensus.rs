@@ -13,4 +13,5 @@ pub enum Event {}
 /// State of the consensus behaviour.
 pub struct State {}
 
+/// Configuration for the consensus P2P network.
 pub struct Config {}

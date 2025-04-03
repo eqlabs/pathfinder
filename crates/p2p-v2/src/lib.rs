@@ -22,10 +22,11 @@ mod secret;
 mod test_utils;
 mod transport;
 
-pub use builder::Builder;
+use builder::Builder;
 pub use libp2p;
 pub use peer_data::PeerData;
 
+/// Creates a new sync P2P network.
 pub fn new_sync(
     keypair: Keypair,
     core_config: core::Config,
@@ -41,6 +42,7 @@ pub fn new_sync(
         .build()
 }
 
+/// Creates a new consensus P2P network.
 pub fn new_consensus(
     keypair: Keypair,
     core_config: core::Config,
@@ -58,7 +60,7 @@ pub fn new_consensus(
         .build()
 }
 
-pub mod builder_phase {
+mod builder_phase {
     pub struct AppBehaviourUnset;
     pub struct AppBehaviourSet;
 }
