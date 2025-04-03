@@ -3482,37 +3482,37 @@
           "l1_gas_consumed": {
             "title": "L1 gas consumed",
             "description": "The Ethereum gas consumption of the transaction, charged for L1->L2 messages and, depending on the block's DA_MODE, state diffs",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u64"
           },
           "l1_gas_price": {
             "title": "L1 gas price",
             "description": "The gas price (in wei or fri, depending on the tx version) that was used in the cost estimation",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u128"
           },
           "l2_gas_consumed": {
             "title": "L2 gas consumed",
             "description": "The L2 gas consumption of the transaction",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u64"
           },
           "l2_gas_price": {
             "title": "L2 gas price",
             "description": "The L2 gas price (in wei or fri, depending on the tx version) that was used in the cost estimation",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u128"
           },
           "l1_data_gas_consumed": {
             "title": "L1 data gas consumed",
             "description": "The Ethereum data gas consumption of the transaction",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u64"
           },
           "l1_data_gas_price": {
             "title": "L1 data gas price",
             "description": "The data gas price (in wei or fri, depending on the tx version) that was used in the cost estimation",
-            "$ref": "#/components/schemas/FELT"
+            "$ref": "#/components/schemas/u128"
           },
           "overall_fee": {
             "title": "Overall fee",
-            "description": "The estimated fee for the transaction (in wei or fri, depending on the tx version), equals to gas_consumed*gas_price + data_gas_consumed*data_gas_price",
-            "$ref": "#/components/schemas/FELT"
+            "description": "The estimated fee for the transaction (in wei or fri, depending on the tx version), equals to l1_gas_consumed*l1_gas_price + l1_data_gas_consumed*l1_data_gas_price + l2_gas_consumed*l2_gas_price",
+            "$ref": "#/components/schemas/u128"
           },
           "unit": {
             "title": "Fee unit",
