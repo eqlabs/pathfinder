@@ -224,7 +224,7 @@ mod tests {
                         "last_block_hash": "0x2",
                         "last_block_number": 2
                     },
-                    "subscription_id": subscription_id.0
+                    "subscription_id": subscription_id.0.to_string()
                 }
             })
         );
@@ -255,7 +255,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -343,7 +343,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -402,7 +402,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -606,7 +606,7 @@ mod tests {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -674,7 +674,7 @@ mod tests {
                     "starknet_version": "",
                     "timestamp": 0
                 },
-                "subscription_id": subscription_id
+                "subscription_id": subscription_id.to_string()
             }
         })
     }

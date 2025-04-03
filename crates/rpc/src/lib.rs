@@ -256,13 +256,19 @@ impl crate::dto::SerializeForVersion for SubscriptionId {
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        serializer.serialize_u64(self.0 as u64)
+        serializer.serialize_str(self.0.to_string().as_str())
     }
 }
 
 impl crate::dto::DeserializeForVersion for SubscriptionId {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let id: u32 = value.deserialize()?;
+        let id: String = value.deserialize()?;
+        let id: u32 = id.parse().map_err(|_| {
+            use serde::de::Error;
+            serde_json::Error::custom(format!(
+                "Failed to parse subscription id: {id:?}"
+            ))
+        })?;
         Ok(Self(id))
     }
 }

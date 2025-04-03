@@ -853,12 +853,12 @@ mod tests {
             .await
             .unwrap();
         let res = sender_rx.recv().await.unwrap().unwrap();
-        let subscription_id = match res {
+        let subscription_id: u64 = match res {
             Message::Text(json) => {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -874,7 +874,7 @@ mod tests {
                 "method": "pathfinder_subscriptionError",
                 "params": {
                     "result": { "code": -32603, "message": "Internal error" },
-                    "subscription_id": subscription_id
+                    "subscription_id": subscription_id.to_string()
                 }
             })
         )
@@ -930,12 +930,12 @@ mod tests {
             .await
             .unwrap();
         let res = sender_rx.recv().await.unwrap().unwrap();
-        let subscription_id = match res {
+        let subscription_id: u64 = match res {
             Message::Text(json) => {
                 let json: serde_json::Value = serde_json::from_str(&json).unwrap();
                 assert_eq!(json["jsonrpc"], "2.0");
                 assert_eq!(json["id"], 1);
-                json["result"].as_u64().unwrap()
+                json["result"].as_str().unwrap().parse().unwrap()
             }
             _ => panic!("Expected text message"),
         };
@@ -951,7 +951,7 @@ mod tests {
                 "method": "pathfinder_subscriptionError",
                 "params": {
                     "result": { "code": -32603, "message": "Internal error" },
-                    "subscription_id": subscription_id
+                    "subscription_id": subscription_id.to_string()
                 }
             })
         )
