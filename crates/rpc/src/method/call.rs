@@ -114,17 +114,19 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
-        let mut db = context
+        let mut db_conn = context
             .storage
             .connection()
             .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db_tx)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update.clone()))
@@ -132,14 +134,14 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
 
-                let pruned = db
+                let pruned = db_tx
                     .block_pruned(block_id)
                     .context("Querying block pruned status")?;
                 if pruned {
                     return Err(CallError::BlockNotFound);
                 }
 
-                let header = db
+                let header = db_tx
                     .block_header(block_id)
                     .context("Querying block header")?
                     .ok_or(CallError::BlockNotFound)?;
@@ -148,8 +150,10 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             }
         };
 
+        drop(db_tx);
+        drop(db_conn);
+
         let state = ExecutionState::simulation(
-            &db,
             context.chain_id,
             header,
             pending,
@@ -161,6 +165,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
         );
 
         let result = pathfinder_executor::call(
+            context.execution_storage.clone(),
             state,
             input.request.contract_address,
             input.request.entry_point_selector,

@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use blockifier::blockifier::block::pre_process_block;
+use blockifier::blockifier::config::TransactionExecutorConfig;
+use blockifier::blockifier::transaction_executor::TransactionExecutor;
 use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
@@ -193,8 +195,10 @@ impl Default for VersionedConstantsMap {
     }
 }
 
-pub struct ExecutionState<'tx> {
-    transaction: &'tx pathfinder_storage::Transaction<'tx>,
+pub type PathfinderExecutor = TransactionExecutor<PendingStateReader<PathfinderStateReader>>;
+pub type PathfinderExecutionState = CachedState<PendingStateReader<PathfinderStateReader>>;
+
+pub struct ExecutionState {
     pub chain_id: ChainId,
     pub header: BlockHeader,
     execute_on_parent_state: bool,
@@ -206,11 +210,82 @@ pub struct ExecutionState<'tx> {
     native_class_cache: Option<NativeClassCache>,
 }
 
-impl<'tx> ExecutionState<'tx> {
+pub(crate) fn create_executor(
+    db: pathfinder_storage::Storage,
+    execution_state: ExecutionState,
+) -> anyhow::Result<PathfinderExecutor> {
+    let block_number = if execution_state.execute_on_parent_state {
+        execution_state.header.number.parent()
+    } else {
+        Some(execution_state.header.number)
+    };
+
+    let chain_info = execution_state.chain_info()?;
+    let block_info = execution_state.block_info()?;
+
+    let mut db_conn = db.connection()?;
+    let db_tx = db_conn.transaction()?;
+
+    // Perform system contract updates if we are executing ontop of a parent block.
+    // Currently this is only the block hash from 10 blocks ago.
+    let old_block_number_and_hash = if execution_state.header.number.get() >= 10 {
+        let block_number_whose_hash_becomes_available =
+            pathfinder_common::BlockNumber::new_or_panic(execution_state.header.number.get() - 10);
+        let block_hash = db_tx
+            .block_hash(block_number_whose_hash_becomes_available.into())?
+            .context("Getting historical block hash")?;
+
+        tracing::trace!(%block_number_whose_hash_becomes_available,
+%block_hash, "Setting historical block hash");
+
+        Some(BlockHashAndNumber {
+            number: starknet_api::block::BlockNumber(
+                block_number_whose_hash_becomes_available.get(),
+            ),
+            hash: starknet_api::block::BlockHash(block_hash.0.into_starkfelt()),
+        })
+    } else {
+        None
+    };
+
+    drop(db_tx);
+    drop(db_conn);
+
+    let versioned_constants = execution_state
+        .versioned_constants_map
+        .for_version(&execution_state.header.starknet_version);
+
+    let block_context = BlockContext::new(
+        block_info,
+        chain_info,
+        versioned_constants.into_owned(),
+        BouncerConfig::max(),
+    );
+
+    let raw_reader = PathfinderStateReader::new(
+        db,
+        block_number,
+        execution_state.pending_state.is_some(),
+        execution_state.native_class_cache,
+    );
+    let pending_state_reader =
+        PendingStateReader::new(raw_reader, execution_state.pending_state.clone());
+
+    PathfinderExecutor::pre_process_and_create(
+        pending_state_reader,
+        block_context,
+        old_block_number_and_hash,
+        TransactionExecutorConfig::default(),
+    )
+    .context("Preprocessing state and transaction executor")
+}
+
+impl ExecutionState {
     pub(super) fn starknet_state(
         self,
+        db: pathfinder_storage::Storage,
     ) -> anyhow::Result<(
-        CachedState<PendingStateReader<PathfinderStateReader<'tx>>>,
+        CachedState<PendingStateReader<PathfinderStateReader>>,
         BlockContext,
     )> {
         let block_number = if self.execute_on_parent_state {
@@ -222,22 +297,15 @@ impl<'tx> ExecutionState<'tx> {
         let chain_info = self.chain_info()?;
         let block_info = self.block_info()?;
 
-        let raw_reader = PathfinderStateReader::new(
-            self.transaction,
-            block_number,
-            self.pending_state.is_some(),
-            self.native_class_cache,
-        );
-        let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
-        let mut cached_state = CachedState::new(pending_state_reader);
+        let mut db_conn = db.connection()?;
+        let db_tx = db_conn.transaction()?;
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
         let old_block_number_and_hash = if self.header.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
-            let block_hash = self
-                .transaction
+            let block_hash = db_tx
                 .block_hash(block_number_whose_hash_becomes_available.into())?
                 .context("Getting historical block hash")?;
 
@@ -253,9 +321,21 @@ impl<'tx> ExecutionState<'tx> {
             None
         };
 
+        drop(db_tx);
+        drop(db_conn);
+
         let versioned_constants = self
             .versioned_constants_map
             .for_version(&self.header.starknet_version);
+
+        let raw_reader = PathfinderStateReader::new(
+            db,
+            block_number,
+            self.pending_state.is_some(),
+            self.native_class_cache,
+        );
+        let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
+        let mut cached_state = CachedState::new(pending_state_reader);
 
         pre_process_block(
             &mut cached_state,
@@ -384,7 +464,6 @@ impl<'tx> ExecutionState<'tx> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn trace(
-        transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
@@ -394,7 +473,6 @@ impl<'tx> ExecutionState<'tx> {
         native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
-            transaction,
             chain_id,
             header,
             pending_state,
@@ -409,7 +487,6 @@ impl<'tx> ExecutionState<'tx> {
 
     #[allow(clippy::too_many_arguments)]
     pub fn simulation(
-        transaction: &'tx pathfinder_storage::Transaction<'tx>,
         chain_id: ChainId,
         header: BlockHeader,
         pending_state: Option<Arc<StateUpdate>>,
@@ -420,7 +497,6 @@ impl<'tx> ExecutionState<'tx> {
         native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
-            transaction,
             chain_id,
             header,
             pending_state,
