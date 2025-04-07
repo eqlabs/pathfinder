@@ -100,9 +100,6 @@ pub async fn estimate_message_fee(
             return Err(EstimateMessageFeeError::ContractNotFound);
         }
 
-        drop(db_tx);
-        drop(db_conn);
-
         let state = ExecutionState::simulation(
             context.chain_id,
             header,
@@ -117,7 +114,7 @@ pub async fn estimate_message_fee(
         let transaction = create_executor_transaction(input, context.chain_id)?;
 
         let result = pathfinder_executor::estimate(
-            context.execution_storage.clone(),
+            db_tx,
             state,
             vec![transaction],
             context.config.fee_estimation_epsilon,

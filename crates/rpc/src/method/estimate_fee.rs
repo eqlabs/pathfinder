@@ -85,9 +85,6 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             }
         };
 
-        drop(db_tx);
-        drop(db_conn);
-
         let state = ExecutionState::simulation(
             context.chain_id,
             header,
@@ -118,7 +115,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             .collect::<Result<Vec<_>, _>>()?;
 
         let result = pathfinder_executor::estimate(
-            context.execution_storage.clone(),
+            db_tx,
             state,
             transactions,
             context.config.fee_estimation_epsilon,

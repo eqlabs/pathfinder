@@ -115,9 +115,6 @@ pub async fn trace_block_transactions(
             .map(|transaction| compose_executor_transaction(transaction, &db_tx))
             .collect::<Result<Vec<_>, _>>()?;
 
-        drop(db_tx);
-        drop(db_conn);
-
         let hash = header.hash;
         let state = pathfinder_executor::ExecutionState::trace(
             context.chain_id,
@@ -129,7 +126,7 @@ pub async fn trace_block_transactions(
             context.native_class_cache,
         );
         let traces =
-            match pathfinder_executor::trace(storage, state, cache, hash, executor_transactions) {
+            match pathfinder_executor::trace(db_tx, state, cache, hash, executor_transactions) {
                 Ok(traces) => traces,
                 Err(TransactionExecutionError::ExecutionError { .. }) => {
                     return Ok(LocalExecution::Unsupported(transactions))

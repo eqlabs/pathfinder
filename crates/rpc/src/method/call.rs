@@ -150,9 +150,6 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             }
         };
 
-        drop(db_tx);
-        drop(db_conn);
-
         let state = ExecutionState::simulation(
             context.chain_id,
             header,
@@ -165,7 +162,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
         );
 
         let result = pathfinder_executor::call(
-            context.execution_storage.clone(),
+            db_tx,
             state,
             input.request.contract_address,
             input.request.entry_point_selector,

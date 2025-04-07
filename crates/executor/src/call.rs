@@ -22,13 +22,13 @@ use super::execution_state::ExecutionState;
 use super::felt::{IntoFelt, IntoStarkFelt};
 
 pub fn call(
-    db: pathfinder_storage::Storage,
+    db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
     contract_address: ContractAddress,
     entry_point_selector: EntryPoint,
     calldata: Vec<CallParam>,
 ) -> Result<Vec<CallResultValue>, CallError> {
-    let (mut state, block_context) = execution_state.starknet_state(db)?;
+    let (mut state, block_context) = execution_state.starknet_state(db_tx)?;
 
     let starknet_api_contract_address = starknet_api::core::ContractAddress(PatriciaKey::try_from(
         contract_address.0.into_starkfelt(),
