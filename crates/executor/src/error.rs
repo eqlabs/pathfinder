@@ -118,7 +118,11 @@ impl TransactionExecutorError {
 
 impl std::fmt::Display for TransactionExecutorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Executor error: {}", self.error)
+        write!(
+            f,
+            "Executor error (transaction index: {}): {}",
+            self.transaction_index, self.error
+        )
     }
 }
 
