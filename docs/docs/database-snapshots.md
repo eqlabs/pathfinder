@@ -69,17 +69,4 @@ Snapshots come as zstd-compressed SQLite files. Once the download completes, fol
 
 ## Available Snapshots
 
-The table below lists currently available snapshots, their block heights, and corresponding checksums. Refer to the [official release page](https://github.com/eqlabs/pathfinder/releases) or the snapshot hosting platform for the latest files.
-
-| Network         | Block   | Pathfinder version required | Mode    | Filename                                           | Download URL                                                                                                     | Compressed size | SHA2-256 checksum of compressed file                               |
-| --------------- | ------- | --------------------------- | ------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
-| Mainnet         | 1067473 | >= 0.15.0                   | pruned  | `mainnet_0.15.0_1067473_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.15.0_1067473_pruned.sqlite.zst)         | 88 GB           | `c389912316dc18f4ad370f8b64009f351e0fe10643f20101e70bd09209cdbf29` |
-| Mainnet         | 1067473 | >= 0.15.0                   | archive | `mainnet_0.15.0_1067473_archive.sqlite.zst`        | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.15.0_1067473_archive.sqlite.zst)        | 505.53 GB       | `f04d09b92869bcbf52c58929674c0540abff7c3e9846394fcdb804b726d5f3a9` |
-| Mainnet         | 1255900 | >= 0.16.0                   | pruned  | `mainnet_0.16.0_1255900_pruned.sqlite.zst`         | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/mainnet_0.16.0_1255900_pruned.sqlite.zst)         | 94.61 GB        | `a4cd467a2ac95f27445eb9a01904cf339ab3b8949a5cf73902032a2f38c577d0` |
-| Sepolia testnet | 451735  | >= 0.15.0                   | pruned  | `sepolia-testnet_0.15.0_451735_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.15.0_451735_pruned.sqlite.zst)  | 8.8 GB          | `79fada3814d721efb03a3c71a22d56ff95dd9a2d70dc0dd9b99ef47d4613be76` |
-| Sepolia testnet | 451735  | >= 0.15.0                   | archive | `sepolia-testnet_0.15.0_451735_archive.sqlite.zst` | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/sepolia-testnet_0.15.0_451735_archive.sqlite.zst) | 32.21 GB        | `b143779c172eb55ee449f6d686c626c1df67c3b3c66545c869af8bf73e846c38` |
-| Sepolia testnet | 621480  | >= 0.16.0                   | pruned  | `testnet-sepolia_0.16.0_621480_pruned.sqlite.zst`  | [Download](https://pub-1fac64c3c0334cda85b45bcc02635c32.r2.dev/testnet-sepolia_0.16.0_621480_pruned.sqlite.zst)  | 11.03 GB        | `edcf7832d3ded0fcc9a5bb22a18e094a4f63cb045c756276b576f1e3c13cc02e` |
-
-:::info
-**Pruned** mode retains limited historical state tries, reducing storage size but limiting storage-proof queries. (All queries other than storage proofs are unaffected.) **Archive** mode is fully historic, storing all state tries since genesis.
-:::
+Please check our [snapshot download page](https://rpc.pathfinder.equilibrium.co/snapshots/latest) for the list of latest snapshots.

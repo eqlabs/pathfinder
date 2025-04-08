@@ -6,8 +6,8 @@ sidebar_position: 4
 
 When a new version of Pathfinder is released, you'll need to update your node to stay compatible with the Starknet network and access new features. Here's how to update your Pathfinder node, depending on how you installed it:
 
-- [Updating Docker image](#updating-docker-images)
-- [Updating from source](#updating-from-source)
+- [Updating Docker Image](#updating-docker-image)
+- [Updating From Source](#updating-from-source)
 
 
 ## Updating Docker Image
