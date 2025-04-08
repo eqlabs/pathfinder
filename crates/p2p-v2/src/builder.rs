@@ -55,13 +55,6 @@ impl<B, AnyPhase> Builder<B, AnyPhase> {
     }
 }
 
-#[cfg(test)]
-impl Builder<dummy::Behaviour, AppBehaviourUnset> {
-    pub fn dummy_app_behaviour_for_test(self) -> Builder<dummy::Behaviour, AppBehaviourSet> {
-        self.app_behaviour(dummy::Behaviour)
-    }
-}
-
 impl<B> Builder<B, AppBehaviourSet> {
     pub fn build(
         self,
