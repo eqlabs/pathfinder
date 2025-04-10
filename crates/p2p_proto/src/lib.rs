@@ -25,6 +25,10 @@ pub mod proto {
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -172,3 +176,4 @@ pub mod header;
 pub mod receipt;
 pub mod state;
 pub mod transaction;
+pub mod consensus;

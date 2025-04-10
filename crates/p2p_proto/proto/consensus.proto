@@ -1,0 +1,191 @@
+syntax = "proto3";
+
+import "common.proto";
+import "class.proto";
+
+package starknet.consensus;
+
+// Contains all variants of mempool and an L1Handler variant to cover all transactions that can be
+// in a new block.
+message ConsensusTransaction {
+    oneof txn {
+        DeclareV3WithClass declare_v3        = 1;
+        DeployAccountV3    deploy_account_v3 = 2;
+        InvokeV3           invoke_v3         = 3;
+        L1HandlerV0        l1_handler        = 4;
+    }
+    starknet.common.Hash transaction_hash = 5;
+}
+
+message Vote {
+    enum  VoteType {
+        Prevote   = 0;
+        Precommit = 1;
+    };
+
+    // We use a type field to distinguish between prevotes and precommits instead of different
+    // messages, to make sure the data, and therefore the signatures, are unambiguous between
+    // Prevote and Precommit.
+    VoteType      vote_type           = 1;
+    uint64        block_number        = 2;
+    uint32        round               = 3;
+    // This is optional since a vote can be NIL.
+    optional starknet.common.Hash proposal_commitment = 4;
+    // Identifies the voter.
+    starknet.common.Address       voter               = 5;
+}
+
+// Streaming of proposals is done on the "consensus_proposal" topic.
+message ConsensusStreamId {
+    uint64 block_number = 1;
+    uint32 round        = 2;
+    uint64 nonce        = 3;
+}
+
+// Messages which make up a Proposal stream.
+message ProposalPart {
+    oneof messages {
+        ProposalInit       init         = 1;
+        ProposalFin        fin          = 2;
+        BlockInfo          block_info   = 3;
+        TransactionBatch   transactions = 4;
+        ProposalCommitment commitment   = 5;
+    }
+}
+
+message ProposalInit {
+    uint64          block_number = 1;
+    uint32          round        = 2;
+    optional uint32 valid_round  = 3;
+    starknet.common.Address         proposer     = 4;
+}
+
+// Identifies the content proposed (and executed). Consensus is reached on the value contained here.
+message ProposalFin {
+    starknet.common.Hash proposal_commitment = 1;
+}
+
+message TransactionBatch {
+    repeated ConsensusTransaction transactions = 1;
+}
+
+// The content and stream_id are generic fields. The user of the stream can choose to pass whatever
+// message that they want. The messages are then encoded in bytes.
+message StreamMessage {
+    oneof message {
+        bytes content = 1;
+        starknet.common.Fin   fin     = 2;
+    }
+    bytes stream_id        = 3;
+    uint64 sequence_number = 4;
+}
+
+message ProposalCommitment {
+    uint64                 block_number                 = 1;
+    starknet.common.Hash                   parent_commitment            = 2;
+    starknet.common.Address                builder                      = 3;
+    uint64                 timestamp                    = 4;
+    string                 protocol_version             = 5; // Starknet version
+    // State root of block `H-K`, where `K` is defined by the protocol's version.
+    starknet.common.Hash                   old_state_root               = 6;
+    starknet.common.Hash                   version_constant_commitment  = 7;
+    // The state diff commitment returned  by the Starknet Feeder Gateway
+    starknet.common.Hash                   state_diff_commitment        = 8;
+    starknet.common.Hash                   transaction_commitment       = 9;
+    starknet.common.Hash                   event_commitment             = 10;
+    starknet.common.Hash                   receipt_commitment           = 11;
+    // Lets for the 5 preceeding commitments.
+    // TODO: Just put the sizes explicitly? This is relatively free compared actually hashing the
+    // lists we commit to. If not, should we also pack other fields?
+    starknet.common.Felt252                concatenated_counts          = 12;
+    starknet.common.Uint128                l1_gas_price_fri             = 13;
+    starknet.common.Uint128                l1_data_gas_price_fri        = 14;
+    starknet.common.Uint128                l2_gas_price_fri             = 15;
+    starknet.common.Uint128                l2_gas_used                  = 16;
+    starknet.common.Uint128                next_l2_gas_price_fri        = 17;
+    starknet.common.L1DataAvailabilityMode l1_da_mode                   = 18;
+}
+
+message BlockInfo {
+    uint64                 block_number          = 1;
+    starknet.common.Address                builder               = 2;
+    uint64                 timestamp             = 3;
+    starknet.common.Uint128                l2_gas_price_fri      = 4;
+    starknet.common.Uint128                l1_gas_price_wei      = 5;
+    starknet.common.Uint128                l1_data_gas_price_wei = 6;
+    starknet.common.Uint128                eth_to_strk_rate      = 7;
+    starknet.common.L1DataAvailabilityMode l1_da_mode            = 8;
+}
+
+
+message ResourceLimits {
+    // TODO(shahak, alonl): figure out if max_amount should be uint64 or Felt252
+    uint64 max_amount = 1;
+    starknet.common.Felt252 max_price_per_unit = 2;
+}
+
+message ResourceBounds {
+    ResourceLimits l1_gas = 1;
+    // This can be None only in transactions that don't support l2 gas.
+    // Starting from 0.14.0, MempoolTransaction and ConsensusTransaction shouldn't have None here.
+    optional ResourceLimits l1_data_gas = 2;
+    ResourceLimits l2_gas = 3;
+}
+
+message AccountSignature {
+    repeated starknet.common.Felt252 parts = 1;
+}
+
+message L1HandlerV0 {
+    starknet.common.Felt252 nonce = 1;
+    starknet.common.Address address = 2;
+    starknet.common.Felt252 entry_point_selector = 3;
+    repeated starknet.common.Felt252 calldata = 4;
+}
+
+message DeclareV3Common {
+    starknet.common.Address sender = 1;
+    AccountSignature signature = 2;
+    starknet.common.Felt252 nonce = 4;
+    starknet.common.Hash compiled_class_hash = 5;
+    ResourceBounds resource_bounds = 6;
+    uint64 tip = 7;
+    repeated starknet.common.Felt252 paymaster_data = 8;
+    repeated starknet.common.Felt252 account_deployment_data = 9;
+    starknet.common.VolitionDomain nonce_data_availability_mode = 10;
+    starknet.common.VolitionDomain fee_data_availability_mode = 11;
+}
+
+message DeclareV3WithClass {
+    DeclareV3Common common = 1;
+    starknet.class.Cairo1Class class = 2;
+}
+
+
+// see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41906f1c314cca5f43170ea75d3b1904196a10101190d2b12a41cc61cfd17c
+message InvokeV3 {
+    starknet.common.Address sender = 1;
+    AccountSignature signature = 2;
+    repeated starknet.common.Felt252 calldata = 3;
+    ResourceBounds resource_bounds = 4;
+    uint64 tip = 5;
+    repeated starknet.common.Felt252 paymaster_data = 6;
+    repeated starknet.common.Felt252 account_deployment_data = 7;
+    starknet.common.VolitionDomain nonce_data_availability_mode = 8;
+    starknet.common.VolitionDomain fee_data_availability_mode = 9;
+    starknet.common.Felt252 nonce = 10;
+}
+
+// see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x29fd7881f14380842414cdfdd8d6c0b1f2174f8916edcfeb1ede1eb26ac3ef0
+message DeployAccountV3 {
+    AccountSignature signature = 1;
+    starknet.common.Hash class_hash = 2;
+    starknet.common.Felt252 nonce = 3;
+    starknet.common.Felt252 address_salt = 4;
+    repeated starknet.common.Felt252 calldata = 5;
+    ResourceBounds resource_bounds = 6;
+    uint64 tip = 7;
+    repeated starknet.common.Felt252 paymaster_data = 8;
+    starknet.common.VolitionDomain nonce_data_availability_mode = 9;
+    starknet.common.VolitionDomain fee_data_availability_mode = 10;
+}
