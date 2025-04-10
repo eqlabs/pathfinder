@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use futures::{Future, Stream, StreamExt, TryFutureExt, TryStream, TryStreamExt};
-use p2p_v2::libp2p::PeerId;
-use p2p_v2::PeerData;
+use p2p::libp2p::PeerId;
+use p2p::PeerData;
 use tokio::sync::mpsc::Receiver;
 use tokio_stream::wrappers::ReceiverStream;
 

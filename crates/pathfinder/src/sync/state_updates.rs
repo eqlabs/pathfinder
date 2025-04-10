@@ -3,8 +3,8 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use anyhow::Context;
-use p2p_v2::libp2p::PeerId;
-use p2p_v2::PeerData;
+use p2p::libp2p::PeerId;
+use p2p::PeerData;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{
     self,

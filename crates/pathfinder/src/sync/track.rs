@@ -4,17 +4,17 @@ use std::pin;
 use anyhow::Context;
 use futures::stream::BoxStream;
 use futures::{pin_mut, Stream, StreamExt, TryStreamExt};
-use p2p_v2::libp2p::PeerId;
-use p2p_v2::sync::client::peer_agnostic::traits::{BlockClient, HeaderStream};
-use p2p_v2::sync::client::peer_agnostic::Client as P2PClient;
-use p2p_v2::sync::client::types::{
+use p2p::libp2p::PeerId;
+use p2p::sync::client::peer_agnostic::traits::{BlockClient, HeaderStream};
+use p2p::sync::client::peer_agnostic::Client as P2PClient;
+use p2p::sync::client::types::{
     ClassDefinition as P2PClassDefinition,
     ClassDefinitionsError,
     EventsResponseStreamFailure,
     StateDiffsError,
     TransactionData,
 };
-use p2p_v2::PeerData;
+use p2p::PeerData;
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;

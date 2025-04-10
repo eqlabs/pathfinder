@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use p2p_v2::libp2p::identity::Keypair;
+use p2p::libp2p::identity::Keypair;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 

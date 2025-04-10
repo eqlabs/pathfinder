@@ -1,227 +1,102 @@
-#![deny(rust_2018_idioms)]
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
+use std::future::Future;
 
-use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
-use ipnet::IpNet;
 use libp2p::identity::Keypair;
-use libp2p::{Multiaddr, PeerId};
-use main_loop::MainLoop;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use libp2p::swarm::NetworkBehaviour;
 use pathfinder_common::ChainId;
-use peers::Peer;
 use tokio::sync::{mpsc, oneshot};
 
-mod behaviour;
+/// Application-specific p2p network behaviour. This one handles consensus.
+pub mod consensus;
+/// Core p2p network behaviour. This is the foundation for all the other
+/// application-specific behaviours.
+pub mod core;
+/// Application-specific p2p network behaviour. This one handles sync.
+pub mod sync;
+
 mod builder;
-pub mod client;
 mod main_loop;
 mod peer_data;
 mod peers;
 mod secret;
-mod short_id;
-mod sync;
 #[cfg(test)]
 mod test_utils;
-#[cfg(test)]
-mod tests;
 mod transport;
 
-pub use behaviour::kademlia_protocol_name;
-use builder::Builder;
-use client::peer_aware::Client;
+pub use builder::Builder;
 pub use libp2p;
 pub use peer_data::PeerData;
-pub use sync::protocol::PROTOCOLS;
 
-pub fn new(keypair: Keypair, cfg: Config, chain_id: ChainId) -> (Client, EventReceiver, MainLoop) {
-    Builder::new(keypair, cfg, chain_id).build()
+/// Creates a new sync P2P network.
+pub fn new_sync(
+    keypair: Keypair,
+    core_config: core::Config,
+    sync_config: sync::Config,
+    chain_id: ChainId,
+) -> (
+    core::Client<sync::Command>,
+    mpsc::Receiver<sync::Event>,
+    main_loop::MainLoop<sync::Behaviour>,
+) {
+    Builder::new(keypair, core_config, chain_id)
+        .app_behaviour(sync::Behaviour::new(sync_config))
+        .build()
 }
 
-/// P2P limitations.
-#[derive(Debug, Clone)]
-pub struct CoreConfig {
-    /// A direct (not relayed) peer can only connect once in this period.
-    pub direct_connection_timeout: Duration,
-    /// A relayed peer can only connect once in this period.
-    pub relay_connection_timeout: Duration,
-    /// Maximum number of direct (non-relayed) inbound peers.
-    pub max_inbound_direct_peers: usize,
-    /// Maximum number of relayed inbound peers.
-    pub max_inbound_relayed_peers: usize,
-    /// Maximum number of outbound peers.
-    pub max_outbound_peers: usize,
-    /// How long to prevent evicted peers from reconnecting.
-    pub eviction_timeout: Duration,
-    pub ip_whitelist: Vec<IpNet>,
-    /// If the number of peers is below the low watermark, the node will attempt
-    /// periodic bootstrapping at this interval. If `None`, periodic bootstrap
-    /// is disabled and only automatic bootstrap remains.
-    pub bootstrap_period: Option<Duration>,
-    pub inbound_connections_rate_limit: RateLimit,
-    /// Custom protocol name for Kademlia
-    pub kad_name: Option<String>,
+/// Creates a new consensus P2P network.
+pub fn new_consensus(
+    keypair: Keypair,
+    core_config: core::Config,
+    _consensus_config: consensus::Config,
+    chain_id: ChainId,
+) -> (
+    core::Client<sync::Command>,
+    mpsc::Receiver<sync::Event>,
+    main_loop::MainLoop<sync::Behaviour>,
+) {
+    // TODO remove allow when behaviour is built properly
+    #[allow(unreachable_code)]
+    Builder::new(keypair, core_config, chain_id)
+        .app_behaviour(todo!())
+        .build()
 }
 
-#[derive(Debug, Clone)]
-pub struct SyncConfig {
-    /// Timeout for an entire stream in p2p-stream
-    pub stream_timeout: Duration,
-    /// Timeout for a single response in p2p-stream
-    pub response_timeout: Duration,
-    /// Applies to each of the p2p-stream protocols separately
-    pub max_concurrent_streams: usize,
+mod builder_phase {
+    pub struct AppBehaviourUnset;
+    pub struct AppBehaviourSet;
 }
 
-#[derive(Debug, Clone)]
-pub struct ConsensusConfig {}
+/// Defines how an application-specific p2p protocol (like sync or consensus)
+/// interacts with the network:
+/// - Commands: Actions requested by the application to be executed by the
+///   network
+/// - Events: Notifications from the network that the application needs to
+///   handle
+/// - State: Data needed to track ongoing operations
+///
+/// This trait is implemented by application-specific network behaviors (like
+/// sync, consensus) to define their p2p protocol logic.
+pub trait ApplicationBehaviour: NetworkBehaviour {
+    /// The type of commands that can be sent to the p2p network.
+    type Command;
+    /// The type of events that the p2p network can emit to the outside world.
+    type Event;
+    /// State needed to track pending network operations and their responses.
+    type State;
 
-/// P2P limitations.
-#[derive(Debug, Clone)]
-pub struct Config {
-    /// A direct (not relayed) peer can only connect once in this period.
-    pub direct_connection_timeout: Duration,
-    /// A relayed peer can only connect once in this period.
-    pub relay_connection_timeout: Duration,
-    /// Maximum number of direct (non-relayed) inbound peers.
-    pub max_inbound_direct_peers: usize,
-    /// Maximum number of relayed inbound peers.
-    pub max_inbound_relayed_peers: usize,
-    /// Maximum number of outbound peers.
-    pub max_outbound_peers: usize,
-    /// How long to prevent evicted peers from reconnecting.
-    pub eviction_timeout: Duration,
-    pub ip_whitelist: Vec<IpNet>,
-    /// If the number of peers is below the low watermark, the node will attempt
-    /// periodic bootstrapping at this interval. If `None`, periodic bootstrap
-    /// is disabled and only automatic bootstrap remains.
-    pub bootstrap_period: Option<Duration>,
-    pub inbound_connections_rate_limit: RateLimit,
-    /// Custom protocol name for Kademlia
-    pub kad_name: Option<String>,
-    /// Timeout for an entire stream in p2p-stream
-    pub stream_timeout: Duration,
-    /// Timeout for a single response in p2p-stream
-    pub response_timeout: Duration,
-    /// Applies to each of the p2p-stream protocols separately
-    pub max_concurrent_streams: usize,
-}
+    /// Handles a command from the outside world.
+    fn handle_command(
+        &mut self,
+        command: Self::Command,
+        state: &mut Self::State,
+    ) -> impl Future<Output = ()> + Send;
 
-#[derive(Debug, Clone)]
-pub struct RateLimit {
-    pub max: usize,
-    pub interval: Duration,
+    /// Handles an event from the inside of the p2p network.
+    fn handle_event(
+        &mut self,
+        event: <Self as NetworkBehaviour>::ToSwarm,
+        state: &mut Self::State,
+        event_sender: mpsc::Sender<Self::Event>,
+    ) -> impl Future<Output = ()> + Send;
 }
 
 type EmptyResultSender = oneshot::Sender<anyhow::Result<()>>;
-
-#[derive(Debug)]
-enum Command {
-    StarListening {
-        addr: Multiaddr,
-        sender: EmptyResultSender,
-    },
-    Dial {
-        peer_id: PeerId,
-        addr: Multiaddr,
-        sender: EmptyResultSender,
-    },
-    Disconnect {
-        peer_id: PeerId,
-        sender: EmptyResultSender,
-    },
-    GetClosestPeers {
-        peer: PeerId,
-        sender: mpsc::Sender<anyhow::Result<Vec<PeerId>>>,
-    },
-    SendHeadersSyncRequest {
-        peer_id: PeerId,
-        request: BlockHeadersRequest,
-        sender: oneshot::Sender<
-            anyhow::Result<ResponseReceiver<std::io::Result<BlockHeadersResponse>>>,
-        >,
-    },
-    SendClassesSyncRequest {
-        peer_id: PeerId,
-        request: ClassesRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<ClassesResponse>>>>,
-    },
-    SendStateDiffsSyncRequest {
-        peer_id: PeerId,
-        request: StateDiffsRequest,
-        sender:
-            oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<StateDiffsResponse>>>>,
-    },
-    SendTransactionsSyncRequest {
-        peer_id: PeerId,
-        request: TransactionsRequest,
-        sender: oneshot::Sender<
-            anyhow::Result<ResponseReceiver<std::io::Result<TransactionsResponse>>>,
-        >,
-    },
-    SendEventsSyncRequest {
-        peer_id: PeerId,
-        request: EventsRequest,
-        sender: oneshot::Sender<anyhow::Result<ResponseReceiver<std::io::Result<EventsResponse>>>>,
-    },
-    NotUseful {
-        peer_id: PeerId,
-        sender: oneshot::Sender<()>,
-    },
-    /// For testing purposes only
-    _Test(TestCommand),
-}
-
-#[derive(Debug)]
-pub enum TestCommand {
-    GetPeersFromDHT(oneshot::Sender<HashSet<PeerId>>),
-    GetConnectedPeers(oneshot::Sender<HashMap<PeerId, Peer>>),
-}
-
-#[derive(Debug)]
-pub enum Event {
-    InboundHeadersSyncRequest {
-        from: PeerId,
-        request: BlockHeadersRequest,
-        channel: ResponseSender<BlockHeadersResponse>,
-    },
-    InboundClassesSyncRequest {
-        from: PeerId,
-        request: ClassesRequest,
-        channel: ResponseSender<ClassesResponse>,
-    },
-    InboundStateDiffsSyncRequest {
-        from: PeerId,
-        request: StateDiffsRequest,
-        channel: ResponseSender<StateDiffsResponse>,
-    },
-    InboundTransactionsSyncRequest {
-        from: PeerId,
-        request: TransactionsRequest,
-        channel: ResponseSender<TransactionsResponse>,
-    },
-    InboundEventsSyncRequest {
-        from: PeerId,
-        request: EventsRequest,
-        channel: ResponseSender<EventsResponse>,
-    },
-    /// For testing purposes only
-    Test(TestEvent),
-}
-
-#[derive(Debug)]
-pub enum TestEvent {
-    NewListenAddress(Multiaddr),
-    KademliaBootstrapStarted,
-    KademliaBootstrapCompleted(Result<PeerId, PeerId>),
-    ConnectionEstablished { outbound: bool, remote: PeerId },
-    ConnectionClosed { remote: PeerId },
-    PeerAddedToDHT { remote: PeerId },
-    Dummy,
-}
-
-pub type EventReceiver = mpsc::Receiver<Event>;
