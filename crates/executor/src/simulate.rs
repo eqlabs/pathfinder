@@ -97,7 +97,7 @@ pub fn simulate(
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
             let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-            let tx_info = if l2_gas_accounting_enabled(
+            let (tx_info, gas_limit) = if l2_gas_accounting_enabled(
                 &tx,
                 &tx_state,
                 &block_context,
@@ -122,7 +122,7 @@ pub fn simulate(
             Ok(TransactionSimulation {
                 fee_estimation: FeeEstimate::from_tx_and_gas_vector(
                     &tx,
-                    &tx_info.receipt.gas,
+                    &gas_limit,
                     &gas_vector_computation_mode,
                     &block_context,
                 ),
