@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::transaction::objects::TransactionExecutionInfo;
 use pathfinder_common::{
     CasmHash,
     ClassHash,
@@ -31,13 +30,13 @@ pub struct FeeEstimate {
 
 impl FeeEstimate {
     /// Computes fee estimate from the transaction execution information.
-    pub(crate) fn from_tx_info_and_gas_price(
-        tx_info: &TransactionExecutionInfo,
+    pub(crate) fn from_gas_vector_and_gas_price(
+        gas_vector: &GasVector,
         block_info: &BlockInfo,
         fee_type: FeeType,
         minimal_gas_vector: &Option<GasVector>,
     ) -> FeeEstimate {
-        tracing::trace!(resources=?tx_info.receipt.resources, "Transaction resources");
+        tracing::trace!(?gas_vector, "Transaction resources");
         let gas_prices = block_info.gas_prices.gas_price_vector(&fee_type);
         let l1_gas_price = gas_prices.l1_gas_price.get();
         let l1_data_gas_price = gas_prices.l1_data_gas_price.get();
@@ -45,13 +44,9 @@ impl FeeEstimate {
 
         let minimal_gas_vector = minimal_gas_vector.unwrap_or_default();
 
-        let l1_gas_consumed = tx_info.receipt.gas.l1_gas.max(minimal_gas_vector.l1_gas);
-        let l1_data_gas_consumed = tx_info
-            .receipt
-            .gas
-            .l1_data_gas
-            .max(minimal_gas_vector.l1_data_gas);
-        let l2_gas_consumed = tx_info.receipt.gas.l2_gas.max(minimal_gas_vector.l2_gas);
+        let l1_gas_consumed = gas_vector.l1_gas.max(minimal_gas_vector.l1_gas);
+        let l1_data_gas_consumed = gas_vector.l1_data_gas.max(minimal_gas_vector.l1_data_gas);
+        let l2_gas_consumed = gas_vector.l2_gas.max(minimal_gas_vector.l2_gas);
 
         // Blockifier does not put the actual fee into the receipt if `max_fee` in the
         // transaction was zero. In that case we have to compute the fee
