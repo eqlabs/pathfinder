@@ -120,9 +120,9 @@ pub fn simulate(
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
             Ok(TransactionSimulation {
-                fee_estimation: FeeEstimate::from_tx_and_tx_info(
+                fee_estimation: FeeEstimate::from_tx_and_gas_vector(
                     &tx,
-                    &tx_info,
+                    &tx_info.receipt.gas,
                     &gas_vector_computation_mode,
                     &block_context,
                 ),
