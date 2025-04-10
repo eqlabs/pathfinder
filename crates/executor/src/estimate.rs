@@ -39,7 +39,7 @@ pub fn estimate(
             .entered();
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-            let tx_info = if l2_gas_accounting_enabled(
+            let (tx_info, gas_limit) = if l2_gas_accounting_enabled(
                 &tx,
                 &state,
                 &block_context,
@@ -71,7 +71,7 @@ pub fn estimate(
 
             Ok(FeeEstimate::from_tx_and_gas_vector(
                 &tx,
-                &tx_info.receipt.gas,
+                &gas_limit,
                 &gas_vector_computation_mode,
                 &block_context,
             ))

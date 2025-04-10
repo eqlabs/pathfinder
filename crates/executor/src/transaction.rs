@@ -6,7 +6,7 @@ use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionIn
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::core::ClassHash;
-use starknet_api::execution_resources::GasAmount;
+use starknet_api::execution_resources::{GasAmount, GasVector};
 use starknet_api::transaction::fields::{
     AllResourceBounds,
     GasVectorComputationMode,
@@ -119,6 +119,10 @@ const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(1_000_000);
 /// gas, even though the limit was set to the L2 gas cost of the transaction
 /// (because the worst-case path gas requirements are larger than the actual
 /// cost).
+///
+/// Returns both the TransactionExecutionInfo (with the receipt containing
+/// the _actual_ L2 gas amount used) and the gas vector with the minimal
+/// gas limit (to be used to compute the fee estimation).
 pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
     tx: &mut Transaction,
     tx_index: usize,
@@ -126,7 +130,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
     block_context: &blockifier::context::BlockContext,
     revert_behavior: ExecutionBehaviorOnRevert,
     epsilon: Percentage,
-) -> Result<TransactionExecutionInfo, TransactionExecutionError>
+) -> Result<(TransactionExecutionInfo, GasVector), TransactionExecutionError>
 where
     S: UpdatableState,
 {
@@ -155,13 +159,17 @@ where
     let l2_gas_adjusted = GasAmount(l2_gas_consumed.saturating_add(epsilon.of(l2_gas_consumed)));
     set_l2_gas_limit(tx, l2_gas_adjusted);
 
-    let (l2_gas_limit, mut tx_info, tx_state) =
+    let (gas_limit, tx_info, tx_state) =
         match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior) {
             Ok((tx_info, tx_state)) => {
                 metrics::increment_counter!("rpc_fee_estimation.without_binary_search");
                 // If 110% of the actual transaction gas fee is enough, we use that
                 // as the estimate and skip the binary search.
-                (l2_gas_adjusted, tx_info, tx_state)
+                let gas_limit = GasVector {
+                    l2_gas: l2_gas_adjusted,
+                    ..tx_info.receipt.gas
+                };
+                (gas_limit, tx_info, tx_state)
             }
             Err(TransactionSimulationError::OutOfGas) => {
                 metrics::increment_counter!("rpc_fee_estimation.with_binary_search");
@@ -218,7 +226,12 @@ where
 
                 metrics::histogram!("rpc_fee_estimation.steps_to_converge", steps as f64);
 
-                (current_l2_gas_limit, tx_info, tx_state)
+                let gas_limit = GasVector {
+                    l2_gas: current_l2_gas_limit,
+                    ..tx_info.receipt.gas
+                };
+
+                (gas_limit, tx_info, tx_state)
             }
             Err(TransactionSimulationError::ExecutionError(error)) => {
                 return Err(error);
@@ -227,41 +240,43 @@ where
 
     metrics::histogram!(
         "rpc_fee_estimation.l2_gas_difference_between_limit_and_consumed",
-        l2_gas_limit
+        gas_limit
+            .l2_gas
             .0
             .checked_sub(l2_gas_consumed)
             .expect("l2_gas_limit > l2_gas_consumed") as f64
     );
 
-    if execution_flags.charge_fee && l2_gas_limit > initial_l2_gas_limit {
-        tracing::debug!(
-            initial_limit=%initial_l2_gas_limit,
-            final_limit=%l2_gas_limit,
-            "Initial L2 gas limit exceeded"
-        );
-        tx_state.abort();
-        // Set the L2 gas limit to zero so that the transaction reverts with a detailed
-        // `ExecutionError`.
-        set_l2_gas_limit(tx, GasAmount::ZERO);
-        match execute_transaction(
-            tx,
-            tx_index,
-            state,
-            block_context,
-            &ExecutionBehaviorOnRevert::Fail,
-        ) {
-            Err(e @ TransactionExecutionError::ExecutionError { .. }) => {
-                return Err(e);
-            }
-            _ => unreachable!("Transaction should revert when gas limit is zero"),
-        }
-    }
+    let (tx_info, tx_state) =
+        if execution_flags.charge_fee && gas_limit.l2_gas > initial_l2_gas_limit {
+            tracing::debug!(
+                initial_limit=%initial_l2_gas_limit,
+                final_limit=%gas_limit.l2_gas,
+                "Initial L2 gas limit exceeded"
+            );
+
+            // Set the L2 gas limit to the initial gas limit so that the transaction
+            // reverts.
+            set_l2_gas_limit(tx, initial_l2_gas_limit);
+
+            // Revert state changes, and run the transaction again with the initial state.
+            tx_state.abort();
+            let mut tx_state = CachedState::<_>::create_transactional(state);
+
+            // Make sure we return the gas limit we've determined is sufficient to run the
+            // transaction, and _not_ the resources for the reverted transaction.
+            let (tx_info, _) =
+                execute_transaction(tx, tx_index, &mut tx_state, block_context, &revert_behavior)?;
+
+            (tx_info, tx_state)
+        } else {
+            (tx_info, tx_state)
+        };
 
     // State changes must be committed once the search is done.
     tx_state.commit();
-    tx_info.receipt.gas.l2_gas = l2_gas_limit;
 
-    Ok(tx_info)
+    Ok((tx_info, gas_limit))
 }
 
 /// Execute the transaction and handle common errors.
@@ -271,7 +286,7 @@ pub(crate) fn execute_transaction<S>(
     state: &mut S,
     block_context: &blockifier::context::BlockContext,
     revert_behavior: &ExecutionBehaviorOnRevert,
-) -> Result<TransactionExecutionInfo, TransactionExecutionError>
+) -> Result<(TransactionExecutionInfo, GasVector), TransactionExecutionError>
 where
     S: UpdatableState,
 {
@@ -290,7 +305,9 @@ where
                 }
             }
 
-            Ok(tx_info)
+            let gas_limit = tx_info.receipt.gas;
+
+            Ok((tx_info, gas_limit))
         }
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction estimation failed");
