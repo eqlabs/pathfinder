@@ -16,7 +16,7 @@ Pathfinder is a full node implementation designed to interact with the Starknet 
 <details>
 <summary><strong>How can I run Pathfinder?</strong></summary>
 
-You can run Pathfinder using Docker or by building it from source. Detailed instructions for both methods are provided in the [installation section](getting-started/running-pathfinder#installation-methods).
+You can run Pathfinder using Docker or by building it from source. Detailed instructions for both methods are provided in the [installation section](getting-started/running-pathfinder).
 </details>
 
 <details>

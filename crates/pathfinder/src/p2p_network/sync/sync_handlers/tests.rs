@@ -103,6 +103,8 @@ mod prop {
 
     use futures::channel::mpsc;
     use futures::StreamExt;
+    use p2p::sync::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
+    use p2p::sync::client::types::Receipt;
     use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
     use p2p_proto::common::{BlockNumberOrHash, Iteration};
     use p2p_proto::event::{EventsRequest, EventsResponse};
@@ -119,8 +121,6 @@ mod prop {
         TransactionsRequest,
         TransactionsResponse,
     };
-    use p2p_v2::sync::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
-    use p2p_v2::sync::client::types::Receipt;
     use pathfinder_common::event::Event;
     use pathfinder_common::prelude::*;
     use pathfinder_common::state_update::SystemContractUpdate;

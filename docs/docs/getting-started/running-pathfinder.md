@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Pathfinder can be set up using one of the following methods:
 
-* [Docker container](#docker-setup)  
+* [Docker container](#docker-container)  
 * [Building from source](#building-from-source)
         
 

@@ -2,9 +2,9 @@ use std::collections::{HashMap, VecDeque};
 use std::num::NonZeroUsize;
 
 use anyhow::{anyhow, Context};
-use p2p_v2::libp2p::PeerId;
-use p2p_v2::sync::client::types::TransactionData;
-use p2p_v2::PeerData;
+use p2p::libp2p::PeerId;
+use p2p::sync::client::types::TransactionData;
+use p2p::PeerData;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::{

@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::Context;
 use error::SyncError;
 use futures::{pin_mut, Stream, StreamExt};
-use p2p_v2::sync::client::peer_agnostic::traits::{
+use p2p::sync::client::peer_agnostic::traits::{
     BlockClient,
     ClassStream,
     EventStream,
@@ -14,7 +14,7 @@ use p2p_v2::sync::client::peer_agnostic::traits::{
     StreamItem,
     TransactionStream,
 };
-use p2p_v2::PeerData;
+use p2p::PeerData;
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::block_hash;
 use pathfinder_common::prelude::*;
@@ -297,8 +297,8 @@ mod tests {
     use fake::{Fake, Faker};
     use futures::stream;
     use http::header;
-    use p2p_v2::libp2p::PeerId;
-    use p2p_v2::sync::client::types::{
+    use p2p::libp2p::PeerId;
+    use p2p::sync::client::types::{
         ClassDefinition,
         ClassDefinitionsError,
         EventsForBlockByTransaction,
