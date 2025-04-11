@@ -1,7 +1,8 @@
-use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
+use blockifier::transaction::objects::HasRelatedFeeType;
 use blockifier::transaction::transaction_execution::Transaction;
 use pathfinder_common::TransactionHash;
 use starknet_api::block::FeeType;
+use starknet_api::execution_resources::GasVector;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 use util::percentage::Percentage;
 
@@ -38,7 +39,7 @@ pub fn estimate(
             .entered();
 
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-            let tx_info = if l2_gas_accounting_enabled(
+            let (tx_info, gas_limit) = if l2_gas_accounting_enabled(
                 &tx,
                 &state,
                 &block_context,
@@ -68,9 +69,9 @@ pub fn estimate(
                 "Transaction estimation finished"
             );
 
-            Ok(FeeEstimate::from_tx_and_tx_info(
+            Ok(FeeEstimate::from_tx_and_gas_vector(
                 &tx,
-                &tx_info,
+                &gas_limit,
                 &gas_vector_computation_mode,
                 &block_context,
             ))
@@ -79,9 +80,9 @@ pub fn estimate(
 }
 
 impl FeeEstimate {
-    pub(crate) fn from_tx_and_tx_info(
+    pub(crate) fn from_tx_and_gas_vector(
         transaction: &Transaction,
-        tx_info: &TransactionExecutionInfo,
+        gas_vector: &GasVector,
         gas_vector_computation_mode: &GasVectorComputationMode,
         block_context: &blockifier::context::BlockContext,
     ) -> Self {
@@ -97,8 +98,8 @@ impl FeeEstimate {
             Transaction::L1Handler(_) => None,
         };
 
-        FeeEstimate::from_tx_info_and_gas_price(
-            tx_info,
+        FeeEstimate::from_gas_vector_and_gas_price(
+            gas_vector,
             block_context.block_info(),
             fee_type,
             &minimal_gas_vector,

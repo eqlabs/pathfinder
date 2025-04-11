@@ -318,7 +318,7 @@
       "execution_resources": {
         "l1_data_gas": 128,
         "l1_gas": 0,
-        "l2_gas": 761849
+        "l2_gas": 692590
       },
       "fee_transfer_invocation": {
         "call_type": "CALL",
