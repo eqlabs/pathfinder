@@ -459,7 +459,8 @@ impl StorageBuilder {
     ///   DB setting, otherwise errors.
     /// - If the database is new and no configuration is provided, the database
     ///   is created in archive mode.
-    /// - Once the history size for pruning is set, it cannot be changed.
+    /// - Once the history mode is chosen, it cannot be changed (the history
+    ///   size can change from run to run in pruning mode).
     fn determine_blockchain_history_mode(
         &self,
         connection: &mut rusqlite::Connection,
@@ -482,43 +483,88 @@ impl StorageBuilder {
             }
         });
 
-        match blockchain_history_mode {
-            BlockchainHistoryMode::Archive => {
-                if init_num_blocks_kept.is_some() {
-                    anyhow::bail!(
-                        "Cannot disable blockchain history pruning on a database that was created \
-                         with it enabled."
-                    );
-                }
-            }
-            BlockchainHistoryMode::Prune { num_blocks_kept } => {
-                if !is_new_database {
-                    let Some(init_num_blocks_kept) = init_num_blocks_kept else {
-                        anyhow::bail!(
-                            "Cannot enable blockchain history pruning on a database that was not \
-                             created with it disabled."
-                        );
-                    };
-                    if num_blocks_kept != init_num_blocks_kept {
-                        anyhow::bail!(
-                            "Cannot enable blockchain history pruning with a different number of \
-                             blocks kept than the database was created with \
-                             ({init_num_blocks_kept})."
-                        );
-                    }
-                } else {
-                    connection.execute(
-                        "INSERT OR IGNORE INTO storage_options (option, value) VALUES \
-                         ('prune_blockchain', ?)",
-                        [num_blocks_kept],
-                    )?;
-                    tracing::info!("Created new database with blockchain history pruning enabled.");
-                }
+        let validated_blockchain_history_mode = validate_mode_and_update_db(
+            blockchain_history_mode,
+            init_num_blocks_kept,
+            is_new_database,
+            connection,
+        )?;
+
+        Ok(validated_blockchain_history_mode)
+    }
+}
+
+fn validate_mode_and_update_db(
+    blockchain_history_mode: BlockchainHistoryMode,
+    init_num_blocks_kept: Option<u64>,
+    is_new_database: bool,
+    connection: &mut rusqlite::Connection,
+) -> anyhow::Result<BlockchainHistoryMode> {
+    match blockchain_history_mode {
+        BlockchainHistoryMode::Archive => {
+            if init_num_blocks_kept.is_some() {
+                anyhow::bail!(
+                    "Cannot disable blockchain history pruning on a database that was created \
+                     with it enabled."
+                );
             }
         }
+        BlockchainHistoryMode::Prune { num_blocks_kept } => {
+            connection.execute(
+                r"
+                INSERT INTO storage_options (option, value)
+                VALUES ('prune_blockchain', ?)
+                ON CONFLICT(option) DO UPDATE SET value = excluded.value
+                ",
+                [num_blocks_kept],
+            )?;
 
-        Ok(blockchain_history_mode)
+            if is_new_database {
+                tracing::info!("Created new database with blockchain history pruning enabled.");
+                return Ok(blockchain_history_mode);
+            }
+
+            let Some(init_num_blocks_kept) = init_num_blocks_kept else {
+                anyhow::bail!(
+                    "Cannot enable blockchain history pruning on a database that was not created \
+                     with it disabled."
+                );
+            };
+            // If the blockchain history size got reduced, here we use the opportunity to
+            // prune the now excess blocks. If the size got increased, we don't need to do
+            // anything here since the gap will be filled as new blocks are synced.
+            let num_blocks_to_remove = match init_num_blocks_kept.checked_sub(num_blocks_kept) {
+                Some(block_diff) if block_diff > 0 => block_diff,
+                _ => return Ok(blockchain_history_mode),
+            };
+
+            // Get this info from `transactions` because it is consistently pruned as
+            // opposed to block related tables.
+            let oldest: Option<u64> = connection
+                .query_row(
+                    "SELECT block_number FROM transactions ORDER BY block_number ASC LIMIT 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .context("Fetching oldest block number")?;
+
+            let Some(oldest) = oldest else {
+                return Ok(blockchain_history_mode);
+            };
+
+            let tx = connection
+                .transaction()
+                .context("Creating database transaction")?;
+            for block in oldest..(oldest + num_blocks_to_remove) {
+                let block = BlockNumber::new_or_panic(block);
+                pruning::prune_block(&tx, block).context(format!("Pruning block {block}"))?;
+            }
+            tx.commit().context("Committing database transaction")?;
+        }
     }
+
+    Ok(blockchain_history_mode)
 }
 
 impl Storage {
