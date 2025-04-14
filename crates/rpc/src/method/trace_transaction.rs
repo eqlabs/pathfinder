@@ -153,15 +153,6 @@ pub async fn trace_transaction(
                         })?;
                     Ok(LocalExecution::Success(trace))
                 }
-                Err(TransactionExecutionError::ExecutionError { .. }) => {
-                    Ok(LocalExecution::Unsupported(
-                        transactions
-                            .into_iter()
-                            .find(|tx| tx.hash == input.transaction_hash)
-                            .unwrap()
-                            .clone(),
-                    ))
-                }
                 Err(e) => Err(e.into()),
             }
         })
