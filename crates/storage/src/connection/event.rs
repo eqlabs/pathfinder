@@ -487,6 +487,13 @@ impl Transaction<'_> {
         self.event_filter_cache.set_many(&event_filters);
         event_filters.extend(cached_filters);
         event_filters.sort_by_key(|filter| filter.from_block);
+        let num_cont = event_filters
+            .windows(2)
+            .take_while(|filters| filters[0].to_block + 1 == filters[1].from_block)
+            .count()
+            // need to add 1 to include the last filter in the range
+            + 1;
+        event_filters.truncate(num_cont);
 
         let total_loaded_filters = total_event_filters - cache_hits;
         let load_limit_reached = total_loaded_filters > max_event_filters_to_load;
