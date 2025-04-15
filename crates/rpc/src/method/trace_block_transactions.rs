@@ -128,9 +128,6 @@ pub async fn trace_block_transactions(
         );
         let traces = match pathfinder_executor::trace(state, cache, hash, executor_transactions) {
             Ok(traces) => traces,
-            Err(TransactionExecutionError::ExecutionError { .. }) => {
-                return Ok(LocalExecution::Unsupported(transactions))
-            }
             Err(e) => return Err(e.into()),
         };
 
