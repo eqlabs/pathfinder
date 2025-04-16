@@ -7,12 +7,13 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.16.4] - 2025-04-15
 
 ### Fixed
 
 - `starknet_simulateTransactions` returns an error instead of the trace of the reverted transaction if the L2 gas cap is insufficient.
 - `starknet_traceTransaction` and `starknet_traceBlockTransactions` returns an internal error with no details upon encountering a transaction execution error.
+- `starknet_getEvents` returns an incomplete set of events for some queries over a block range larger than 106k blocks.
 
 ## [0.16.3] - 2025-04-03
 
