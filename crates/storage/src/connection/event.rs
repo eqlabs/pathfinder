@@ -172,7 +172,7 @@ impl Transaction<'_> {
             ..Default::default()
         };
 
-        let (event_filters, _) = self.load_event_filter_range(from_block, to_block, None)?;
+        let event_filters = self.load_event_filter_range(from_block, to_block)?;
 
         let blocks_to_scan = event_filters
             .iter()
@@ -243,7 +243,7 @@ impl Transaction<'_> {
         &self,
         constraints: &EventConstraints,
         max_blocks_to_scan: NonZeroUsize,
-        max_event_filters_to_load: NonZeroUsize,
+        block_range_limit: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
         if constraints.page_size < 1 {
             return Err(EventFilterError::PageSizeTooSmall);
@@ -256,20 +256,34 @@ impl Transaction<'_> {
                 continuation_token: None,
             });
         };
+        let block_range_limit: u64 = block_range_limit
+            .get()
+            .try_into()
+            .expect("Conversion error");
 
         let from_block = constraints.from_block.unwrap_or(BlockNumber::GENESIS);
-        let to_block = match constraints.to_block {
-            Some(to_block) => std::cmp::min(to_block, latest_block),
-            None => latest_block,
-        };
+        // The -1 is needed since `from_block` also counts as one block.
+        let max_to_block = from_block + block_range_limit - 1;
+        let to_block = constraints.to_block.unwrap_or(latest_block);
+        // Can't go beyond latest block.
+        let to_block = std::cmp::min(to_block, latest_block);
+        // Can't exceed `block_range_limit`.
+        let to_block_limited = std::cmp::min(to_block, max_to_block);
 
-        let (event_filters, load_limit_reached) =
-            self.load_event_filter_range(from_block, to_block, Some(max_event_filters_to_load))?;
+        let event_filters = self.load_event_filter_range(from_block, to_block_limited)?;
 
+        let last_covered_block = std::cmp::min(
+            to_block_limited,
+            event_filters
+                .last()
+                .expect("At least one filter is present")
+                .to_block,
+        );
+        let add_continuation_token = to_block > last_covered_block;
         let blocks_to_scan = event_filters
             .iter()
             .flat_map(|filter| filter.check(constraints))
-            .filter(|&block| (from_block..=to_block).contains(&block));
+            .filter(|&block| (from_block..=last_covered_block).contains(&block));
 
         let keys: Vec<std::collections::HashSet<_>> = constraints
             .keys
@@ -378,17 +392,12 @@ impl Transaction<'_> {
             }
         }
 
-        if load_limit_reached {
-            let last_loaded_block = event_filters
-                .last()
-                .expect("At least one filter is present")
-                .to_block;
-
+        if add_continuation_token {
             Ok(PageOfEvents {
                 events: emitted_events,
                 continuation_token: Some(ContinuationToken {
                     // Event filter block range is inclusive so + 1.
-                    block_number: last_loaded_block + 1,
+                    block_number: last_covered_block + 1,
                     offset: 0,
                 }),
             })
@@ -401,32 +410,13 @@ impl Transaction<'_> {
     }
 
     /// Load the event bloom filters (either from the cache or the database) for
-    /// the given block range with an optional database load limit. Returns the
-    /// loaded filters and a boolean indicating if the load limit was reached.
+    /// the given block range with an optional database load limit.  
     fn load_event_filter_range(
         &self,
         start_block: BlockNumber,
         end_block: BlockNumber,
-        max_event_filters_to_load: Option<NonZeroUsize>,
-    ) -> anyhow::Result<(Vec<Arc<AggregateBloom>>, bool)> {
-        let mut total_filters_stmt = self.inner().prepare_cached(
-            r"
-            SELECT COUNT(*)
-            FROM event_filters
-            WHERE from_block <= :end_block AND to_block >= :start_block
-            ",
-        )?;
-        let total_event_filters = total_filters_stmt.query_row(
-            named_params![
-                ":end_block": &end_block,
-                ":start_block": &start_block,
-            ],
-            |row| row.get::<_, u64>(0),
-        )?;
-
+    ) -> anyhow::Result<Vec<Arc<AggregateBloom>>> {
         let cached_filters = self.event_filter_cache.get_many(start_block, end_block);
-        let cache_hits = cached_filters.len() as u64;
-
         let cached_filters_rarray = Rc::new(
             cached_filters
                 .iter()
@@ -445,13 +435,8 @@ impl Transaction<'_> {
             WHERE from_block <= :end_block AND to_block >= :start_block
             AND from_block NOT IN rarray(:cached_filters)
             ORDER BY from_block
-            LIMIT :max_event_filters_to_load
             ",
         )?;
-        // Use limit if provided, otherwise set it to the number of filters that cover
-        // the entire requested range.
-        let max_event_filters_to_load =
-            max_event_filters_to_load.map_or(total_event_filters, |limit| limit.get() as u64);
 
         let mut event_filters = load_stmt
             .query_map(
@@ -460,7 +445,6 @@ impl Transaction<'_> {
                     ":end_block": &end_block.get(),
                     ":start_block": &start_block.get(),
                     ":cached_filters": &cached_filters_rarray,
-                    ":max_event_filters_to_load": &max_event_filters_to_load,
                 ],
                 |row| {
                     let from_block = row.get_block_number(0)?;
@@ -480,29 +464,20 @@ impl Transaction<'_> {
         self.event_filter_cache.set_many(&event_filters);
         event_filters.extend(cached_filters);
         event_filters.sort_by_key(|filter| filter.from_block);
-        let num_cont = event_filters
-            .windows(2)
-            .take_while(|filters| filters[0].to_block + 1 == filters[1].from_block)
-            .count()
-            // need to add 1 to include the last filter in the range
-            + 1;
-        event_filters.truncate(num_cont);
 
-        let total_loaded_filters = total_event_filters - cache_hits;
-        let load_limit_reached = total_loaded_filters > max_event_filters_to_load;
+        let running_event_filter = self.running_event_filter.lock().unwrap();
 
         // There are no event filters in the database yet or the loaded ones
         // don't cover the requested range.
-        let should_include_running = event_filters
-            .last()
-            .is_none_or(|last| end_block > last.to_block);
+        let should_include_running = event_filters.last().is_none_or(|last| {
+            last.to_block + 1 == running_event_filter.filter.from_block && end_block > last.to_block
+        });
 
-        if should_include_running && !load_limit_reached {
-            let running_event_filter = self.running_event_filter.lock().unwrap();
+        if should_include_running {
             event_filters.push(Arc::new(running_event_filter.filter.clone()));
         }
 
-        Ok((event_filters, load_limit_reached))
+        Ok(event_filters)
     }
 
     pub fn next_block_without_events(&self) -> BlockNumber {
@@ -820,8 +795,8 @@ mod tests {
 
     static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
-    static MAX_EVENT_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
-        LazyLock::new(|| NonZeroUsize::new(10).unwrap());
+    static EVENT_FILTER_BLOCK_RANGE_LIMIT: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
 
     mod event_bloom {
         use pretty_assertions_sorted::assert_eq;
@@ -975,7 +950,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1080,7 +1055,7 @@ mod tests {
                     offset: 0,
                 },
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap()
             .events
@@ -1119,7 +1094,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1154,7 +1129,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1187,7 +1162,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
@@ -1217,7 +1192,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
@@ -1251,7 +1226,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1285,7 +1260,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1318,7 +1293,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1339,7 +1314,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1371,7 +1346,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1403,7 +1378,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1430,7 +1405,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1457,7 +1432,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1490,7 +1465,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1528,7 +1503,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1556,7 +1531,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1584,7 +1559,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1612,7 +1587,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1637,7 +1612,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1669,7 +1644,7 @@ mod tests {
             .events(
                 &constraints,
                 1.try_into().unwrap(),
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1696,7 +1671,7 @@ mod tests {
             .events(
                 &constraints,
                 1.try_into().unwrap(),
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1753,7 +1728,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1788,18 +1763,17 @@ mod tests {
         };
 
         let events = tx
-            .events(&constraints, *MAX_BLOCKS_TO_SCAN, 1.try_into().unwrap())
+            .events(&constraints, *MAX_BLOCKS_TO_SCAN, 10.try_into().unwrap())
             .unwrap();
 
-        let block_range_len = usize::try_from(AGGREGATE_BLOOM_BLOCK_RANGE_LEN).unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 // ...but only events from the first bloom filter range are returned...
-                events: emitted_events[..events_per_block * block_range_len].to_vec(),
+                events: emitted_events[..events_per_block * 10].to_vec(),
                 // ...with a continuation token pointing to the next block range.
                 continuation_token: Some(ContinuationToken {
-                    block_number: BlockNumber::new_or_panic(AGGREGATE_BLOOM_BLOCK_RANGE_LEN),
+                    block_number: BlockNumber::new_or_panic(10),
                     offset: 0,
                 })
             }
@@ -1820,7 +1794,7 @@ mod tests {
             .events(
                 &constraints_with_offset,
                 *MAX_BLOCKS_TO_SCAN,
-                1.try_into().unwrap(),
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         assert_eq!(
@@ -1828,7 +1802,7 @@ mod tests {
             PageOfEvents {
                 // ...but only events from the second (loaded) and third (running) event filter
                 // range are returned...
-                events: emitted_events[events_per_block * block_range_len..].to_vec(),
+                events: emitted_events[events_per_block * 10..].to_vec(),
                 // ...without a continuation token.
                 continuation_token: None,
             }
@@ -1903,7 +1877,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
         let blocks = contained_blocks(&page);

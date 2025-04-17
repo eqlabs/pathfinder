@@ -746,8 +746,8 @@ mod tests {
     use super::*;
     static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
-    static MAX_EVENT_FILTERS_TO_LOAD: LazyLock<NonZeroUsize> =
-        LazyLock::new(|| NonZeroUsize::new(5).unwrap());
+    static EVENT_FILTERS_BLOCK_RANGE_LIMIT: LazyLock<NonZeroUsize> =
+        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
 
     #[test]
     fn schema_version_defaults_to_zero() {
@@ -924,7 +924,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
             )
             .unwrap()
             .events;
@@ -954,7 +954,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
             )
             .unwrap()
             .events;
@@ -1060,7 +1060,7 @@ mod tests {
             .events(
                 &constraints,
                 *MAX_BLOCKS_TO_SCAN,
-                *MAX_EVENT_FILTERS_TO_LOAD,
+                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
             )
             .unwrap()
             .events;

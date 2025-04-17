@@ -297,17 +297,16 @@ This should only be enabled for debugging purposes as it adds substantial proces
     get_events_max_blocks_to_scan: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-uncached-event-filters-to-load",
+        long = "rpc.get-events-event-filter-block-range-limit",
         long_help = format!(
-            "The number of uncached aggregate Bloom filters to load when querying for events.
-            Each filter covers a {} block range.
+            "The maximum number of blocks to be covered by aggregate Bloom filters when querying for events. Each filter covers a {} block range. 
             This limit is used to prevent queries from taking too long.",
             pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
         ),
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_UNCACHED_EVENT_FILTERS_TO_LOAD",
-        default_value = "12"
+        env = "PATHFINDER_RPC_GET_EVENTS_EVENT_FILTER_BLOCK_RANGE_LIMIT",
+        default_value = format!("{}", 10 * pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN)
     )]
-    get_events_max_uncached_event_filters_to_load: std::num::NonZeroUsize,
+    get_events_event_filter_block_range_limit: std::num::NonZeroUsize,
 
     #[arg(
         long = "storage.blockchain-history",
@@ -721,7 +720,7 @@ pub struct Config {
     pub gateway_timeout: Duration,
     pub event_filter_cache_size: NonZeroUsize,
     pub get_events_max_blocks_to_scan: NonZeroUsize,
-    pub get_events_max_uncached_event_filters_to_load: NonZeroUsize,
+    pub get_events_event_filter_block_range_limit: NonZeroUsize,
     pub blockchain_history: Option<BlockchainHistory>,
     pub state_tries: Option<StateTries>,
     pub versioned_constants_map: VersionedConstantsMap,
@@ -906,8 +905,8 @@ impl Config {
             gateway_api_key: cli.gateway_api_key,
             event_filter_cache_size: cli.event_filter_cache_size,
             get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
-            get_events_max_uncached_event_filters_to_load: cli
-                .get_events_max_uncached_event_filters_to_load,
+            get_events_event_filter_block_range_limit: cli
+                .get_events_event_filter_block_range_limit,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),
             feeder_gateway_fetch_concurrency: cli.feeder_gateway_fetch_concurrency,
             blockchain_history: cli.blockchain_history,
