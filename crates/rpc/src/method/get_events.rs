@@ -230,7 +230,7 @@ pub async fn get_events(
             .events(
                 &constraints,
                 context.config.get_events_max_blocks_to_scan,
-                context.config.get_events_max_uncached_event_filters_to_load,
+                context.config.get_events_event_filter_block_range_limit,
             )
             .map_err(|e| match e {
                 EventFilterError::Internal(e) => GetEventsError::Internal(e),
