@@ -60,17 +60,19 @@ pub async fn estimate_message_fee(
     let span = tracing::Span::current();
     let mut result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
-        let mut db = context
+        let mut db_conn = context
             .storage
             .connection()
             .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db_tx)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update.clone()))
@@ -78,14 +80,14 @@ pub async fn estimate_message_fee(
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
 
-                let pruned = db
+                let pruned = db_tx
                     .block_pruned(block_id)
                     .context("Querying block pruned status")?;
                 if pruned {
                     return Err(EstimateMessageFeeError::BlockNotFound);
                 }
 
-                let header = db
+                let header = db_tx
                     .block_header(block_id)
                     .context("Querying block header")?
                     .ok_or(EstimateMessageFeeError::BlockNotFound)?;
@@ -94,12 +96,11 @@ pub async fn estimate_message_fee(
             }
         };
 
-        if !db.contract_exists(input.message.to_address, header.number.into())? {
+        if !db_tx.contract_exists(input.message.to_address, header.number.into())? {
             return Err(EstimateMessageFeeError::ContractNotFound);
         }
 
         let state = ExecutionState::simulation(
-            &db,
             context.chain_id,
             header,
             pending,
@@ -113,6 +114,7 @@ pub async fn estimate_message_fee(
         let transaction = create_executor_transaction(input, context.chain_id)?;
 
         let result = pathfinder_executor::estimate(
+            db_tx,
             state,
             vec![transaction],
             context.config.fee_estimation_epsilon,

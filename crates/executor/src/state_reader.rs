@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
@@ -26,8 +28,9 @@ impl NativeClassCache {
     }
 }
 
+#[derive(Clone)]
 pub(super) struct PathfinderStateReader<'tx> {
-    transaction: &'tx pathfinder_storage::Transaction<'tx>,
+    db_tx: Rc<pathfinder_storage::Transaction<'tx>>,
     pub block_number: Option<BlockNumber>,
     // Classes in pending state have already been downloaded and added to the database.
     // This flag makes it possible to find these classes -- essentially makes the state
@@ -39,13 +42,13 @@ pub(super) struct PathfinderStateReader<'tx> {
 
 impl<'tx> PathfinderStateReader<'tx> {
     pub fn new(
-        transaction: &'tx pathfinder_storage::Transaction<'tx>,
+        db_tx: pathfinder_storage::Transaction<'tx>,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
         native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
-            transaction,
+            db_tx: Rc::new(db_tx),
             block_number,
             ignore_block_number_for_classes,
             native_class_cache,
@@ -72,11 +75,11 @@ impl<'tx> PathfinderStateReader<'tx> {
         let (definition_block_number, class_definition, casm_definition) =
             if self.ignore_block_number_for_classes {
                 let casm_definition = self
-                    .transaction
+                    .db_tx
                     .casm_definition(pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?;
                 let (definition_block_number, class_definition) = self
-                    .transaction
+                    .db_tx
                     .class_definition_with_block_number(pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?
                     .ok_or_else(|| {
@@ -86,11 +89,11 @@ impl<'tx> PathfinderStateReader<'tx> {
                 (definition_block_number, class_definition, casm_definition)
             } else {
                 let casm_definition = self
-                    .transaction
+                    .db_tx
                     .casm_definition_at(block_id, pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?;
                 let (definition_block_number, class_definition) = self
-                    .transaction
+                    .db_tx
                     .class_definition_at_with_block_number(block_id, pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?
                     .ok_or_else(|| {
@@ -219,7 +222,7 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let storage_val = self
-            .transaction
+            .db_tx
             .storage_value(block_id, pathfinder_contract_address, storage_key)
             .map_err(map_anyhow_to_state_err)?
             .unwrap_or(StorageValue(Felt::ZERO));
@@ -249,7 +252,7 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let nonce = self
-            .transaction
+            .db_tx
             .contract_nonce(pathfinder_contract_address, block_id)
             .map_err(map_anyhow_to_state_err)?
             .unwrap_or(pathfinder_common::ContractNonce::ZERO);
@@ -275,7 +278,7 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let class_hash = self
-            .transaction
+            .db_tx
             .contract_class_hash(block_id, pathfinder_contract_address)
             .map_err(map_anyhow_to_state_err)?;
 
@@ -332,9 +335,9 @@ impl StateReader for PathfinderStateReader<'_> {
         })?;
 
         let casm_hash = if self.ignore_block_number_for_classes {
-            self.transaction.casm_hash(class_hash)
+            self.db_tx.casm_hash(class_hash)
         } else {
-            self.transaction.casm_hash_at(block_id, class_hash)
+            self.db_tx.casm_hash_at(block_id, class_hash)
         };
 
         let casm_hash = casm_hash.map_err(map_anyhow_to_state_err)?.ok_or_else(|| {
