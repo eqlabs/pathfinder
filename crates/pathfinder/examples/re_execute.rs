@@ -142,12 +142,11 @@ fn execute(
     let start_time = std::time::Instant::now();
     let num_transactions = work.transactions.len();
 
-    let mut connection = storage.connection().unwrap();
+    let mut db_conn = storage.connection().unwrap();
 
-    let db_tx = connection.transaction().expect("Create transaction");
+    let db_tx = db_conn.transaction().expect("Create transaction");
 
     let execution_state = ExecutionState::trace(
-        &db_tx,
         chain_id,
         work.header.clone(),
         None,
@@ -163,6 +162,9 @@ fn execute(
         .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
         .collect::<Result<Vec<_>, _>>();
 
+    drop(db_tx);
+    drop(db_conn);
+
     let transactions = match transactions {
         Ok(transactions) => transactions,
         Err(error) => {
@@ -171,7 +173,12 @@ fn execute(
         }
     };
 
-    match pathfinder_executor::simulate(execution_state, transactions, Percentage::new(0)) {
+    match pathfinder_executor::simulate(
+        storage.clone(),
+        execution_state,
+        transactions,
+        Percentage::new(0),
+    ) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()

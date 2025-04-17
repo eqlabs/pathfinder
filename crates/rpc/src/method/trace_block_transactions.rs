@@ -49,14 +49,14 @@ pub async fn trace_block_transactions(
     let traces = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
-        let mut db = storage.connection()?;
-        let db = db.transaction()?;
+        let mut db_conn = storage.connection()?;
+        let db_tx = db_conn.transaction()?;
 
         let (header, transactions, cache) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db_tx)
                     .context("Querying pending data")?;
 
                 let header = pending.header();
@@ -72,18 +72,18 @@ pub async fn trace_block_transactions(
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
 
-                let pruned = db
+                let pruned = db_tx
                     .block_pruned(block_id)
                     .context("Querying block pruned status")?;
                 if pruned {
                     return Err(TraceBlockTransactionsError::BlockNotFound);
                 }
 
-                let header = db
+                let header = db_tx
                     .block_header(block_id)?
                     .ok_or(TraceBlockTransactionsError::BlockNotFound)?;
 
-                let transactions = db
+                let transactions = db_tx
                     .transactions_for_block(block_id)?
                     .context("Transaction data missing")?
                     .into_iter()
@@ -112,12 +112,14 @@ pub async fn trace_block_transactions(
 
         let executor_transactions = transactions
             .iter()
-            .map(|transaction| compose_executor_transaction(transaction, &db))
+            .map(|transaction| compose_executor_transaction(transaction, &db_tx))
             .collect::<Result<Vec<_>, _>>()?;
+
+        drop(db_tx);
+        drop(db_conn);
 
         let hash = header.hash;
         let state = pathfinder_executor::ExecutionState::trace(
-            &db,
             context.chain_id,
             header,
             None,

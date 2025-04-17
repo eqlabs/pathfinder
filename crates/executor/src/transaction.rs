@@ -1,10 +1,12 @@
+use blockifier::blockifier::transaction_executor::{
+    TransactionExecutionOutput,
+    BLOCK_STATE_ACCESS_ERR,
+};
 use blockifier::execution::contract_class::TrackedResource;
-use blockifier::state::cached_state::{CachedState, MutRefState};
-use blockifier::state::state_api::UpdatableState;
+use blockifier::state::state_api::StateReader;
 use blockifier::transaction::account_transaction::ExecutionFlags;
 use blockifier::transaction::objects::{HasRelatedFeeType, TransactionExecutionInfo};
 use blockifier::transaction::transaction_execution::Transaction;
-use blockifier::transaction::transactions::ExecutableTransaction;
 use starknet_api::core::ClassHash;
 use starknet_api::execution_resources::{GasAmount, GasVector};
 use starknet_api::transaction::fields::{
@@ -14,6 +16,8 @@ use starknet_api::transaction::fields::{
 };
 use util::percentage::Percentage;
 
+use crate::error::TransactionExecutorError;
+use crate::execution_state::{PathfinderExecutionState, PathfinderExecutor};
 use crate::TransactionExecutionError;
 
 pub enum ExecutionBehaviorOnRevert {
@@ -71,15 +75,12 @@ pub(crate) fn gas_vector_computation_mode(transaction: &Transaction) -> GasVecto
 ///
 /// This function determines if the fee estimation should consider L2 gas
 /// accounting or not.
-pub(crate) fn l2_gas_accounting_enabled<S>(
+pub(crate) fn l2_gas_accounting_enabled(
     tx: &Transaction,
-    state: &S,
+    state: &PathfinderExecutionState,
     block_context: &blockifier::context::BlockContext,
     gas_vector_computation_mode: &GasVectorComputationMode,
-) -> blockifier::state::state_api::StateResult<bool>
-where
-    S: UpdatableState,
-{
+) -> blockifier::state::state_api::StateResult<bool> {
     let sender_class_hash = state.get_class_hash_at(tx.sender_address())?;
     // Uninitialized class.
     if sender_class_hash == ClassHash::default() {
@@ -123,55 +124,61 @@ const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(1_000_000);
 /// Returns both the TransactionExecutionInfo (with the receipt containing
 /// the _actual_ L2 gas amount used) and the gas vector with the minimal
 /// gas limit (to be used to compute the fee estimation).
-pub(crate) fn find_l2_gas_limit_and_execute_transaction<S>(
+pub(crate) fn find_l2_gas_limit_and_execute_transaction(
     tx: &mut Transaction,
     tx_index: usize,
-    state: &mut S,
-    block_context: &blockifier::context::BlockContext,
+    tx_executor: &mut PathfinderExecutor,
     revert_behavior: ExecutionBehaviorOnRevert,
     epsilon: Percentage,
-) -> Result<(TransactionExecutionInfo, GasVector), TransactionExecutionError>
-where
-    S: UpdatableState,
-{
+) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
     let execution_flags = get_execution_flags(tx);
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let initial_l2_gas_limit = initial_resource_bounds.l2_gas.max_amount;
 
-    let max_l2_gas_limit = get_max_l2_gas_amount_covered_by_balance(tx, block_context, state)?;
+    let max_l2_gas_limit = get_max_l2_gas_amount_covered_by_balance(
+        tx,
+        &tx_executor.block_context,
+        tx_executor
+            .block_state
+            .as_mut()
+            .expect(BLOCK_STATE_ACCESS_ERR),
+    )?;
     set_l2_gas_limit(tx, max_l2_gas_limit);
-    let (tx_info, _) =
-        match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior) {
-            Ok(tx_info) => tx_info,
+    let (output, saved_state) =
+        match simulate_transaction(tx, tx_index, tx_executor, &revert_behavior) {
+            Ok(output) => output,
             Err(TransactionSimulationError::ExecutionError(error)) => {
                 return Err(error);
             }
-            Err(TransactionSimulationError::OutOfGas) => {
+            Err(TransactionSimulationError::OutOfGas(_)) => {
                 return Err(
                     anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded").into(),
                 );
             }
         };
+    tx_executor.block_state = Some(saved_state);
 
-    let GasAmount(l2_gas_consumed) = tx_info.receipt.gas.l2_gas;
+    let GasAmount(l2_gas_consumed) = output.0.receipt.gas.l2_gas;
 
     // Add a buffer (in terms of %) to the actual L2 gas fee.
     let l2_gas_adjusted = GasAmount(l2_gas_consumed.saturating_add(epsilon.of(l2_gas_consumed)));
     set_l2_gas_limit(tx, l2_gas_adjusted);
 
-    let (gas_limit, tx_info, tx_state) =
-        match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior) {
-            Ok((tx_info, tx_state)) => {
+    let (gas_limit, output, saved_state) =
+        match simulate_transaction(tx, tx_index, tx_executor, &revert_behavior) {
+            Ok((output, saved_state)) => {
                 metrics::increment_counter!("rpc_fee_estimation.without_binary_search");
                 // If 110% of the actual transaction gas fee is enough, we use that
                 // as the estimate and skip the binary search.
                 let gas_limit = GasVector {
                     l2_gas: l2_gas_adjusted,
-                    ..tx_info.receipt.gas
+                    ..output.0.receipt.gas
                 };
-                (gas_limit, tx_info, tx_state)
+                (gas_limit, output, saved_state)
             }
-            Err(TransactionSimulationError::OutOfGas) => {
+            Err(TransactionSimulationError::OutOfGas(saved_state)) => {
+                tx_executor.block_state = Some(saved_state);
+
                 metrics::increment_counter!("rpc_fee_estimation.with_binary_search");
 
                 let mut lower_bound = GasAmount(l2_gas_consumed);
@@ -194,27 +201,18 @@ where
                     );
                     set_l2_gas_limit(tx, current_l2_gas_limit);
 
-                    // Special case where the search would get stuck if `current_l2_gas_limit ==
-                    // lower_bound` but the required amount is equal to the upper bound.
-                    let bounds_diff = upper_bound
-                        .checked_sub(lower_bound)
-                        .expect("Upper bound >= lower bound");
-                    if bounds_diff == GasAmount(1) && current_l2_gas_limit == lower_bound {
-                        lower_bound = upper_bound;
-                        current_l2_gas_limit = upper_bound;
-                    }
-
-                    match simulate_transaction(tx, tx_index, state, block_context, &revert_behavior)
-                    {
-                        Ok((tx_info, tx_state)) => {
+                    match simulate_transaction(tx, tx_index, tx_executor, &revert_behavior) {
+                        Ok((output, saved_state)) => {
                             if search_done(lower_bound, upper_bound, L2_GAS_SEARCH_MARGIN) {
-                                break (tx_info, tx_state);
+                                break (output, saved_state);
                             }
 
+                            tx_executor.block_state = Some(saved_state);
                             upper_bound = current_l2_gas_limit;
                             current_l2_gas_limit = midpoint(lower_bound, upper_bound);
                         }
-                        Err(TransactionSimulationError::OutOfGas) => {
+                        Err(TransactionSimulationError::OutOfGas(saved_state)) => {
+                            tx_executor.block_state = Some(saved_state);
                             lower_bound = current_l2_gas_limit;
                             current_l2_gas_limit = midpoint(lower_bound, upper_bound);
                         }
@@ -228,7 +226,7 @@ where
 
                 let gas_limit = GasVector {
                     l2_gas: current_l2_gas_limit,
-                    ..tx_info.receipt.gas
+                    ..output.0.receipt.gas
                 };
 
                 (gas_limit, tx_info, tx_state)
@@ -247,53 +245,46 @@ where
             .expect("l2_gas_limit > l2_gas_consumed") as f64
     );
 
-    let (tx_info, tx_state) =
-        if execution_flags.charge_fee && gas_limit.l2_gas > initial_l2_gas_limit {
-            tracing::debug!(
-                initial_limit=%initial_l2_gas_limit,
-                final_limit=%gas_limit.l2_gas,
-                "Initial L2 gas limit exceeded"
-            );
+    let output = if execution_flags.charge_fee && gas_limit.l2_gas > initial_l2_gas_limit {
+        tracing::debug!(
+            initial_limit=%initial_l2_gas_limit,
+            final_limit=%gas_limit.l2_gas,
+            "Initial L2 gas limit exceeded"
+        );
 
-            // Set the L2 gas limit to the initial gas limit so that the transaction
-            // reverts.
-            set_l2_gas_limit(tx, initial_l2_gas_limit);
+        // Set the L2 gas limit to the initial gas limit so that the transaction
+        // reverts.
+        set_l2_gas_limit(tx, initial_l2_gas_limit);
 
-            // Revert state changes, and run the transaction again with the initial state.
-            tx_state.abort();
-            let mut tx_state = CachedState::<_>::create_transactional(state);
+        // Revert state changes, and run the transaction again with the initial state.
+        tx_executor.block_state = Some(saved_state);
 
-            // Make sure we return the gas limit we've determined is sufficient to run the
-            // transaction, and _not_ the resources for the reverted transaction.
-            let (tx_info, _) =
-                execute_transaction(tx, tx_index, &mut tx_state, block_context, &revert_behavior)?;
+        // Make sure we return the gas limit we've determined is sufficient to run the
+        // transaction, and _not_ the resources for the reverted transaction.
+        let (output, _) = execute_transaction(tx, tx_index, tx_executor, revert_behavior)?;
 
-            (tx_info, tx_state)
-        } else {
-            (tx_info, tx_state)
-        };
+        output
+    } else {
+        // Not necessary but let's be explicit about not reverting the final execution
+        // on the executor.
+        drop(saved_state);
+        output
+    };
 
-    // State changes must be committed once the search is done.
-    tx_state.commit();
-
-    Ok((tx_info, gas_limit))
+    Ok((output, gas_limit))
 }
 
 /// Execute the transaction and handle common errors.
-pub(crate) fn execute_transaction<S>(
+pub(crate) fn execute_transaction(
     tx: &Transaction,
     tx_index: usize,
-    state: &mut S,
-    block_context: &blockifier::context::BlockContext,
-    revert_behavior: &ExecutionBehaviorOnRevert,
-) -> Result<(TransactionExecutionInfo, GasVector), TransactionExecutionError>
-where
-    S: UpdatableState,
-{
-    match tx.execute(state, block_context) {
-        Ok(tx_info) => {
+    tx_executor: &mut PathfinderExecutor,
+    revert_behavior: ExecutionBehaviorOnRevert,
+) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
+    match tx_executor.execute(tx) {
+        Ok(output) => {
             if revert_behavior.should_fail_on_revert() {
-                if let Some(revert_error) = tx_info.revert_error {
+                if let Some(revert_error) = output.0.revert_error {
                     let revert_string = revert_error.to_string();
                     tracing::debug!(revert_error=%revert_string, "Transaction reverted");
 
@@ -304,15 +295,14 @@ where
                     });
                 }
             }
+            let gas_limit = output.0.receipt.gas;
 
-            let gas_limit = tx_info.receipt.gas;
-
-            Ok((tx_info, gas_limit))
+            Ok((output, gas_limit))
         }
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction estimation failed");
-
-            Err(TransactionExecutionError::new(tx_index, error))
+            let error = TransactionExecutorError::new(tx_index, error);
+            Err(error.into())
         }
     }
 }
@@ -323,7 +313,10 @@ fn midpoint(a: GasAmount, b: GasAmount) -> GasAmount {
     let GasAmount(b) = b;
     let distance = b.checked_sub(a).expect("b >= a");
 
-    GasAmount(a + distance / 2)
+    // NB: Without ceiling, the binary search could enter an infinite loop if the
+    // target is ever equal to the upper bound and the difference between the bounds
+    // is 1.
+    GasAmount(a + distance.div_ceil(2))
 }
 
 fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: GasAmount) -> bool {
@@ -335,58 +328,51 @@ fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: Ga
 }
 
 /// Execute transaction without updating the execution state directly. Instead,
-/// the function returns the transactional state handle to the caller to decide
-/// whether to commit the state update or not.
-fn simulate_transaction<'state, S>(
+/// the function returns the saved initial state to the caller to decide whether
+/// to commit the state update (by doing nothing) or revert it (by assigning it
+/// back into the executor).
+fn simulate_transaction(
     tx: &Transaction,
     tx_index: usize,
-    state: &'state mut S,
-    block_context: &blockifier::context::BlockContext,
+    tx_executor: &mut PathfinderExecutor,
     revert_behavior: &ExecutionBehaviorOnRevert,
-) -> Result<
-    (
-        TransactionExecutionInfo,
-        CachedState<MutRefState<'state, S>>,
-    ),
-    TransactionSimulationError,
->
-where
-    S: UpdatableState,
-{
-    let mut tx_state = CachedState::<_>::create_transactional(state);
-    match tx.execute(&mut tx_state, block_context) {
-        Ok(tx_info) if failed_with_insufficient_l2_gas(&tx_info) => {
-            Err(TransactionSimulationError::OutOfGas)
+) -> Result<(TransactionExecutionOutput, PathfinderExecutionState), TransactionSimulationError> {
+    let initial_state = tx_executor
+        .block_state
+        .as_ref()
+        .expect(BLOCK_STATE_ACCESS_ERR)
+        .clone();
+    match tx_executor.execute(tx) {
+        Ok((tx_info, _)) if failed_with_insufficient_l2_gas(&tx_info) => {
+            Err(TransactionSimulationError::OutOfGas(initial_state))
         }
-        Ok(tx_info) => {
+        Ok(output) => {
             if revert_behavior.should_fail_on_revert() {
-                if let Some(revert_error) = tx_info.revert_error {
+                if let Some(revert_error) = output.0.revert_error {
                     let revert_string = revert_error.to_string();
                     tracing::debug!(revert_error=%revert_string, "Transaction reverted");
 
-                    return Err(TransactionSimulationError::ExecutionError(
-                        TransactionExecutionError::ExecutionError {
-                            transaction_index: tx_index,
-                            error: revert_string,
-                            error_stack: revert_error.into(),
-                        },
-                    ));
+                    let error = TransactionExecutionError::ExecutionError {
+                        transaction_index: tx_index,
+                        error: revert_string,
+                        error_stack: revert_error.into(),
+                    };
+                    return Err(TransactionSimulationError::ExecutionError(error));
                 }
             }
 
-            Ok((tx_info, tx_state))
+            Ok((output, initial_state))
         }
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction simulation failed");
-            let error = TransactionExecutionError::new(tx_index, error);
-
-            Err(TransactionSimulationError::ExecutionError(error))
+            let error = TransactionExecutorError::new(tx_index, error);
+            Err(TransactionSimulationError::ExecutionError(error.into()))
         }
     }
 }
 
 enum TransactionSimulationError {
-    OutOfGas,
+    OutOfGas(PathfinderExecutionState),
     ExecutionError(TransactionExecutionError),
 }
 
@@ -516,14 +502,11 @@ fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
     }
 }
 
-fn get_max_l2_gas_amount_covered_by_balance<S>(
+fn get_max_l2_gas_amount_covered_by_balance(
     tx: &Transaction,
     block_context: &blockifier::context::BlockContext,
-    state: &mut S,
-) -> Result<GasAmount, TransactionExecutionError>
-where
-    S: UpdatableState,
-{
+    state: &mut PathfinderExecutionState,
+) -> Result<GasAmount, TransactionExecutionError> {
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let resource_bounds_without_l2_gas = AllResourceBounds {
         l2_gas: Default::default(),

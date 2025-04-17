@@ -10,12 +10,13 @@ use starknet_api::StarknetApiError;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
 
-pub(super) struct PendingStateReader<S: StateReader> {
+#[derive(Clone)]
+pub(super) struct PendingStateReader<S: StateReader + Send + Sync + Clone> {
     state: S,
     pending_update: Option<Arc<StateUpdate>>,
 }
 
-impl<S: StateReader> PendingStateReader<S> {
+impl<S: StateReader + Send + Sync + Clone> PendingStateReader<S> {
     pub(super) fn new(state: S, pending_update: Option<Arc<StateUpdate>>) -> Self {
         Self {
             state,
@@ -24,7 +25,7 @@ impl<S: StateReader> PendingStateReader<S> {
     }
 }
 
-impl<S: StateReader> StateReader for PendingStateReader<S> {
+impl<S: StateReader + Send + Sync + Clone> StateReader for PendingStateReader<S> {
     fn get_storage_at(
         &self,
         contract_address: ContractAddress,
@@ -110,6 +111,7 @@ mod tests {
 
     use super::PendingStateReader;
 
+    #[derive(Clone)]
     struct DummyStateReader {}
 
     impl StateReader for DummyStateReader {

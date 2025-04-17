@@ -2,10 +2,14 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
-use blockifier::state::cached_state::CachedState;
+use blockifier::blockifier::transaction_executor::{
+    TransactionExecutorError,
+    BLOCK_STATE_ACCESS_ERR,
+};
+use blockifier::state::cached_state::StateMaps;
 use blockifier::state::errors::StateError;
+use blockifier::state::state_api::StateReader;
 use blockifier::transaction::transaction_execution::Transaction;
-use blockifier::transaction::transactions::ExecutableTransaction;
 use blockifier::versioned_constants::VersionedConstants;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;
@@ -14,8 +18,9 @@ use util::percentage::Percentage;
 
 use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
-use super::types::{FeeEstimate, TransactionSimulation, TransactionTrace};
+use super::types::{TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
+use crate::execution_state::{create_executor, PathfinderExecutionState};
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -30,6 +35,7 @@ use crate::types::{
     DeployedContract,
     ExecuteInvocation,
     ExecutionResources,
+    FeeEstimate,
     FunctionInvocation,
     InvokeTransactionTrace,
     L1HandlerTransactionTrace,
@@ -41,9 +47,32 @@ use crate::IntoFelt;
 
 #[derive(Debug)]
 enum CacheItem {
-    Inflight(tokio::sync::broadcast::Receiver<Result<Traces, ExecutionError>>),
+    Inflight(tokio::sync::broadcast::Receiver<Result<Traces, TraceError>>),
     CachedOk(Traces),
-    CachedErr(ExecutionError),
+    CachedErr(TraceError),
+}
+
+#[derive(Debug, Clone)]
+enum TraceError {
+    ExecutionError(ExecutionError),
+    Internal(InternalError),
+}
+
+impl From<TraceError> for TransactionExecutionError {
+    fn from(value: TraceError) -> Self {
+        match value {
+            TraceError::ExecutionError(execution_error) => Self::ExecutionError {
+                transaction_index: execution_error.transaction_index,
+                error: execution_error.error,
+                error_stack: execution_error.error_stack,
+            },
+            TraceError::Internal(internal_error) => Self::Internal(anyhow::anyhow!(
+                "Internal error: transaction index {}: {}",
+                internal_error.transaction_index,
+                internal_error.error
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,14 +82,10 @@ struct ExecutionError {
     error_stack: ErrorStack,
 }
 
-impl From<ExecutionError> for TransactionExecutionError {
-    fn from(value: ExecutionError) -> Self {
-        Self::ExecutionError {
-            transaction_index: value.transaction_index,
-            error: value.error,
-            error_stack: value.error_stack,
-        }
-    }
+#[derive(Debug, Clone)]
+struct InternalError {
+    transaction_index: usize,
+    error: String,
 }
 
 #[derive(Debug, Clone)]
@@ -75,13 +100,13 @@ impl Default for TraceCache {
 }
 
 pub fn simulate(
-    execution_state: ExecutionState<'_>,
+    db: pathfinder_storage::Storage,
+    execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
-
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let mut tx_executor = create_executor(db, execution_state)?;
 
     transactions
         .into_iter()
@@ -95,27 +120,32 @@ pub fn simulate(
             )
             .entered();
 
+            let tx_type = transaction_type(&tx);
+            let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
             let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-            let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-            let (tx_info, gas_limit) = if l2_gas_accounting_enabled(
+
+            let initial_state = tx_executor
+                .block_state
+                .as_ref()
+                .expect(BLOCK_STATE_ACCESS_ERR)
+                .clone();
+            let ((tx_info, state_maps), gas_limit) = if l2_gas_accounting_enabled(
                 &tx,
-                &tx_state,
-                &block_context,
+                tx_executor.block_state.as_ref().expect(BLOCK_STATE_ACCESS_ERR),
+                &tx_executor.block_context,
                 &gas_vector_computation_mode,
             )? {
                 find_l2_gas_limit_and_execute_transaction(
                     &mut tx,
                     tx_index,
-                    &mut tx_state,
-                    &block_context,
+                    &mut tx_executor,
                     ExecutionBehaviorOnRevert::Continue,
                     epsilon,
                 )?
             } else {
-                execute_transaction(&tx, tx_index, &mut tx_state, &block_context, &ExecutionBehaviorOnRevert::Continue)?
+                execute_transaction(&tx, tx_index, &mut tx_executor, ExecutionBehaviorOnRevert::Continue)?
             };
-            let state_diff = to_state_diff(&mut tx_state, transaction_declared_deprecated_class(&tx))?;
-            tx_state.commit();
+            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)?;
 
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
@@ -124,13 +154,13 @@ pub fn simulate(
                     &tx,
                     &gas_limit,
                     &gas_vector_computation_mode,
-                    &block_context,
+                    &tx_executor.block_context,
                 ),
                 trace: to_trace(
-                    transaction_type(&tx),
+                    tx_type,
                     tx_info,
                     state_diff,
-                    block_context.versioned_constants(),
+                    tx_executor.block_context.versioned_constants(),
                     &gas_vector_computation_mode,
                 ),
             })
@@ -139,12 +169,13 @@ pub fn simulate(
 }
 
 pub fn trace(
-    execution_state: ExecutionState<'_>,
+    db: pathfinder_storage::Storage,
+    execution_state: ExecutionState,
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
-    let (mut state, block_context) = execution_state.starknet_state()?;
+    let mut tx_executor = create_executor(db, execution_state)?;
 
     let sender = {
         let mut cache = cache.0.lock().unwrap();
@@ -184,27 +215,43 @@ pub fn trace(
         let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
         let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
 
-        let mut tx_state = CachedState::<_>::create_transactional(&mut state);
-        let tx_info = tx.execute(&mut tx_state, &block_context).map_err(|e| {
-            // Update the cache with the error. Lock the cache before sending to avoid
-            // race conditions between senders and receivers.
-            let err = ExecutionError {
-                transaction_index: transaction_idx,
-                error: e.to_string(),
-                error_stack: e.into(),
-            };
-            let mut cache = cache.0.lock().unwrap();
-            let _ = sender.send(Err(err.clone()));
-            cache.cache_set(block_hash, CacheItem::CachedErr(err.clone()));
-            err
-        })?;
-        let state_diff = to_state_diff(&mut tx_state, tx_declared_deprecated_class_hash)
-            .inspect_err(|_| {
-                // Remove the cache entry so it's no longer inflight.
+        let initial_state = tx_executor
+            .block_state
+            .as_ref()
+            .expect(BLOCK_STATE_ACCESS_ERR)
+            .clone();
+        let (tx_info, state_maps) = match tx_executor.execute(&tx) {
+            Ok(output) => output,
+            Err(err) => {
+                let error = match err {
+                    TransactionExecutorError::TransactionExecutionError(err) => {
+                        TraceError::ExecutionError(ExecutionError {
+                            transaction_index: transaction_idx,
+                            error: err.to_string(),
+                            error_stack: err.into(),
+                        })
+                    }
+                    _ => TraceError::Internal(InternalError {
+                        transaction_index: transaction_idx,
+                        error: err.to_string(),
+                    }),
+                };
+                // Update the cache with the error. Lock the cache before sending to avoid
+                // race conditions between senders and receivers.
                 let mut cache = cache.0.lock().unwrap();
-                cache.cache_remove(&block_hash);
-            })?;
-        tx_state.commit();
+                let _ = sender.send(Err(error.clone()));
+                cache.cache_set(block_hash, CacheItem::CachedErr(error.clone()));
+
+                return Err(error.into());
+            }
+        };
+        let state_diff =
+            to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)
+                .inspect_err(|_| {
+                    // Remove the cache entry so it's no longer inflight.
+                    let mut cache = cache.0.lock().unwrap();
+                    cache.cache_remove(&block_hash);
+                })?;
 
         tracing::trace!("Transaction tracing finished");
 
@@ -212,7 +259,7 @@ pub fn trace(
             tx_type,
             tx_info,
             state_diff,
-            block_context.versioned_constants(),
+            tx_executor.block_context.versioned_constants(),
             &gas_vector_computation_mode,
         );
         traces.push((hash, trace));
@@ -269,21 +316,23 @@ fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<Cl
     }
 }
 
-fn to_state_diff<S: blockifier::state::state_api::StateReader>(
-    state: &mut blockifier::state::cached_state::CachedState<S>,
+fn to_state_diff(
+    state_maps: StateMaps,
+    initial_state: PathfinderExecutionState,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
-    let state_diff = state.to_state_diff()?;
-
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
 
     // We need to check the previous class hash for a contract to decide if it's a
     // deployed contract or a replaced class.
-    for (address, class_hash) in state_diff.state_maps.class_hashes {
-        let previous_class_hash = state.state.get_class_hash_at(address)?;
-
-        if previous_class_hash.0.into_felt().is_zero() {
+    for (address, class_hash) in state_maps.class_hashes {
+        let is_deployed = initial_state
+            .get_class_hash_at(address)?
+            .0
+            .into_felt()
+            .is_zero();
+        if is_deployed {
             deployed_contracts.push(DeployedContract {
                 address: ContractAddress::new_or_panic(address.0.key().into_felt()),
                 class_hash: ClassHash(class_hash.0.into_felt()),
@@ -297,7 +346,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
     }
 
     let mut storage_diffs: BTreeMap<_, _> = Default::default();
-    for ((address, key), value) in state_diff.state_maps.storage {
+    for ((address, key), value) in state_maps.storage {
         storage_diffs
             .entry(ContractAddress::new_or_panic(address.0.key().into_felt()))
             .and_modify(|map: &mut BTreeMap<StorageAddress, StorageValue>| {
@@ -333,8 +382,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
         deployed_contracts,
         // This info is not present in the state diff, so we need to pass it separately.
         deprecated_declared_classes: old_declared_contract.into_iter().collect(),
-        declared_classes: state_diff
-            .state_maps
+        declared_classes: state_maps
             .compiled_class_hashes
             .into_iter()
             .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
@@ -342,8 +390,7 @@ fn to_state_diff<S: blockifier::state::state_api::StateReader>(
                 compiled_class_hash: CasmHash(compiled_class_hash.0.into_felt()),
             })
             .collect(),
-        nonces: state_diff
-            .state_maps
+        nonces: state_maps
             .nonces
             .into_iter()
             .map(|(address, nonce)| {

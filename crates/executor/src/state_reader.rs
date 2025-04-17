@@ -26,8 +26,9 @@ impl NativeClassCache {
     }
 }
 
-pub(super) struct PathfinderStateReader<'tx> {
-    transaction: &'tx pathfinder_storage::Transaction<'tx>,
+#[derive(Clone)]
+pub(super) struct PathfinderStateReader {
+    db: pathfinder_storage::Storage,
     pub block_number: Option<BlockNumber>,
     // Classes in pending state have already been downloaded and added to the database.
     // This flag makes it possible to find these classes -- essentially makes the state
@@ -37,15 +38,15 @@ pub(super) struct PathfinderStateReader<'tx> {
     native_class_cache: Option<NativeClassCache>,
 }
 
-impl<'tx> PathfinderStateReader<'tx> {
+impl PathfinderStateReader {
     pub fn new(
-        transaction: &'tx pathfinder_storage::Transaction<'tx>,
+        db: pathfinder_storage::Storage,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
         native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
-            transaction,
+            db,
             block_number,
             ignore_block_number_for_classes,
             native_class_cache,
@@ -63,6 +64,13 @@ impl<'tx> PathfinderStateReader<'tx> {
     ) -> Result<(Option<BlockNumber>, RunnableCompiledClass), StateError> {
         tracing::trace!("Getting class");
 
+        let mut connection = self.db.connection().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database connection: {}", err))
+        })?;
+        let db_tx = connection.transaction().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database transaction: {}", err))
+        })?;
+
         let block_id = self.state_block_id().ok_or_else(|| {
             StateError::UndeclaredClassHash(starknet_api::core::ClassHash(
                 pathfinder_class_hash.0.into_starkfelt(),
@@ -71,12 +79,10 @@ impl<'tx> PathfinderStateReader<'tx> {
 
         let (definition_block_number, class_definition, casm_definition) =
             if self.ignore_block_number_for_classes {
-                let casm_definition = self
-                    .transaction
+                let casm_definition = db_tx
                     .casm_definition(pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?;
-                let (definition_block_number, class_definition) = self
-                    .transaction
+                let (definition_block_number, class_definition) = db_tx
                     .class_definition_with_block_number(pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?
                     .ok_or_else(|| {
@@ -85,12 +91,10 @@ impl<'tx> PathfinderStateReader<'tx> {
                     })?;
                 (definition_block_number, class_definition, casm_definition)
             } else {
-                let casm_definition = self
-                    .transaction
+                let casm_definition = db_tx
                     .casm_definition_at(block_id, pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?;
-                let (definition_block_number, class_definition) = self
-                    .transaction
+                let (definition_block_number, class_definition) = db_tx
                     .class_definition_at_with_block_number(block_id, pathfinder_class_hash)
                     .map_err(map_anyhow_to_state_err)?
                     .ok_or_else(|| {
@@ -192,12 +196,19 @@ fn sierra_class_as_casm(
     Ok(RunnableCompiledClass::V1(casm_class))
 }
 
-impl StateReader for PathfinderStateReader<'_> {
+impl StateReader for PathfinderStateReader {
     fn get_storage_at(
         &self,
         contract_address: starknet_api::core::ContractAddress,
         storage_key: starknet_api::state::StorageKey,
     ) -> blockifier::state::state_api::StateResult<CoreFelt> {
+        let mut connection = self.db.connection().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database connection: {}", err))
+        })?;
+        let db_tx = connection.transaction().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database transaction: {}", err))
+        })?;
+
         let storage_key =
             StorageAddress::new(storage_key.0.key().into_felt()).ok_or_else(|| {
                 StateError::StarknetApiError(StarknetApiError::OutOfRange {
@@ -218,8 +229,7 @@ impl StateReader for PathfinderStateReader<'_> {
             return Ok(Felt::ZERO.into_starkfelt());
         };
 
-        let storage_val = self
-            .transaction
+        let storage_val = db_tx
             .storage_value(block_id, pathfinder_contract_address, storage_key)
             .map_err(map_anyhow_to_state_err)?
             .unwrap_or(StorageValue(Felt::ZERO));
@@ -233,6 +243,13 @@ impl StateReader for PathfinderStateReader<'_> {
         &self,
         contract_address: starknet_api::core::ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::Nonce> {
+        let mut connection = self.db.connection().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database connection: {}", err))
+        })?;
+        let db_tx = connection.transaction().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database transaction: {}", err))
+        })?;
+
         let pathfinder_contract_address =
             pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
 
@@ -248,8 +265,7 @@ impl StateReader for PathfinderStateReader<'_> {
             ));
         };
 
-        let nonce = self
-            .transaction
+        let nonce = db_tx
             .contract_nonce(pathfinder_contract_address, block_id)
             .map_err(map_anyhow_to_state_err)?
             .unwrap_or(pathfinder_common::ContractNonce::ZERO);
@@ -261,6 +277,13 @@ impl StateReader for PathfinderStateReader<'_> {
         &self,
         contract_address: starknet_api::core::ContractAddress,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::ClassHash> {
+        let mut connection = self.db.connection().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database connection: {}", err))
+        })?;
+        let db_tx = connection.transaction().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database transaction: {}", err))
+        })?;
+
         let pathfinder_contract_address =
             pathfinder_common::ContractAddress::new_or_panic(contract_address.0.key().into_felt());
 
@@ -274,8 +297,7 @@ impl StateReader for PathfinderStateReader<'_> {
             ));
         };
 
-        let class_hash = self
-            .transaction
+        let class_hash = db_tx
             .contract_class_hash(block_id, pathfinder_contract_address)
             .map_err(map_anyhow_to_state_err)?;
 
@@ -321,6 +343,13 @@ impl StateReader for PathfinderStateReader<'_> {
         &self,
         class_hash: starknet_api::core::ClassHash,
     ) -> blockifier::state::state_api::StateResult<starknet_api::core::CompiledClassHash> {
+        let mut connection = self.db.connection().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database connection: {}", err))
+        })?;
+        let db_tx = connection.transaction().map_err(|err| {
+            StateError::StateReadError(format!("Failed to create database transaction: {}", err))
+        })?;
+
         let class_hash = ClassHash(class_hash.0.into_felt());
 
         tracing::trace!(%class_hash, "Getting compiled class hash");
@@ -332,9 +361,9 @@ impl StateReader for PathfinderStateReader<'_> {
         })?;
 
         let casm_hash = if self.ignore_block_number_for_classes {
-            self.transaction.casm_hash(class_hash)
+            db_tx.casm_hash(class_hash)
         } else {
-            self.transaction.casm_hash_at(block_id, class_hash)
+            db_tx.casm_hash_at(block_id, class_hash)
         };
 
         let casm_hash = casm_hash.map_err(map_anyhow_to_state_err)?.ok_or_else(|| {

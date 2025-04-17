@@ -49,17 +49,19 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
     let span = tracing::Span::current();
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
-        let mut db = context
+        let mut db_conn = context
             .execution_storage
             .connection()
             .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db_tx)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update.clone()))
@@ -67,14 +69,14 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
 
-                let pruned = db
+                let pruned = db_tx
                     .block_pruned(block_id)
                     .context("Querying block pruned status")?;
                 if pruned {
                     return Err(EstimateFeeError::BlockNotFound);
                 }
 
-                let header = db
+                let header = db_tx
                     .block_header(block_id)
                     .context("Querying block header")?
                     .ok_or(EstimateFeeError::BlockNotFound)?;
@@ -83,8 +85,10 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             }
         };
 
+        drop(db_tx);
+        drop(db_conn);
+
         let state = ExecutionState::simulation(
-            &db,
             context.chain_id,
             header,
             pending,
@@ -114,6 +118,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             .collect::<Result<Vec<_>, _>>()?;
 
         let result = pathfinder_executor::estimate(
+            context.execution_storage.clone(),
             state,
             transactions,
             context.config.fee_estimation_epsilon,
@@ -916,9 +921,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 15596093.into(),
+            l2_gas_consumed: 15596094.into(),
             l2_gas_price: 1.into(),
-            overall_fee: 15596349.into(),
+            overall_fee: 15596350.into(),
             unit: PriceUnit::Fri,
         };
         self::assert_eq!(
