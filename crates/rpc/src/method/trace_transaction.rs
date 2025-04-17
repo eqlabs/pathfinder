@@ -136,16 +136,7 @@ pub async fn trace_transaction(
                 .map(|transaction| compose_executor_transaction(transaction, &db_tx))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            drop(db_tx);
-            drop(db_conn);
-
-            match pathfinder_executor::trace(
-                context.execution_storage.clone(),
-                state,
-                cache,
-                hash,
-                executor_transactions,
-            ) {
+            match pathfinder_executor::trace(db_tx, state, cache, hash, executor_transactions) {
                 Ok(txs) => {
                     let trace = txs
                         .into_iter()

@@ -20,13 +20,13 @@ use crate::transaction::{
 use crate::IntoFelt;
 
 pub fn estimate(
-    db: pathfinder_storage::Storage,
+    db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
-    let mut tx_executor = create_executor(db, execution_state)?;
+    let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     transactions
         .into_iter()

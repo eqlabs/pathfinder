@@ -85,9 +85,6 @@ pub async fn simulate_transactions(
             }
         };
 
-        drop(db_tx);
-        drop(db_conn);
-
         let state = pathfinder_executor::ExecutionState::simulation(
             context.chain_id,
             header,
@@ -113,7 +110,7 @@ pub async fn simulate_transactions(
             .collect::<Result<Vec<_>, _>>()?;
 
         let txs = pathfinder_executor::simulate(
-            context.execution_storage.clone(),
+            db_tx,
             state,
             transactions,
             context.config.fee_estimation_epsilon,

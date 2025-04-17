@@ -162,9 +162,6 @@ fn execute(
         .map(|tx| pathfinder_rpc::compose_executor_transaction(tx, &db_tx))
         .collect::<Result<Vec<_>, _>>();
 
-    drop(db_tx);
-    drop(db_conn);
-
     let transactions = match transactions {
         Ok(transactions) => transactions,
         Err(error) => {
@@ -173,12 +170,7 @@ fn execute(
         }
     };
 
-    match pathfinder_executor::simulate(
-        storage.clone(),
-        execution_state,
-        transactions,
-        Percentage::new(0),
-    ) {
+    match pathfinder_executor::simulate(db_tx, execution_state, transactions, Percentage::new(0)) {
         Ok(simulations) => {
             for (simulation, (receipt, transaction)) in simulations
                 .iter()

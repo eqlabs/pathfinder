@@ -100,13 +100,13 @@ impl Default for TraceCache {
 }
 
 pub fn simulate(
-    db: pathfinder_storage::Storage,
+    db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let block_number = execution_state.header.number;
-    let mut tx_executor = create_executor(db, execution_state)?;
+    let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     transactions
         .into_iter()
@@ -169,13 +169,13 @@ pub fn simulate(
 }
 
 pub fn trace(
-    db: pathfinder_storage::Storage,
+    db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
     cache: TraceCache,
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
-    let mut tx_executor = create_executor(db, execution_state)?;
+    let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     let sender = {
         let mut cache = cache.0.lock().unwrap();
@@ -318,7 +318,7 @@ fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<Cl
 
 fn to_state_diff(
     state_maps: StateMaps,
-    initial_state: PathfinderExecutionState,
+    initial_state: PathfinderExecutionState<'_>,
     old_declared_contract: Option<ClassHash>,
 ) -> Result<StateDiff, StateError> {
     let mut deployed_contracts = Vec::new();

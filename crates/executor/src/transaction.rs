@@ -77,7 +77,7 @@ pub(crate) fn gas_vector_computation_mode(transaction: &Transaction) -> GasVecto
 /// accounting or not.
 pub(crate) fn l2_gas_accounting_enabled(
     tx: &Transaction,
-    state: &PathfinderExecutionState,
+    state: &PathfinderExecutionState<'_>,
     block_context: &blockifier::context::BlockContext,
     gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> blockifier::state::state_api::StateResult<bool> {
@@ -127,7 +127,7 @@ const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(1_000_000);
 pub(crate) fn find_l2_gas_limit_and_execute_transaction(
     tx: &mut Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor,
+    tx_executor: &mut PathfinderExecutor<'_>,
     revert_behavior: ExecutionBehaviorOnRevert,
     epsilon: Percentage,
 ) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
@@ -278,7 +278,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
 pub(crate) fn execute_transaction(
     tx: &Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor,
+    tx_executor: &mut PathfinderExecutor<'_>,
     revert_behavior: ExecutionBehaviorOnRevert,
 ) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
     match tx_executor.execute(tx) {
@@ -331,12 +331,15 @@ fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: Ga
 /// the function returns the saved initial state to the caller to decide whether
 /// to commit the state update (by doing nothing) or revert it (by assigning it
 /// back into the executor).
-fn simulate_transaction(
+fn simulate_transaction<'tx>(
     tx: &Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor,
+    tx_executor: &mut PathfinderExecutor<'tx>,
     revert_behavior: &ExecutionBehaviorOnRevert,
-) -> Result<(TransactionExecutionOutput, PathfinderExecutionState), TransactionSimulationError> {
+) -> Result<
+    (TransactionExecutionOutput, PathfinderExecutionState<'tx>),
+    TransactionSimulationError<'tx>,
+> {
     let initial_state = tx_executor
         .block_state
         .as_ref()
@@ -371,8 +374,8 @@ fn simulate_transaction(
     }
 }
 
-enum TransactionSimulationError {
-    OutOfGas(PathfinderExecutionState),
+enum TransactionSimulationError<'tx> {
+    OutOfGas(PathfinderExecutionState<'tx>),
     ExecutionError(TransactionExecutionError),
 }
 
@@ -505,7 +508,7 @@ fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
 fn get_max_l2_gas_amount_covered_by_balance(
     tx: &Transaction,
     block_context: &blockifier::context::BlockContext,
-    state: &mut PathfinderExecutionState,
+    state: &mut PathfinderExecutionState<'_>,
 ) -> Result<GasAmount, TransactionExecutionError> {
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let resource_bounds_without_l2_gas = AllResourceBounds {
