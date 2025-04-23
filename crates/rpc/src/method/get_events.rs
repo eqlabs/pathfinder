@@ -200,13 +200,16 @@ pub async fn get_events(
             if pruned {
                 return Err(GetEventsError::BlockNotFound);
             }
-        }
-        if let Some(to_block) = from_block {
-            let pruned = transaction
-                .block_pruned(to_block.into())
-                .context("Querying block pruned status")?;
-            if pruned {
-                return Err(GetEventsError::BlockNotFound);
+
+            // If `from_block` is not pruned, then `to_block` cannot be pruned either, under
+            // the assumption that `to_block` > `from_block`.
+            if let Some(to_block) = to_block {
+                if from_block > to_block {
+                    return Ok(GetEventsResult {
+                        events: vec![],
+                        continuation_token: None,
+                    });
+                }
             }
         }
 
@@ -858,6 +861,28 @@ mod tests {
                 requested: limit + 1
             },
             error
+        );
+    }
+
+    #[tokio::test]
+    async fn get_events_from_block_greater_than_to_block_returns_empty_page() {
+        let (context, _) = setup();
+
+        let input = GetEventsInput {
+            filter: EventFilter {
+                from_block: Some(BlockId::Number(BlockNumber::new_or_panic(100))),
+                to_block: Some(BlockId::Number(BlockNumber::new_or_panic(20))),
+                ..Default::default()
+            },
+        };
+        let result = get_events(context, input).await.unwrap();
+
+        assert_eq!(
+            GetEventsResult {
+                events: vec![],
+                continuation_token: None,
+            },
+            result
         );
     }
 
