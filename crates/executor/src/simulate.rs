@@ -6,9 +6,6 @@ use blockifier::blockifier::transaction_executor::{
     BLOCK_STATE_ACCESS_ERR,
 };
 use blockifier::blockifier_versioned_constants::VersionedConstants;
-use blockifier::state::cached_state::StateMaps;
-use blockifier::state::errors::StateError;
-use blockifier::state::state_api::StateReader;
 use blockifier::transaction::transaction_execution::Transaction;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;

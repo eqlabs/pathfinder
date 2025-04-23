@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{ChainId, StarknetVersion};
