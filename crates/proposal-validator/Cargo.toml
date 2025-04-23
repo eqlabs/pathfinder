@@ -7,3 +7,10 @@ license = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
+anyhow = { workspace = true }
+p2p = { path = "../p2p" }
+p2p_proto = { path = "../p2p_proto" }
+pathfinder-common = { path = "../common" }
+pathfinder-crypto = { path = "../crypto" }
+pathfinder-storage = { path = "../storage" }
+serde_json = { workspace = true }
