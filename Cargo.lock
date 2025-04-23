@@ -8843,6 +8843,15 @@ dependencies = [
 [[package]]
 name = "proposal-validator"
 version = "0.16.4"
+dependencies = [
+ "anyhow",
+ "p2p",
+ "p2p_proto",
+ "pathfinder-common",
+ "pathfinder-crypto",
+ "pathfinder-storage",
+ "serde_json",
+]
 
 [[package]]
 name = "proptest"
