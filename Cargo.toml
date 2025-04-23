@@ -17,6 +17,7 @@ members = [
     "crates/p2p_proto_derive",
     "crates/p2p_stream",
     "crates/pathfinder",
+    "crates/proposal-validator",
     "crates/retry",
     "crates/rpc",
     "crates/serde",
