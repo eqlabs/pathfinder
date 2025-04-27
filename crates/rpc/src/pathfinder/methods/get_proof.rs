@@ -206,7 +206,7 @@ impl crate::dto::SerializeForVersion for ContractData {
 }
 
 /// Holds the membership/non-membership of a contract and its associated
-/// contract contract if the contract exists.
+/// contract if the contract exists.
 #[derive(Debug)]
 pub struct GetProofOutput {
     /// The global state commitment for Starknet 0.11.0 blocks onwards, if

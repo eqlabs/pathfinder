@@ -918,6 +918,7 @@ impl Config {
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
+            #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
         }
     }

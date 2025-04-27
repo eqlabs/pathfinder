@@ -49,17 +49,19 @@ pub async fn simulate_transactions(
             .iter()
             .any(|flag| flag == &crate::dto::SimulationFlag::SkipFeeCharge);
 
-        let mut db = context
+        let mut db_conn = context
             .execution_storage
             .connection()
             .context("Creating database connection")?;
-        let db = db.transaction().context("Creating database transaction")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
 
         let (header, pending) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db_tx)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update.clone()))
@@ -67,14 +69,14 @@ pub async fn simulate_transactions(
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
 
-                let pruned = db
+                let pruned = db_tx
                     .block_pruned(block_id)
                     .context("Querying block pruned status")?;
                 if pruned {
                     return Err(SimulateTransactionError::BlockNotFound);
                 }
 
-                let header = db
+                let header = db_tx
                     .block_header(block_id)
                     .context("Fetching block header")?
                     .ok_or(SimulateTransactionError::BlockNotFound)?;
@@ -84,7 +86,6 @@ pub async fn simulate_transactions(
         };
 
         let state = pathfinder_executor::ExecutionState::simulation(
-            &db,
             context.chain_id,
             header,
             pending,
@@ -109,6 +110,7 @@ pub async fn simulate_transactions(
             .collect::<Result<Vec<_>, _>>()?;
 
         let txs = pathfinder_executor::simulate(
+            db_tx,
             state,
             transactions,
             context.config.fee_estimation_epsilon,
