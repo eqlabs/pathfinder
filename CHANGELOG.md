@@ -40,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `starknet_traceBlockTransactions`
 
   - With pruning enabled, affected JSON-RPC method requests will only succeed if the requested block is within the last N + 1 blocks.
-  - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot change it without creating a new database.
+  - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot be changed without creating a new database.
   - It is possible to change the number of blocks stored in pruned mode between runs, using the same CLI option with a different value for N.
 
 ### Changed
