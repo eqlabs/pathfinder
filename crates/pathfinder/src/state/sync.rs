@@ -990,30 +990,32 @@ async fn l2_reorg(
             .context("Latest block number is none during reorg")?
             .0;
 
-        let Some(reorg_tail_hash) = transaction
-            .block_hash(reorg_tail.into())
-            .context("Fetching first block hash")?
-        else {
+        if transaction.block_pruned(reorg_tail.into())? {
             anyhow::bail!(
                 r"Reorg tail (block number: {reorg_tail}) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
             );
-        };
+        }
+        let reorg_tail_hash = transaction
+            .block_hash(reorg_tail.into())
+            .context("Fetching first block hash")?
+            .expect("Reorg tail should exist in database");
 
         // Roll back Merkle trie updates.
         //
         // If we're rolling back genesis then there will be no blocks left so state will
         // be empty.
         if let Some(target_block) = reorg_tail.parent() {
-            let Some(target_header) = transaction
-                .block_header(target_block.into())
-                .context("Fetching target block header")?
-            else {
+            if transaction.block_pruned(target_block.into())? {
                 anyhow::bail!(
                     r"Reorg tail parent (block number: {target_block}) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
                 );
-            };
+            }
+            let target_header = transaction
+                .block_header(target_block.into())
+                .context("Fetching target block header")?
+                .expect("Reorg tail parent should exist in database");
             revert::revert_starknet_state(&transaction, head, target_block, target_header)?;
         }
 
