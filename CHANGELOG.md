@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot be changed without creating a new database.
   - It is possible to change the number of blocks stored in pruned mode between runs, using the same CLI option with a different value for N.
 
+### Fixed
+
+- `starknet_unsubscribe` does not accept subscription IDs as strings.
+
 ### Changed
 
 - `--rpc.get-events-max-uncached-event-filters-to-load` CLI option has been replaced with `rpc.get-events-event-filter-block-range-limit`. The new option serves the same purpose of preventing queries from taking too long, but it should be clearer in its intent.

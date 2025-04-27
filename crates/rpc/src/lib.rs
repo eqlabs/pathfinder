@@ -240,7 +240,7 @@ impl Default for SyncState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct SubscriptionId(pub u32);
 
 impl crate::dto::SerializeForVersion for SubscriptionId {
@@ -254,12 +254,52 @@ impl crate::dto::SerializeForVersion for SubscriptionId {
 
 impl crate::dto::DeserializeForVersion for SubscriptionId {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let id: String = value.deserialize()?;
-        let id: u32 = id.parse().map_err(|_| {
-            use serde::de::Error;
-            serde_json::Error::custom(format!("Failed to parse subscription id: {id:?}"))
-        })?;
-        Ok(Self(id))
+        value.deserialize_serde()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for SubscriptionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct IdVisitor;
+
+        impl serde::de::Visitor<'_> for IdVisitor {
+            type Value = SubscriptionId;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(formatter, "number or string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let id = v.parse().map_err(|_| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Str(v),
+                        &"integer in u32 range",
+                    )
+                })?;
+                Ok(SubscriptionId(id))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                let id = u32::try_from(v).map_err(|_| {
+                    serde::de::Error::invalid_value(
+                        serde::de::Unexpected::Unsigned(v),
+                        &"integer in u32 range",
+                    )
+                })?;
+                Ok(SubscriptionId(id))
+            }
+        }
+
+        deserializer.deserialize_any(IdVisitor)
     }
 }
 
