@@ -7,6 +7,46 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Pathfinder now supports storing only the latest state of the blockchain history. This can be configured with the '--storage.blockchain-history' CLI option.
+
+  - Accepted values are:
+
+    - "archive" (default) – Full history of the blockchain is stored.
+    - "N" – An integer specifying the number of historical blocks to store, in addition to the latest block (N + 1 blocks will be stored).
+
+  - Affected JSON-RPC methods are:
+
+    - `starknet_call`
+    - `starknet_estimateFee`
+    - `starknet_estimateMessageFee`
+    - `starknet_getBlockTransactionCount`
+    - `starknet_getBlockWithTxHashes`
+    - `starknet_getBlockWithTxs`
+    - `starknet_getBlockWithReceipts`
+    - `starknet_getClass`
+    - `starknet_getClassAt`
+    - `starknet_getClassHashAt`
+    - `starknet_getEvents`
+    - `starknet_getNonce`
+    - `starknet_getStateUpdate`
+    - `starknet_getStorageAt`
+    - `starknet_getStorageProof`
+    - `starknet_getTransactionByBlockIdAndIndex`
+    - `starknet_simulateTransactions`
+    - `starknet_traceBlockTransactions`
+
+  - With pruning enabled, affected JSON-RPC method requests will only succeed if the requested block is within the last N + 1 blocks.
+  - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot be changed without creating a new database.
+  - It is possible to change the number of blocks stored in pruned mode between runs, using the same CLI option with a different value for N.
+
+### Changed
+
+- `--rpc.get-events-max-uncached-event-filters-to-load` CLI option has been replaced with `rpc.get-events-event-filter-block-range-limit`. The new option serves the same purpose of preventing queries from taking too long, but it should be clearer in its intent.
+
 ## [0.16.4] - 2025-04-15
 
 ### Fixed
@@ -99,7 +139,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Pathfinder is now compiled with arithmetic overflow checks enabled in release mode to mitigate potential issues.
-
 
 ## [0.15.0] - 2024-11-21
 
@@ -215,7 +254,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pruned merkle tries take significantly less disk space than full ones.
   - Pathfinder stores this setting in its database and defaults to using that.
   - Once set pruning cannot be enabled/disabled for non-empty databases.
-  - Pruning achieves a ~75% reduction in overall storage compared to archive. 
+  - Pruning achieves a ~75% reduction in overall storage compared to archive.
 
 ### Removed
 
@@ -264,7 +303,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_getTransactionStatus` reports gateway errors as `TxnNotFound`. These are now reported as internal errors.
 - Sync process leaves a zombie task behind each time it restarts, wasting resources.
 - `starknet_getEvents` does not return a continuation token if not all events from the last block fit into the result page.
-- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for 
+- `starknet_addXXX` requests to the gateway use the configured gateway timeout, often causing these to timeout while waiting for
   a gateway response. These instead now use a much longer timeout.
 
 ### Changed
@@ -287,7 +326,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The memory allocator used by pathfinder has been changed to jemalloc, leading to improved JSON-RPC performance.
 - Improved poseidon hash performance.
 - Default RPC version changed to v0.6.
-
 
 ### Added
 
@@ -328,7 +366,7 @@ Users should not use this version.
 
 ### Added
 
-- RPC parsing failures now include the error reason when its an invalid JSON-RPC request (invalid request params already include the error reason). 
+- RPC parsing failures now include the error reason when its an invalid JSON-RPC request (invalid request params already include the error reason).
 
 ## [0.10.3-rc1] - 2023-12-22
 
@@ -340,7 +378,7 @@ Users should not use this version.
 
 ### Changed
 
-- Fee estimations are now compatible with starknet v0.13 and *incompatible* with starknet v0.12.3.
+- Fee estimations are now compatible with starknet v0.13 and _incompatible_ with starknet v0.12.3.
 
 ### Added
 
@@ -391,7 +429,7 @@ Users should not use this version.
 - Support for RPC v0.6.0-rc4 via the `/rpc/v0_6` endpoint. Note that this does not include the `/rpc/v0.6` endpoint as the underscore is now the standard across node implementations.
 - Configuration options to selectively enable/disable parts of the node. This can be useful to run tests or benchmarks with isolated components e.g. test RPC methods without the sync process updating the database.
   - `rpc.enable` configuration option to enable/disable the RPC server. Defaults to enabled.
-  - `sync.enable` configuration option to enable/disable the sync process. Defaults to enabled. 
+  - `sync.enable` configuration option to enable/disable the sync process. Defaults to enabled.
 - Support for Sepolia testnet via `--network testnet-sepolia`
 - Support for Sepolia integration via `--network integration-sepolia`
 - Support for Starknet 0.13.0.
@@ -504,7 +542,7 @@ Users should not use this version.
 
 ### Fixed
 
-- JSON-RPC requests containing a Cairo 0 class definition were requiring the `debug_info` property to be present in the input program. This was a regression caused by the execution engine change. 
+- JSON-RPC requests containing a Cairo 0 class definition were requiring the `debug_info` property to be present in the input program. This was a regression caused by the execution engine change.
 - Performance for the `starknet_getEvents` JSON-RPC method has been improved for queries involving the pending block.
 
 ### Added
@@ -700,6 +738,7 @@ Users should not use this version.
   - `cairo-lang` upgraded to 0.11.2a0
 - Subscription to `newHead` events via websocket using the method `pathfinder_subscribe_newHeads`, which can
   be managed by the following command line options
+
   - `rpc.websocket`, which enables websocket transport
   - `rpc.websocket.capacity`, which sets the maximum number of websocket subscriptions per subscription type
 
