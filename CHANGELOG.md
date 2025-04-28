@@ -43,6 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot be changed without creating a new database.
   - It is possible to change the number of blocks stored in pruned mode between runs, using the same CLI option with a different value for N.
 
+  - Note that the number of blocks stored is relative to:
+    a. The latest L1 checkpoint if it exists and the latest L2 block is ahead of it
+    b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
+
 ### Changed
 
 - `--rpc.get-events-max-uncached-event-filters-to-load` CLI option has been replaced with `rpc.get-events-event-filter-block-range-limit`. The new option serves the same purpose of preventing queries from taking too long, but it should be clearer in its intent.
