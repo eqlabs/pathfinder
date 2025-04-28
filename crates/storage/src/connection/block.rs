@@ -294,6 +294,25 @@ impl Transaction<'_> {
         }
     }
 
+    /// Returns the lowest block number currently in the database. The usage of
+    /// this function makes sense only in the context of
+    /// [blockchain pruning](crate::pruning).
+    pub fn earliest_block_number(&self) -> anyhow::Result<Option<BlockNumber>> {
+        // FIXME: This workaround won't be needed once foreign keys are taken off the
+        // block related tables. See https://github.com/eqlabs/pathfinder/issues/2719.
+
+        // Get this info from `transactions` because it is consistently pruned as
+        // opposed to block related tables.
+        self.inner()
+            .query_row(
+                "SELECT block_number FROM transactions ORDER BY block_number ASC LIMIT 1",
+                [],
+                |row| row.get_block_number(0),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
+
     pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
         match block {
             BlockId::Latest => {

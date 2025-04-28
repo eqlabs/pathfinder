@@ -72,6 +72,19 @@ impl Transaction<'_> {
         .optional()
         .map_err(|e| e.into())
     }
+
+    pub fn latest_l1_checkpoint(&self) -> anyhow::Result<Option<BlockNumber>> {
+        self.inner()
+            .query_row(
+                r"SELECT starknet_block_number FROM l1_state 
+                ORDER BY starknet_block_number DESC
+                LIMIT 1",
+                [],
+                |row| row.get_block_number(0),
+            )
+            .optional()
+            .map_err(|e| e.into())
+    }
 }
 
 #[cfg(test)]
