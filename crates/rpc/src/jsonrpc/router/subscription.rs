@@ -630,10 +630,12 @@ async fn handle_request(
                 state.version,
             )
         })?;
-        let params =
-            serde_json::from_str::<StarknetUnsubscribeParams>(params.get()).map_err(|e| {
-                RpcResponse::invalid_params(req_id.clone(), e.to_string(), state.version)
-            })?;
+        let params = crate::dto::Value::from_str(params.get(), state.version).map_err(|e| {
+            RpcResponse::invalid_params(req_id.clone(), e.to_string(), state.version)
+        })?;
+        let params = StarknetUnsubscribeParams::deserialize(params).map_err(|e| {
+            RpcResponse::invalid_params(req_id.clone(), e.to_string(), state.version)
+        })?;
         let (_, handle) = subscriptions
             .remove(&params.subscription_id)
             .ok_or_else(|| RpcResponse {
@@ -696,10 +698,19 @@ async fn handle_request(
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug)]
 struct StarknetUnsubscribeParams {
     subscription_id: SubscriptionId,
+}
+
+impl DeserializeForVersion for StarknetUnsubscribeParams {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        value.deserialize_map(|value| {
+            Ok(Self {
+                subscription_id: value.deserialize("subscription_id")?,
+            })
+        })
+    }
 }
 
 #[derive(Debug)]

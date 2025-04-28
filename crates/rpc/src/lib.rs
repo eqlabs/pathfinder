@@ -890,11 +890,9 @@ mod tests {
         ];
 
         for (line, input, expected) in examples {
-            let parsed = Syncing::deserialize(crate::dto::Value::new(
-                serde_json::from_str(input).unwrap(),
-                RpcVersion::V07,
-            ))
-            .unwrap();
+            let parsed =
+                Syncing::deserialize(crate::dto::Value::from_str(input, RpcVersion::V07).unwrap())
+                    .unwrap();
             assert_eq!(parsed, expected, "example from line {line}");
         }
     }

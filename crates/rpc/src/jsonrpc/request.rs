@@ -58,10 +58,9 @@ impl<'a> RawParams<'a> {
         version: RpcVersion,
     ) -> Result<T, RpcError> {
         let s = self.0.map(|x| x.get()).unwrap_or_default();
-        let value: serde_json::Value =
-            serde_json::from_str(s).map_err(|e| RpcError::InvalidParams(e.to_string()))?;
-        T::deserialize(Value::new(value, version))
-            .map_err(|e| RpcError::InvalidParams(e.to_string()))
+        let value =
+            Value::from_str(s, version).map_err(|e| RpcError::InvalidParams(e.to_string()))?;
+        T::deserialize(value).map_err(|e| RpcError::InvalidParams(e.to_string()))
     }
 }
 

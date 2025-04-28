@@ -216,6 +216,11 @@ impl Value {
         }
     }
 
+    pub fn from_str(data: &str, version: RpcVersion) -> Result<Self, serde_json::Error> {
+        let data = serde_json::from_str(data)?;
+        Ok(Self::new(data, version))
+    }
+
     pub fn is_string(&self) -> bool {
         self.data.is_string()
     }
