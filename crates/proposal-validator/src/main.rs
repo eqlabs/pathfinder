@@ -1,13 +1,22 @@
+use core::panic;
+use std::collections::VecDeque;
+
 use anyhow::Context;
-use p2p::sync::client::conv::ToDto;
+use p2p::sync::client::conv::{ToDto, TryFromDto};
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
+use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{class_definition, BlockNumber, ClassHash, L1DataAvailabilityMode};
 use pathfinder_crypto::Felt;
 use pathfinder_storage::StorageBuilder;
+use tracing::{debug, warn};
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
+    debug!("Starting proposal validator");
+
     let database_path = std::env::args()
         .nth(1)
         .context("Please provide the database path as the first argument")?;
@@ -41,24 +50,74 @@ fn main() -> anyhow::Result<()> {
         .transaction()
         .context("Create database transaction")?;
 
-    let proposal = create_proposal(&db_txn, block_number)?;
+    let mut proposal = create_proposal(&db_txn, block_number)?;
+
+    // TODO verify
+    assert!(matches!(
+        proposal.pop_front().expect("Proposal init"),
+        ProposalPart::ProposalInit(_)
+    ));
+
+    // TODO verify
+    assert!(matches!(
+        proposal.pop_front().expect("Block info"),
+        ProposalPart::BlockInfo(_)
+    ));
+
+    // TODO verify
+    assert!(matches!(
+        proposal.pop_back().expect("Proposal fin"),
+        ProposalPart::ProposalFin(_)
+    ));
+
+    proposal.into_iter().for_each(|part| {
+        let ProposalPart::TransactionBatch(txns) = part else {
+            panic!("Expected transaction batch");
+        };
+
+        execute_batch(txns);
+    });
 
     Ok(())
+}
+
+fn execute_batch(txns: Vec<p2p_proto::consensus::Transaction>) {
+    let x = txns
+        .into_iter()
+        .map(|t| {
+            use p2p_proto::consensus::TransactionVariant as ConsensusVariant;
+            use p2p_proto::transaction::TransactionVariant as SyncVariant;
+
+            let t = match t.txn {
+                ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
+                    SyncVariant::DeclareV3(common)
+                }
+                ConsensusVariant::DeployAccountV3(v) => SyncVariant::DeployAccountV3(v),
+                ConsensusVariant::InvokeV3(v) => SyncVariant::InvokeV3(v),
+                ConsensusVariant::L1HandlerV0(v) => SyncVariant::L1HandlerV0(v),
+            };
+
+            TransactionVariant::try_from_dto(t)
+                .expect("Proposal part was generated from a valid DB")
+        })
+        .collect::<Vec<_>>();
 }
 
 /// Create a valid sequence of proposal parts for the given block.
 fn create_proposal(
     db_txn: &pathfinder_storage::Transaction,
     block_number: BlockNumber,
-) -> anyhow::Result<Vec<ProposalPart>> {
+) -> anyhow::Result<VecDeque<ProposalPart>> {
     let header = db_txn
         .block_header(block_number.into())?
         .context("Block not found")?;
 
-    let mut proposal_parts = Vec::new();
+    debug!(?header);
+
+    let mut proposal_parts = VecDeque::new();
     let height = header.number.get();
 
-    proposal_parts.push(ProposalPart::ProposalInit(ProposalInit {
+    proposal_parts.push_back(ProposalPart::ProposalInit(ProposalInit {
         height,
         // Decent random value
         round: 42,
@@ -70,7 +129,23 @@ fn create_proposal(
 
     use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
 
-    proposal_parts.push(ProposalPart::BlockInfo(BlockInfo {
+    const ETHWEI: u128 = 1_000_000_000_000_000_000;
+
+    let wei_l2_gas_price = if header.eth_l2_gas_price.0 == 0 {
+        warn!("wei L2 gas price is 0, correcting to 1");
+        1
+    } else {
+        header.eth_l2_gas_price.0
+    };
+
+    let fri_l2_gas_price = if header.strk_l2_gas_price.0 == 0 {
+        warn!("fri L2 gas price is 0, correcting to 1");
+        1
+    } else {
+        header.strk_l2_gas_price.0
+    };
+
+    proposal_parts.push_back(ProposalPart::BlockInfo(BlockInfo {
         height,
         timestamp: header.timestamp.get(),
         // Decent random value
@@ -79,11 +154,11 @@ fn create_proposal(
             L1DataAvailabilityMode::Calldata => Calldata,
             L1DataAvailabilityMode::Blob => Blob,
         },
-        l2_gas_price_fri: header.strk_l2_gas_price.0,
-        l1_gas_price_wei: header.eth_l2_gas_price.0,
+        l2_gas_price_fri: fri_l2_gas_price,
+        l1_gas_price_wei: header.eth_l1_gas_price.0,
         l1_data_gas_price_wei: header.eth_l1_data_gas_price.0,
         // Eth/Fri = Wei * 10^18 / Fri
-        eth_to_fri_rate: header.eth_l2_gas_price.0.pow(18) / header.strk_l2_gas_price.0,
+        eth_to_fri_rate: wei_l2_gas_price * ETHWEI / fri_l2_gas_price,
     }));
 
     let txns = db_txn
@@ -129,9 +204,9 @@ fn create_proposal(
         })
         .collect::<anyhow::Result<_>>()?;
 
-    proposal_parts.push(ProposalPart::TransactionBatch(txns));
+    proposal_parts.push_back(ProposalPart::TransactionBatch(txns));
 
-    proposal_parts.push(ProposalPart::ProposalFin(ProposalFin {
+    proposal_parts.push_back(ProposalPart::ProposalFin(ProposalFin {
         // FIXME
         proposal_commitment: Hash(Felt::from_u64(42)),
     }));

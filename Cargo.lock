@@ -8852,6 +8852,8 @@ dependencies = [
  "pathfinder-crypto",
  "pathfinder-storage",
  "serde_json",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
