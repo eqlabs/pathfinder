@@ -445,7 +445,7 @@ mod tests {
                 "jsonrpc": "2.0",
                 "id": 100,
                 "method": "starknet_unsubscribe",
-                "params": {"subscription_id": subscription_id.0}
+                "params": {"subscription_id": subscription_id.0.to_string()}
             })
             .to_string(),
         )))
