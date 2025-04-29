@@ -1,0 +1,27 @@
+name: End-to-End Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: self-hosted
+    env:
+      CARGO_TERM_COLOR: always
+      MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
+      LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
+      TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rui314/setup-mold@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/install-action@nextest
+      - name: Compile unit tests with all features enabled
+        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
+      - name: Run unit tests with all features enabled
+        run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
