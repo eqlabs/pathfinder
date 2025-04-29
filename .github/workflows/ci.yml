@@ -1,35 +1,18 @@
-name: CI
+name: End-to-End Test
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  pull_request:
-  # Daily cron job used to clear and rebuild cache (https://github.com/Swatinem/rust-cache/issues/181).
-  schedule:
-    - cron: '0 0 * * *'
-
-# Limits workflow concurrency to only the latest commit in the PR.
-concurrency:
-  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
-  cancel-in-progress: true
 
 jobs:
-  test-all-features:
-    runs-on: ubuntu-24.04
+  compile:
+    runs-on: self-hosted
     env:
       CARGO_TERM_COLOR: always
       MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
       LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
       TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
     steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: "16384"
-          temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
@@ -38,160 +21,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: taiki-e/install-action@nextest
-      - uses: gerlero/add-apt-repository@v1
-        with:
-          uri: http://apt.llvm.org/noble/
-          suite: llvm-toolchain-noble-19
-          key: https://apt.llvm.org/llvm-snapshot.gpg.key
-      - uses: gerlero/apt-install@v1
-        with:
-          packages: build-essential llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
-      - name: Clear cache
-        if: github.event_name =='schedule'
-        run: |
-          cargo clean
-          rm -rf ~/.cargo/registry
-          rm -rf ~/.cargo/git
       - name: Compile unit tests with all features enabled
         run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests with all features enabled
         run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
-      - name: Store timings with all features enabled
-        uses: actions/upload-artifact@v4
-        with:
-          name: timings-all-features
-          path: target/cargo-timings/
-          if-no-files-found: warn
-
-  test-default-features:
-    runs-on: ubuntu-24.04
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
-        with:
-          root-reserve-mb: "3072"
-          temp-reserve-mb: "3072"
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: rui314/setup-mold@v1
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: taiki-e/install-action@nextest
-      - name: Clear cache
-        if: github.event_name =='schedule'
-        run: |
-          cargo clean
-          rm -rf ~/.cargo/registry
-          rm -rf ~/.cargo/git
-      - name: Compile unit tests with default features
-        run: cargo nextest run --all-targets --workspace --locked --no-run --timings
-      - name: Run unit tests with default features
-        run: timeout 10m cargo nextest run --no-fail-fast --all-targets --workspace --locked
-      - name: Store timings with default features
-        uses: actions/upload-artifact@v4
-        with:
-          name: timings-default-features
-          path: target/cargo-timings/
-          if-no-files-found: warn
-  
-  clippy:
-    runs-on: ubuntu-24.04
-    env:
-      MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
-      LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
-      TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: gerlero/add-apt-repository@v1
-        with:
-          uri: http://apt.llvm.org/noble/
-          suite: llvm-toolchain-noble-19
-          key: https://apt.llvm.org/llvm-snapshot.gpg.key
-      - uses: gerlero/apt-install@v1
-        with:
-          packages: llvm-19 llvm-19-dev llvm-19-runtime clang-19 clang-tools-19 lld-19 libpolly-19-dev libmlir-19-dev mlir-19-tools
-      - name: Clear cache
-        if: github.event_name =='schedule'
-        run: |
-          cargo clean
-          rm -rf ~/.cargo/registry
-          rm -rf ~/.cargo/git
-      - run: |
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings -D rust_2018_idioms
-          cargo clippy --workspace --all-targets --locked -- -D warnings -D rust_2018_idioms
-          cargo clippy --workspace --all-targets --all-features --locked --manifest-path crates/load-test/Cargo.toml -- -D warnings -D rust_2018_idioms
-
-
-  rustfmt:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          components: rustfmt
-      - run: |
-          cargo +nightly fmt --all -- --check
-          cargo +nightly fmt --all --manifest-path crates/load-test/Cargo.toml -- --check
-
-  doc:
-    runs-on: ubuntu-24.04
-    env:
-      RUSTDOCFLAGS: "-D warnings"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Clear cache
-        if: github.event_name =='schedule'
-        run: cargo clean
-      - run: cargo doc --no-deps --document-private-items
-
-  dep-sort:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: baptiste0928/cargo-install@v3
-        with:
-          crate: cargo-sort
-          version: "^1.0.9"
-      - run: |
-          cargo sort --check --workspace
-
-  typos:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: crate-ci/typos@v1.26.0
-        with:
-          files: .
-
-  load_test:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: cargo check
-        run: |
-          cd crates/load-test
-          cargo check
