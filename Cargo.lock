@@ -8849,9 +8849,13 @@ dependencies = [
  "p2p",
  "p2p_proto",
  "pathfinder-common",
+ "pathfinder-compiler",
  "pathfinder-crypto",
+ "pathfinder-executor",
+ "pathfinder-rpc",
  "pathfinder-storage",
  "serde_json",
+ "starknet_api",
  "tracing",
  "tracing-subscriber",
 ]
