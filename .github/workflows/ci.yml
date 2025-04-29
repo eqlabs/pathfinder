@@ -23,3 +23,23 @@ jobs:
       - uses: taiki-e/install-action@nextest
       - name: Compile with all features enabled
         run: cargo build --release --all-features --locked --bin pathfinder
+      - name: Upload pathfinder binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pathfinder
+          path: target/release/pathfinder
+
+  run:
+    runs-on: self-hosted
+    needs: compile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pathfinder binary
+        uses: actions/download-artifact@v4
+        with:
+          name: pathfinder
+      - name: Run Pathfinder
+        run: |
+          set -e
+          set -x
+          ./target/release/pathfinder --version
