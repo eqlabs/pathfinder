@@ -1,5 +1,6 @@
 use core::panic;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::iter::Extend;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -15,22 +16,32 @@ use p2p_proto::consensus::{
 };
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
+use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
+    BlockHeader,
     BlockNumber,
+    ChainId,
     ClassHash,
+    ContractAddress,
     EntryPoint,
     L1DataAvailabilityMode,
+    StateUpdate,
+    StorageAddress,
+    StorageValue,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_executor::{ClassInfo, IntoStarkFelt};
+use pathfinder_executor::types::{StorageDiff, TransactionSimulation};
+use pathfinder_executor::{ClassInfo, ExecutionState, IntoStarkFelt};
+use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
 use pathfinder_storage::StorageBuilder;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::{debug, warn};
+use tracing::{debug, error, info, warn};
+use util::percentage::Percentage;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -70,7 +81,17 @@ fn main() -> anyhow::Result<()> {
         .transaction()
         .context("Create database transaction")?;
 
-    let mut proposal = create_proposal(&db_txn, block_number)?;
+    let (mut proposal, header) = create_proposal(&db_txn, block_number)?;
+
+    let execution_state = ExecutionState::trace(
+        ChainId::SEPOLIA_TESTNET,
+        header,
+        None,
+        Default::default(),
+        ETH_FEE_TOKEN_ADDRESS,
+        STRK_FEE_TOKEN_ADDRESS,
+        None,
+    );
 
     // TODO verify
     assert!(matches!(
@@ -90,41 +111,87 @@ fn main() -> anyhow::Result<()> {
         ProposalPart::ProposalFin(_)
     ));
 
-    proposal.into_iter().for_each(|part| {
-        let ProposalPart::TransactionBatch(txns) = part else {
-            panic!("Expected transaction batch");
-        };
+    let part = proposal.pop_front().expect("Transaction batch");
+    let ProposalPart::TransactionBatch(txns) = part else {
+        panic!("Expected transaction batch");
+    };
 
-        execute_batch(txns);
-    });
+    execute_batch(db_txn, execution_state, txns, block_number);
 
     Ok(())
 }
 
-fn execute_batch(txns: Vec<p2p_proto::consensus::Transaction>) {
-    let x = txns
-        .into_iter()
-        .map(|t| {
-            let t = match t.txn {
-                ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
-                    SyncVariant::DeclareV3(common)
-                }
-                ConsensusVariant::DeployAccountV3(v) => SyncVariant::DeployAccountV3(v),
-                ConsensusVariant::InvokeV3(v) => SyncVariant::InvokeV3(v),
-                ConsensusVariant::L1HandlerV0(v) => SyncVariant::L1HandlerV0(v),
-            };
+fn execute_batch(
+    db_tx: pathfinder_storage::Transaction<'_>,
+    execution_state: ExecutionState,
+    txns: Vec<p2p_proto::consensus::Transaction>,
+    block_number: BlockNumber,
+) {
+    let expected_state_update = db_tx
+        .state_update(block_number.into())
+        .expect("DB is fine")
+        .expect("Block exists");
 
-            TransactionVariant::try_from_dto(t)
-                .expect("Proposal part was generated from a valid DB")
+    let txns = txns
+        .into_iter()
+        .map(compose_executor_transaction)
+        .collect::<anyhow::Result<Vec<_>>>()
+        .expect("Mapping into executor transactions");
+
+    let txn_sims =
+        match pathfinder_executor::simulate(db_tx, execution_state, txns, Percentage::new(0)) {
+            Ok(x) => x,
+            Err(error) => {
+                error!(?error);
+                return;
+            }
+        };
+
+    let mut actual_storage: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
+        BTreeMap::new();
+    txn_sims.iter().for_each(|txn_sim| {
+        let storage_diffs = &txn_sim.state_diff().storage_diffs;
+        storage_diffs
+            .iter()
+            .for_each(|(contract_address, storage)| {
+                // IMPORTANT!!! Consecutive storage value updates to the same key are lost
+                // except for the last one
+                actual_storage.entry(*contract_address).or_default().extend(
+                    storage
+                        .iter()
+                        .map(|StorageDiff { key, value }| (*key, *value)),
+                );
+            });
+    });
+
+    let expected_storage = expected_state_update
+        .contract_updates
+        .iter()
+        .map(|(contract_address, update)| (contract_address, &update.storage))
+        .chain(
+            expected_state_update
+                .system_contract_updates
+                .iter()
+                .map(|(contract_address, update)| (contract_address, &update.storage)),
+        )
+        .filter_map(|(contract_address, storage)| {
+            let storage = storage
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect::<BTreeMap<_, _>>();
+            // Omit contracts that have no storage updates
+            (!storage.is_empty()).then_some((*contract_address, storage))
         })
-        .collect::<Vec<_>>();
+        .collect::<BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>>>();
+
+    pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage);
 }
 
 // Based on [`pathfinder_rpc::executor::compose_executor_transaction`]
 // TODO deduplicate the code with
 // `pathfinder_rpc::executor::compose_executor_transaction` and move it to the
 // executor crate
-pub fn compose_executor_transaction(
+fn compose_executor_transaction(
     transaction: p2p_proto::consensus::Transaction,
 ) -> anyhow::Result<pathfinder_executor::Transaction> {
     let p2p_proto::consensus::Transaction {
@@ -264,7 +331,7 @@ fn deployed_address(
 fn create_proposal(
     db_txn: &pathfinder_storage::Transaction,
     block_number: BlockNumber,
-) -> anyhow::Result<VecDeque<ProposalPart>> {
+) -> anyhow::Result<(VecDeque<ProposalPart>, BlockHeader)> {
     let header = db_txn
         .block_header(block_number.into())?
         .context("Block not found")?;
@@ -366,5 +433,5 @@ fn create_proposal(
         proposal_commitment: Hash(Felt::from_u64(42)),
     }));
 
-    Ok(proposal_parts)
+    Ok((proposal_parts, header))
 }

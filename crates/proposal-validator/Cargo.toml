@@ -16,7 +16,9 @@ pathfinder-crypto = { path = "../crypto" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
+pretty_assertions_sorted = { workspace = true }
 serde_json = { workspace = true }
 starknet_api = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+util = { path = "../util" }

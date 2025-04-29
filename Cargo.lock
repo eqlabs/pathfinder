@@ -8854,10 +8854,12 @@ dependencies = [
  "pathfinder-executor",
  "pathfinder-rpc",
  "pathfinder-storage",
+ "pretty_assertions_sorted",
  "serde_json",
  "starknet_api",
  "tracing",
  "tracing-subscriber",
+ "util",
 ]
 
 [[package]]
