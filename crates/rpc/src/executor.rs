@@ -195,7 +195,8 @@ pub(crate) fn map_broadcasted_transaction(
     Ok(tx)
 }
 
-fn map_transaction_variant(
+// TODO move to the executor crate, rename
+pub fn map_transaction_variant(
     variant: TransactionVariant,
 ) -> anyhow::Result<starknet_api::transaction::Transaction> {
     match variant {

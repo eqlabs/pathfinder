@@ -1,15 +1,35 @@
 use core::panic;
 use std::collections::VecDeque;
+use std::str::FromStr;
 
 use anyhow::Context;
 use p2p::sync::client::conv::{ToDto, TryFromDto};
+use p2p_proto::class::Cairo1Class;
 use p2p_proto::common::{Address, Hash};
-use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use p2p_proto::transaction::DeclareV3WithClass;
+use p2p_proto::consensus::{
+    BlockInfo,
+    ProposalFin,
+    ProposalInit,
+    ProposalPart,
+    TransactionVariant as ConsensusVariant,
+};
+use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
+use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
-use pathfinder_common::{class_definition, BlockNumber, ClassHash, L1DataAvailabilityMode};
+use pathfinder_common::{
+    class_definition,
+    BlockNumber,
+    ClassHash,
+    EntryPoint,
+    L1DataAvailabilityMode,
+};
 use pathfinder_crypto::Felt;
+use pathfinder_executor::{ClassInfo, IntoStarkFelt};
+use pathfinder_rpc::map_transaction_variant;
 use pathfinder_storage::StorageBuilder;
+use starknet_api::contract_class::SierraVersion;
+use starknet_api::core::PatriciaKey;
+use starknet_api::transaction::fields::Fee;
 use tracing::{debug, warn};
 
 fn main() -> anyhow::Result<()> {
@@ -85,9 +105,6 @@ fn execute_batch(txns: Vec<p2p_proto::consensus::Transaction>) {
     let x = txns
         .into_iter()
         .map(|t| {
-            use p2p_proto::consensus::TransactionVariant as ConsensusVariant;
-            use p2p_proto::transaction::TransactionVariant as SyncVariant;
-
             let t = match t.txn {
                 ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
                     SyncVariant::DeclareV3(common)
@@ -101,6 +118,146 @@ fn execute_batch(txns: Vec<p2p_proto::consensus::Transaction>) {
                 .expect("Proposal part was generated from a valid DB")
         })
         .collect::<Vec<_>>();
+}
+
+// Based on [`pathfinder_rpc::executor::compose_executor_transaction`]
+// TODO deduplicate the code with
+// `pathfinder_rpc::executor::compose_executor_transaction` and move it to the
+// executor crate
+pub fn compose_executor_transaction(
+    transaction: p2p_proto::consensus::Transaction,
+) -> anyhow::Result<pathfinder_executor::Transaction> {
+    let p2p_proto::consensus::Transaction {
+        txn,
+        transaction_hash,
+    } = transaction;
+    let (v, class_info) = match txn {
+        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
+            (SyncVariant::DeclareV3(common), Some(class_info(class)?))
+        }
+        ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
+        ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
+        ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
+    };
+
+    let v =
+        TransactionVariant::try_from_dto(v).expect("Proposal part was generated from a valid DB");
+
+    let deployed_address = deployed_address(&v, true);
+
+    // TODO why 10^12?
+    let paid_fee_on_l1 = match &v {
+        TransactionVariant::L1Handler(_) => Some(Fee(1_000_000_000_000)),
+        _ => None,
+    };
+
+    let transaction = map_transaction_variant(v)?;
+    let tx_hash = starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
+    let tx = pathfinder_executor::Transaction::from_api(
+        transaction,
+        tx_hash,
+        class_info,
+        paid_fee_on_l1,
+        deployed_address,
+        pathfinder_executor::AccountTransactionExecutionFlags::default(),
+    )?;
+
+    Ok(tx)
+}
+
+fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
+    let Cairo1Class {
+        abi,
+        entry_points,
+        program,
+        contract_class_version,
+    } = class;
+
+    let abi_length = abi.len();
+    let sierra_program_length = program.len();
+    let sierra_version =
+        SierraVersion::from_str(&contract_class_version).context("Getting sierra version")?;
+
+    let class_definition = class_definition::Sierra {
+        abi: abi.into(),
+        sierra_program: program,
+        contract_class_version: contract_class_version.into(),
+        entry_points_by_type: SierraEntryPoints {
+            constructor: entry_points
+                .constructors
+                .into_iter()
+                .map(|x| SelectorAndFunctionIndex {
+                    selector: EntryPoint(x.selector),
+                    function_idx: x.index,
+                })
+                .collect(),
+            external: entry_points
+                .externals
+                .into_iter()
+                .map(|x| SelectorAndFunctionIndex {
+                    selector: EntryPoint(x.selector),
+                    function_idx: x.index,
+                })
+                .collect(),
+            l1_handler: entry_points
+                .l1_handlers
+                .into_iter()
+                .map(|x| SelectorAndFunctionIndex {
+                    selector: EntryPoint(x.selector),
+                    function_idx: x.index,
+                })
+                .collect(),
+        },
+    };
+    // TODO this is suboptimal, the same surplus serialization happens in the
+    // broadcasted transactions case
+    let class_definition =
+        serde_json::to_vec(&class_definition).context("Serializing Sierra class definition")?;
+    // TODO compile_to_casm should also accept a deserialized class definition
+    let casm_contract_definition = pathfinder_compiler::compile_to_casm(&class_definition)
+        .context("Compiling Sierra class definition to CASM")?;
+
+    let casm_contract_definition = pathfinder_executor::parse_casm_definition(
+        casm_contract_definition,
+        sierra_version.clone(),
+    )
+    .context("Parsing CASM contract definition")?;
+    let ci = ClassInfo::new(
+        &casm_contract_definition,
+        sierra_program_length,
+        abi_length,
+        sierra_version,
+    )?;
+    Ok(ci)
+}
+
+fn deployed_address(
+    txnv: &TransactionVariant,
+    is_proposal: bool,
+) -> Option<starknet_api::core::ContractAddress> {
+    match txnv {
+        TransactionVariant::DeployAccountV3(t) => Some(starknet_api::core::ContractAddress(
+            PatriciaKey::try_from(t.contract_address.get().into_starkfelt())
+                .expect("No contract address overflow expected"),
+        )),
+        TransactionVariant::DeclareV3(_)
+        | TransactionVariant::InvokeV3(_)
+        | TransactionVariant::L1Handler(_) => None,
+        TransactionVariant::DeclareV0(_)
+        | TransactionVariant::DeclareV1(_)
+        | TransactionVariant::DeclareV2(_)
+        | TransactionVariant::DeployV0(_)
+        | TransactionVariant::DeployV1(_)
+        | TransactionVariant::DeployAccountV1(_)
+        | TransactionVariant::InvokeV0(_)
+        | TransactionVariant::InvokeV1(_) => {
+            if is_proposal {
+                unreachable!("Proposal parts don't carry older transaction versions: {txnv:?}")
+            } else {
+                None
+            }
+        }
+    }
 }
 
 /// Create a valid sequence of proposal parts for the given block.
@@ -180,8 +337,6 @@ fn create_proposal(
                     variant
                 ))
             }?;
-            use p2p_proto::consensus::TransactionVariant as ConsensusVariant;
-            use p2p_proto::transaction::TransactionVariant as SyncVariant;
             let consensus_variant = match sync_variant {
                 SyncVariant::DeclareV3(common) => {
                     let class = db_txn
