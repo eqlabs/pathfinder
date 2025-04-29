@@ -3,6 +3,9 @@ name: End-to-End Test
 on:
   workflow_dispatch:
 
+env:
+  CARGO_TARGET_DIR: /data/cache/pathfinder-target
+
 jobs:
   compile:
     runs-on: self-hosted
@@ -14,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@v1
-      - uses: Swatinem/rust-cache@v2
+      # - uses: Swatinem/rust-cache@v2
         # with:
         #   save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
       - uses: arduino/setup-protoc@v3
@@ -27,7 +30,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pathfinder
-          path: target/release/pathfinder
+          path: ${{ env.CARGO_TARGET_DIR }}/release/pathfinder
+          if-no-files-found: error
 
   run:
     runs-on: self-hosted
