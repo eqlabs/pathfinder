@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::state::state_api::State;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 use starknet_api::block::{BlockInfo, FeeType};
@@ -99,6 +100,10 @@ impl TransactionSimulation {
     pub fn revert_reason(&self) -> Option<&str> {
         self.trace.revert_reason()
     }
+
+    pub fn state_diff(&self) -> &StateDiff {
+        self.trace.state_diff()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -117,6 +122,15 @@ impl TransactionTrace {
                 ..
             }) => Some(revert_reason.as_str()),
             _ => None,
+        }
+    }
+
+    fn state_diff(&self) -> &StateDiff {
+        match self {
+            TransactionTrace::Declare(trace) => &trace.state_diff,
+            TransactionTrace::DeployAccount(trace) => &trace.state_diff,
+            TransactionTrace::Invoke(trace) => &trace.state_diff,
+            TransactionTrace::L1Handler(trace) => &trace.state_diff,
         }
     }
 }
@@ -216,7 +230,7 @@ pub struct StateDiff {
     pub replaced_classes: Vec<ReplacedClass>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct StorageDiff {
     pub key: StorageAddress,
     pub value: StorageValue,
@@ -465,6 +479,48 @@ impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for Computati
                 .builtin_instance_counter
                 .get(&BuiltinName::segment_arena)
                 .unwrap_or(&0),
+        }
+    }
+}
+
+impl From<StateUpdate> for StateDiff {
+    fn from(value: StateUpdate) -> Self {
+        let StateUpdate {
+            block_hash: _,
+            parent_state_commitment: _,
+            state_commitment: _,
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes,
+            declared_sierra_classes,
+        } = value;
+
+        let storage_diffs = contract_updates
+            .iter()
+            .map(|(contract_address, x)| (contract_address, x.storage.clone()))
+            .chain(
+                system_contract_updates
+                    .iter()
+                    .map(|(contract_address, x)| (contract_address, x.storage.clone())),
+            )
+            .map(|(contract_address, storage)| {
+                (
+                    *contract_address,
+                    storage
+                        .into_iter()
+                        .map(|(key, value)| StorageDiff { key, value })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        Self {
+            storage_diffs,
+            deployed_contracts: Default::default(),
+            declared_classes: Default::default(),
+            nonces: Default::default(),
+            replaced_classes: Default::default(),
+            deprecated_declared_classes: Default::default(),
         }
     }
 }
