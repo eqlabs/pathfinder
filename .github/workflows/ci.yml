@@ -17,11 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@v1
-      # - uses: Swatinem/rust-cache@v2
-        # with:
-        #   save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
       - name: Compile with all features enabled
-        run: timeout 30m cargo build --release --all-features --locked --bin pathfinder --target-dir ${{ env.TARGET_DIR }}
+        run: timeout 30m cargo build --release --locked --bin pathfinder --target-dir ${{ env.TARGET_DIR }}
       - name: Upload pathfinder binary artifact
         uses: actions/upload-artifact@v4
         with:
@@ -42,4 +39,5 @@ jobs:
         run: |
           set -e
           set -x
+          chmod +x ./pathfinder
           ./pathfinder --version
