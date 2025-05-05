@@ -29,7 +29,6 @@ jobs:
           root-reserve-mb: "16384"
           temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
@@ -74,7 +73,6 @@ jobs:
           root-reserve-mb: "3072"
           temp-reserve-mb: "3072"
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: rui314/setup-mold@v1
       - uses: Swatinem/rust-cache@v2
         with:
@@ -108,7 +106,6 @@ jobs:
       TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
@@ -154,7 +151,6 @@ jobs:
       RUSTDOCFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -170,7 +166,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - uses: baptiste0928/cargo-install@v3
         with:
           crate: cargo-sort
@@ -190,7 +185,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       - name: cargo check
         run: |
           cd crates/load-test
