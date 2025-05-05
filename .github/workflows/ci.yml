@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  CARGO_TARGET_DIR: /data/cache/pathfinder-target
+  TARGET_DIR: /data/cache/pathfinder-target
 
 jobs:
   compile:
@@ -20,17 +20,13 @@ jobs:
       # - uses: Swatinem/rust-cache@v2
         # with:
         #   save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'schedule' }}
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: taiki-e/install-action@nextest
       - name: Compile with all features enabled
-        run: timeout 30m cargo build --release --all-features --locked --bin pathfinder
+        run: timeout 30m cargo build --release --all-features --locked --bin pathfinder --target-dir ${{ env.TARGET_DIR }}
       - name: Upload pathfinder binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: pathfinder
-          path: ${{ env.CARGO_TARGET_DIR }}/release/pathfinder
+          path: ${{ env.TARGET_DIR }}/release/pathfinder
           if-no-files-found: error
 
   run:
