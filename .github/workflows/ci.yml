@@ -25,7 +25,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: taiki-e/install-action@nextest
       - name: Compile with all features enabled
-        run: cargo build --release --all-features --locked --bin pathfinder
+        run: timeout 30m cargo build --release --all-features --locked --bin pathfinder
       - name: Upload pathfinder binary artifact
         uses: actions/upload-artifact@v4
         with:
