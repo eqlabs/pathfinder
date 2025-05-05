@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: rui314/setup-mold@v1
-      - name: Compile with all features enabled
+      - name: Compile pathfinder
         run: timeout 30m cargo build --release --locked --bin pathfinder --target-dir ${{ env.TARGET_DIR }}
       - name: Upload pathfinder binary artifact
         uses: actions/upload-artifact@v4
