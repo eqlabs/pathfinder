@@ -17,7 +17,7 @@ use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{Connection, Storage, TransactionBehavior};
+use pathfinder_storage::{BlockId, Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::{Block, PendingBlock};
@@ -454,164 +454,169 @@ async fn consumer(
 
     while let Some(event) = events.recv().await {
         use SyncEvent::*;
-        match event {
-            L1Update(update) => {
-                tracing::trace!("Updating L1 sync to block {}", update.block_number);
-                l1_update(&mut db_conn, &update).await?;
-                tracing::info!("L1 sync updated to block {}", update.block_number);
+
+        if let Block((block, _), _, _, _, _) = &event {
+            if block.block_number < next_number {
+                tracing::debug!("Ignoring duplicate block {}", block.block_number);
+                return anyhow::Ok(());
             }
-            Block(
-                (block, (tx_comm, ev_comm, rc_comm)),
-                state_update,
-                signature,
-                state_diff_commitment,
-                timings,
-            ) => {
-                tracing::trace!("Updating L2 state to block {}", block.block_number);
-                if block.block_number < next_number {
-                    tracing::debug!("Ignoring duplicate block {}", block.block_number);
-                    continue;
+
+            let block_number = block.block_number;
+            let block_hash = block.block_hash;
+
+            // Update sync status
+            match &mut *state.status.write().await {
+                Syncing::False => {}
+                Syncing::Status(status) => {
+                    status.current = NumberedBlock::from((block_hash, block_number));
+
+                    metrics::gauge!("current_block", block_number.get() as f64);
+
+                    if status.highest.number <= block_number {
+                        status.highest = status.current;
+                        metrics::gauge!("highest_block", block_number.get() as f64);
+                    }
                 }
+            }
+        }
 
-                let block_number = block.block_number;
-                let block_hash = block.block_hash;
-                let block_timestamp = block.timestamp;
-                let storage_updates: usize = state_update
-                    .contract_updates
-                    .iter()
-                    .map(|x| x.1.storage.len())
-                    .sum();
-                let update_t = std::time::Instant::now();
-                l2_update(
-                    &mut db_conn,
-                    *block,
-                    tx_comm,
-                    rc_comm,
-                    ev_comm,
-                    *state_update,
-                    *signature,
-                    *state_diff_commitment,
-                    verify_tree_hashes,
-                    storage.clone(),
-                    &mut websocket_txs,
-                    &mut notifications,
-                )
-                .await
-                .with_context(|| format!("Update L2 state to {block_number}"))?;
-                let block_time = last_block_start.elapsed();
-                let update_t = update_t.elapsed();
-                last_block_start = std::time::Instant::now();
+        tokio::task::block_in_place(|| {
+            let tx = db_conn
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .context("Create database transaction")?;
 
-                block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
-                    + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+            let pruning_event = PruningEvent::from_sync_event(&event);
 
-                // Update sync status
-                match &mut *state.status.write().await {
-                    Syncing::False => {}
-                    Syncing::Status(status) => {
-                        status.current = NumberedBlock::from((block_hash, block_number));
+            match event {
+                L1Update(update) => {
+                    tracing::trace!("Updating L1 sync to block {}", update.block_number);
+                    l1_update(&tx, &update)?;
+                    tracing::info!("L1 sync updated to block {}", update.block_number);
+                }
+                Block(
+                    (block, (tx_comm, ev_comm, rc_comm)),
+                    state_update,
+                    signature,
+                    state_diff_commitment,
+                    timings,
+                ) => {
+                    tracing::trace!("Updating L2 state to block {}", block.block_number);
+                    if block.block_number < next_number {
+                        tracing::debug!("Ignoring duplicate block {}", block.block_number);
+                        return anyhow::Ok(());
+                    }
 
-                        metrics::gauge!("current_block", block_number.get() as f64);
+                    let block_number = block.block_number;
+                    let block_hash = block.block_hash;
+                    let block_timestamp = block.timestamp;
+                    let storage_updates: usize = state_update
+                        .contract_updates
+                        .iter()
+                        .map(|x| x.1.storage.len())
+                        .sum();
+                    let update_t = std::time::Instant::now();
+                    l2_update(
+                        &tx,
+                        *block,
+                        tx_comm,
+                        rc_comm,
+                        ev_comm,
+                        *state_update,
+                        *signature,
+                        *state_diff_commitment,
+                        verify_tree_hashes,
+                        storage.clone(),
+                        &mut websocket_txs,
+                        &mut notifications,
+                    )
+                    .with_context(|| format!("Update L2 state to {block_number}"))?;
+                    let block_time = last_block_start.elapsed();
+                    let update_t = update_t.elapsed();
+                    last_block_start = std::time::Instant::now();
 
-                        if status.highest.number <= block_number {
-                            status.highest = status.current;
-                            metrics::gauge!("highest_block", block_number.get() as f64);
+                    block_time_avg = block_time_avg.mul_f32(1.0 - BLOCK_TIME_WEIGHT)
+                        + block_time.mul_f32(BLOCK_TIME_WEIGHT);
+
+                    _ = current.send((block_number, block_hash));
+
+                    let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+                    let latency = now_timestamp.saturating_sub(block_timestamp.get());
+
+                    let download_time = (timings.block_download
+                        + timings.class_declaration
+                        + timings.signature_download)
+                        .as_secs_f64();
+
+                    metrics::gauge!("block_download", download_time);
+                    metrics::gauge!("block_processing", update_t.as_secs_f64());
+                    metrics::histogram!("block_processing_duration_seconds", update_t);
+                    metrics::gauge!("block_latency", latency as f64);
+                    metrics::gauge!(
+                        "block_time",
+                        (block_timestamp.get() - latest_timestamp.get()) as f64
+                    );
+                    latest_timestamp = block_timestamp;
+                    next_number += 1;
+
+                    // Give a simple log under INFO level, and a more verbose log
+                    // with timing information under DEBUG+ level.
+                    //
+                    // This should be removed if we have a configurable log level.
+                    // See the docs for LevelFilter for more information.
+                    match tracing::level_filters::LevelFilter::current().into_level() {
+                        None => {}
+                        Some(level) if level <= tracing::Level::INFO => {
+                            tracing::info!("Updated Starknet state with block {}", block_number)
+                        }
+                        Some(_) => {
+                            tracing::debug!(
+                                "Updated Starknet state with block {} after {:2}s ({:2}s avg). \
+                                 contracts ({:2}s), {} storage updates ({:2}s). Block downloaded \
+                                 in {:2}s, signature in {:2}s",
+                                block_number,
+                                block_time.as_secs_f32(),
+                                block_time_avg.as_secs_f32(),
+                                timings.class_declaration.as_secs_f32(),
+                                storage_updates,
+                                update_t.as_secs_f32(),
+                                timings.block_download.as_secs_f32(),
+                                timings.signature_download.as_secs_f32(),
+                            );
                         }
                     }
                 }
+                Reorg(reorg_tail) => {
+                    tracing::trace!("Reorg L2 state to block {}", reorg_tail);
+                    l2_reorg(&tx, reorg_tail, &mut notifications)
+                        .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
-                _ = current.send((block_number, block_hash));
+                    next_number = reorg_tail;
 
-                let now_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
-                let latency = now_timestamp.saturating_sub(block_timestamp.get());
-
-                let download_time = (timings.block_download
-                    + timings.class_declaration
-                    + timings.signature_download)
-                    .as_secs_f64();
-
-                metrics::gauge!("block_download", download_time);
-                metrics::gauge!("block_processing", update_t.as_secs_f64());
-                metrics::histogram!("block_processing_duration_seconds", update_t);
-                metrics::gauge!("block_latency", latency as f64);
-                metrics::gauge!(
-                    "block_time",
-                    (block_timestamp.get() - latest_timestamp.get()) as f64
-                );
-                latest_timestamp = block_timestamp;
-                next_number += 1;
-
-                // Give a simple log under INFO level, and a more verbose log
-                // with timing information under DEBUG+ level.
-                //
-                // This should be removed if we have a configurable log level.
-                // See the docs for LevelFilter for more information.
-                match tracing::level_filters::LevelFilter::current().into_level() {
-                    None => {}
-                    Some(level) if level <= tracing::Level::INFO => {
-                        tracing::info!("Updated Starknet state with block {}", block_number)
-                    }
-                    Some(_) => {
-                        tracing::debug!(
-                            "Updated Starknet state with block {} after {:2}s ({:2}s avg). \
-                             contracts ({:2}s), {} storage updates ({:2}s). Block downloaded in \
-                             {:2}s, signature in {:2}s",
-                            block_number,
-                            block_time.as_secs_f32(),
-                            block_time_avg.as_secs_f32(),
-                            timings.class_declaration.as_secs_f32(),
-                            storage_updates,
-                            update_t.as_secs_f32(),
-                            timings.block_download.as_secs_f32(),
-                            timings.signature_download.as_secs_f32(),
-                        );
+                    let new_head = match reorg_tail {
+                        BlockNumber::GENESIS => None,
+                        other => Some(other - 1),
+                    };
+                    match new_head {
+                        Some(head) => {
+                            tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
+                        }
+                        None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
                 }
-            }
-            Reorg(reorg_tail) => {
-                tracing::trace!("Reorg L2 state to block {}", reorg_tail);
-                l2_reorg(&mut db_conn, reorg_tail, &mut notifications)
-                    .await
-                    .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
-
-                next_number = reorg_tail;
-
-                let new_head = match reorg_tail {
-                    BlockNumber::GENESIS => None,
-                    other => Some(other - 1),
-                };
-                match new_head {
-                    Some(head) => {
-                        tracing::info!("L2 reorg occurred, new L2 head is block {}", head)
-                    }
-                    None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
-                }
-            }
-            CairoClass { definition, hash } => {
-                tracing::trace!("Inserting new Cairo class with hash: {hash}");
-                tokio::task::block_in_place(|| {
-                    let tx = db_conn
-                        .transaction_with_behavior(TransactionBehavior::Immediate)
-                        .context("Creating database transaction")?;
+                CairoClass { definition, hash } => {
+                    tracing::trace!("Inserting new Cairo class with hash: {hash}");
                     tx.insert_cairo_class(hash, &definition)
                         .context("Inserting new cairo class")?;
-                    tx.commit().context("Committing database transaction")
-                })
-                .with_context(|| format!("Insert Cairo contract definition with hash: {hash}"))?;
 
-                tracing::debug!(%hash, "Inserted new Cairo class");
-            }
-            SierraClass {
-                sierra_definition,
-                sierra_hash,
-                casm_definition,
-                casm_hash,
-            } => {
-                tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
-                tokio::task::block_in_place(|| {
-                    let tx = db_conn
-                        .transaction_with_behavior(TransactionBehavior::Immediate)
-                        .context("Creating database transaction")?;
+                    tracing::debug!(%hash, "Inserted new Cairo class");
+                }
+                SierraClass {
+                    sierra_definition,
+                    sierra_hash,
+                    casm_definition,
+                    casm_hash,
+                } => {
+                    tracing::trace!("Inserting new Sierra class with hash: {sierra_hash}");
                     tx.insert_sierra_class(
                         &sierra_hash,
                         &sierra_definition,
@@ -619,43 +624,141 @@ async fn consumer(
                         &casm_definition,
                     )
                     .context("Inserting sierra class")?;
-                    tx.commit().context("Committing database transaction")
-                })
-                .with_context(|| {
-                    format!("Insert Sierra contract definition with hash: {sierra_hash}")
-                })?;
 
-                tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
-            }
-            Pending(pending) => {
-                tracing::trace!("Updating pending data");
-                let (number, hash) = tokio::task::block_in_place(|| {
-                    let tx = db_conn
-                        .transaction()
-                        .context("Creating database transaction")?;
-                    let latest = tx
+                    tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
+                }
+                Pending(pending) => {
+                    tracing::trace!("Updating pending data");
+                    let (number, hash) = tx
                         .block_id(pathfinder_storage::BlockId::Latest)
                         .context("Fetching latest block hash")?
                         .unwrap_or_default();
 
-                    anyhow::Ok(latest)
-                })
-                .context("Fetching latest block hash")?;
-
-                if pending.0.parent_hash == hash {
-                    let data = PendingData {
-                        block: pending.0,
-                        state_update: pending.1,
-                        number: number + 1,
-                    };
-                    pending_data.send_replace(data);
-                    tracing::debug!("Updated pending data");
+                    if pending.0.parent_hash == hash {
+                        let data = PendingData {
+                            block: pending.0,
+                            state_update: pending.1,
+                            number: number + 1,
+                        };
+                        pending_data.send_replace(data);
+                        tracing::debug!("Updated pending data");
+                    }
                 }
             }
-        }
+
+            if let Some(pruning_event) = pruning_event {
+                perform_blockchain_pruning(pruning_event, &tx).context("Pruning database")?;
+            }
+            tx.commit().context("Committing database transaction")
+        })?;
     }
 
     Ok(())
+}
+
+enum PruningEvent {
+    L1Checkpoint(BlockNumber),
+    L2Head(BlockNumber),
+}
+
+impl PruningEvent {
+    fn from_sync_event(sync_event: &SyncEvent) -> Option<Self> {
+        match sync_event {
+            SyncEvent::L1Update(ethereum_state_update) => {
+                Some(Self::L1Checkpoint(ethereum_state_update.block_number))
+            }
+            SyncEvent::Block((block, _), _, _, _, _) => Some(Self::L2Head(block.block_number)),
+            _ => None,
+        }
+    }
+}
+
+/// Perform [blockchain pruning](pathfinder_storage::pruning) upon receiving a
+/// new sync event. There are two scenarios of interest:
+///
+/// 1. The sync event is an L1 update and the L2 head is ahead of the latest L1
+///    checkpoint. In this case we:
+///    - Prune blocks relative to the L1 checkpoint.
+/// 2. The sync event is an L2 block and the L2 head is behind of the latest L1
+///    checkpoint or there are no L1 checkpoints in the database yet. In this
+///    case we:
+///    - Prune blocks relative to the L2 head.
+///
+/// In any other scenario the function exits early.
+fn perform_blockchain_pruning(
+    pruning_event: PruningEvent,
+    tx: &Transaction<'_>,
+) -> anyhow::Result<()> {
+    let BlockchainHistoryMode::Prune { num_blocks_kept } = tx.blockchain_history_mode else {
+        return Ok(());
+    };
+
+    let (pruning_point_block, pruning_point_suffix) = match pruning_event {
+        PruningEvent::L1Checkpoint(l1_checkpoint) => {
+            let Some(l2_head) = tx
+                .block_number(BlockId::Latest)
+                .context("Querying latest block number")?
+            else {
+                // Empty database.
+                return Ok(());
+            };
+            if l1_checkpoint >= l2_head {
+                // We don't prune relative to L1 update if it is ahead of (or at) L2 head.
+                return Ok(());
+            }
+
+            (l1_checkpoint, "L1 checkpoint")
+        }
+        PruningEvent::L2Head(l2_head) => {
+            if l2_head == BlockNumber::GENESIS {
+                // Empty database.
+                return Ok(());
+            }
+
+            if let Some(latest_l1_checkpoint) = tx
+                .latest_l1_checkpoint()
+                .context("Querying latest L1 checkpoint")?
+            {
+                if l2_head > latest_l1_checkpoint {
+                    // We don't prune relative to L2 head if it is ahead of latest L1 checkpoint.
+                    return Ok(());
+                }
+            }
+
+            (l2_head, "L2 head")
+        }
+    };
+
+    let Some(last_kept_block) = pruning_point_block.get().checked_sub(num_blocks_kept) else {
+        // Not ready to prune yet.
+        return Ok(());
+    };
+    tracing::info!(%last_kept_block, "Running blockchain pruning relative to {pruning_point_suffix}");
+
+    let earliest = tx
+        .earliest_block_number()
+        .context("Querying earliest block number")?
+        .expect("Blocks should exist in database")
+        .get();
+
+    let mut blocks_covered = 0;
+    let start = std::time::Instant::now();
+    // For L2 relative pruning this will _usually_ be a single block. The scenario
+    // in which it will be more than that is when the L2 head passes the L1
+    // checkpoint and the L2 relative pruning stops, then the node shuts down so the
+    // L2 head falls behind the L1 checkpoint again. For L1 relative pruning, this
+    // will cover the blocks between two L1 checkpoints.
+    for block in earliest..last_kept_block {
+        let block = BlockNumber::new_or_panic(block);
+        if tx.block_exists(block.into())? {
+            tx.prune_block(block)
+                .with_context(|| format!("Pruning block {block}"))?;
+            blocks_covered += 1;
+        }
+    }
+    tracing::debug!(elapsed=?start.elapsed(), %blocks_covered, "Blockchain pruning done");
+
+    anyhow::Ok(())
 }
 
 async fn latest_n_blocks(
@@ -752,49 +855,36 @@ async fn update_sync_status_latest(
     tracing::info!("Channel closed, exiting latest poll task");
 }
 
-async fn l1_update(
-    connection: &mut Connection,
-    update: &EthereumStateUpdate,
-) -> anyhow::Result<()> {
-    tokio::task::block_in_place(move || {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
+fn l1_update(transaction: &Transaction<'_>, update: &EthereumStateUpdate) -> anyhow::Result<()> {
+    transaction
+        .upsert_l1_state(update)
+        .context("Insert update")?;
 
-        transaction
-            .upsert_l1_state(update)
-            .context("Insert update")?;
+    let l2_hash = transaction
+        .block_hash(update.block_number.into())
+        .context("Fetching block hash")?;
 
-        let l2_hash = transaction
-            .block_hash(update.block_number.into())
-            .context("Fetching block hash")?;
-
-        if let Some(l2_hash) = l2_hash {
-            if l2_hash == update.block_hash {
-                transaction
-                    .update_l1_l2_pointer(Some(update.block_number))
-                    .context("Updating L1-L2 pointer")?;
-                tracing::info!(block=?update.block_number, "Updated L1/L2 match");
-            } else {
-                tracing::warn!(block_number=?update.block_number, L1=?update.block_hash, L2=?l2_hash, "L1/L2 block hash mismatch");
-                if let Some(matching_block_number) = transaction.l1_l2_pointer()? {
-                    tracing::warn!(block_number=?matching_block_number, "Most recent L1/L2 block hash match")
-                }
+    if let Some(l2_hash) = l2_hash {
+        if l2_hash == update.block_hash {
+            transaction
+                .update_l1_l2_pointer(Some(update.block_number))
+                .context("Updating L1-L2 pointer")?;
+            tracing::info!(block=?update.block_number, "Updated L1/L2 match");
+        } else {
+            tracing::warn!(block_number=?update.block_number, L1=?update.block_hash, L2=?l2_hash, "L1/L2 block hash mismatch");
+            if let Some(matching_block_number) = transaction.l1_l2_pointer()? {
+                tracing::warn!(block_number=?matching_block_number, "Most recent L1/L2 block hash match")
             }
         }
+    }
 
-        transaction
-            .commit()
-            .context("Commit database transaction")?;
-
-        Ok(())
-    })
+    Ok(())
 }
 
 /// Returns the new [StateCommitment] after the update.
 #[allow(clippy::too_many_arguments)]
-async fn l2_update(
-    connection: &mut Connection,
+fn l2_update(
+    transaction: &Transaction<'_>,
     block: Block,
     transaction_commitment: TransactionCommitment,
     receipt_commitment: ReceiptCommitment,
@@ -809,283 +899,251 @@ async fn l2_update(
     websocket_txs: &mut Option<TopicBroadcasters>,
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
-    tokio::task::block_in_place(move || {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            &transaction,
-            (&state_update).into(),
-            verify_tree_hashes,
-            block.block_number,
-            storage,
-        )
-        .context("Updating Starknet state")?;
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+    let (storage_commitment, class_commitment) = update_starknet_state(
+        transaction,
+        (&state_update).into(),
+        verify_tree_hashes,
+        block.block_number,
+        storage,
+    )
+    .context("Updating Starknet state")?;
+    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-        // Ensure that roots match.. what should we do if it doesn't? For now the whole
-        // sync process ends..
-        anyhow::ensure!(
-            state_commitment == block.state_commitment,
-            "State root mismatch"
-        );
+    // Ensure that roots match.. what should we do if it doesn't? For now the whole
+    // sync process ends..
+    anyhow::ensure!(
+        state_commitment == block.state_commitment,
+        "State root mismatch"
+    );
 
-        let transaction_count = block.transactions.len();
-        let event_count = block
-            .transaction_receipts
-            .iter()
-            .map(|(_, events)| events.len())
-            .sum();
+    let transaction_count = block.transactions.len();
+    let event_count = block
+        .transaction_receipts
+        .iter()
+        .map(|(_, events)| events.len())
+        .sum();
 
-        // Update L2 database. These types shouldn't be options at this level,
-        // but for now the unwraps are "safe" in that these should only ever be
-        // None for pending queries to the sequencer, but we aren't using those here.
-        let header = BlockHeader {
-            hash: block.block_hash,
-            parent_hash: block.parent_block_hash,
-            number: block.block_number,
-            timestamp: block.timestamp,
-            // Default value for cairo <0.8.2 is 0
-            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
-            // Default value for Starknet <0.13.0 is zero
-            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
-            // Default value for Starknet <0.13.1 is zero
-            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
-            // Default value for Starknet <0.13.1 is zero
-            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
-            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
-            sequencer_address: block
-                .sequencer_address
-                .unwrap_or(SequencerAddress(Felt::ZERO)),
-            starknet_version: block.starknet_version,
-            event_commitment,
-            state_commitment,
-            transaction_commitment,
-            transaction_count,
-            event_count,
-            l1_da_mode: block.l1_da_mode.into(),
-            receipt_commitment,
-            state_diff_commitment,
-            state_diff_length: state_update.state_diff_length(),
-        };
+    // Update L2 database. These types shouldn't be options at this level,
+    // but for now the unwraps are "safe" in that these should only ever be
+    // None for pending queries to the sequencer, but we aren't using those here.
+    let header = BlockHeader {
+        hash: block.block_hash,
+        parent_hash: block.parent_block_hash,
+        number: block.block_number,
+        timestamp: block.timestamp,
+        // Default value for cairo <0.8.2 is 0
+        eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+        // Default value for Starknet <0.13.0 is zero
+        strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+        // Default value for Starknet <0.13.1 is zero
+        eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+        // Default value for Starknet <0.13.1 is zero
+        strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+        eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+        strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
+        sequencer_address: block
+            .sequencer_address
+            .unwrap_or(SequencerAddress(Felt::ZERO)),
+        starknet_version: block.starknet_version,
+        event_commitment,
+        state_commitment,
+        transaction_commitment,
+        transaction_count,
+        event_count,
+        l1_da_mode: block.l1_da_mode.into(),
+        receipt_commitment,
+        state_diff_commitment,
+        state_diff_length: state_update.state_diff_length(),
+    };
 
-        transaction
-            .insert_block_header(&header)
-            .context("Inserting block header into database")?;
+    transaction
+        .insert_block_header(&header)
+        .context("Inserting block header into database")?;
 
-        // Insert the transactions.
-        anyhow::ensure!(
-            block.transactions.len() == block.transaction_receipts.len(),
-            "Transactions and receipts mismatch. There were {} transactions and {} receipts.",
-            block.transactions.len(),
-            block.transaction_receipts.len()
-        );
-        let (transactions_data, events_data): (Vec<_>, Vec<_>) = block
-            .transactions
-            .iter()
-            .cloned()
-            .zip(block.transaction_receipts.iter().cloned())
-            .map(|(tx, (receipt, events))| ((tx, receipt), events))
-            .unzip();
+    // Insert the transactions.
+    anyhow::ensure!(
+        block.transactions.len() == block.transaction_receipts.len(),
+        "Transactions and receipts mismatch. There were {} transactions and {} receipts.",
+        block.transactions.len(),
+        block.transaction_receipts.len()
+    );
+    let (transactions_data, events_data): (Vec<_>, Vec<_>) = block
+        .transactions
+        .iter()
+        .cloned()
+        .zip(block.transaction_receipts.iter().cloned())
+        .map(|(tx, (receipt, events))| ((tx, receipt), events))
+        .unzip();
 
-        transaction
-            .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
-            .context("Insert transaction data into database")?;
+    transaction
+        .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
+        .context("Insert transaction data into database")?;
 
-        // Insert state updates
-        transaction
-            .insert_state_update(block.block_number, &state_update)
-            .context("Insert state update into database")?;
+    // Insert state updates
+    transaction
+        .insert_state_update(block.block_number, &state_update)
+        .context("Insert state update into database")?;
 
-        // Insert signature
-        transaction
-            .insert_signature(block.block_number, &signature)
-            .context("Insert signature into database")?;
+    // Insert signature
+    transaction
+        .insert_signature(block.block_number, &signature)
+        .context("Insert signature into database")?;
 
-        // Track combined L1 and L2 state.
-        let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
-        let expected_next = l1_l2_head
-            .map(|head| head + 1)
-            .unwrap_or(BlockNumber::GENESIS);
+    // Track combined L1 and L2 state.
+    let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
+    let expected_next = l1_l2_head
+        .map(|head| head + 1)
+        .unwrap_or(BlockNumber::GENESIS);
 
-        if expected_next == header.number {
-            if let Some(l1_state) = transaction
-                .l1_state_at_number(header.number)
-                .context("Query L1 state")?
-            {
-                if l1_state.block_hash == header.hash {
-                    transaction
-                        .update_l1_l2_pointer(Some(header.number))
-                        .context("Update L1-L2 head")?;
-                }
-            }
-        }
-
-        // Perform blockchain pruning if enabled.
-        if let BlockchainHistoryMode::Prune { num_blocks_kept } =
-            transaction.blockchain_history_mode
+    if expected_next == header.number {
+        if let Some(l1_state) = transaction
+            .l1_state_at_number(header.number)
+            .context("Query L1 state")?
         {
-            if header.number.get() > num_blocks_kept {
+            if l1_state.block_hash == header.hash {
                 transaction
-                    .prune_blockchain(header.number, num_blocks_kept)
-                    .context("Pruning blockchain history")?;
+                    .update_l1_l2_pointer(Some(header.number))
+                    .context("Update L1-L2 head")?;
             }
         }
+    }
 
-        transaction
-            .commit()
-            .context("Commit database transaction")?;
-
-        if let Some(sender) = websocket_txs {
-            if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
-                tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
-                // Disable websocket entirely so that the closed channel doesn't spam this
-                // error. It is unlikely that any error here wouldn't simply repeat
-                // indefinitely.
+    if let Some(sender) = websocket_txs {
+        if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
+            tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
+            // Disable websocket entirely so that the closed channel doesn't spam this
+            // error. It is unlikely that any error here wouldn't simply repeat
+            // indefinitely.
+            *websocket_txs = None;
+            return Ok(());
+        }
+        if sender.l2_blocks.receiver_count() > 0 {
+            if let Err(e) = sender.l2_blocks.send(block.clone().into()) {
+                tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
                 *websocket_txs = None;
                 return Ok(());
             }
-            if sender.l2_blocks.receiver_count() > 0 {
-                if let Err(e) = sender.l2_blocks.send(block.clone().into()) {
-                    tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
-                    *websocket_txs = None;
-                    return Ok(());
-                }
-            }
         }
+    }
 
-        notifications
-            .block_headers
-            .send(header.into())
-            // Ignore errors in case nobody is listening. New listeners may subscribe in the
-            // future.
-            .ok();
-        notifications
-            .l2_blocks
-            .send(block.into())
-            // Ignore errors in case nobody is listening. New listeners may subscribe in the
-            // future.
-            .ok();
-
-        Ok(())
-    })?;
+    notifications
+        .block_headers
+        .send(header.into())
+        // Ignore errors in case nobody is listening. New listeners may subscribe in the
+        // future.
+        .ok();
+    notifications
+        .l2_blocks
+        .send(block.into())
+        // Ignore errors in case nobody is listening. New listeners may subscribe in the
+        // future.
+        .ok();
 
     Ok(())
 }
 
-async fn l2_reorg(
-    connection: &mut Connection,
+fn l2_reorg(
+    transaction: &Transaction<'_>,
     reorg_tail: BlockNumber,
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
-    tokio::task::block_in_place(move || {
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .context("Create database transaction")?;
+    let mut head = transaction
+        .block_id(pathfinder_storage::BlockId::Latest)
+        .context("Querying latest block number")?
+        .context("Latest block number is none during reorg")?
+        .0;
 
-        let mut head = transaction
-            .block_id(pathfinder_storage::BlockId::Latest)
-            .context("Querying latest block number")?
-            .context("Latest block number is none during reorg")?
-            .0;
+    if transaction.block_pruned(reorg_tail.into())? {
+        anyhow::bail!(
+            r"Reorg tail (block number: {reorg_tail}) does not exist (likely due to blockchain history pruning).
+Blockchain history must include the reorg tail and its parent block to perform a reorg."
+        );
+    }
+    let reorg_tail_hash = transaction
+        .block_hash(reorg_tail.into())
+        .context("Fetching first block hash")?
+        .expect("Reorg tail should exist in database");
 
-        if transaction.block_pruned(reorg_tail.into())? {
+    // Roll back Merkle trie updates.
+    //
+    // If we're rolling back genesis then there will be no blocks left so state will
+    // be empty.
+    if let Some(target_block) = reorg_tail.parent() {
+        if transaction.block_pruned(target_block.into())? {
             anyhow::bail!(
-                r"Reorg tail (block number: {reorg_tail}) does not exist (likely due to blockchain history pruning).
+                r"Reorg tail parent (block number: {target_block}) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
             );
         }
-        let reorg_tail_hash = transaction
-            .block_hash(reorg_tail.into())
-            .context("Fetching first block hash")?
-            .expect("Reorg tail should exist in database");
+        let target_header = transaction
+            .block_header(target_block.into())
+            .context("Fetching target block header")?
+            .expect("Reorg tail parent should exist in database");
+        revert::revert_starknet_state(transaction, head, target_block, target_header)?;
+    }
 
-        // Roll back Merkle trie updates.
-        //
-        // If we're rolling back genesis then there will be no blocks left so state will
-        // be empty.
-        if let Some(target_block) = reorg_tail.parent() {
-            if transaction.block_pruned(target_block.into())? {
-                anyhow::bail!(
-                    r"Reorg tail parent (block number: {target_block}) does not exist (likely due to blockchain history pruning).
-Blockchain history must include the reorg tail and its parent block to perform a reorg."
-                );
-            }
-            let target_header = transaction
-                .block_header(target_block.into())
-                .context("Fetching target block header")?
-                .expect("Reorg tail parent should exist in database");
-            revert::revert_starknet_state(&transaction, head, target_block, target_header)?;
+    let head_hash = transaction
+        .block_hash(head.into())
+        .context("Fetching last block hash")?
+        .context("Expected last block hash to exist because reorg tail exists")?;
+
+    // Purge each block one at a time.
+    //
+    // This is done 1-by-1 to allow sending the reorg'd block data
+    // to websocket subscriptions while keeping a constant memory footprint.
+    //
+    // This is acceptable performance because reorgs are rare and need not be
+    // 100% optimal. However a large reorg could cause a massive memory spike
+    // which is not acceptable.
+    while head >= reorg_tail {
+        transaction
+            .purge_block(head)
+            .with_context(|| format!("Purging block {head} from database"))?;
+
+        // No further blocks to purge if we just purged genesis.
+        if head == BlockNumber::GENESIS {
+            break;
         }
 
-        let head_hash = transaction
-            .block_hash(head.into())
-            .context("Fetching last block hash")?
-            .context("Expected last block hash to exist because reorg tail exists")?;
+        head -= 1;
+    }
 
-        // Purge each block one at a time.
-        //
-        // This is done 1-by-1 to allow sending the reorg'd block data
-        // to websocket subscriptions while keeping a constant memory footprint.
-        //
-        // This is acceptable performance because reorgs are rare and need not be
-        // 100% optimal. However a large reorg could cause a massive memory spike
-        // which is not acceptable.
-        while head >= reorg_tail {
+    transaction
+        .reset_in_memory_state(head)
+        .context("Resetting in-memory DB state after reorg")?;
+
+    // Track combined L1 and L2 state.
+    let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
+    if let Some(l1_l2_head) = l1_l2_head {
+        if reorg_tail == BlockNumber::GENESIS {
+            // If we purged genesis then unset the L1 L2 pointer as well since there
+            // are now no blocks remaining.
             transaction
-                .purge_block(head)
-                .with_context(|| format!("Purging block {head} from database"))?;
-
-            // No further blocks to purge if we just purged genesis.
-            if head == BlockNumber::GENESIS {
-                break;
-            }
-
-            head -= 1;
+                .update_l1_l2_pointer(None)
+                .context("Unsetting L1-L2 head")?;
+        } else if l1_l2_head >= reorg_tail {
+            transaction
+                .update_l1_l2_pointer(Some(reorg_tail - 1))
+                .context("Updating L1-L2 head")?;
         }
+    }
 
-        transaction
-            .reset_in_memory_state(head)
-            .context("Resetting in-memory DB state after reorg")?;
-
-        // Track combined L1 and L2 state.
-        let l1_l2_head = transaction.l1_l2_pointer().context("Query L1-L2 head")?;
-        if let Some(l1_l2_head) = l1_l2_head {
-            if reorg_tail == BlockNumber::GENESIS {
-                // If we purged genesis then unset the L1 L2 pointer as well since there
-                // are now no blocks remaining.
-                transaction
-                    .update_l1_l2_pointer(None)
-                    .context("Unsetting L1-L2 head")?;
-            } else if l1_l2_head >= reorg_tail {
-                transaction
-                    .update_l1_l2_pointer(Some(reorg_tail - 1))
-                    .context("Updating L1-L2 head")?;
+    notifications
+        .reorgs
+        .send(
+            Reorg {
+                first_block_number: reorg_tail,
+                first_block_hash: reorg_tail_hash,
+                last_block_number: head,
+                last_block_hash: head_hash,
             }
-        }
+            .into(),
+        )
+        // Ignore errors in case nobody is listening. New listeners may subscribe in the
+        // future.
+        .ok();
 
-        transaction
-            .commit()
-            .context("Commit database transaction")?;
-
-        notifications
-            .reorgs
-            .send(
-                Reorg {
-                    first_block_number: reorg_tail,
-                    first_block_hash: reorg_tail_hash,
-                    last_block_number: head,
-                    last_block_hash: head_hash,
-                }
-                .into(),
-            )
-            // Ignore errors in case nobody is listening. New listeners may subscribe in the
-            // future.
-            .ok();
-
-        Ok(())
-    })
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1881,6 +1939,8 @@ mod tests {
     }
 
     mod blockchain_pruning {
+        use pathfinder_ethereum::EthereumStateUpdate;
+
         use super::*;
 
         pub fn one_non_prunable_block() -> Vec<StateUpdate> {
@@ -2030,12 +2090,12 @@ mod tests {
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
                 // Keep only the latest block.
                 pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-                std::num::NonZeroU32::new(5).unwrap(),
+                std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
             let mut conn = storage.connection().unwrap();
 
-            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
             let blocks = block_data_with_state_updates(one_non_prunable_block());
             // Send block updates.
@@ -2100,7 +2160,7 @@ mod tests {
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
                 // Keep only the latest block.
                 pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-                std::num::NonZeroU32::new(5).unwrap(),
+                std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
             let mut conn = storage.connection().unwrap();
@@ -2172,11 +2232,11 @@ mod tests {
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
                 // Keep only the latest block.
                 pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-                std::num::NonZeroU32::new(5).unwrap(),
+                std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
 
-            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
             let blocks = generate_block_data();
             // Send block updates.
@@ -2268,12 +2328,12 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
                 // Keep only the last 2 blocks + latest.
                 pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 2 },
-                std::num::NonZeroU32::new(5).unwrap(),
+                std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
             let mut conn = storage.connection().unwrap();
 
-            let (event_tx, event_rx) = tokio::sync::mpsc::channel(5);
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
             let blocks = generate_block_data();
             let block_count = blocks.len();
@@ -2349,7 +2409,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
                 // Keep only the latest block.
                 pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
-                std::num::NonZeroU32::new(5).unwrap(),
+                std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
             let mut conn = storage.connection().unwrap();
@@ -2436,6 +2496,86 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 .unwrap()
                 .unwrap();
             assert_eq!(result, state_update);
+        }
+
+        #[tokio::test(flavor = "multi_thread")]
+        async fn pruning_relative_to_l1_checkpoint() {
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 1 },
+                std::num::NonZeroU32::new(10).unwrap(),
+            )
+            .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
+
+            let blocks = generate_block_data();
+            let latest = blocks.len() - 1;
+            // Make sure pruning doesn't happen before next L1 checkpoint (by setting the
+            // current L1 checkpoint to genesis).
+            let genesis_state_update = EthereumStateUpdate {
+                block_number: BlockNumber::GENESIS,
+                ..Default::default()
+            };
+            event_tx
+                .send(SyncEvent::L1Update(genesis_state_update))
+                .await
+                .unwrap();
+            // Send block updates.
+            for (a, b, c, d, e) in blocks.into_iter() {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Trigger pruning relative to L1 checkpoint with this event.
+            let l1_checkpoint = latest - 2;
+            let eth_state_update = EthereumStateUpdate {
+                block_number: BlockNumber::new_or_panic(l1_checkpoint as u64),
+                ..Default::default()
+            };
+            event_tx
+                .send(SyncEvent::L1Update(eth_state_update))
+                .await
+                .unwrap();
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let prunable_blocks = vec![0];
+            let non_prunable_blocks = vec![1, 2, 3, 4];
+
+            for block in prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction data has been pruned (as well as block so query returns None).
+                assert!(tx.transactions_for_block(block_id).unwrap().is_none());
+                assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
+                // Block data has been pruned.
+                assert!(!tx.block_exists(block_id).unwrap());
+            }
+
+            for block in non_prunable_blocks {
+                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                // Transaction and block data has not been pruned.
+                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
+                let transaction_hashes =
+                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
+                assert!(!transactions.is_empty() && !transaction_hashes.is_empty());
+                assert!(tx.block_exists(block_id).unwrap());
+            }
         }
     }
 }

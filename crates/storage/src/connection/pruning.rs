@@ -37,24 +37,8 @@ pub enum BlockchainHistoryMode {
 }
 
 impl Transaction<'_> {
-    /// Performs pruning of the blockchain history. Last kept block's number is
-    /// `latest` - `num_blocks_kept`.
-    pub fn prune_blockchain(
-        &self,
-        latest: BlockNumber,
-        num_blocks_kept: u64,
-    ) -> anyhow::Result<()> {
-        let block_to_prune = latest
-            .checked_sub(num_blocks_kept + 1)
-            .expect("Blockchain pruning should not start before there are blocks to prune");
-
-        tracing::info!(%block_to_prune, "Running blockchain pruning");
-        let start = std::time::Instant::now();
+    pub fn prune_block(&self, block_to_prune: BlockNumber) -> anyhow::Result<()> {
         prune_block(self.inner(), block_to_prune)
-            .context(format!("Pruning block {block_to_prune}"))?;
-        tracing::debug!(pruned_block=%block_to_prune, elapsed=?start.elapsed(), "Blockchain pruning done");
-
-        Ok(())
     }
 
     /// Checks if a block has been pruned.
@@ -66,20 +50,39 @@ impl Transaction<'_> {
     /// in order to avoid providing misleading information, we consider those
     /// blocks as pruned.
     pub fn block_pruned(&self, block_id: BlockId) -> anyhow::Result<bool> {
-        let BlockchainHistoryMode::Prune { num_blocks_kept } = self.blockchain_history_mode else {
+        // FIXME: This workaround won't be needed once foreign keys are taken off the
+        // block related tables. See https://github.com/eqlabs/pathfinder/issues/2719.
+
+        // Get this info from `transactions` because it is consistently pruned as
+        // opposed to block related tables.
+        let mut stmt = self
+            .inner()
+            .prepare_cached(
+                r"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM transactions
+                    WHERE block_number = ?
+                )
+                ",
+            )
+            .context("Preparing block pruned statement")?;
+        let BlockchainHistoryMode::Prune { .. } = self.blockchain_history_mode else {
             return Ok(false);
         };
-        let Some(latest) = self.block_number(BlockId::Latest)? else {
-            return Ok(false);
-        };
-        // If `latest` exists and the provided block doesn't, it has been pruned.
+
         let Some(block) = self.block_number(block_id)? else {
             return Ok(true);
         };
 
-        Ok(latest
-            .checked_sub(num_blocks_kept + 1)
-            .is_some_and(|prune_point| block < prune_point))
+        let exists = stmt
+            .query_row(params![&block], |row| {
+                let exists: bool = row.get(0)?;
+                Ok(exists)
+            })
+            .context("Querying block pruned status")?;
+
+        Ok(!exists)
     }
 }
 
