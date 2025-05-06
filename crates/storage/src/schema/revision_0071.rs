@@ -7,8 +7,8 @@
 //! With the introduction of [blockchain pruning](crate::connection::pruning), a
 //! need has arisen to delete block related table entries (including
 //! `canonical_blocks`) independently of the state update tables. This was, of
-//! course, not possible due to the aformentioned FOREIGN KEY references leading
-//! to multiple workarounds and unnecessary complexity.
+//! course, not possible due to the aforementioned FOREIGN KEY references
+//! leading to multiple workarounds and unnecessary complexity.
 //!
 //! This migration removes the FOREIGN KEY references to `canonical_blocks` from
 //! the state update tables.
