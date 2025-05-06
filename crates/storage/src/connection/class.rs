@@ -216,7 +216,7 @@ impl Transaction<'_> {
         BlockId::Hash(hash) => {
             let mut stmt = self.inner().prepare_cached(
                 r"SELECT definition, block_number FROM class_definitions
-                WHERE hash = ? AND block_number <= (SELECT number from canonical_blocks WHERE hash = ?)",
+                WHERE hash = ? AND block_number <= (SELECT number from block_headers WHERE hash = ?)",
             )?;
             stmt.query_row(
                 params![&class_hash, &hash],
@@ -388,7 +388,7 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)")?;
+                AND class_definitions.block_number <= (SELECT number FROM block_headers WHERE hash = ?)")?;
             stmt.query_row(params![&class_hash, &hash], from_row)
         },
     }
@@ -464,7 +464,7 @@ impl Transaction<'_> {
                 )
             WHERE
                 casm_definitions.hash = ?
-                AND class_definitions.block_number <= (SELECT number FROM canonical_blocks WHERE hash = ?)"#)?;
+                AND class_definitions.block_number <= (SELECT number FROM block_headers WHERE hash = ?)"#)?;
             stmt.query_row(params![&class_hash, &hash], |row| row.get_casm_hash(0))
         }
     }

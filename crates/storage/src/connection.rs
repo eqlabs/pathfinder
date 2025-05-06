@@ -7,7 +7,7 @@ pub mod event;
 pub mod pruning;
 mod reference;
 mod signature;
-mod state_update;
+pub(crate) mod state_update;
 pub(crate) mod transaction;
 mod trie;
 

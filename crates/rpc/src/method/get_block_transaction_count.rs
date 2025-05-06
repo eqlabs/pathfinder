@@ -51,13 +51,6 @@ pub async fn get_block_transaction_count(
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
-        let pruned = db
-            .block_pruned(block_id)
-            .context("Querying block pruned status")?;
-        if pruned {
-            return Err(Error::BlockNotFound);
-        }
-
         let exists = db
             .block_exists(block_id)
             .context("Querying block existence")?;

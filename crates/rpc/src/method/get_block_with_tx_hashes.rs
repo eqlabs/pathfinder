@@ -65,13 +65,6 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
-        let pruned = transaction
-            .block_pruned(block_id)
-            .context("Querying block pruned status")?;
-        if pruned {
-            return Err(Error::BlockNotFound);
-        }
-
         let header = transaction
             .block_header(block_id)
             .context("Reading block from database")?
