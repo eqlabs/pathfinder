@@ -14,8 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
 
