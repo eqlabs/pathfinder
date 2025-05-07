@@ -563,7 +563,7 @@ impl RunningEventFilter {
     pub(crate) fn load(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<Self> {
         let Some(latest) = tx
             .query_row(
-                "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                "SELECT number FROM block_headers ORDER BY number DESC LIMIT 1",
                 [],
                 |row| row.get_block_number(0),
             )

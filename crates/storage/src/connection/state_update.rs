@@ -269,7 +269,14 @@ impl Transaction<'_> {
             let hash = row.get_block_hash(1)?;
             let state_commitment = row.get_state_commitment(2)?;
             // The genesis block would not have a value.
-            let parent_state_commitment = row.get_optional_state_commitment(3)?.unwrap_or_default();
+            let parent_state_commitment =
+                row.get_optional_state_commitment(3)?.unwrap_or_else(|| {
+                    // Block at the tip of blockchain history (see `pruning.rs`) would also not have
+                    // a parent, but this case should be handled at the RPC
+                    // layer.
+                    assert_eq!(number, BlockNumber::GENESIS);
+                    Default::default()
+                });
 
             Ok((number, hash, state_commitment, parent_state_commitment))
         };
@@ -616,7 +623,7 @@ impl Transaction<'_> {
                     JOIN contract_addresses ON contract_addresses.id = storage_updates.contract_address_id
                     JOIN storage_addresses ON storage_addresses.id = storage_updates.storage_address_id
                     WHERE contract_address = ? AND storage_address = ? AND block_number <= (
-                        SELECT number FROM canonical_blocks WHERE hash = ?
+                        SELECT number FROM block_headers WHERE hash = ?
                     )
                     ORDER BY block_number DESC LIMIT 1
                     ",
@@ -649,7 +656,7 @@ impl Transaction<'_> {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT EXISTS(
                         SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
-                            SELECT number FROM canonical_blocks WHERE hash = ?
+                            SELECT number FROM block_headers WHERE hash = ?
                         )
                     )",
                 )?;
@@ -707,7 +714,7 @@ impl Transaction<'_> {
                     SELECT nonce FROM nonce_updates
                     JOIN contract_addresses ON contract_addresses.id = nonce_updates.contract_address_id
                     WHERE contract_address = ? AND block_number <= (
-                        SELECT number FROM canonical_blocks WHERE hash = ?
+                        SELECT number FROM block_headers WHERE hash = ?
                     )
                     ORDER BY block_number DESC LIMIT 1
                     ",
@@ -749,7 +756,7 @@ impl Transaction<'_> {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT class_hash FROM contract_updates
                 WHERE contract_address = ? AND block_number <= (
-                    SELECT number FROM canonical_blocks WHERE hash = ?
+                    SELECT number FROM block_headers WHERE hash = ?
                 )
                 ORDER BY block_number DESC LIMIT 1",
                 )?;
