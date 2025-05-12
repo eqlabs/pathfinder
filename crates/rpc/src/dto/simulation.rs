@@ -103,12 +103,12 @@ impl crate::dto::SerializeForVersion for &pathfinder_executor::types::FunctionIn
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field(
+        serializer.serialize_optional(
             "call_type",
-            &match self.call_type {
+            self.call_type.as_ref().map(|call_type| match call_type {
                 pathfinder_executor::types::CallType::Call => "CALL",
                 pathfinder_executor::types::CallType::Delegate => "DELEGATE",
-            },
+            }),
         )?;
         serializer.serialize_field("caller_address", &self.caller_address)?;
         serializer.serialize_iter(
@@ -119,17 +119,19 @@ impl crate::dto::SerializeForVersion for &pathfinder_executor::types::FunctionIn
         if let Some(class_hash) = &self.class_hash {
             serializer.serialize_field("class_hash", &class_hash)?;
         }
-        serializer.serialize_field(
+        serializer.serialize_optional(
             "entry_point_type",
-            &match self.entry_point_type {
-                pathfinder_executor::types::EntryPointType::Constructor => "CONSTRUCTOR",
-                pathfinder_executor::types::EntryPointType::External => "EXTERNAL",
-                pathfinder_executor::types::EntryPointType::L1Handler => "L1_HANDLER",
-            },
+            self.entry_point_type
+                .as_ref()
+                .map(|entry_point_type| match entry_point_type {
+                    pathfinder_executor::types::EntryPointType::Constructor => "CONSTRUCTOR",
+                    pathfinder_executor::types::EntryPointType::External => "EXTERNAL",
+                    pathfinder_executor::types::EntryPointType::L1Handler => "L1_HANDLER",
+                }),
         )?;
         serializer.serialize_iter("events", self.events.len(), &mut self.events.iter())?;
         serializer.serialize_field("contract_address", &self.contract_address)?;
-        serializer.serialize_field("entry_point_selector", &self.selector)?;
+        serializer.serialize_optional("entry_point_selector", self.selector.as_ref())?;
         serializer.serialize_iter("calldata", self.calldata.len(), &mut self.calldata.iter())?;
         serializer.serialize_iter("messages", self.messages.len(), &mut self.messages.iter())?;
         serializer.serialize_iter("result", self.result.len(), &mut self.result.iter())?;
