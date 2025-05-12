@@ -5,6 +5,7 @@ mod error;
 mod executor;
 mod felt;
 mod jsonrpc;
+mod mempool;
 pub(crate) mod method;
 pub mod middleware;
 mod pathfinder;

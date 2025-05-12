@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 
 use pathfinder_common::{contract_address, ChainId, ContractAddress};
@@ -10,6 +10,7 @@ use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
 use crate::jsonrpc::Notifications;
+use crate::mempool::MinimalMempool;
 use crate::pending::{PendingData, PendingWatcher};
 use crate::SyncState;
 
@@ -71,6 +72,7 @@ pub struct RpcConfig {
     pub versioned_constants_map: VersionedConstantsMap,
     pub native_execution: bool,
     pub native_class_cache_size: NonZeroUsize,
+    pub transient_mempool_limit_sec: NonZeroU64,
 }
 
 #[derive(Clone)]
@@ -80,6 +82,7 @@ pub struct RpcContext {
     pub execution_storage: Storage,
     pub pending_data: PendingWatcher,
     pub sync_status: Arc<SyncState>,
+    pub transient_mempool: MinimalMempool,
     pub chain_id: ChainId,
     pub contract_addresses: EthContractAddresses,
     pub sequencer: SequencerClient,
@@ -104,6 +107,7 @@ impl RpcContext {
         ethereum: EthereumClient,
         config: RpcConfig,
     ) -> Self {
+        let transient_mempool = MinimalMempool::new(config.transient_mempool_limit_sec.into());
         let pending_data = PendingWatcher::new(pending_data);
         let native_class_cache = if config.native_execution {
             Some(NativeClassCache::spawn(config.native_class_cache_size))
@@ -115,6 +119,7 @@ impl RpcContext {
             storage,
             execution_storage,
             sync_status,
+            transient_mempool,
             chain_id,
             contract_addresses,
             pending_data,
@@ -213,6 +218,7 @@ impl RpcContext {
             versioned_constants_map: Default::default(),
             native_execution: true,
             native_class_cache_size: NonZeroUsize::new(10).unwrap(),
+            transient_mempool_limit_sec: NonZeroU64::new(300).unwrap(),
         };
 
         let ethereum =

@@ -91,7 +91,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
 
     // Check gateway for rejected transactions.
     use starknet_gateway_client::GatewayApi;
-    context
+    let result = context
         .sequencer
         .transaction_status(input.transaction_hash)
         .await
@@ -106,7 +106,16 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
             let execution_status = tx.execution_status.unwrap_or_default();
 
             match (tx.finality_status, execution_status) {
-                (GatewayFinalityStatus::NotReceived, _) => Err(Error::TxnHashNotFound),
+                (GatewayFinalityStatus::NotReceived, _) => {
+                    if context
+                        .transient_mempool
+                        .contains_key(&input.transaction_hash)
+                    {
+                        Ok(Output::Received)
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
+                }
                 (_, GatewayExecutionStatus::Rejected) => Ok(Output::Rejected {
                     error_message: tx.tx_failure_reason.map(|reason| reason.error_message),
                 }),
@@ -128,7 +137,9 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
                     Ok(Output::AcceptedOnL2(TxnExecutionStatus::Succeeded))
                 }
             }
-        })
+        });
+    context.transient_mempool.flush();
+    result
 }
 
 impl Output {

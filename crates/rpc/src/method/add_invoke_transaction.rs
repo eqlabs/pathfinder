@@ -182,7 +182,9 @@ pub async fn add_invoke_transaction(
 ) -> Result<Output, AddInvokeTransactionError> {
     let Transaction::Invoke(tx) = input.invoke_transaction;
     let response = add_invoke_transaction_impl(&context, tx).await?;
-
+    context
+        .transient_mempool
+        .insert_key(response.transaction_hash);
     Ok(Output {
         transaction_hash: response.transaction_hash,
     })

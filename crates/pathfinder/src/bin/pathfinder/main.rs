@@ -227,6 +227,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         versioned_constants_map: config.versioned_constants_map.clone(),
         native_execution: config.native_execution.is_enabled(),
         native_class_cache_size: config.native_execution.class_cache_size(),
+        transient_mempool_limit_sec: config.transient_mempool_limit_sec,
     };
 
     let notifications = Notifications::default();

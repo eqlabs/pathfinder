@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::net::SocketAddr;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -286,6 +286,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
         default_value = "64"
     )]
     event_filter_cache_size: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "transient-mempool-limit",
+        long_help = "Duration for which transactions are locally remembered as RECEIVED, in \
+                     seconds",
+        default_value = "300",
+        env = "PATHFINDER_TRANSIENT_MEMPOOL_LIMIT_SECONDS"
+    )]
+    transient_mempool_limit_sec: std::num::NonZeroU64,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
@@ -729,6 +738,7 @@ pub struct Config {
     pub shutdown_grace_period: Duration,
     pub fee_estimation_epsilon: Percentage,
     pub native_execution: NativeExecutionConfig,
+    pub transient_mempool_limit_sec: NonZeroU64,
 }
 
 pub struct Ethereum {
@@ -920,6 +930,7 @@ impl Config {
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
             #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
+            transient_mempool_limit_sec: cli.transient_mempool_limit_sec,
         }
     }
 }
