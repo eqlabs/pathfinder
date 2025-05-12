@@ -304,10 +304,10 @@ pub(crate) mod tests {
                 trace: pathfinder_executor::types::TransactionTrace::DeployAccount(
                     pathfinder_executor::types::DeployAccountTransactionTrace {
                         constructor_invocation: Some(pathfinder_executor::types::FunctionInvocation {
-                                call_type: pathfinder_executor::types::CallType::Call,
+                                call_type: Some(pathfinder_executor::types::CallType::Call),
                                 caller_address: felt!("0x0"),
                                 class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                                entry_point_type: pathfinder_executor::types::EntryPointType::Constructor,
+                                entry_point_type: Some(pathfinder_executor::types::EntryPointType::Constructor),
                                 events: vec![pathfinder_executor::types::Event {
                                     order: 0,
                                     data: vec![],
@@ -318,7 +318,7 @@ pub(crate) mod tests {
                                 }],
                                 calldata: vec![felt!("0x1")],
                                 contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                                selector: entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194").0,
+                                selector: Some(entry_point!("0x028FFE4FF0F226A9107253E17A904099AA4F63A02A5621DE0576E5AA71BC5194").0),
                                 messages: vec![],
                                 result: vec![],
                                 execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
@@ -333,10 +333,10 @@ pub(crate) mod tests {
                             }),
                         validate_invocation: Some(
                             pathfinder_executor::types::FunctionInvocation {
-                                call_type: pathfinder_executor::types::CallType::Call,
+                                call_type: Some(pathfinder_executor::types::CallType::Call),
                                 caller_address: felt!("0x0"),
                                 class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                                entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                                entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                                 events: vec![],
                                 calldata: vec![
                                     crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0,
@@ -344,7 +344,7 @@ pub(crate) mod tests {
                                     call_param!("0x1").0,
                                 ],
                                 contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                                selector: entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895").0,
+                                selector: Some(entry_point!("0x036FCBF06CD96843058359E1A75928BEACFAC10727DAB22A3972F0AF8AA92895").0),
                                 messages: vec![],
                                 result: vec![
                                     felt!("0x56414c4944")
@@ -473,13 +473,13 @@ pub(crate) mod tests {
                 trace: pathfinder_executor::types::TransactionTrace::Declare(pathfinder_executor::types::DeclareTransactionTrace {
                     validate_invocation: Some(
                         pathfinder_executor::types::FunctionInvocation {
-                            call_type: pathfinder_executor::types::CallType::Call,
+                            call_type: Some(pathfinder_executor::types::CallType::Call),
                             caller_address: felt!("0x0"),
                             class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                            entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                            entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                             events: vec![],
                             contract_address: account_contract_address,
-                            selector: EntryPoint::hashed(b"__validate_declare__").0,
+                            selector: Some(EntryPoint::hashed(b"__validate_declare__").0),
                             calldata: vec![CAIRO0_HASH.0],
                             messages: vec![],
                             result: vec![felt!("0x56414c4944")],
@@ -496,10 +496,10 @@ pub(crate) mod tests {
                     ),
                     fee_transfer_invocation: Some(
                         pathfinder_executor::types::FunctionInvocation {
-                            call_type: pathfinder_executor::types::CallType::Call,
+                            call_type: Some(pathfinder_executor::types::CallType::Call),
                             caller_address: *account_contract_address.get(),
                             class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
-                            entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                            entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                             events: vec![pathfinder_executor::types::Event {
                                 order: 0,
                                 data: vec![
@@ -518,7 +518,7 @@ pub(crate) mod tests {
                                 call_param!("0x0").0,
                             ],
                             contract_address: ETH_FEE_TOKEN_ADDRESS,
-                            selector: EntryPoint::hashed(b"transfer").0,
+                            selector: Some(EntryPoint::hashed(b"transfer").0),
                             messages: vec![],
                             result: vec![felt!("0x1")],
                             execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
@@ -927,10 +927,10 @@ pub(crate) mod tests {
                 last_block_header: &BlockHeader,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: *account_contract_address.get(),
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     events: vec![pathfinder_executor::types::Event {
                         order: 0,
                         data: vec![
@@ -949,7 +949,7 @@ pub(crate) mod tests {
                         felt!("0x0"),
                     ],
                     contract_address: ETH_FEE_TOKEN_ADDRESS,
-                    selector: EntryPoint::hashed(b"transfer").0,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
                     internal_calls: vec![],
                     messages: vec![],
                     result: vec![felt!("0x1")],
@@ -966,13 +966,13 @@ pub(crate) mod tests {
                 account_contract_address: ContractAddress,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: felt!("0x0"),
                     class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     events: vec![],
                     contract_address: account_contract_address,
-                    selector: EntryPoint::hashed(b"__validate_declare__").0,
+                    selector: Some(EntryPoint::hashed(b"__validate_declare__").0),
                     calldata: vec![SIERRA_HASH.0],
                     internal_calls: vec![],
                     messages: vec![],
@@ -1135,14 +1135,14 @@ pub(crate) mod tests {
                 universal_deployer_address: ContractAddress,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: felt!("0x0"),
                     class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     internal_calls: vec![],
                     events: vec![],
                     contract_address: account_contract_address,
-                    selector: EntryPoint::hashed(b"__validate__").0,
+                    selector: Some(EntryPoint::hashed(b"__validate__").0),
                     calldata: vec![
                         call_param!("0x1").0,
                         universal_deployer_address.0,
@@ -1174,22 +1174,22 @@ pub(crate) mod tests {
                 universal_deployer_address: ContractAddress,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: felt!("0x0"),
                     internal_calls: vec![
                         pathfinder_executor::types::FunctionInvocation {
-                            call_type: pathfinder_executor::types::CallType::Call,
+                            call_type: Some(pathfinder_executor::types::CallType::Call),
                             caller_address: *account_contract_address.get(),
                             internal_calls: vec![
                                 pathfinder_executor::types::FunctionInvocation {
-                                    call_type: pathfinder_executor::types::CallType::Call,
+                                    call_type: Some(pathfinder_executor::types::CallType::Call),
                                     caller_address: *universal_deployer_address.get(),
                                     internal_calls: vec![],
                                     class_hash: Some(SIERRA_HASH.0),
-                                    entry_point_type: pathfinder_executor::types::EntryPointType::Constructor,
+                                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::Constructor),
                                     events: vec![],
                                     contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                                    selector: EntryPoint::hashed(b"constructor").0,
+                                    selector: Some(EntryPoint::hashed(b"constructor").0),
                                     calldata: vec![],
                                     messages: vec![],
                                     result: vec![],
@@ -1199,7 +1199,7 @@ pub(crate) mod tests {
                                 },
                             ],
                             class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
-                            entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                            entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                             events: vec![
                                 pathfinder_executor::types::Event {
                                     order: 0,
@@ -1217,7 +1217,7 @@ pub(crate) mod tests {
                                 },
                             ],
                             contract_address: universal_deployer_address,
-                            selector: EntryPoint::hashed(b"deployContract").0,
+                            selector: Some(EntryPoint::hashed(b"deployContract").0),
                             calldata: vec![
                                 // classHash
                                 SIERRA_HASH.0,
@@ -1244,10 +1244,10 @@ pub(crate) mod tests {
                         }
                     ],
                     class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     events: vec![],
                     contract_address: account_contract_address,
-                    selector: EntryPoint::hashed(b"__execute__").0,
+                    selector: Some(EntryPoint::hashed(b"__execute__").0),
                     calldata: vec![
                         call_param!("0x1").0,
                         universal_deployer_address.0,
@@ -1283,11 +1283,11 @@ pub(crate) mod tests {
                 overall_fee_correction: u64,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: *account_contract_address.get(),
                     internal_calls: vec![],
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     events: vec![pathfinder_executor::types::Event {
                         order: 0,
                         data: vec![
@@ -1307,7 +1307,7 @@ pub(crate) mod tests {
                         call_param!("0x0").0,
                     ],
                     contract_address: ETH_FEE_TOKEN_ADDRESS,
-                    selector: EntryPoint::hashed(b"transfer").0,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: universal_deployer_fee_transfer_computation_resources(),
@@ -1457,14 +1457,14 @@ pub(crate) mod tests {
                 account_contract_address: ContractAddress,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: felt!("0x0"),
                     class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     internal_calls: vec![],
                     events: vec![],
                     contract_address: account_contract_address,
-                    selector: EntryPoint::hashed(b"__validate__").0,
+                    selector: Some(EntryPoint::hashed(b"__validate__").0),
                     calldata: vec![
                         call_param!("0x1").0,
                         DEPLOYED_CONTRACT_ADDRESS.0,
@@ -1488,17 +1488,19 @@ pub(crate) mod tests {
                 test_storage_value: StorageValue,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: felt!("0x0"),
                     internal_calls: vec![pathfinder_executor::types::FunctionInvocation {
-                        call_type: pathfinder_executor::types::CallType::Call,
+                        call_type: Some(pathfinder_executor::types::CallType::Call),
                         caller_address: *account_contract_address.get(),
                         class_hash: Some(SIERRA_HASH.0),
-                        entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                        entry_point_type: Some(
+                            pathfinder_executor::types::EntryPointType::External,
+                        ),
                         events: vec![],
                         internal_calls: vec![],
                         contract_address: DEPLOYED_CONTRACT_ADDRESS,
-                        selector: EntryPoint::hashed(b"get_data").0,
+                        selector: Some(EntryPoint::hashed(b"get_data").0),
                         calldata: vec![],
                         messages: vec![],
                         result: vec![test_storage_value.0],
@@ -1515,10 +1517,10 @@ pub(crate) mod tests {
                         is_reverted: false,
                     }],
                     class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     events: vec![],
                     contract_address: account_contract_address,
-                    selector: EntryPoint::hashed(b"__execute__").0,
+                    selector: Some(EntryPoint::hashed(b"__execute__").0),
                     calldata: vec![
                         call_param!("0x1").0,
                         DEPLOYED_CONTRACT_ADDRESS.0,
@@ -1543,10 +1545,10 @@ pub(crate) mod tests {
                 overall_fee_correction: u64,
             ) -> pathfinder_executor::types::FunctionInvocation {
                 pathfinder_executor::types::FunctionInvocation {
-                    call_type: pathfinder_executor::types::CallType::Call,
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
                     caller_address: *account_contract_address.get(),
                     class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
-                    entry_point_type: pathfinder_executor::types::EntryPointType::External,
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
                     internal_calls: vec![],
                     events: vec![pathfinder_executor::types::Event {
                         order: 0,
@@ -1566,7 +1568,7 @@ pub(crate) mod tests {
                         call_param!("0x0").0,
                     ],
                     contract_address: ETH_FEE_TOKEN_ADDRESS,
-                    selector: EntryPoint::hashed(b"transfer").0,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
                     messages: vec![],
                     result: vec![felt!("0x1")],
                     computation_resources: invoke_fee_transfer_computation_resources(),

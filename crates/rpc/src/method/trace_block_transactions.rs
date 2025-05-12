@@ -431,20 +431,15 @@ fn map_gateway_function_invocation(
     Ok(pathfinder_executor::types::FunctionInvocation {
         calldata: invocation.calldata,
         contract_address: invocation.contract_address,
-        selector: invocation
-            .selector
-            .ok_or_else(|| anyhow::anyhow!("selector is missing from trace response"))?,
-        call_type: match invocation
-            .call_type
-            .ok_or_else(|| anyhow::anyhow!("call_type is missing from trace response"))?
-        {
+        selector: invocation.selector,
+        call_type: invocation.call_type.map(|call_type| match call_type {
             starknet_gateway_types::trace::CallType::Call => {
                 pathfinder_executor::types::CallType::Call
             }
             starknet_gateway_types::trace::CallType::Delegate => {
                 pathfinder_executor::types::CallType::Delegate
             }
-        },
+        }),
         caller_address: invocation.caller_address,
         internal_calls: invocation
             .internal_calls
@@ -452,20 +447,19 @@ fn map_gateway_function_invocation(
             .map(map_gateway_function_invocation)
             .collect::<Result<_, _>>()?,
         class_hash: invocation.class_hash,
-        entry_point_type: match invocation
-            .entry_point_type
-            .ok_or_else(|| anyhow::anyhow!("entry_point_type is missing from trace response"))?
-        {
-            starknet_gateway_types::trace::EntryPointType::Constructor => {
-                pathfinder_executor::types::EntryPointType::Constructor
-            }
-            starknet_gateway_types::trace::EntryPointType::External => {
-                pathfinder_executor::types::EntryPointType::External
-            }
-            starknet_gateway_types::trace::EntryPointType::L1Handler => {
-                pathfinder_executor::types::EntryPointType::L1Handler
-            }
-        },
+        entry_point_type: invocation.entry_point_type.map(
+            |entry_point_type| match entry_point_type {
+                starknet_gateway_types::trace::EntryPointType::External => {
+                    pathfinder_executor::types::EntryPointType::External
+                }
+                starknet_gateway_types::trace::EntryPointType::Constructor => {
+                    pathfinder_executor::types::EntryPointType::Constructor
+                }
+                starknet_gateway_types::trace::EntryPointType::L1Handler => {
+                    pathfinder_executor::types::EntryPointType::L1Handler
+                }
+            },
+        ),
         events: invocation
             .events
             .into_iter()
