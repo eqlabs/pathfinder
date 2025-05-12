@@ -443,7 +443,7 @@ fn map_gateway_function_invocation(
             .ok_or_else(|| anyhow::anyhow!("selector is missing from trace response"))?,
         call_type: match invocation
             .call_type
-            .ok_or_else(|| anyhow::anyhow!("call_type is missing from trace response"))?
+            .unwrap_or(starknet_gateway_types::trace::CallType::Call)
         {
             starknet_gateway_types::trace::CallType::Call => {
                 pathfinder_executor::types::CallType::Call
