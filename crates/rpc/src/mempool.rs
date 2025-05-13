@@ -38,10 +38,9 @@ impl MinimalMempool {
 mod tests {
     use pathfinder_common::TransactionHash;
     use pathfinder_crypto::Felt;
+    use tokio::time::Duration;
 
     use super::MinimalMempool;
-
-    use tokio::time::Duration;
 
     #[test]
     fn test_full() {
