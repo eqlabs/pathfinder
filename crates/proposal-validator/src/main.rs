@@ -138,8 +138,12 @@ fn execute_batch(
         .collect::<anyhow::Result<Vec<_>>>()
         .expect("Mapping into executor transactions");
 
-    let txn_sims =
-        match pathfinder_executor::simulate(db_tx, execution_state, txns, Percentage::new(0)) {
+    // Tuple:
+    // (collected after each transaction execution,
+    // vs
+    // taken from the cached state of the executor after all were executed)
+    let (txn_sims, state_changes_after_execution) =
+        match pathfinder_executor::simulate2(db_tx, execution_state, txns, Percentage::new(0)) {
             Ok(x) => x,
             Err(error) => {
                 error!(?error);
@@ -164,6 +168,24 @@ fn execute_batch(
             });
     });
 
+    let mut actual_storage2: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
+        BTreeMap::new();
+    state_changes_after_execution
+        .storage_diffs
+        .iter()
+        .for_each(|(contract_address, storage)| {
+            // IMPORTANT!!! Consecutive storage value updates to the same key are lost
+            // except for the last one
+            actual_storage2
+                .entry(*contract_address)
+                .or_default()
+                .extend(
+                    storage
+                        .iter()
+                        .map(|StorageDiff { key, value }| (*key, *value)),
+                );
+        });
+
     let expected_storage = expected_state_update
         .contract_updates
         .iter()
@@ -184,7 +206,13 @@ fn execute_batch(
         })
         .collect::<BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>>>();
 
-    pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage);
+    // pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage,
+    // "Actual vs Expected");
+    pretty_assertions_sorted::assert_eq!(actual_storage2, expected_storage, "Actual2 vs Expected");
+    // pretty_assertions_sorted::assert_eq!(actual_storage, actual_storage2,
+    // "Actual vs Actual2");
+    println!("Actual storage updates match expected ones!");
+    // TODO validate other parts of the state update
 }
 
 // Based on [`pathfinder_rpc::executor::compose_executor_transaction`]
