@@ -183,7 +183,7 @@ pub async fn add_invoke_transaction(
     let Transaction::Invoke(tx) = input.invoke_transaction;
     let response = add_invoke_transaction_impl(&context, tx).await?;
     context
-        .transient_mempool
+        .submission_tracker
         .insert_key(response.transaction_hash);
     Ok(Output {
         transaction_hash: response.transaction_hash,

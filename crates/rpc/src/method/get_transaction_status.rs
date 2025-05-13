@@ -108,7 +108,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
             match (tx.finality_status, execution_status) {
                 (GatewayFinalityStatus::NotReceived, _) => {
                     if context
-                        .transient_mempool
+                        .submission_tracker
                         .contains_key(&input.transaction_hash)
                     {
                         Ok(Output::Received)
@@ -138,7 +138,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
                 }
             }
         });
-    context.transient_mempool.flush();
+    context.submission_tracker.flush();
     result
 }
 

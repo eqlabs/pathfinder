@@ -178,7 +178,7 @@ pub async fn add_deploy_account_transaction(
     let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
     let response = add_deploy_account_transaction_impl(&context, tx).await?;
     context
-        .transient_mempool
+        .submission_tracker
         .insert_key(response.transaction_hash);
     Ok(Output {
         transaction_hash: response.transaction_hash,

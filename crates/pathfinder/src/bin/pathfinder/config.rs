@@ -288,21 +288,21 @@ This should only be enabled for debugging purposes as it adds substantial proces
     event_filter_cache_size: std::num::NonZeroUsize,
 
     #[arg(
-        long = "transient-mempool-time-limit",
-        long_help = "Duration for which transactions are locally remembered as RECEIVED, in \
-                     seconds",
+        long = "submission-tracker-time-limit",
+        long_help = "Duration for which submitted transactions are locally remembered as \
+                     RECEIVED, in seconds",
         default_value = "300",
-        env = "PATHFINDER_TRANSIENT_MEMPOOL_LIMIT_SECONDS"
+        env = "PATHFINDER_SUBMISSION_TRACKER_TIME_LIMIT"
     )]
-    transient_mempool_limit_sec: std::num::NonZeroU64,
+    submission_tracker_time_limit: std::num::NonZeroU64,
 
     #[arg(
-        long = "transient-mempool-size-limit",
+        long = "submission-tracker-size-limit",
         long_help = "Maximum number of transactions that are locally remembered as RECEIVED.",
         default_value = "30000",
-        env = "PATHFINDER_TRANSIENT_MEMPOOL_LIMIT_SIZE"
+        env = "PATHFINDER_SUBMISSION_TRACKER_SIZE_LIMIT"
     )]
-    transient_mempool_limit_size: std::num::NonZeroUsize,
+    submission_tracker_size_limit: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
@@ -746,8 +746,8 @@ pub struct Config {
     pub shutdown_grace_period: Duration,
     pub fee_estimation_epsilon: Percentage,
     pub native_execution: NativeExecutionConfig,
-    pub transient_mempool_limit_sec: NonZeroU64,
-    pub transient_mempool_limit_size: NonZeroUsize,
+    pub submission_tracker_time_limit: NonZeroU64,
+    pub submission_tracker_size_limit: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -939,8 +939,8 @@ impl Config {
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
             #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
-            transient_mempool_limit_sec: cli.transient_mempool_limit_sec,
-            transient_mempool_limit_size: cli.transient_mempool_limit_size,
+            submission_tracker_time_limit: cli.submission_tracker_time_limit,
+            submission_tracker_size_limit: cli.submission_tracker_size_limit,
         }
     }
 }
