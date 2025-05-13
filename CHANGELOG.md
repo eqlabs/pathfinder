@@ -7,10 +7,11 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.17.0-beta.1] - 2025-05-13
 
 ### Added
 
+- Pathfinder now supports _syncing_ from Starknet 0.14.0. Support is still incomplete, execution and compilation of new classes will likely fail for new classes until a further upgrade.
 - Pathfinder now supports storing only the latest state of the blockchain history. This can be configured with the '--storage.blockchain-history' CLI option.
 
   - Accepted values are:
@@ -42,16 +43,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - With pruning enabled, affected JSON-RPC method requests will only succeed if the requested block is within the last N + 1 blocks.
   - The choice between `archive` and `pruned` mode is made once, when creating the database. Once chosen, it cannot be changed without creating a new database.
   - It is possible to change the number of blocks stored in pruned mode between runs, using the same CLI option with a different value for N.
+  - Note that the number of blocks stored is relative to:
+    a. The latest L1 checkpoint if it exists and the latest L2 block is ahead of it
+    b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
 
 - `starknet_getTransactionStatus` now returns RECEIVED even when the gateway cannot find the transaction, provided the transaction was successfully sent by the responding node within the last 5 minutes.
 
 ### Fixed
 
 - `starknet_unsubscribe` does not accept subscription IDs as strings.
-
-  - Note that the number of blocks stored is relative to:
-    a. The latest L1 checkpoint if it exists and the latest L2 block is ahead of it
-    b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
 
 ### Changed
 
