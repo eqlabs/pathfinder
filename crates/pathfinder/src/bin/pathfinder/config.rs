@@ -288,13 +288,21 @@ This should only be enabled for debugging purposes as it adds substantial proces
     event_filter_cache_size: std::num::NonZeroUsize,
 
     #[arg(
-        long = "transient-mempool-limit",
+        long = "transient-mempool-time-limit",
         long_help = "Duration for which transactions are locally remembered as RECEIVED, in \
                      seconds",
         default_value = "300",
         env = "PATHFINDER_TRANSIENT_MEMPOOL_LIMIT_SECONDS"
     )]
     transient_mempool_limit_sec: std::num::NonZeroU64,
+
+    #[arg(
+        long = "transient-mempool-size-limit",
+        long_help = "Maximum number of transactions that are locally remembered as RECEIVED.",
+        default_value = "30000",
+        env = "PATHFINDER_TRANSIENT_MEMPOOL_LIMIT_SIZE"
+    )]
+    transient_mempool_limit_size: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
@@ -739,6 +747,7 @@ pub struct Config {
     pub fee_estimation_epsilon: Percentage,
     pub native_execution: NativeExecutionConfig,
     pub transient_mempool_limit_sec: NonZeroU64,
+    pub transient_mempool_limit_size: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -931,6 +940,7 @@ impl Config {
             #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
             transient_mempool_limit_sec: cli.transient_mempool_limit_sec,
+            transient_mempool_limit_size: cli.transient_mempool_limit_size,
         }
     }
 }

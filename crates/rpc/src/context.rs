@@ -73,6 +73,7 @@ pub struct RpcConfig {
     pub native_execution: bool,
     pub native_class_cache_size: NonZeroUsize,
     pub transient_mempool_limit_sec: NonZeroU64,
+    pub transient_mempool_limit_size: NonZeroUsize,
 }
 
 #[derive(Clone)]
@@ -107,7 +108,10 @@ impl RpcContext {
         ethereum: EthereumClient,
         config: RpcConfig,
     ) -> Self {
-        let transient_mempool = MinimalMempool::new(config.transient_mempool_limit_sec.into());
+        let transient_mempool = MinimalMempool::new(
+            config.transient_mempool_limit_size.into(),
+            config.transient_mempool_limit_sec.into(),
+        );
         let pending_data = PendingWatcher::new(pending_data);
         let native_class_cache = if config.native_execution {
             Some(NativeClassCache::spawn(config.native_class_cache_size))
@@ -219,6 +223,7 @@ impl RpcContext {
             native_execution: true,
             native_class_cache_size: NonZeroUsize::new(10).unwrap(),
             transient_mempool_limit_sec: NonZeroU64::new(300).unwrap(),
+            transient_mempool_limit_size: NonZeroUsize::new(30000).unwrap(),
         };
 
         let ethereum =
