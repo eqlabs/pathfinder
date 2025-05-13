@@ -756,9 +756,10 @@ mod pathfinder_context {
             use pathfinder_crypto::Felt;
             use starknet_gateway_client::GatewayApi;
 
-            let gateway = GatewayClient::with_urls(gateway, feeder, gateway_timeout)
-                .context("Creating gateway client")?
-                .with_api_key(api_key);
+            let gateway =
+                GatewayClient::with_urls(gateway, feeder.clone(), feeder, gateway_timeout)
+                    .context("Creating gateway client")?
+                    .with_api_key(api_key);
 
             let network_id =
                 ChainId(Felt::from_be_slice(chain_id.as_bytes()).context("Parsing chain ID")?);
