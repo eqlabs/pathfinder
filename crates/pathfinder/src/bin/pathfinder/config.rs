@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::net::SocketAddr;
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -286,6 +286,23 @@ This should only be enabled for debugging purposes as it adds substantial proces
         default_value = "64"
     )]
     event_filter_cache_size: std::num::NonZeroUsize,
+
+    #[arg(
+        long = "submission-tracker-time-limit",
+        long_help = "Duration for which submitted transactions are locally remembered as \
+                     RECEIVED, in seconds",
+        default_value = "300",
+        env = "PATHFINDER_SUBMISSION_TRACKER_TIME_LIMIT"
+    )]
+    submission_tracker_time_limit: std::num::NonZeroU64,
+
+    #[arg(
+        long = "submission-tracker-size-limit",
+        long_help = "Maximum number of transactions that are locally remembered as RECEIVED.",
+        default_value = "30000",
+        env = "PATHFINDER_SUBMISSION_TRACKER_SIZE_LIMIT"
+    )]
+    submission_tracker_size_limit: std::num::NonZeroUsize,
 
     #[arg(
         long = "rpc.get-events-max-blocks-to-scan",
@@ -729,6 +746,8 @@ pub struct Config {
     pub shutdown_grace_period: Duration,
     pub fee_estimation_epsilon: Percentage,
     pub native_execution: NativeExecutionConfig,
+    pub submission_tracker_time_limit: NonZeroU64,
+    pub submission_tracker_size_limit: NonZeroUsize,
 }
 
 pub struct Ethereum {
@@ -920,6 +939,8 @@ impl Config {
             fee_estimation_epsilon: cli.fee_estimation_epsilon,
             #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
+            submission_tracker_time_limit: cli.submission_tracker_time_limit,
+            submission_tracker_size_limit: cli.submission_tracker_size_limit,
         }
     }
 }

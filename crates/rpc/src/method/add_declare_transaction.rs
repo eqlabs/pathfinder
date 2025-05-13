@@ -320,7 +320,9 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-
+            context
+                .submission_tracker
+                .insert_key(response.transaction_hash);
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,
@@ -347,7 +349,9 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-
+            context
+                .submission_tracker
+                .insert_key(response.transaction_hash);
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,
@@ -378,7 +382,9 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-
+            context
+                .submission_tracker
+                .insert_key(response.transaction_hash);
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,
