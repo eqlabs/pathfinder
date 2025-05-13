@@ -67,6 +67,36 @@ pub enum L1DataAvailabilityMode {
     Blob,
 }
 
+impl ToProtobuf<i32> for L1DataAvailabilityMode {
+    fn to_protobuf(self) -> i32 {
+        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        match self {
+            L1DataAvailabilityMode::Calldata => Calldata as i32,
+            L1DataAvailabilityMode::Blob => Blob as i32,
+        }
+    }
+}
+
+impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
+    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
+        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        Ok(
+            match TryFrom::try_from(input).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid L1 data availability mode field element {field_name} enum value: \
+                         {e}"
+                    ),
+                )
+            })? {
+                Calldata => L1DataAvailabilityMode::Calldata,
+                Blob => L1DataAvailabilityMode::Blob,
+            },
+        )
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub enum VolitionDomain {
     L1,
@@ -204,36 +234,6 @@ impl TryFromProtobuf<proto::common::Address> for Address {
 impl Display for BlockId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({},{})", self.number, self.hash.0)
-    }
-}
-
-impl ToProtobuf<i32> for L1DataAvailabilityMode {
-    fn to_protobuf(self) -> i32 {
-        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
-        match self {
-            L1DataAvailabilityMode::Calldata => Calldata as i32,
-            L1DataAvailabilityMode::Blob => Blob as i32,
-        }
-    }
-}
-
-impl TryFromProtobuf<i32> for L1DataAvailabilityMode {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::L1DataAvailabilityMode::{Blob, Calldata};
-        Ok(
-            match TryFrom::try_from(input).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!(
-                        "Invalid L1 data availability mode field element {field_name} enum value: \
-                         {e}"
-                    ),
-                )
-            })? {
-                Calldata => L1DataAvailabilityMode::Calldata,
-                Blob => L1DataAvailabilityMode::Blob,
-            },
-        )
     }
 }
 

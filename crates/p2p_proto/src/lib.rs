@@ -25,6 +25,10 @@ pub mod proto {
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
 }
 
 pub trait ToProtobuf<Output>
@@ -167,6 +171,7 @@ fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::
 use p2p_proto_derive::*;
 pub mod class;
 pub mod common;
+pub mod consensus;
 pub mod event;
 pub mod header;
 pub mod receipt;

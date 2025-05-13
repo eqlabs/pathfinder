@@ -1,6 +1,7 @@
 use fake::Dummy;
 use pathfinder_crypto::Felt;
 
+use crate::class::Cairo1Class;
 use crate::common::{Address, Hash, Iteration, VolitionDomain};
 use crate::receipt::Receipt;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
@@ -71,6 +72,13 @@ pub struct DeclareV3 {
     pub account_deployment_data: Vec<Felt>,
     pub nonce_data_availability_mode: VolitionDomain,
     pub fee_data_availability_mode: VolitionDomain,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[protobuf(name = "crate::proto::transaction::DeclareV3WithClass")]
+pub struct DeclareV3WithClass {
+    pub common: DeclareV3,
+    pub class: Cairo1Class,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

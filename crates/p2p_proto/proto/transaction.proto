@@ -1,5 +1,6 @@
 syntax = "proto3";
 import "common.proto";
+import "class.proto";
 import "receipt.proto";
 
 package starknet.transaction;
@@ -51,6 +52,8 @@ message Transaction
     message DeclareV3 {
         starknet.common.Address          sender                       = 1;
         AccountSignature                 signature                    = 2;
+        // In consensus the hash is missing because Cairo1Class already contains it
+        // https://github.com/starknet-io/starknet-p2p-specs/blob/a75602f7986ccad0b3b700f34b4d6921454d20ba/p2p/proto/transaction.proto#L33 
         starknet.common.Hash             class_hash                   = 3;
         starknet.common.Felt252          nonce                        = 4;
         starknet.common.Hash             compiled_class_hash          = 5;
@@ -163,4 +166,10 @@ message TransactionsResponse {
         TransactionWithReceipt transaction_with_receipt = 1;
         starknet.common.Fin    fin                      = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its transactions.
     }
+}
+
+// Specific to consensus: https://github.com/starknet-io/starknet-p2p-specs/blob/a75602f7986ccad0b3b700f34b4d6921454d20ba/p2p/proto/transaction.proto#L44
+message DeclareV3WithClass {
+    Transaction.DeclareV3 common = 1;
+    starknet.class.Cairo1Class class = 2;
 }
