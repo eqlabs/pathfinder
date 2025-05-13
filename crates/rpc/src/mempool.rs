@@ -33,3 +33,39 @@ impl MinimalMempool {
         cache.flush();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use pathfinder_common::TransactionHash;
+    use pathfinder_crypto::Felt;
+
+    use super::MinimalMempool;
+
+    use tokio::time::Duration;
+
+    #[test]
+    fn test_full() {
+        let mm = MinimalMempool::new(2, 10);
+        let mut hash = Default::default();
+        assert!(!mm.contains_key(&hash));
+        for i in 1..=10 {
+            hash = TransactionHash(Felt::from_u64(i));
+            mm.insert_key(hash);
+        }
+
+        assert!(mm.contains_key(&hash));
+        hash = TransactionHash(Felt::from_u64(1));
+        assert!(!mm.contains_key(&hash));
+    }
+
+    #[tokio::test]
+    async fn test_flush() {
+        let mm = MinimalMempool::new(2, 1);
+        let hash = TransactionHash(Felt::from_u64(42));
+        mm.insert_key(hash);
+        assert!(mm.contains_key(&hash));
+        tokio::time::sleep(Duration::from_millis(3000)).await;
+        mm.flush();
+        assert!(!mm.contains_key(&hash));
+    }
+}
