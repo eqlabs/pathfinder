@@ -251,6 +251,13 @@ pub(crate) fn create_executor(
         .versioned_constants_map
         .for_version(&execution_state.header.starknet_version);
 
+    // tracing::debug!(?old_block_number_and_hash);
+    // tracing::debug!(%versioned_constants.enable_stateful_compression);
+    // tracing::debug!(
+    //     "versioned_constants.os_constants: {:#?}",
+    //     versioned_constants.os_constants
+    // );
+
     let block_context = BlockContext::new(
         block_info,
         chain_info,

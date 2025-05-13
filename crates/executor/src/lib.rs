@@ -26,6 +26,6 @@ pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;
 pub use execution_state::{ExecutionState, L1BlobDataAvailability, VersionedConstantsMap};
 pub use felt::{IntoFelt, IntoStarkFelt};
-pub use simulate::{simulate, trace, TraceCache};
+pub use simulate::{simulate, simulate2, trace, TraceCache};
 pub use starknet_api::contract_class::ClassInfo;
 pub use state_reader::NativeClassCache;
