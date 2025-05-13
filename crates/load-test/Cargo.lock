@@ -998,7 +998,7 @@ checksum = "945462a4b81e43c4e3ba96bd7b49d834c6f61198356aa858733bc4acf3cbe62e"
 
 [[package]]
 name = "pathfinder-crypto"
-version = "0.16.4"
+version = "0.17.0-beta.1"
 dependencies = [
  "bitvec",
  "fake",
