@@ -1,6 +1,7 @@
 //! Starknet L2 sequencer client.
 use std::fmt::Debug;
 use std::result::Result;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use pathfinder_common::prelude::*;
@@ -214,6 +215,8 @@ pub struct Client {
     /// Starknet gateway URL.
     gateway: Url,
     /// Starknet feeder gateway URL.
+    // TODO remove this once mainnet is on 0.14.0
+    pre_0_14_0_feeder_gateway: Url,
     feeder_gateway: Url,
     /// Whether __read only__ requests should be retried, defaults to __true__
     /// for production.
@@ -225,11 +228,18 @@ pub struct Client {
     api_key: Option<String>,
 }
 
+/// We cannot use a flag inside the `Client` struct because Atomic is not
+/// `Clone`.
+// TODO remove this workaround once mainnet is on 0.14.0
+static IS_PRE_0_14_0: AtomicBool = AtomicBool::new(true);
+
 impl Client {
     /// Creates a [Client] for [pathfinder_common::Chain::Mainnet].
     pub fn mainnet(timeout: Duration) -> Self {
-        Self::with_base_url(
-            Url::parse("https://alpha-mainnet.starknet.io/").unwrap(),
+        Self::with_urls(
+            Url::parse("https://alpha-mainnet.starknet.io/gateway").unwrap(),
+            Url::parse("https://alpha-mainnet.starknet.io/feeder_gateway").unwrap(),
+            Url::parse("https://feeder.alpha-mainnet.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
         .unwrap()
@@ -237,8 +247,10 @@ impl Client {
 
     /// Creates a [Client] for [pathfinder_common::Chain::SepoliaTestnet].
     pub fn sepolia_testnet(timeout: Duration) -> Self {
-        Self::with_base_url(
-            Url::parse("https://alpha-sepolia.starknet.io/").unwrap(),
+        Self::with_urls(
+            Url::parse("https://alpha-sepolia.starknet.io/gateway").unwrap(),
+            Url::parse("https://alpha-sepolia.starknet.io/feeder_gateway").unwrap(),
+            Url::parse("https://feeder.alpha-sepolia.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
         .unwrap()
@@ -246,22 +258,30 @@ impl Client {
 
     /// Creates a [Client] for [pathfinder_common::Chain::SepoliaIntegration].
     pub fn sepolia_integration(timeout: Duration) -> Self {
-        Self::with_base_url(
-            Url::parse("https://integration-sepolia.starknet.io/").unwrap(),
+        Self::with_urls(
+            Url::parse("https://integration-sepolia.starknet.io/gateway").unwrap(),
+            Url::parse("https://integration-sepolia.starknet.io/feeder_gateway").unwrap(),
+            Url::parse("https://feeder.integration-sepolia.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
         .unwrap()
     }
 
     /// Creates a [Client] with a shared feeder gateway and gateway base url.
+    // TODO remove after 0.14.0
     pub fn with_base_url(base: Url, timeout: Duration) -> anyhow::Result<Self> {
         let gateway = base.join("gateway")?;
         let feeder_gateway = base.join("feeder_gateway")?;
-        Self::with_urls(gateway, feeder_gateway, timeout)
+        Self::with_urls(gateway, feeder_gateway.clone(), feeder_gateway, timeout)
     }
 
     /// Create a Sequencer client for the given [Url]s.
-    pub fn with_urls(gateway: Url, feeder_gateway: Url, timeout: Duration) -> anyhow::Result<Self> {
+    pub fn with_urls(
+        gateway: Url,
+        pre_0_14_0_feeder_gateway: Url,
+        feeder_gateway: Url,
+        timeout: Duration,
+    ) -> anyhow::Result<Self> {
         metrics::register();
 
         Ok(Self {
@@ -270,6 +290,7 @@ impl Client {
                 .user_agent(pathfinder_version::USER_AGENT)
                 .build()?,
             gateway,
+            pre_0_14_0_feeder_gateway,
             feeder_gateway,
             retry: true,
             api_key: None,
@@ -293,15 +314,33 @@ impl Client {
     }
 
     fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(&self.inner, self.gateway.clone(), self.api_key.clone())
+        builder::Request::builder(
+            &self.inner,
+            self.gateway.clone(),
+            self.gateway.clone(),
+            self.api_key.clone(),
+        )
     }
 
     fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(
-            &self.inner,
-            self.feeder_gateway.clone(),
-            self.api_key.clone(),
-        )
+        if IS_PRE_0_14_0.load(Ordering::Relaxed) {
+            // Use <0.14.0 feeder gateway URL as primary and >=0.14.0 feeder gateway
+            // URL as fallback.
+            builder::Request::builder(
+                &self.inner,
+                self.pre_0_14_0_feeder_gateway.clone(),
+                self.feeder_gateway.clone(),
+                self.api_key.clone(),
+            )
+        } else {
+            // Use >=0.14.0 feeder gateway URL only
+            builder::Request::builder(
+                &self.inner,
+                self.feeder_gateway.clone(),
+                self.feeder_gateway.clone(),
+                self.api_key.clone(),
+            )
+        }
     }
 }
 
