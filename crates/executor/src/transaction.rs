@@ -80,9 +80,14 @@ pub(crate) fn l2_gas_accounting_enabled<S>(
 where
     S: UpdatableState,
 {
+    if is_deploy_account_transaction(tx) {
+        return Ok(gas_vector_computation_mode == &GasVectorComputationMode::All);
+    }
+
     let sender_class_hash = state.get_class_hash_at(tx.sender_address())?;
     // Uninitialized class.
     if sender_class_hash == ClassHash::default() {
+        tracing::debug!(sender_address=%tx.sender_address(), "Sender class not deployed yet, skipping L2 gas accounting");
         return Ok(false);
     }
 
@@ -103,6 +108,18 @@ where
     Ok(
         gas_vector_computation_mode == &GasVectorComputationMode::All
             && tracked_resource == TrackedResource::SierraGas,
+    )
+}
+
+fn is_deploy_account_transaction(transaction: &Transaction) -> bool {
+    matches!(
+        transaction,
+        Transaction::Account(
+            blockifier::transaction::account_transaction::AccountTransaction {
+                tx: starknet_api::executable_transaction::AccountTransaction::DeployAccount(_),
+                ..
+            }
+        )
     )
 }
 
@@ -534,26 +551,41 @@ where
 
     match tx {
         Transaction::Account(account_transaction) => {
-            let fee_token_address = block_context
-                .chain_info()
-                .fee_token_address(&account_transaction.fee_type());
-            let balance = state
-                .get_fee_token_balance(account_transaction.sender_address(), fee_token_address)?;
-            let balance = (balance.1.to_biguint() << 128) + balance.0.to_biguint();
+            match account_transaction.tx {
+                starknet_api::executable_transaction::AccountTransaction::Declare(_)
+                | starknet_api::executable_transaction::AccountTransaction::Invoke(_) => {
+                    let fee_token_address = block_context
+                        .chain_info()
+                        .fee_token_address(&account_transaction.fee_type());
+                    let balance = state.get_fee_token_balance(
+                        account_transaction.sender_address(),
+                        fee_token_address,
+                    )?;
+                    let balance = (balance.1.to_biguint() << 128) + balance.0.to_biguint();
 
-            if balance > max_possible_fee_without_l2_gas.0.into() {
-                // The maximum amount of L2 gas that can be bought with the balance.
-                let max_amount = (balance - max_possible_fee_without_l2_gas.0)
-                    / initial_resource_bounds
-                        .l2_gas
-                        .max_price_per_unit
-                        .0
-                        .max(1u64.into());
-                Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
-            } else {
-                // Balance is less than committed L1 gas and L1 data gas, tx will fail anyway.
-                // Let it pass through here so that execution returns a detailed error.
-                Ok(GasAmount::ZERO)
+                    tracing::warn!(%balance, "Balance");
+
+                    if balance > max_possible_fee_without_l2_gas.0.into() {
+                        // The maximum amount of L2 gas that can be bought with the balance.
+                        let max_amount = (balance - max_possible_fee_without_l2_gas.0)
+                            / initial_resource_bounds
+                                .l2_gas
+                                .max_price_per_unit
+                                .0
+                                .max(1u64.into());
+                        Ok(u64::try_from(max_amount).unwrap_or(u64::MAX).into())
+                    } else {
+                        // Balance is less than committed L1 gas and L1 data gas, tx will fail
+                        // anyway. Let it pass through here so that
+                        // execution returns a detailed error.
+                        Ok(GasAmount::ZERO)
+                    }
+                }
+                starknet_api::executable_transaction::AccountTransaction::DeployAccount(_) => {
+                    Ok(block_context
+                        .versioned_constants()
+                        .initial_gas_no_user_l2_bound())
+                }
             }
         }
         Transaction::L1Handler(_) => {
