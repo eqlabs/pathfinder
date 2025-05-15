@@ -8843,7 +8843,7 @@ dependencies = [
 
 [[package]]
 name = "proposal-validator"
-version = "0.16.4"
+version = "0.17.0-beta.1"
 dependencies = [
  "anyhow",
  "p2p",
