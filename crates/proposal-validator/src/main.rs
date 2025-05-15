@@ -16,7 +16,7 @@ use p2p_proto::consensus::{
 };
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
-use pathfinder_common::state_update::StateUpdateData;
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
@@ -25,6 +25,7 @@ use pathfinder_common::{
     ChainId,
     ClassHash,
     ContractAddress,
+    ContractNonce,
     EntryPoint,
     L1DataAvailabilityMode,
     StateUpdate,
@@ -32,7 +33,14 @@ use pathfinder_common::{
     StorageValue,
 };
 use pathfinder_crypto::Felt;
-use pathfinder_executor::types::{StorageDiff, TransactionSimulation};
+use pathfinder_executor::types::{
+    DeclaredSierraClass,
+    DeployedContract,
+    ReplacedClass,
+    StateDiff,
+    StorageDiff,
+    TransactionSimulation,
+};
 use pathfinder_executor::{ClassInfo, ExecutionState, IntoStarkFelt};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
@@ -40,7 +48,7 @@ use pathfinder_storage::StorageBuilder;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use util::percentage::Percentage;
 
 fn main() -> anyhow::Result<()> {
@@ -119,6 +127,78 @@ fn main() -> anyhow::Result<()> {
     execute_batch(db_txn, execution_state, txns, block_number);
 
     Ok(())
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct StateDiffWithoutStorage {
+    pub deployed_contracts: BTreeSet<DeployedContract>,
+    pub deprecated_declared_classes: BTreeSet<ClassHash>,
+    pub declared_classes: BTreeSet<DeclaredSierraClass>,
+    pub nonces: BTreeMap<ContractAddress, ContractNonce>,
+    pub replaced_classes: BTreeSet<ReplacedClass>,
+}
+
+impl From<&StateDiff> for StateDiffWithoutStorage {
+    fn from(src: &StateDiff) -> Self {
+        Self {
+            deployed_contracts: src.deployed_contracts.iter().cloned().collect(),
+            deprecated_declared_classes: src.deprecated_declared_classes.iter().copied().collect(),
+            declared_classes: src.declared_classes.iter().cloned().collect(),
+            nonces: src.nonces.iter().map(|(k, v)| (*k, *v)).collect(),
+            replaced_classes: src.replaced_classes.iter().cloned().collect(),
+        }
+    }
+}
+
+impl From<&StateUpdate> for StateDiffWithoutStorage {
+    fn from(src: &StateUpdate) -> Self {
+        Self {
+            deployed_contracts: src
+                .contract_updates
+                .iter()
+                .filter_map(|(contract_address, contract_update)| {
+                    contract_update.class.and_then(|update| match update {
+                        ContractClassUpdate::Deploy(class_hash) => Some(DeployedContract {
+                            address: *contract_address,
+                            class_hash,
+                        }),
+                        ContractClassUpdate::Replace(_) => None,
+                    })
+                })
+                .collect(),
+            deprecated_declared_classes: src.declared_cairo_classes.iter().copied().collect(),
+            declared_classes: src
+                .declared_sierra_classes
+                .iter()
+                .map(|(sierra_hash, casm_hash)| DeclaredSierraClass {
+                    class_hash: *sierra_hash,
+                    compiled_class_hash: *casm_hash,
+                })
+                .collect(),
+            nonces: src
+                .contract_updates
+                .iter()
+                .filter_map(|(contract_address, contract_update)| {
+                    contract_update
+                        .nonce
+                        .map(|nonce| (*contract_address, nonce))
+                })
+                .collect(),
+            replaced_classes: src
+                .contract_updates
+                .iter()
+                .filter_map(|(contract_address, contract_update)| {
+                    contract_update.class.and_then(|update| match update {
+                        ContractClassUpdate::Deploy(_) => None,
+                        ContractClassUpdate::Replace(class_hash) => Some(ReplacedClass {
+                            contract_address: *contract_address,
+                            class_hash,
+                        }),
+                    })
+                })
+                .collect(),
+        }
+    }
 }
 
 fn execute_batch(
@@ -212,6 +292,18 @@ fn execute_batch(
     // pretty_assertions_sorted::assert_eq!(actual_storage, actual_storage2,
     // "Actual vs Actual2");
     println!("Actual storage updates match expected ones!");
+
+    let actual_rest = StateDiffWithoutStorage::from(&state_changes_after_execution);
+    let expected_rest = StateDiffWithoutStorage::from(&expected_state_update);
+
+    pretty_assertions_sorted::assert_eq!(
+        actual_rest,
+        expected_rest,
+        "The rest: Actual vs Expected"
+    );
+
+    println!("The rest also matches!");
+
     // TODO validate other parts of the state update
 }
 
@@ -364,7 +456,7 @@ fn create_proposal(
         .block_header(block_number.into())?
         .context("Block not found")?;
 
-    debug!(?header);
+    trace!(?header);
 
     let mut proposal_parts = VecDeque::new();
     let height = header.number.get();

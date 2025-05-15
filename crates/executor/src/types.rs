@@ -236,19 +236,19 @@ pub struct StorageDiff {
     pub value: StorageValue,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct DeployedContract {
     pub address: ContractAddress,
     pub class_hash: ClassHash,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct DeclaredSierraClass {
     pub class_hash: SierraHash,
     pub compiled_class_hash: CasmHash,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ReplacedClass {
     pub contract_address: ContractAddress,
     pub class_hash: ClassHash,

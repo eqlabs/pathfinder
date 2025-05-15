@@ -112,6 +112,12 @@ pub fn simulate2(
     let block_number = execution_state.header.number;
     let mut tx_executor = create_executor(db_tx, execution_state)?;
 
+    let initial_state_before_all_execution = tx_executor
+        .block_state
+        .as_ref()
+        .expect(BLOCK_STATE_ACCESS_ERR)
+        .clone();
+
     let results = transactions
         .into_iter()
         .enumerate()
@@ -192,9 +198,12 @@ pub fn simulate2(
 
     let state_changes_after_execution = to_state_diff(
         state_changes_after_execution.state_maps,
-        cache_state, /* FIXME This is not really initial before executing all txns, but it only
-                      * impacts class declarations and this state diff is to compare storage
-                      * updates with the collected partial simulation results */
+        initial_state_before_all_execution, /* FIXME This is not really initial before executing
+                                             * all txns, but it only
+                                             * impacts class declarations and this state diff is
+                                             * to compare storage
+                                             * updates with the collected partial simulation
+                                             * results */
         None, // FIXME
     )?;
 
