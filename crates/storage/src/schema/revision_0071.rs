@@ -60,6 +60,28 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                     ON class_definitions(block_number);
             ",
         },
+        // This table definition does not change but its content will be lost after the
+        // `class_definitions` table gets dropped.
+        TableUpdate {
+            table_name: "casm_definitions",
+            // Setting the FOREIGN KEY to the `class_definitions_new` table, the reference target
+            // will be renamed when the `class_definitions_new` table gets renamed to
+            // `class_definitions`.
+            create_table_stmt: r"
+                CREATE TABLE casm_definitions_new(
+                    hash                BLOB    PRIMARY KEY NOT NULL,
+                    compiled_class_hash BLOB    NOT NULL,
+                    definition          BLOB,
+                    FOREIGN KEY(hash) REFERENCES class_definitions_new(hash) ON DELETE CASCADE
+                );
+            ",
+            transfer_stmt: "INSERT INTO casm_definitions_new SELECT * FROM casm_definitions",
+            drop_rename_create_index_stmt_batch: r"
+                DROP TABLE casm_definitions;
+                ALTER TABLE casm_definitions_new RENAME TO casm_definitions;
+                CREATE INDEX casm_definitions_compiled_class_hash ON casm_definitions(compiled_class_hash);
+            ",
+        },
         TableUpdate {
             table_name: "contract_updates",
             create_table_stmt: r"
