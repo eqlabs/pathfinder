@@ -49,7 +49,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 CREATE TABLE class_definitions_new(
                     hash         BLOB PRIMARY KEY,
                     definition   BLOB,
-                    block_number INTEGER REFERENCES block_headers(number) ON DELETE SET NULL
+                    block_number INTEGER
                 );
             ",
             transfer_stmt: "INSERT INTO class_definitions_new SELECT * FROM class_definitions",

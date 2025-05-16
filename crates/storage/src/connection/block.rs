@@ -793,11 +793,6 @@ mod tests {
 
         let exists = tx.block_exists(latest.number.into()).unwrap();
         assert!(!exists);
-
-        let class_exists = tx
-            .class_definition_at(latest.number.into(), ClassHash(cairo_hash.0))
-            .unwrap();
-        assert_eq!(class_exists, None);
     }
 
     #[test]
