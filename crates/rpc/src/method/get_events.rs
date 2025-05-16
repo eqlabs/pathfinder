@@ -193,24 +193,14 @@ pub async fn get_events(
         let from_block = map_from_block_to_number(&transaction, request.from_block)?;
         let to_block = map_to_block_to_number(&transaction, request.to_block)?;
 
-        if let Some(from_block) = from_block {
-            let pruned = transaction
-                .block_pruned(from_block.into())
-                .context("Querying block pruned status")?;
-            if pruned {
-                return Err(GetEventsError::BlockNotFound);
+        match (from_block, to_block) {
+            (Some(from), Some(to)) if from > to => {
+                return Ok(GetEventsResult {
+                    events: Vec::new(),
+                    continuation_token: None,
+                })
             }
-
-            // If `from_block` is not pruned, then `to_block` cannot be pruned either, under
-            // the assumption that `to_block` > `from_block`.
-            if let Some(to_block) = to_block {
-                if from_block > to_block {
-                    return Ok(GetEventsResult {
-                        events: vec![],
-                        continuation_token: None,
-                    });
-                }
-            }
+            _ => {}
         }
 
         // Handle cases (3) and (4) where `from_block` is non-pending.

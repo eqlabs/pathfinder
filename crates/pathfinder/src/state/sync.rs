@@ -1053,32 +1053,30 @@ fn l2_reorg(
         .context("Latest block number is none during reorg")?
         .0;
 
-    if transaction.block_pruned(reorg_tail.into())? {
+    let Some(reorg_tail_hash) = transaction
+        .block_hash(reorg_tail.into())
+        .context("Fetching first block hash")?
+    else {
         anyhow::bail!(
             r"Reorg tail (block number: {reorg_tail}) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
         );
-    }
-    let reorg_tail_hash = transaction
-        .block_hash(reorg_tail.into())
-        .context("Fetching first block hash")?
-        .expect("Reorg tail should exist in database");
+    };
 
     // Roll back Merkle trie updates.
     //
     // If we're rolling back genesis then there will be no blocks left so state will
     // be empty.
     if let Some(target_block) = reorg_tail.parent() {
-        if transaction.block_pruned(target_block.into())? {
+        let Some(target_header) = transaction
+            .block_header(target_block.into())
+            .context("Fetching target block header")?
+        else {
             anyhow::bail!(
                 r"Reorg tail parent (block number: {target_block}) does not exist (likely due to blockchain history pruning).
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
             );
-        }
-        let target_header = transaction
-            .block_header(target_block.into())
-            .context("Fetching target block header")?
-            .expect("Reorg tail parent should exist in database");
+        };
         revert::revert_starknet_state(transaction, head, target_block, target_header)?;
     }
 
@@ -1949,15 +1947,7 @@ mod tests {
             let class1 = class_hash_bytes!(b"class 1");
             let class2 = class_hash_bytes!(b"class 2");
             let storage_address1 = storage_address_bytes!(b"storage address 1");
-            // Blocks 0 and 1 don't have any state updates. They are prunable.
-            //
-            // Block 3 updates contract 1's storage address 1 and nonce. It is prunable
-            // because both of these are also updated in block 4.
-            //
-            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
-            // replaced.
-            //
-            // Block 4 cannot be pruned because it is the latest block.
+
             vec![
                 StateUpdate::default(),
                 StateUpdate::default()
@@ -1968,6 +1958,7 @@ mod tests {
                         "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
                     ))
                     .with_deployed_contract(contract1, class1)
+                    // Contract 2 class is deployed and never replaced.
                     .with_deployed_contract(contract2, class1),
                 StateUpdate::default()
                     .with_state_commitment(state_commitment!(
@@ -1980,7 +1971,9 @@ mod tests {
                         "0x01283044BBD2E60462EF0A8F593CEC6616ED43D5FF5358EB87CD824F65F1ED7C"
                     ))
                     .with_replaced_class(contract1, class2)
+                    // Final storage value update.
                     .with_storage_update(contract1, storage_address1, storage_value!("0x200"))
+                    // Final nonce update
                     .with_contract_nonce(contract1, contract_nonce!("0x3")),
             ]
         }
@@ -1991,21 +1984,7 @@ mod tests {
             let class1 = class_hash_bytes!(b"class 1");
             let class2 = class_hash_bytes!(b"class 2");
             let storage_address1 = storage_address_bytes!(b"storage address 1");
-            // No state updates for blocks 0 and 1. These are prunable.
-            //
-            // Block 2 cannot be pruned because it deploys contract 2 whose class is never
-            // replaced.
-            //
-            // Block 3 cannot be pruned because it replaces contract 1's class, and it is
-            // never replaced again.
-            //
-            // Block 4 cannot be pruned because it makes the last update to contract 1's
-            // storage address 1.
-            //
-            // Block 5 cannot be pruned because it makes the last update to contract 1's
-            // nonce.
-            //
-            // Block 6 cannot be pruned because it is the latest one.
+
             vec![
                 StateUpdate::default(),
                 StateUpdate::default()
@@ -2016,11 +1995,13 @@ mod tests {
                         "0x04403E18CF4B87E95FCBF146BC32D55F679DE144C8CC9AD9E79E28AED90B690A"
                     ))
                     .with_deployed_contract(contract1, class1)
+                    // Contract 2 class is deployed and never replaced.
                     .with_deployed_contract(contract2, class1),
                 StateUpdate::default()
                     .with_state_commitment(state_commitment!(
                         "0x044204D6012E3A2D4597D021A22ECB494A00D4D2433422038E806EA7346A3B66"
                     ))
+                    // Final class replacement.
                     .with_replaced_class(contract1, class2)
                     .with_storage_update(contract1, storage_address1, storage_value!("0x100"))
                     .with_contract_nonce(contract1, contract_nonce!("0x1")),
@@ -2028,11 +2009,13 @@ mod tests {
                     .with_state_commitment(state_commitment!(
                         "0x002343E7A9AEACD3D366D27D5A61095664C894B22F1C4A8309AF9765AF566A36"
                     ))
+                    // Final storage value update.
                     .with_storage_update(contract1, storage_address1, storage_value!("0x200")),
                 StateUpdate::default()
                     .with_state_commitment(state_commitment!(
                         "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
                     ))
+                    // Final nonce update.
                     .with_contract_nonce(contract1, contract_nonce!("0x2")),
                 StateUpdate::default().with_state_commitment(state_commitment!(
                     "0x02D831BF9BB2B03A2B6593A003E9826B70D42E44CE8365230187989ECD66B754"
@@ -2046,18 +2029,6 @@ mod tests {
             let class2 = class_hash_bytes!(b"class 2");
             let class3 = class_hash_bytes!(b"class 3");
 
-            // No state updates for blocks 0 and 1. These are prunable.
-            //
-            // Block 2 deploys contract 1 with class 1. Contract 1 class is replaced two
-            // more times, by blocks 3 and 4.
-            //
-            // This makes blocks 2 and 4 non-prunable. Block 2 cannot be pruned because
-            // contract 1 was deployed in it and block 4 cannot be pruned because it has the
-            // latest state update for contract 1.
-            //
-            // Block 3 can be pruned.
-            //
-            // Block 5 cannot be pruned because it is the latest block.
             vec![
                 StateUpdate::default(),
                 StateUpdate::default()
@@ -2076,11 +2047,12 @@ mod tests {
                     .with_replaced_class(contract1, class2),
                 StateUpdate::default()
                     .with_state_commitment(state_commitment!(
-                        "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                        "0x032D16947452A6E41512E1515048675480D935C26CCC982E9888AC96EF65C189"
                     ))
+                    .with_contract_nonce(contract1, contract_nonce!("0x1"))
                     .with_replaced_class(contract1, class3),
                 StateUpdate::default().with_state_commitment(state_commitment!(
-                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                    "0x032D16947452A6E41512E1515048675480D935C26CCC982E9888AC96EF65C189"
                 )),
             ]
         }
@@ -2098,6 +2070,7 @@ mod tests {
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
             let blocks = block_data_with_state_updates(one_non_prunable_block());
+            let num_blocks = blocks.len() as u64;
             // Send block updates.
             for (a, b, c, d, e) in blocks {
                 event_tx
@@ -2124,25 +2097,13 @@ mod tests {
             consumer(event_rx, context, tx).await.unwrap();
 
             let tx = conn.transaction().unwrap();
-            let prunable_blocks = vec![0, 1, 3];
-            let non_prunable_blocks = vec![2];
-            for block in prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+            for block in 0..(num_blocks - 1) {
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
                 assert!(!tx.block_exists(block_id).unwrap());
-            }
-            for block in non_prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-                // Transaction data has been pruned (because we always prune those) but
-                // the blocks have not (because they are not prunable).
-                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-                let transaction_hashes =
-                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-                assert!(transactions.is_empty() && transaction_hashes.is_empty());
-                assert!(tx.block_exists(block_id).unwrap());
             }
             let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
             assert_eq!(latest, BlockNumber::new_or_panic(4));
@@ -2168,6 +2129,7 @@ mod tests {
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
             let blocks = block_data_with_state_updates(one_non_prunable_block_for_each_update());
+            let num_blocks = blocks.len() as u64;
             // Send block updates.
             for (a, b, c, d, e) in blocks {
                 event_tx
@@ -2192,11 +2154,9 @@ mod tests {
             consumer(event_rx, context, tx).await.unwrap();
 
             let tx = conn.transaction().unwrap();
-            let prunable_blocks = vec![0, 1];
-            let non_prunable_blocks = vec![2, 3, 4, 5];
 
-            for block in prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+            for block in 0..(num_blocks - 1) {
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2204,19 +2164,47 @@ mod tests {
                 assert!(!tx.block_exists(block_id).unwrap());
             }
 
-            for block in non_prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-                // Transaction data has been pruned (because we always prune those) but
-                // the blocks have not (because they are not prunable).
-                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-                let transaction_hashes =
-                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-                assert!(transactions.is_empty() && transaction_hashes.is_empty());
-                assert!(tx.block_exists(block_id).unwrap());
-            }
+            // Check that non-obsolete state update data has not been pruned.
+            assert_eq!(
+                tx.contract_class_hash(
+                    BlockId::Number(BlockNumber::new_or_panic(2)),
+                    contract_address_bytes!(b"contract 2"),
+                )
+                .unwrap()
+                .unwrap(),
+                class_hash_bytes!(b"class 1"),
+            );
+            assert_eq!(
+                tx.contract_class_hash(
+                    BlockId::Number(BlockNumber::new_or_panic(3)),
+                    contract_address_bytes!(b"contract 1"),
+                )
+                .unwrap()
+                .unwrap(),
+                class_hash_bytes!(b"class 2"),
+            );
+            assert_eq!(
+                tx.storage_value(
+                    BlockId::Number(BlockNumber::new_or_panic(4)),
+                    contract_address_bytes!(b"contract 1"),
+                    storage_address_bytes!(b"storage address 1"),
+                )
+                .unwrap()
+                .unwrap(),
+                storage_value!("0x200"),
+            );
+            assert_eq!(
+                tx.contract_nonce(
+                    contract_address_bytes!(b"contract 1"),
+                    BlockId::Number(BlockNumber::new_or_panic(5)),
+                )
+                .unwrap()
+                .unwrap(),
+                contract_nonce!("0x2"),
+            );
 
             let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
-            assert_eq!(latest, BlockNumber::new_or_panic(6));
+            assert_eq!(latest, BlockNumber::new_or_panic(num_blocks - 1));
             let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
             let transaction_hashes = tx
                 .transaction_hashes_for_block(latest.into())
@@ -2395,7 +2383,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
             let prunable_blocks = vec![0, 1];
             for block in prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2406,9 +2394,14 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
         #[tokio::test(flavor = "multi_thread")]
         async fn pruning_does_not_break_state_update_reconstruction() {
+            let blocks = block_data_with_state_updates(state_update_reconstruction());
+            let num_blocks = blocks.len() as u64;
+
             let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
-                // Keep only the latest block.
-                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                // Prune only blocks 0 and 1.
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune {
+                    num_blocks_kept: num_blocks - 1 /* latest */ - 2, /* keep two blocks */
+                },
                 std::num::NonZeroU32::new(10).unwrap(),
             )
             .unwrap();
@@ -2416,7 +2409,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
 
             let (event_tx, event_rx) = tokio::sync::mpsc::channel(10);
 
-            let blocks = block_data_with_state_updates(state_update_reconstruction());
             // Send block updates.
             for (a, b, c, d, e) in blocks {
                 event_tx
@@ -2441,11 +2433,11 @@ Blockchain history must include the reorg tail and its parent block to perform a
             consumer(event_rx, context, tx).await.unwrap();
 
             let tx = conn.transaction().unwrap();
-            let prunable_blocks = vec![0, 1, 3];
-            let non_prunable_blocks = vec![2, 4];
 
-            for block in prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+            let pruned_blocks = [0, 1];
+
+            for block in pruned_blocks {
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2453,42 +2445,46 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 assert!(!tx.block_exists(block_id).unwrap());
             }
 
-            for block in non_prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
-                // Transaction data has been pruned (because we always prune those) but
-                // the blocks have not (because they are not prunable).
-                let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
-                let transaction_hashes =
-                    tx.transaction_hashes_for_block(block_id).unwrap().unwrap();
-                assert!(transactions.is_empty() && transaction_hashes.is_empty());
-                assert!(tx.block_exists(block_id).unwrap());
-            }
+            // Block 2 is not pruned but also cannot be queried for state update since it
+            // doesn't have a parent block.
+            assert!(tx
+                .block_exists(BlockNumber::new_or_panic(2).into())
+                .unwrap());
 
             // Check that state update reconstruction still works.
             let state_update = StateUpdate::default()
-                .with_block_hash(block_hash_bytes!(b"2 block hash"))
+                .with_block_hash(block_hash_bytes!(b"3 block hash"))
                 .with_state_commitment(state_commitment!(
+                    "0x02217B6E78883EC62771BC63BEC0C34291FFA78EDCFFDE50C4DD8FDD4FE3158E"
+                ))
+                .with_parent_state_commitment(state_commitment!(
                     "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
                 ))
-                .with_deployed_contract(
+                .with_replaced_class(
                     contract_address_bytes!(b"contract 1"),
-                    class_hash_bytes!(b"class 1"),
+                    class_hash_bytes!(b"class 2"),
                 );
-
             let result = tx
-                .state_update(BlockId::Number(BlockNumber::new_or_panic(2)))
+                .state_update(BlockId::Number(BlockNumber::new_or_panic(3)))
                 .unwrap()
                 .unwrap();
-
             assert_eq!(result, state_update);
+
             let state_update = StateUpdate::default()
                 .with_block_hash(block_hash_bytes!(b"4 block hash"))
                 .with_state_commitment(state_commitment!(
-                    "0x0065AA5C3F2554C882A2549ACCB39EB13A520E83F1C3D09F447325E6C39A7909"
+                    "0x032D16947452A6E41512E1515048675480D935C26CCC982E9888AC96EF65C189"
+                ))
+                .with_parent_state_commitment(state_commitment!(
+                    "0x02217B6E78883EC62771BC63BEC0C34291FFA78EDCFFDE50C4DD8FDD4FE3158E"
                 ))
                 .with_replaced_class(
                     contract_address_bytes!(b"contract 1"),
                     class_hash_bytes!(b"class 3"),
+                )
+                .with_contract_nonce(
+                    contract_address_bytes!(b"contract 1"),
+                    contract_nonce!("0x1"),
                 );
 
             let result = tx
@@ -2559,7 +2555,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let non_prunable_blocks = vec![1, 2, 3, 4];
 
             for block in prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2568,7 +2564,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             }
 
             for block in non_prunable_blocks {
-                let block_id = BlockId::Number(BlockNumber::new_or_panic(block));
+                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction and block data has not been pruned.
                 let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
                 let transaction_hashes =
