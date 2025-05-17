@@ -80,13 +80,6 @@ pub async fn estimate_message_fee(
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
 
-                let pruned = db_tx
-                    .block_pruned(block_id)
-                    .context("Querying block pruned status")?;
-                if pruned {
-                    return Err(EstimateMessageFeeError::BlockNotFound);
-                }
-
                 let header = db_tx
                     .block_header(block_id)
                     .context("Querying block header")?

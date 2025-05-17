@@ -37,16 +37,7 @@ impl Transaction<'_> {
             ":state_diff_commitment": &header.state_diff_commitment,
             ":state_diff_length": &header.state_diff_length,
         },
-    ).context("Inserting block header")?;
-
-        // This must occur after the header is inserted as this table references the
-        // header table.
-        self.inner()
-            .execute(
-                "INSERT INTO canonical_blocks(number, hash) values(?,?)",
-                params![&header.number, &header.hash],
-            )
-            .context("Inserting into canonical_blocks table")?;
+        ).context("Inserting block header")?;
 
         Ok(())
     }
@@ -115,24 +106,31 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                "DELETE FROM transactions WHERE block_number = ?",
-                params![&block],
-            )
-            .context("Deleting transactions")?;
-
-        self.inner()
-            .execute(
-                "DELETE FROM canonical_blocks WHERE number = ?",
-                params![&block],
-            )
-            .context("Deleting block from canonical_blocks table")?;
-
-        self.inner()
-            .execute(
                 "DELETE FROM block_headers WHERE number = ?",
                 params![&block],
             )
             .context("Deleting block from block_headers table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM contract_updates WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from contract_updates table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM nonce_updates WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from nonce_updates table")?;
+
+        self.inner()
+            .execute(
+                "DELETE FROM storage_updates WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Deleting block from storage_updates table")?;
 
         self.inner()
             .execute(
@@ -196,7 +194,7 @@ impl Transaction<'_> {
     pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
         match block {
             BlockId::Latest => self.inner().query_row(
-                "SELECT number, hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                "SELECT number, hash FROM block_headers ORDER BY number DESC LIMIT 1",
                 [],
                 |row| {
                     let number = row.get_block_number(0)?;
@@ -206,7 +204,7 @@ impl Transaction<'_> {
                 },
             ),
             BlockId::Number(number) => self.inner().query_row(
-                "SELECT hash FROM canonical_blocks WHERE number = ?",
+                "SELECT hash FROM block_headers WHERE number = ?",
                 params![&number],
                 |row| {
                     let hash = row.get_block_hash(0)?;
@@ -214,7 +212,7 @@ impl Transaction<'_> {
                 },
             ),
             BlockId::Hash(hash) => self.inner().query_row(
-                "SELECT number FROM canonical_blocks WHERE hash = ?",
+                "SELECT number FROM block_headers WHERE hash = ?",
                 params![&hash],
                 |row| {
                     let number = row.get_block_number(0)?;
@@ -231,7 +229,7 @@ impl Transaction<'_> {
             BlockId::Latest => self
                 .inner()
                 .query_row(
-                    "SELECT hash FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                    "SELECT hash FROM block_headers ORDER BY number DESC LIMIT 1",
                     [],
                     |row| row.get_block_hash(0),
                 )
@@ -240,7 +238,7 @@ impl Transaction<'_> {
             BlockId::Number(number) => self
                 .inner()
                 .query_row(
-                    "SELECT hash FROM canonical_blocks WHERE number = ?",
+                    "SELECT hash FROM block_headers WHERE number = ?",
                     params![&number],
                     |row| row.get_block_hash(0),
                 )
@@ -250,7 +248,7 @@ impl Transaction<'_> {
                 // This query ensures that the block exists.
                 self.inner()
                     .query_row(
-                        "SELECT hash FROM canonical_blocks WHERE hash = ?",
+                        "SELECT hash FROM block_headers WHERE hash = ?",
                         params![&hash],
                         |row| row.get_block_hash(0),
                     )
@@ -265,7 +263,7 @@ impl Transaction<'_> {
             BlockId::Latest => self
                 .inner()
                 .query_row(
-                    "SELECT number FROM canonical_blocks ORDER BY number DESC LIMIT 1",
+                    "SELECT number FROM block_headers ORDER BY number DESC LIMIT 1",
                     [],
                     |row| row.get_block_number(0),
                 )
@@ -275,7 +273,7 @@ impl Transaction<'_> {
                 // This query ensures that the block exists.
                 self.inner()
                     .query_row(
-                        "SELECT number FROM canonical_blocks WHERE number = ?",
+                        "SELECT number FROM block_headers WHERE number = ?",
                         params![&number],
                         |row| row.get_block_number(0),
                     )
@@ -285,7 +283,7 @@ impl Transaction<'_> {
             BlockId::Hash(hash) => self
                 .inner()
                 .query_row(
-                    "SELECT number FROM canonical_blocks WHERE hash = ?",
+                    "SELECT number FROM block_headers WHERE hash = ?",
                     params![&hash],
                     |row| row.get_block_number(0),
                 )
@@ -298,14 +296,9 @@ impl Transaction<'_> {
     /// this function makes sense only in the context of
     /// [blockchain pruning](crate::pruning).
     pub fn earliest_block_number(&self) -> anyhow::Result<Option<BlockNumber>> {
-        // FIXME: This workaround won't be needed once foreign keys are taken off the
-        // block related tables. See https://github.com/eqlabs/pathfinder/issues/2719.
-
-        // Get this info from `transactions` because it is consistently pruned as
-        // opposed to block related tables.
         self.inner()
             .query_row(
-                "SELECT block_number FROM transactions ORDER BY block_number ASC LIMIT 1",
+                "SELECT number FROM block_headers ORDER BY number ASC LIMIT 1",
                 [],
                 |row| row.get_block_number(0),
             )
@@ -318,19 +311,19 @@ impl Transaction<'_> {
             BlockId::Latest => {
                 let mut stmt = self
                     .inner()
-                    .prepare_cached("SELECT EXISTS(SELECT 1 FROM canonical_blocks)")?;
+                    .prepare_cached("SELECT EXISTS(SELECT 1 FROM block_headers)")?;
                 stmt.query_row([], |row| row.get(0))
             }
             BlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
-                    "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE number = ?)",
+                    "SELECT EXISTS(SELECT 1 FROM block_headers WHERE number = ?)",
                 )?;
                 stmt.query_row(params![&number], |row| row.get(0))
             }
             BlockId::Hash(hash) => {
-                let mut stmt = self.inner().prepare_cached(
-                    "SELECT EXISTS(SELECT 1 FROM canonical_blocks WHERE hash = ?)",
-                )?;
+                let mut stmt = self
+                    .inner()
+                    .prepare_cached("SELECT EXISTS(SELECT 1 FROM block_headers WHERE hash = ?)")?;
                 stmt.query_row(params![&hash], |row| row.get(0))
             }
         }
@@ -800,11 +793,6 @@ mod tests {
 
         let exists = tx.block_exists(latest.number.into()).unwrap();
         assert!(!exists);
-
-        let class_exists = tx
-            .class_definition_at(latest.number.into(), ClassHash(cairo_hash.0))
-            .unwrap();
-        assert_eq!(class_exists, None);
     }
 
     #[test]

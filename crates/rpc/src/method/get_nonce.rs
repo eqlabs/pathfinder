@@ -52,13 +52,6 @@ pub async fn get_nonce(context: RpcContext, input: Input) -> Result<Output, Erro
             other => other.try_into().expect("Only pending cast should fail"),
         };
 
-        let pruned = tx
-            .block_pruned(block_id)
-            .context("Querying block pruned status")?;
-        if pruned {
-            return Err(Error::BlockNotFound);
-        }
-
         // Check that block exists. This should occur first as the block number
         // isn't checked explicitly (i.e. nonce fetch just uses <= number).
         let block_exists = tx.block_exists(block_id).context("Checking block exists")?;
