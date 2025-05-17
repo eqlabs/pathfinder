@@ -13,7 +13,11 @@
 //! This migration removes the FOREIGN KEY references to `canonical_blocks` from
 //! the state update tables.
 
+use std::ops::Deref;
+
 use anyhow::Context;
+
+const LOG_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
 struct TableUpdate {
     table_name: &'static str,
@@ -142,17 +146,28 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         },
     ];
 
+    let mut last_logged = std::time::Instant::now();
+    tx.deref().progress_handler(
+        // Shooting for about a second with this.
+        50_000_000,
+        Some(move || {
+            if last_logged.elapsed() > LOG_INTERVAL {
+                tracing::info!("DB operation in progress");
+                last_logged = std::time::Instant::now();
+            }
+
+            false
+        }),
+    );
+
     tracing::info!("Creating new tables and transferring data");
 
     for update in &table_updates {
+        let table = &update.table_name;
         tx.execute(update.create_table_stmt, [])
-            .with_context(|| format!("Creating {}_new table", update.table_name))?;
-        tx.execute(update.transfer_stmt, []).with_context(|| {
-            format!(
-                "Transferring data from {table} to {table}_new",
-                table = update.table_name
-            )
-        })?;
+            .with_context(|| format!("Creating {}_new table", table))?;
+        tx.execute(update.transfer_stmt, [])
+            .with_context(|| format!("Transferring data from {table} to {table}_new",))?;
     }
 
     tracing::info!("Dropping old tables, renaming new ones and re-creating indices");

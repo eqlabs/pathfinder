@@ -35,6 +35,7 @@ rusqlite = { workspace = true, features = [
     "functions",
     "vtab",
     "array",
+    "hooks",
 ] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = [
