@@ -212,6 +212,7 @@ mod tests {
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
+        BroadcastedDeployAccountTransactionV3,
         BroadcastedInvokeTransaction,
         BroadcastedInvokeTransactionV0,
         BroadcastedInvokeTransactionV1,
@@ -920,5 +921,126 @@ mod tests {
             result,
             Output(vec![declare_expected, deploy_expected, invoke_expected,])
         );
+    }
+
+    #[tokio::test]
+    async fn deploy_account_starknet_0_13_5() {
+        let starknet_version = StarknetVersion::new(0, 13, 5, 0);
+        let (context, last_block_header, _account_contract_address, _universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(starknet_version).await;
+
+        let deploy_account = crate::types::request::BroadcastedDeployAccountTransaction::V3(
+            BroadcastedDeployAccountTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0),
+                        max_price_per_unit: ResourcePricePerUnit(0),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(0),
+                        max_price_per_unit: ResourcePricePerUnit(0),
+                    },
+                    l1_data_gas: Some(ResourceBound {
+                        max_amount: ResourceAmount(0),
+                        max_price_per_unit: ResourcePricePerUnit(0),
+                    }),
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                contract_address_salt: contract_address_salt!("0x1"),
+                constructor_calldata: vec![call_param!("0xdeadbeef")],
+                class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+            },
+        );
+
+        let input = Input {
+            request: vec![BroadcastedTransaction::DeployAccount(deploy_account)],
+            simulation_flags: vec![],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await.unwrap();
+
+        let output_json = result
+            .serialize(Serializer {
+                version: RpcVersion::V08,
+            })
+            .unwrap();
+        let expected_json = serde_json::json!([
+            {
+                "l1_data_gas_consumed": "0x1c0",
+                "l1_data_gas_price": "0x2",
+                "l1_gas_consumed": "0x0",
+                "l1_gas_price": "0x2",
+                "l2_gas_consumed": "0xb5842",
+                "l2_gas_price": "0x1",
+                "overall_fee": "0xb5bc2",
+                "unit": "FRI"
+            }
+        ]);
+        pretty_assertions_sorted::assert_eq!(expected_json, output_json);
+    }
+
+    #[tokio::test]
+    async fn deploy_account_starknet_0_13_1() {
+        let starknet_version = StarknetVersion::new(0, 13, 1, 0);
+        let (context, last_block_header, _account_contract_address, _universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(starknet_version).await;
+
+        let deploy_account = crate::types::request::BroadcastedDeployAccountTransaction::V3(
+            BroadcastedDeployAccountTransactionV3 {
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x0"),
+                resource_bounds: ResourceBounds {
+                    l1_gas: ResourceBound {
+                        max_amount: ResourceAmount(0),
+                        max_price_per_unit: ResourcePricePerUnit(0),
+                    },
+                    l2_gas: ResourceBound {
+                        max_amount: ResourceAmount(0),
+                        max_price_per_unit: ResourcePricePerUnit(0),
+                    },
+                    l1_data_gas: None,
+                },
+                tip: Tip(0),
+                paymaster_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                contract_address_salt: contract_address_salt!("0x1"),
+                constructor_calldata: vec![call_param!("0xdeadbeef")],
+                class_hash: crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH,
+            },
+        );
+
+        let input = Input {
+            request: vec![BroadcastedTransaction::DeployAccount(deploy_account)],
+            simulation_flags: vec![],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+        let result = super::estimate_fee(context, input).await.unwrap();
+
+        let output_json = result
+            .serialize(Serializer {
+                version: RpcVersion::V08,
+            })
+            .unwrap();
+        let expected_json = serde_json::json!([
+            {
+                "l1_data_gas_consumed": "0x160",
+                "l1_data_gas_price": "0x2",
+                "l1_gas_consumed": "0xc",
+                "l1_gas_price": "0x2",
+                "l2_gas_consumed": "0x0",
+                "l2_gas_price": "0x1",
+                "overall_fee": "0x2d8",
+                "unit": "FRI"
+            }
+        ]);
+        pretty_assertions_sorted::assert_eq!(expected_json, output_json);
     }
 }
