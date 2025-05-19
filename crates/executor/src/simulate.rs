@@ -3,8 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use blockifier::blockifier::transaction_executor::{
-    TransactionExecutorError,
-    BLOCK_STATE_ACCESS_ERR,
+    TransactionExecutionOutput, TransactionExecutorError, BLOCK_STATE_ACCESS_ERR
 };
 use blockifier::state::cached_state::{StateChanges, StateMaps};
 use blockifier::state::errors::StateError;
@@ -13,6 +12,7 @@ use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::versioned_constants::VersionedConstants;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;
+use starknet_api::execution_resources::GasVector;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 use util::percentage::Percentage;
 
@@ -20,7 +20,7 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
-use crate::execution_state::{create_executor, PathfinderExecutionState};
+use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -99,6 +99,65 @@ impl Default for TraceCache {
     }
 }
 
+/// Validate execution of a batch of transactions.
+///
+/// TODO TransactionSimulation carries a state diff which we don't use,
+/// instead we take the final state diff after finalizing the block to
+/// make sure that the special system contracts' storages are also updated.
+pub fn execute_batch(
+    block_number: BlockNumber,
+    executor: &mut PathfinderExecutor<'_>,
+    transactions: Vec<Transaction>,
+    start_tx_index: usize,
+) -> Result<(Vec<TransactionSimulation>, usize), TransactionExecutionError> {
+    let state_before_batch = executor
+        .block_state
+        .as_ref()
+        .expect(BLOCK_STATE_ACCESS_ERR)
+        .clone();
+    let next_start_idx = transactions.len() + start_tx_index;
+
+    transactions
+        .into_iter()
+        .enumerate()
+        .map(|(tx_index, mut tx)| {
+            let tx_index = start_tx_index + tx_index;
+            let _span = tracing::debug_span!(
+                "validate_batch",
+                block_number = %block_number,
+                transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
+                transaction_index = %tx_index
+            )
+            .entered();
+
+            let tx_type = transaction_type(&tx);
+            let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
+            let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
+
+            let ((tx_info, state_maps), gas_limit) = 
+                execute_transaction(&tx, tx_index, executor, ExecutionBehaviorOnRevert::Continue)?;
+
+            tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
+
+            Ok(TransactionSimulation {
+                fee_estimation: FeeEstimate::from_tx_and_gas_vector(
+                    &tx,
+                    &gas_limit,
+                    &gas_vector_computation_mode,
+                    &executor.block_context,
+                ),
+                trace: to_trace(
+                    tx_type,
+                    tx_info,
+                    StateDiff::default(),
+                    executor.block_context.versioned_constants(),
+                    &gas_vector_computation_mode,
+                ),
+            })
+        })
+        .collect::<Result<Vec<_>, _>>().map(|x| (x, next_start_idx))
+}
+
 // Returns a tuple:
 // - collected transaction execution results, for each execution separately
 // - vs a state diff taken from the executor after all those transactions were
@@ -109,7 +168,7 @@ pub fn simulate2(
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<(Vec<TransactionSimulation>, StateDiff), TransactionExecutionError> {
-    let block_number = execution_state.header.number;
+    let block_number = execution_state.block_info.number;
     let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     let initial_state_before_all_execution = tx_executor
@@ -216,7 +275,7 @@ pub fn simulate(
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
-    let block_number = execution_state.header.number;
+    let block_number = execution_state.block_info.number;
     let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     transactions
@@ -391,7 +450,7 @@ enum TransactionType {
     L1Handler,
 }
 
-fn transaction_type(transaction: &Transaction) -> TransactionType {
+pub(crate) fn transaction_type(transaction: &Transaction) -> TransactionType {
     match transaction {
         Transaction::Account(tx) => match tx.tx {
             starknet_api::executable_transaction::AccountTransaction::Declare(_) => {
@@ -408,7 +467,7 @@ fn transaction_type(transaction: &Transaction) -> TransactionType {
     }
 }
 
-fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
+pub(crate) fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
     match transaction {
         Transaction::Account(outer) => match &outer.tx {
             starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {
@@ -515,7 +574,7 @@ fn to_state_diff(
     })
 }
 
-fn to_trace(
+pub(crate) fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,

@@ -11,6 +11,7 @@ pub(crate) mod simulate;
 pub(crate) mod state_reader;
 pub(crate) mod transaction;
 pub mod types;
+pub(crate) mod validator;
 
 // re-export blockifier transaction type since it's exposed on our API
 pub use blockifier::transaction::account_transaction::{
@@ -26,6 +27,6 @@ pub use error_stack::{CallFrame, ErrorStack, Frame};
 pub use estimate::estimate;
 pub use execution_state::{ExecutionState, L1BlobDataAvailability, VersionedConstantsMap};
 pub use felt::{IntoFelt, IntoStarkFelt};
-pub use simulate::{simulate, simulate2, trace, TraceCache};
+pub use simulate::{execute_batch, simulate, simulate2, trace, TraceCache};
 pub use starknet_api::contract_class::ClassInfo;
 pub use state_reader::NativeClassCache;

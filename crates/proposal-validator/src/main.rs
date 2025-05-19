@@ -51,6 +51,32 @@ use starknet_api::transaction::fields::Fee;
 use tracing::{debug, error, info, trace, warn};
 use util::percentage::Percentage;
 
+/*
+fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
+    // Hash the block header.
+    let mut hasher = PoseidonHasher::new();
+   +hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
+   + ProposalInit::height hasher.write(header.number.get().into());
+    hasher.write(header.state_commitment.0.into());
+   + ?ProposalInit::proposal? hasher.write(header.sequencer_address.0.into());
+   + BlockInfo::timestamp hasher.write(header.timestamp.get().into());
+    hasher.write(concatenate_counts(header));
+    hasher.write(header.state_diff_commitment.0.into());
+    hasher.write(header.transaction_commitment.0.into());
+    hasher.write(header.event_commitment.0.into());
+    hasher.write(header.receipt_commitment.0.into());
+    hasher.write(gas_prices_to_hash(header));
+    hasher.write(
+        Felt::from_be_slice(header.starknet_version_str.as_bytes())
+            .expect("Starknet version should fit into a felt")
+            .into(),
+    );
+    hasher.write(MontFelt::ZERO);
+    hasher.write(header.parent_hash.0.into());
+    BlockHash(hasher.finish().into())
+}
+*/
+
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
@@ -91,16 +117,6 @@ fn main() -> anyhow::Result<()> {
 
     let (mut proposal, header) = create_proposal(&db_txn, block_number)?;
 
-    let execution_state = ExecutionState::trace(
-        ChainId::SEPOLIA_TESTNET,
-        header,
-        None,
-        Default::default(),
-        ETH_FEE_TOKEN_ADDRESS,
-        STRK_FEE_TOKEN_ADDRESS,
-        None,
-    );
-
     // TODO verify
     assert!(matches!(
         proposal.pop_front().expect("Proposal init"),
@@ -124,10 +140,126 @@ fn main() -> anyhow::Result<()> {
         panic!("Expected transaction batch");
     };
 
-    execute_batch(db_txn, execution_state, txns, block_number);
+    let execution_state = ExecutionState::trace(
+        ChainId::SEPOLIA_TESTNET,
+        header,
+        None,
+        Default::default(),
+        ETH_FEE_TOKEN_ADDRESS,
+        STRK_FEE_TOKEN_ADDRESS,
+        None,
+    );
+    // let mut executor = create_executor(db_tx, execution_state)?;
+
+    execute_batch0(db_txn, execution_state, txns, block_number);
 
     Ok(())
 }
+
+/*
+fn execute_batch(
+    execution_state: ExecutionState,
+    txns: Vec<p2p_proto::consensus::Transaction>,
+    block_number: BlockNumber,
+    start_tx_index: usize,
+) {
+    let txns = txns
+        .into_iter()
+        .map(compose_executor_transaction)
+        .collect::<anyhow::Result<Vec<_>>>()
+        .expect("Mapping into executor transactions");
+
+    pathfinder_executor::execute_batch(block_number, executor, txns, start_tx_index)?;
+
+    // Tuple:
+    // (collected after each transaction execution,
+    // vs
+    // taken from the cached state of the executor after all were executed)
+    let (txn_sims, state_changes_after_execution) =
+        match pathfinder_executor::simulate2(db_tx, execution_state, txns, Percentage::new(0)) {
+            Ok(x) => x,
+            Err(error) => {
+                error!(?error);
+                return;
+            }
+        };
+
+    let mut actual_storage: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
+        BTreeMap::new();
+    txn_sims.iter().for_each(|txn_sim| {
+        let storage_diffs = &txn_sim.state_diff().storage_diffs;
+        storage_diffs
+            .iter()
+            .for_each(|(contract_address, storage)| {
+                // IMPORTANT!!! Consecutive storage value updates to the same key are lost
+                // except for the last one
+                actual_storage.entry(*contract_address).or_default().extend(
+                    storage
+                        .iter()
+                        .map(|StorageDiff { key, value }| (*key, *value)),
+                );
+            });
+    });
+
+    let mut actual_storage2: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
+        BTreeMap::new();
+    state_changes_after_execution
+        .storage_diffs
+        .iter()
+        .for_each(|(contract_address, storage)| {
+            // IMPORTANT!!! Consecutive storage value updates to the same key are lost
+            // except for the last one
+            actual_storage2
+                .entry(*contract_address)
+                .or_default()
+                .extend(
+                    storage
+                        .iter()
+                        .map(|StorageDiff { key, value }| (*key, *value)),
+                );
+        });
+
+    let expected_storage = expected_state_update
+        .contract_updates
+        .iter()
+        .map(|(contract_address, update)| (contract_address, &update.storage))
+        .chain(
+            expected_state_update
+                .system_contract_updates
+                .iter()
+                .map(|(contract_address, update)| (contract_address, &update.storage)),
+        )
+        .filter_map(|(contract_address, storage)| {
+            let storage = storage
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect::<BTreeMap<_, _>>();
+            // Omit contracts that have no storage updates
+            (!storage.is_empty()).then_some((*contract_address, storage))
+        })
+        .collect::<BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>>>();
+
+    // pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage,
+    // "Actual vs Expected");
+    pretty_assertions_sorted::assert_eq!(actual_storage2, expected_storage, "Actual2 vs Expected");
+    // pretty_assertions_sorted::assert_eq!(actual_storage, actual_storage2,
+    // "Actual vs Actual2");
+    println!("Actual storage updates match expected ones!");
+
+    let actual_rest = StateDiffWithoutStorage::from(&state_changes_after_execution);
+    let expected_rest = StateDiffWithoutStorage::from(&expected_state_update);
+
+    pretty_assertions_sorted::assert_eq!(
+        actual_rest,
+        expected_rest,
+        "The rest: Actual vs Expected"
+    );
+
+    println!("The rest also matches!");
+
+    // TODO validate other parts of the state update
+}
+*/
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct StateDiffWithoutStorage {
@@ -201,7 +333,7 @@ impl From<&StateUpdate> for StateDiffWithoutStorage {
     }
 }
 
-fn execute_batch(
+fn execute_batch0(
     db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
     txns: Vec<p2p_proto::consensus::Transaction>,
