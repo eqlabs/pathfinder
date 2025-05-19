@@ -69,13 +69,6 @@ pub async fn simulate_transactions(
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");
 
-                let pruned = db_tx
-                    .block_pruned(block_id)
-                    .context("Querying block pruned status")?;
-                if pruned {
-                    return Err(SimulateTransactionError::BlockNotFound);
-                }
-
                 let header = db_tx
                     .block_header(block_id)
                     .context("Fetching block header")?

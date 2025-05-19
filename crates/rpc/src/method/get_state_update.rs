@@ -63,11 +63,19 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
             .try_into()
             .expect("Only pending cast should fail");
 
-        let pruned = tx
-            .block_pruned(block_id)
-            .context("Querying block pruned status")?;
-        if pruned {
+        let Some(block_number) = tx.block_number(block_id).context("Fetching block number")? else {
             return Err(Error::BlockNotFound);
+        };
+        if let Some(parent_block) = block_number.checked_sub(1) {
+            let parent_exists = tx
+                .block_exists(parent_block.into())
+                .context("Checking if parent exists")?;
+
+            // Parent block must also be present (not pruned) to obtain
+            // `parent_state_commitment`.
+            if !parent_exists {
+                return Err(Error::BlockNotFound);
+            }
         }
 
         let state_update = tx
