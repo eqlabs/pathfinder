@@ -114,15 +114,9 @@ fn main() -> anyhow::Result<()> {
         None
     };
 
-    let keys = if let Some(mut raw_keys) = cli.keys {
-        while let Some(tail) = raw_keys.chars().last() {
-            if tail == ',' {
-                raw_keys.pop();
-            } else {
-                break;
-            }
-        }
+    let keys = if let Some(raw_keys) = cli.keys {
         let cooked_keys = raw_keys
+            .trim_end_matches(',')
             .split(',')
             .map(|s| {
                 if s.is_empty() {
