@@ -1,13 +1,87 @@
 use std::collections::{BTreeMap, HashSet};
 
+use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
-use blockifier::state::state_api::State;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
-use starknet_api::block::{BlockInfo, FeeType};
+use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
 
 use super::felt::IntoFelt;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct BlockInfo {
+    pub number: BlockNumber,
+    pub timestamp: BlockTimestamp,
+    pub eth_l1_gas_price: GasPrice,
+    pub strk_l1_gas_price: GasPrice,
+    pub eth_l1_data_gas_price: GasPrice,
+    pub strk_l1_data_gas_price: GasPrice,
+    pub eth_l2_gas_price: GasPrice,
+    pub strk_l2_gas_price: GasPrice,
+    pub sequencer_address: SequencerAddress,
+    pub starknet_version: StarknetVersion,
+    pub l1_da_mode: L1DataAvailabilityMode,
+}
+
+impl From<BlockHeader> for BlockInfo {
+    fn from(h: BlockHeader) -> Self {
+        Self {
+            number: h.number,
+            timestamp: h.timestamp,
+            eth_l1_gas_price: h.eth_l1_gas_price,
+            strk_l1_gas_price: h.strk_l1_gas_price,
+            eth_l1_data_gas_price: h.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: h.strk_l1_data_gas_price,
+            eth_l2_gas_price: h.eth_l2_gas_price,
+            strk_l2_gas_price: h.strk_l2_gas_price,
+            sequencer_address: h.sequencer_address,
+            starknet_version: h.starknet_version,
+            l1_da_mode: h.l1_da_mode,
+        }
+    }
+}
+
+impl BlockInfo {
+    fn try_from_proposal(
+        height: u64,
+        timestamp: u64,
+        builder: SequencerAddress,
+        l1_da_mode: L1DataAvailabilityMode,
+        l2_gas_price_fri: u128,
+        l1_gas_price_wei: u128,
+        l1_data_gas_price_wei: u128,
+        eth_to_fri_rate: u128,
+        starknet_version: StarknetVersion,
+    ) -> anyhow::Result<Self> {
+        const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
+        let wei_to_fri = |wei: u128| -> u128 { wei * ETH_TO_WEI_RATE / eth_to_fri_rate };
+        let fri_to_wei = |fri: u128| -> u128 { fri * eth_to_fri_rate / ETH_TO_WEI_RATE };
+
+        let number = BlockNumber::new(height).context("Proposal height exceeds i64::MAX")?;
+        let timestamp =
+            BlockTimestamp::new(timestamp).context("Proposal timestamp exceeds i64::MAX")?;
+        let eth_l1_gas_price = GasPrice(l1_gas_price_wei);
+        let strk_l1_gas_price = GasPrice(wei_to_fri(l1_gas_price_wei));
+        let eth_l1_data_gas_price = GasPrice(l1_data_gas_price_wei);
+        let strk_l1_data_gas_price = GasPrice(wei_to_fri(l1_data_gas_price_wei));
+        let eth_l2_gas_price = GasPrice(fri_to_wei(l2_gas_price_fri));
+        let strk_l2_gas_price = GasPrice(l2_gas_price_fri);
+        Ok(Self {
+            number,
+            timestamp,
+            eth_l1_gas_price,
+            strk_l1_gas_price,
+            eth_l1_data_gas_price,
+            strk_l1_data_gas_price,
+            eth_l2_gas_price,
+            strk_l2_gas_price,
+            sequencer_address: builder,
+            starknet_version,
+            l1_da_mode,
+        })
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FeeEstimate {
@@ -25,7 +99,7 @@ impl FeeEstimate {
     /// Computes fee estimate from the transaction execution information.
     pub(crate) fn from_gas_vector_and_gas_price(
         gas_vector: &GasVector,
-        block_info: &BlockInfo,
+        block_info: &starknet_api::block::BlockInfo,
         fee_type: FeeType,
         minimal_gas_vector: &Option<GasVector>,
     ) -> FeeEstimate {

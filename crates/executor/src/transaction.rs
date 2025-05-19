@@ -300,7 +300,7 @@ pub(crate) fn execute_transaction(
             Ok((output, gas_limit))
         }
         Err(error) => {
-            tracing::debug!(%error, %tx_index, "Transaction estimation failed");
+            tracing::debug!(%error, %tx_index, "Transaction execution failed");
             let error = TransactionExecutorError::new(tx_index, error);
             Err(error.into())
         }
