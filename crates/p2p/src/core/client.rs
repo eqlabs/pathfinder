@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::Context;
 use libp2p::{Multiaddr, PeerId};
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::core::Command;
@@ -18,6 +19,10 @@ pub struct Client<C> {
 impl<C> Client<C> {
     pub(crate) fn new(sender: mpsc::Sender<Command<C>>, peer_id: PeerId) -> Self {
         Self { sender, peer_id }
+    }
+
+    pub async fn send(&self, command: C) -> Result<(), SendError<Command<C>>> {
+        self.sender.send(Command::Application(command)).await
     }
 
     pub fn peer_id(&self) -> &PeerId {

@@ -168,6 +168,12 @@ fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::
     })
 }
 
+/// Handles the conversion between domain types and protobuf messages.
+pub trait ProtobufSerializable: Sized {
+    fn to_protobuf_bytes(&self) -> Vec<u8>;
+    fn from_protobuf_bytes(bytes: &[u8]) -> Result<Self, std::io::Error>;
+}
+
 use p2p_proto_derive::*;
 pub mod class;
 pub mod common;
