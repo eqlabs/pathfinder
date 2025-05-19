@@ -7,6 +7,10 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
@@ -24,10 +28,6 @@ pub mod proto {
     #[allow(clippy::large_enum_variant)]
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
-    }
-    #[allow(clippy::large_enum_variant)]
-    pub mod consensus {
-        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
     }
 }
 
@@ -166,6 +166,12 @@ fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::
             format!("Missing field {field_name}"),
         )
     })
+}
+
+/// Handles the conversion between domain types and protobuf messages.
+pub trait ProtobufSerializable: Sized {
+    fn to_protobuf_bytes(&self) -> Vec<u8>;
+    fn from_protobuf_bytes(bytes: &[u8]) -> Result<Self, std::io::Error>;
 }
 
 use p2p_proto_derive::*;
