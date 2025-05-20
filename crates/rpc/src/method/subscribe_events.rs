@@ -55,13 +55,21 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
             return Ok(None);
         }
         value.deserialize_map(|value| {
+            let keys = value.deserialize_optional_array("keys", |value| {
+                value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
+            })?;
+            let keys = keys.map(|mut keys| {
+                if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+                    keys.truncate(last_non_empty + 1);
+                };
+                keys
+            });
+
             Ok(Some(Params {
                 from_address: value
                     .deserialize_optional("from_address")?
                     .map(ContractAddress),
-                keys: value.deserialize_optional_array("keys", |value| {
-                    value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
-                })?,
+                keys,
                 block_id: value.deserialize_optional("block_id")?,
             }))
         })
