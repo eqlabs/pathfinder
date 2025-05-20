@@ -10,6 +10,7 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
+pathfinder = { path = "../pathfinder" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
@@ -17,6 +18,7 @@ pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions_sorted = { workspace = true }
+rayon = { workspace = true }
 serde_json = { workspace = true }
 starknet_api = { workspace = true }
 tracing = { workspace = true }

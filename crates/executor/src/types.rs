@@ -3,12 +3,16 @@ use std::collections::{BTreeMap, HashSet};
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
 use pathfinder_common::prelude::*;
+use pathfinder_common::receipt::Receipt;
 use pathfinder_crypto::Felt;
 use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
 
 use super::felt::IntoFelt;
 
+pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
+
+// TODO FIXME probably much better in pathfinder_common
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BlockInfo {
     pub number: BlockNumber,
@@ -43,7 +47,7 @@ impl From<BlockHeader> for BlockInfo {
 }
 
 impl BlockInfo {
-    fn try_from_proposal(
+    pub fn try_from_proposal(
         height: u64,
         timestamp: u64,
         builder: SequencerAddress,
@@ -54,7 +58,6 @@ impl BlockInfo {
         eth_to_fri_rate: u128,
         starknet_version: StarknetVersion,
     ) -> anyhow::Result<Self> {
-        const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
         let wei_to_fri = |wei: u128| -> u128 { wei * ETH_TO_WEI_RATE / eth_to_fri_rate };
         let fri_to_wei = |fri: u128| -> u128 { fri * eth_to_fri_rate / ETH_TO_WEI_RATE };
 
@@ -177,6 +180,235 @@ impl TransactionSimulation {
 
     pub fn state_diff(&self) -> &StateDiff {
         self.trace.state_diff()
+    }
+
+    pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
+        use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
+        match self.trace {
+            TransactionTrace::Declare(_)
+            | TransactionTrace::DeployAccount(_)
+            | TransactionTrace::L1Handler(_) => Succeeded,
+            TransactionTrace::Invoke(ref t) => match &t.execute_invocation {
+                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
+                ExecuteInvocation::RevertedReason(reason) => Reverted {
+                    reason: reason.clone(),
+                },
+            },
+        }
+    }
+
+    pub fn execution_resources(
+        &self,
+    ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
+        match &self.trace {
+            TransactionTrace::Declare(t) => &t.execution_resources,
+            TransactionTrace::DeployAccount(t) => &t.execution_resources,
+            TransactionTrace::Invoke(t) => &t.execution_resources,
+            TransactionTrace::L1Handler(t) => &t.execution_resources,
+        }
+        .try_into()
+    }
+}
+
+// TODO FIXME leave only one version either via ref or consuming
+fn collect_events_and_messages(
+    fi: &FunctionInvocation,
+    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
+    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
+) {
+    fi.events.iter().for_each(|e| {
+        events.insert(
+            e.order,
+            pathfinder_common::event::Event {
+                data: e.data.iter().map(|d| EventData(*d)).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.iter().map(|k| EventKey(*k)).collect(),
+            },
+        );
+    });
+    fi.messages.iter().for_each(|m| {
+        messages.insert(
+            m.order,
+            pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .iter()
+                    .map(|p| L2ToL1MessagePayloadElem(*p))
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            },
+        );
+    });
+    fi.internal_calls
+        .iter()
+        .for_each(|fi| collect_events_and_messages(fi, events, messages));
+}
+
+// TODO FIXME leave only one version either via ref or consuming
+fn collect_events_and_messages2(
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
+    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
+) {
+    fi.events.into_iter().for_each(|e| {
+        events.insert(
+            e.order,
+            pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            },
+        );
+    });
+    fi.messages.into_iter().for_each(|m| {
+        messages.insert(
+            m.order,
+            pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            },
+        );
+    });
+    fi.internal_calls
+        .iter()
+        .for_each(|fi| collect_events_and_messages(fi, events, messages));
+}
+
+/*
+// TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
+// transaction indices, keep only one conversion (ie. from self or &self)
+impl TryFrom<&TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
+    type Error = anyhow::Error;
+
+    fn try_from(x: &TransactionSimulation) -> Result<Self, Self::Error> {
+        let mut messages = BTreeMap::new();
+        let mut events = BTreeMap::new();
+
+        match &x.trace {
+            TransactionTrace::Declare(t) => {
+                t.validate_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::DeployAccount(t) => {
+                t.validate_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+                t.constructor_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::Invoke(t) => {
+                t.validate_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = &t.execute_invocation {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                }
+                t.fee_transfer_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::L1Handler(t) => {
+                t.function_invocation.as_ref().map(|fi| {
+                    collect_events_and_messages(fi, &mut events, &mut messages);
+                });
+            }
+        };
+
+        let mut buf = [0u8; 32];
+        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
+        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
+
+        let receipt = Receipt {
+            actual_fee,
+            execution_resources: x.execution_resources()?,
+            l2_to_l1_messages: messages.into_values().collect(),
+            execution_status: x.execution_status(),
+            transaction_hash: TransactionHash::ZERO, // TODO FIXME
+            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
+        };
+
+        Ok((receipt, events.into_values().collect()))
+    }
+}
+*/
+
+// TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
+// transaction indices, keep only one conversion (ie. from self or &self)
+impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
+    type Error = anyhow::Error;
+
+    fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
+        let mut messages = BTreeMap::new();
+        let mut events = BTreeMap::new();
+
+        let execution_resources = x.execution_resources()?;
+        let execution_status = x.execution_status();
+        match x.trace {
+            TransactionTrace::Declare(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::DeployAccount(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+                t.constructor_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::Invoke(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                }
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::L1Handler(t) => {
+                t.function_invocation.map(|fi| {
+                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                });
+            }
+        };
+
+        let mut buf = [0u8; 32];
+        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
+        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
+
+        let receipt = Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages: messages.into_values().collect(),
+            execution_status,
+            transaction_hash: TransactionHash::ZERO, // TODO FIXME
+            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
+        };
+
+        Ok((receipt, events.into_values().collect()))
     }
 }
 
@@ -335,6 +567,61 @@ pub struct ExecutionResources {
     pub l1_gas: u128,
     pub l1_data_gas: u128,
     pub l2_gas: u128,
+}
+
+impl TryFrom<&ExecutionResources> for pathfinder_common::receipt::ExecutionResources {
+    type Error = anyhow::Error;
+
+    fn try_from(x: &ExecutionResources) -> Result<Self, Self::Error> {
+        Ok(Self {
+            builtins: pathfinder_common::receipt::BuiltinCounters {
+                output: 0, // TODO FIXME
+                pedersen: x
+                    .computation_resources
+                    .poseidon_builtin_applications
+                    .try_into()?,
+                range_check: x
+                    .computation_resources
+                    .range_check_builtin_applications
+                    .try_into()?,
+                ecdsa: x
+                    .computation_resources
+                    .ecdsa_builtin_applications
+                    .try_into()?,
+                bitwise: x
+                    .computation_resources
+                    .bitwise_builtin_applications
+                    .try_into()?,
+                ec_op: x
+                    .computation_resources
+                    .ec_op_builtin_applications
+                    .try_into()?,
+                keccak: x
+                    .computation_resources
+                    .keccak_builtin_applications
+                    .try_into()?,
+                poseidon: x
+                    .computation_resources
+                    .poseidon_builtin_applications
+                    .try_into()?,
+                segment_arena: x.computation_resources.segment_arena_builtin.try_into()?,
+                add_mod: 0,       // TODO FIXME
+                mul_mod: 0,       // TODO FIXME
+                range_check96: 0, // TODO FIXME
+            },
+            n_steps: x.computation_resources.steps.try_into()?,
+            n_memory_holes: x.computation_resources.memory_holes.try_into()?,
+            data_availability: pathfinder_common::receipt::L1Gas {
+                l1_gas: x.data_availability.l1_gas,
+                l1_data_gas: x.data_availability.l1_data_gas,
+            },
+            total_gas_consumed: pathfinder_common::receipt::L1Gas {
+                l1_gas: x.l1_gas,
+                l1_data_gas: x.l1_data_gas,
+            },
+            l2_gas: pathfinder_common::receipt::L2Gas(x.l2_gas),
+        })
+    }
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]

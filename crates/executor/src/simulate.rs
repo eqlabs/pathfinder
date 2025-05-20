@@ -214,7 +214,7 @@ pub fn simulate2(
             } else {
                 execute_transaction(&tx, tx_index, &mut tx_executor, ExecutionBehaviorOnRevert::Continue)?
             };
-            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)?;
+            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())?;
 
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
@@ -263,7 +263,7 @@ pub fn simulate2(
                                              * to compare storage
                                              * updates with the collected partial simulation
                                              * results */
-        None, // FIXME
+        std::iter::empty(), // FIXME
     )?;
 
     results.map(|r| (r, state_changes_after_execution))
@@ -315,7 +315,7 @@ pub fn simulate(
             } else {
                 execute_transaction(&tx, tx_index, &mut tx_executor, ExecutionBehaviorOnRevert::Continue)?
             };
-            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)?;
+            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())?;
 
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
@@ -416,7 +416,7 @@ pub fn trace(
             }
         };
         let state_diff =
-            to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)
+            to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())
                 .inspect_err(|_| {
                     // Remove the cache entry so it's no longer inflight.
                     let mut cache = cache.0.lock().unwrap();
@@ -443,7 +443,7 @@ pub fn trace(
     Ok(traces)
 }
 
-enum TransactionType {
+pub(crate) enum TransactionType {
     Declare,
     DeployAccount,
     Invoke,
@@ -486,10 +486,10 @@ pub(crate) fn transaction_declared_deprecated_class(transaction: &Transaction) -
     }
 }
 
-fn to_state_diff(
+pub(crate) fn to_state_diff(
     state_maps: StateMaps,
     initial_state: PathfinderExecutionState<'_>,
-    old_declared_contract: Option<ClassHash>,
+    old_declared_contracts: impl Iterator<Item = ClassHash>,
 ) -> Result<StateDiff, StateError> {
     let mut deployed_contracts = Vec::new();
     let mut replaced_classes = Vec::new();
@@ -551,7 +551,7 @@ fn to_state_diff(
         storage_diffs,
         deployed_contracts,
         // This info is not present in the state diff, so we need to pass it separately.
-        deprecated_declared_classes: old_declared_contract.into_iter().collect(),
+        deprecated_declared_classes: old_declared_contracts.collect(),
         declared_classes: state_maps
             .compiled_class_hashes
             .into_iter()
