@@ -1,5 +1,5 @@
 use core::panic;
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter::Extend;
 use std::str::FromStr;
 
@@ -16,7 +16,8 @@ use p2p_proto::consensus::{
 };
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
@@ -28,9 +29,11 @@ use pathfinder_common::{
     ContractNonce,
     EntryPoint,
     L1DataAvailabilityMode,
+    SequencerAddress,
     StateUpdate,
     StorageAddress,
     StorageValue,
+    TransactionIndex,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_executor::types::{
@@ -39,16 +42,22 @@ use pathfinder_executor::types::{
     ReplacedClass,
     StateDiff,
     StorageDiff,
-    TransactionSimulation,
+    ETH_TO_WEI_RATE,
 };
-use pathfinder_executor::{ClassInfo, ExecutionState, IntoStarkFelt};
+use pathfinder_executor::{ClassInfo, ExecutionState, IntoStarkFelt, Validator};
+use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
 use pathfinder_storage::StorageBuilder;
+use rayon::prelude::*;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 use util::percentage::Percentage;
 
 /*
@@ -115,7 +124,7 @@ fn main() -> anyhow::Result<()> {
         .transaction()
         .context("Create database transaction")?;
 
-    let (mut proposal, header) = create_proposal(&db_txn, block_number)?;
+    let (mut proposal, expected_header) = create_proposal(&db_txn, block_number)?;
 
     // TODO verify
     assert!(matches!(
@@ -123,11 +132,9 @@ fn main() -> anyhow::Result<()> {
         ProposalPart::ProposalInit(_)
     ));
 
-    // TODO verify
-    assert!(matches!(
-        proposal.pop_front().expect("Block info"),
-        ProposalPart::BlockInfo(_)
-    ));
+    let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
+        panic!("Expected block info");
+    };
 
     // TODO verify
     assert!(matches!(
@@ -140,18 +147,97 @@ fn main() -> anyhow::Result<()> {
         panic!("Expected transaction batch");
     };
 
-    let execution_state = ExecutionState::trace(
+    use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+
+    let txns = txns
+        .into_iter()
+        .map(map_transaction)
+        .collect::<anyhow::Result<Vec<_>>>()
+        .expect("Mapping into executor transactions");
+    let (common_txn_variants, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+
+    let txn_hashes = common_txn_variants
+        .par_iter()
+        .map(|v| v.calculate_hash(ChainId::SEPOLIA_TESTNET, false))
+        .collect::<Vec<_>>();
+
+    let common_txns = common_txn_variants
+        .into_iter()
+        .zip(txn_hashes.iter().copied())
+        .map(|(variant, hash)| Transaction { hash, variant })
+        .collect::<Vec<_>>();
+
+    let transaction_commitment =
+        calculate_transaction_commitment(&common_txns, expected_header.starknet_version)?;
+
+    let mut validator = Validator::new(
         ChainId::SEPOLIA_TESTNET,
-        header,
-        None,
-        Default::default(),
+        pathfinder_executor::types::BlockInfo::try_from_proposal(
+            block_info.height,
+            block_info.timestamp,
+            SequencerAddress(block_info.builder.0),
+            match block_info.l1_da_mode {
+                Calldata => L1DataAvailabilityMode::Calldata,
+                Blob => L1DataAvailabilityMode::Blob,
+            },
+            block_info.l2_gas_price_fri,
+            block_info.l1_gas_price_wei,
+            block_info.l1_data_gas_price_wei,
+            block_info.eth_to_fri_rate,
+            expected_header.starknet_version,
+        )?,
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
-        None,
-    );
-    // let mut executor = create_executor(db_tx, execution_state)?;
+        db_txn,
+    )?;
 
-    execute_batch0(db_txn, execution_state, txns, block_number);
+    let (receipts, events): (Vec<_>, Vec<_>) =
+        validator.execute(executor_txns)?.into_iter().unzip();
+
+    let state_diff = validator.finalize()?;
+
+    let receipts = receipts
+        .into_iter()
+        .zip(txn_hashes.iter().copied())
+        .enumerate()
+        .map(|(idx, (r, h))| Receipt {
+            transaction_hash: h,
+            transaction_index: TransactionIndex::new_or_panic(
+                idx.try_into().expect("idx < i64::MAX"),
+            ),
+            ..r
+        })
+        .collect::<Vec<_>>();
+
+    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+
+    let events_by_txn = events
+        .iter()
+        .zip(txn_hashes.iter().copied())
+        .map(|(e, h)| (h, e.as_slice()))
+        .collect::<Vec<_>>();
+    let event_commitment =
+        calculate_event_commitment(&events_by_txn, expected_header.starknet_version)?;
+
+    assert_eq!(
+        expected_header.transaction_commitment,
+        transaction_commitment
+    );
+    assert_eq!(expected_header.receipt_commitment, receipt_commitment);
+    assert_eq!(expected_header.event_commitment, event_commitment);
+
+    // let execution_state = ExecutionState::trace(
+    //     ChainId::SEPOLIA_TESTNET,
+    //     header,
+    //     None,
+    //     Default::default(),
+    //     ETH_FEE_TOKEN_ADDRESS,
+    //     STRK_FEE_TOKEN_ADDRESS,
+    //     None,
+    // );
+    // // let mut executor = create_executor(db_tx, execution_state)?;
+
+    // execute_batch0(db_txn, execution_state, txns, block_number);
 
     Ok(())
 }
@@ -484,6 +570,50 @@ fn compose_executor_transaction(
     Ok(tx)
 }
 
+fn map_transaction(
+    transaction: p2p_proto::consensus::Transaction,
+) -> anyhow::Result<(
+    pathfinder_common::transaction::TransactionVariant,
+    pathfinder_executor::Transaction,
+)> {
+    let p2p_proto::consensus::Transaction {
+        txn,
+        transaction_hash,
+    } = transaction;
+    let (variant, class_info) = match txn {
+        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
+            (SyncVariant::DeclareV3(common), Some(class_info(class)?))
+        }
+        ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
+        ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
+        ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
+    };
+
+    let common_txn_variant = TransactionVariant::try_from_dto(variant)
+        .expect("Proposal part was generated from a valid DB");
+
+    let deployed_address = deployed_address(&common_txn_variant, true);
+
+    // TODO why 10^12?
+    let paid_fee_on_l1 = match &common_txn_variant {
+        TransactionVariant::L1Handler(_) => Some(Fee(1_000_000_000_000)),
+        _ => None,
+    };
+
+    let api_txn = map_transaction_variant(common_txn_variant.clone())?;
+    let tx_hash = starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
+    let executor_txn = pathfinder_executor::Transaction::from_api(
+        api_txn,
+        tx_hash,
+        class_info,
+        paid_fee_on_l1,
+        deployed_address,
+        pathfinder_executor::AccountTransactionExecutionFlags::default(),
+    )?;
+
+    Ok((common_txn_variant, executor_txn))
+}
+
 fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
     let Cairo1Class {
         abi,
@@ -605,8 +735,6 @@ fn create_proposal(
 
     use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
 
-    const ETHWEI: u128 = 1_000_000_000_000_000_000;
-
     let wei_l2_gas_price = if header.eth_l2_gas_price.0 == 0 {
         warn!("wei L2 gas price is 0, correcting to 1");
         1
@@ -634,7 +762,7 @@ fn create_proposal(
         l1_gas_price_wei: header.eth_l1_gas_price.0,
         l1_data_gas_price_wei: header.eth_l1_data_gas_price.0,
         // Eth/Fri = Wei * 10^18 / Fri
-        eth_to_fri_rate: wei_l2_gas_price * ETHWEI / fri_l2_gas_price,
+        eth_to_fri_rate: wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price,
     }));
 
     let txns = db_txn
