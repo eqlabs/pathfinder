@@ -742,8 +742,6 @@ mod tests {
     use test_utils::*;
 
     use super::*;
-    static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
-        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
     static EVENT_FILTERS_BLOCK_RANGE_LIMIT: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
 
@@ -919,11 +917,7 @@ mod tests {
         };
 
         let events_before = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTERS_BLOCK_RANGE_LIMIT)
             .unwrap()
             .events;
 
@@ -949,11 +943,7 @@ mod tests {
         }
 
         let events_after = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTERS_BLOCK_RANGE_LIMIT)
             .unwrap()
             .events;
 
@@ -1055,11 +1045,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTERS_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTERS_BLOCK_RANGE_LIMIT)
             .unwrap()
             .events;
 

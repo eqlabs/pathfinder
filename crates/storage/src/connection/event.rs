@@ -242,7 +242,6 @@ impl Transaction<'_> {
     pub fn events(
         &self,
         constraints: &EventConstraints,
-        max_blocks_to_scan: NonZeroUsize,
         block_range_limit: NonZeroUsize,
     ) -> Result<PageOfEvents, EventFilterError> {
         if constraints.page_size < 1 {
@@ -296,18 +295,7 @@ impl Transaction<'_> {
 
         let mut emitted_events = vec![];
 
-        for (blocks_scanned, block) in blocks_to_scan.enumerate() {
-            if blocks_scanned >= max_blocks_to_scan.get() {
-                tracing::trace!("Reached block scan limit");
-                return Ok(PageOfEvents {
-                    events: emitted_events,
-                    continuation_token: Some(ContinuationToken {
-                        block_number: block,
-                        offset: 0,
-                    }),
-                });
-            }
-
+        for block in blocks_to_scan {
             let events_required = constraints.page_size + 1 - emitted_events.len();
             tracing::trace!(%block, %events_required, "Processing block");
 
@@ -793,8 +781,6 @@ mod tests {
     use super::*;
     use crate::{test_utils, AGGREGATE_BLOOM_BLOCK_RANGE_LEN};
 
-    static MAX_BLOCKS_TO_SCAN: LazyLock<NonZeroUsize> =
-        LazyLock::new(|| NonZeroUsize::new(100).unwrap());
     static EVENT_FILTER_BLOCK_RANGE_LIMIT: LazyLock<NonZeroUsize> =
         LazyLock::new(|| NonZeroUsize::new(100).unwrap());
 
@@ -947,11 +933,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1054,7 +1036,6 @@ mod tests {
                     page_size: 1024,
                     offset: 0,
                 },
-                *MAX_BLOCKS_TO_SCAN,
                 *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap()
@@ -1091,11 +1072,7 @@ mod tests {
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1126,11 +1103,7 @@ mod tests {
         let expected_events =
             &emitted_events[..test_utils::EVENTS_PER_BLOCK * (UNTIL_BLOCK_NUMBER + 1)];
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1159,11 +1132,7 @@ mod tests {
 
         let expected_events = &emitted_events[..test_utils::EVENTS_PER_BLOCK + 1];
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
             events,
@@ -1189,11 +1158,7 @@ mod tests {
         let expected_events =
             &emitted_events[test_utils::EVENTS_PER_BLOCK + 1..test_utils::EVENTS_PER_BLOCK * 2];
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         pretty_assertions_sorted::assert_eq!(
             events,
@@ -1223,11 +1188,7 @@ mod tests {
 
         let expected_events = &emitted_events[test_utils::EVENTS_PER_BLOCK * FROM_BLOCK_NUMBER..];
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1257,11 +1218,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1290,11 +1247,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1311,11 +1264,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1343,11 +1292,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1375,11 +1320,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1402,11 +1343,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1429,11 +1366,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1462,11 +1395,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1500,11 +1429,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1528,11 +1453,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1556,11 +1477,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1584,11 +1501,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1609,79 +1522,13 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
             PageOfEvents {
                 events: expected_events[4..].to_vec(),
                 continuation_token: None,
-            }
-        );
-    }
-
-    #[test]
-    fn scan_limit() {
-        let (storage, test_data) = test_utils::setup_test_storage();
-        let emitted_events = test_data.events;
-        let mut connection = storage.connection().unwrap();
-        let tx = connection.transaction().unwrap();
-
-        let constraints = EventConstraints {
-            from_block: None,
-            to_block: None,
-            contract_address: None,
-            keys: vec![],
-            page_size: 20,
-            offset: 0,
-        };
-
-        let events = tx
-            .events(
-                &constraints,
-                1.try_into().unwrap(),
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
-            .unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: emitted_events[..10].to_vec(),
-                continuation_token: Some(ContinuationToken {
-                    block_number: BlockNumber::new_or_panic(1),
-                    offset: 0
-                }),
-            }
-        );
-
-        let constraints = EventConstraints {
-            from_block: Some(BlockNumber::new_or_panic(1)),
-            to_block: None,
-            contract_address: None,
-            keys: vec![],
-            page_size: 20,
-            offset: 0,
-        };
-
-        let events = tx
-            .events(
-                &constraints,
-                1.try_into().unwrap(),
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
-            .unwrap();
-        assert_eq!(
-            events,
-            PageOfEvents {
-                events: emitted_events[10..20].to_vec(),
-                continuation_token: Some(ContinuationToken {
-                    block_number: BlockNumber::new_or_panic(2),
-                    offset: 0
-                }),
             }
         );
     }
@@ -1725,11 +1572,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1762,9 +1605,7 @@ mod tests {
             offset: 0,
         };
 
-        let events = tx
-            .events(&constraints, *MAX_BLOCKS_TO_SCAN, 10.try_into().unwrap())
-            .unwrap();
+        let events = tx.events(&constraints, 10.try_into().unwrap()).unwrap();
 
         assert_eq!(
             events,
@@ -1791,11 +1632,7 @@ mod tests {
         };
 
         let events = tx
-            .events(
-                &constraints_with_offset,
-                *MAX_BLOCKS_TO_SCAN,
-                *EVENT_FILTER_BLOCK_RANGE_LIMIT,
-            )
+            .events(&constraints_with_offset, *EVENT_FILTER_BLOCK_RANGE_LIMIT)
             .unwrap();
         assert_eq!(
             events,
@@ -1876,7 +1713,6 @@ mod tests {
         let page = tx
             .events(
                 &constraints,
-                *MAX_BLOCKS_TO_SCAN,
                 *EVENT_FILTER_BLOCK_RANGE_LIMIT,
             )
             .unwrap();
