@@ -31,7 +31,7 @@ impl Params {
             }
         }
         if let Some(keys) = &self.keys {
-            if keys.is_empty() {
+            if keys.iter().flatten().count() == 0 {
                 return true;
             }
             if event.keys.len() < keys.len() {
