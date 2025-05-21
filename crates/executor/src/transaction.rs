@@ -396,7 +396,7 @@ enum TransactionSimulationError<'tx> {
     ExecutionError(TransactionExecutionError),
 }
 
-fn set_l2_gas_limit(transaction: &mut Transaction, gas_limit: GasAmount) {
+pub(crate) fn set_l2_gas_limit(transaction: &mut Transaction, gas_limit: GasAmount) {
     if let Transaction::Account(ref mut account_transaction) = transaction {
         use starknet_api::executable_transaction::AccountTransaction;
         use starknet_api::transaction::fields::ValidResourceBounds;
@@ -522,7 +522,7 @@ fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
     }
 }
 
-fn get_max_l2_gas_amount_covered_by_balance(
+pub(crate) fn get_max_l2_gas_amount_covered_by_balance(
     tx: &Transaction,
     block_context: &blockifier::context::BlockContext,
     state: &mut PathfinderExecutionState<'_>,

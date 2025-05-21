@@ -55,20 +55,34 @@ impl BlockInfo {
         l2_gas_price_fri: u128,
         l1_gas_price_wei: u128,
         l1_data_gas_price_wei: u128,
+        // TODO FIXME ignored for the time being, see comment below
         eth_to_fri_rate: u128,
         starknet_version: StarknetVersion,
+        // TODO FIXME
+        // one eth_to_fri_rate is not suitable for current sepolia or integration data
+        // where there are 3 pairs of gas prices in both wei & fri and they give
+        // 2 different ethfri rates, often due to one of the prices in wei saturated at 1
+        workaround_l2_gas_price_wei: u128,
+        workaround_l1_gas_price_fri: u128,
+        workaround_l1_data_gas_price_fri: u128,
     ) -> anyhow::Result<Self> {
-        let wei_to_fri = |wei: u128| -> u128 { wei * ETH_TO_WEI_RATE / eth_to_fri_rate };
-        let fri_to_wei = |fri: u128| -> u128 { fri * eth_to_fri_rate / ETH_TO_WEI_RATE };
+        let _wei_to_fri = |wei: u128| -> u128 { wei * eth_to_fri_rate / ETH_TO_WEI_RATE };
+        let _fri_to_wei = |fri: u128| -> u128 { fri * ETH_TO_WEI_RATE / eth_to_fri_rate };
 
         let number = BlockNumber::new(height).context("Proposal height exceeds i64::MAX")?;
         let timestamp =
             BlockTimestamp::new(timestamp).context("Proposal timestamp exceeds i64::MAX")?;
         let eth_l1_gas_price = GasPrice(l1_gas_price_wei);
-        let strk_l1_gas_price = GasPrice(wei_to_fri(l1_gas_price_wei));
+        // TODO FIXME
+        // let strk_l1_gas_price = GasPrice(wei_to_fri(l1_gas_price_wei));
+        let strk_l1_gas_price = GasPrice(workaround_l1_gas_price_fri);
         let eth_l1_data_gas_price = GasPrice(l1_data_gas_price_wei);
-        let strk_l1_data_gas_price = GasPrice(wei_to_fri(l1_data_gas_price_wei));
-        let eth_l2_gas_price = GasPrice(fri_to_wei(l2_gas_price_fri));
+        // TODO FIXME
+        // let strk_l1_data_gas_price = GasPrice(wei_to_fri(l1_data_gas_price_wei));
+        let strk_l1_data_gas_price = GasPrice(workaround_l1_data_gas_price_fri);
+        // TODO FIXME
+        // let eth_l2_gas_price = GasPrice(fri_to_wei(l2_gas_price_fri));
+        let eth_l2_gas_price = GasPrice(workaround_l2_gas_price_wei);
         let strk_l2_gas_price = GasPrice(l2_gas_price_fri);
         Ok(Self {
             number,
