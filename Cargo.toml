@@ -138,7 +138,7 @@ tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
 thiserror = "1.0.48"
 time = "0.3.36"
-tokio = "1.37.0"
+tokio = "1.45.0"
 tokio-retry = "0.3.0"
 tokio-stream = "0.1.14"
 tokio-tungstenite = "0.21"
