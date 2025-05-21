@@ -10,7 +10,12 @@ use crate::simulate::{
     transaction_declared_deprecated_class,
     transaction_type,
 };
-use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
+use crate::transaction::{
+    execute_transaction,
+    get_max_l2_gas_amount_covered_by_balance,
+    set_l2_gas_limit,
+    ExecutionBehaviorOnRevert,
+};
 use crate::types::{BlockInfo, FeeEstimate, StateDiff, TransactionSimulation};
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
@@ -65,7 +70,7 @@ impl<'a> Validator<'a> {
         let sims = txns
             .into_iter()
             .enumerate()
-            .map(|(tx_index, tx)| {
+            .map(|(tx_index, mut tx)| {
                 let tx_index = start_tx_index + tx_index;
                 let _span = tracing::debug_span!(
                     "Validator::execute",
@@ -80,6 +85,16 @@ impl<'a> Validator<'a> {
                     .map(|class| self.declared_deprecated_classes.push(class));
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
+
+                // let max_l2_gas_limit = get_max_l2_gas_amount_covered_by_balance(
+                //     &tx,
+                //     &self.executor.block_context,
+                //     self.executor
+                //         .block_state
+                //         .as_mut()
+                //         .expect(BLOCK_STATE_ACCESS_ERR),
+                // )?;
+                // set_l2_gas_limit(&mut tx, max_l2_gas_limit);
 
                 let ((tx_info, _), gas_limit) = execute_transaction(
                     &tx,

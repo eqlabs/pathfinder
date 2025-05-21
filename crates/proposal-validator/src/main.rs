@@ -16,6 +16,7 @@ use p2p_proto::consensus::{
 };
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
+use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
@@ -33,6 +34,7 @@ use pathfinder_common::{
     StateUpdate,
     StorageAddress,
     StorageValue,
+    TransactionHash,
     TransactionIndex,
 };
 use pathfinder_crypto::Felt;
@@ -57,7 +59,7 @@ use rayon::prelude::*;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, warn};
 use util::percentage::Percentage;
 
 /*
@@ -124,7 +126,8 @@ fn main() -> anyhow::Result<()> {
         .transaction()
         .context("Create database transaction")?;
 
-    let (mut proposal, expected_header) = create_proposal(&db_txn, block_number)?;
+    let (mut proposal, expected_header, expected_transactions, expected_receipts, expected_events) =
+        create_proposal(&db_txn, block_number)?;
 
     // TODO verify
     assert!(matches!(
@@ -170,22 +173,30 @@ fn main() -> anyhow::Result<()> {
     let transaction_commitment =
         calculate_transaction_commitment(&common_txns, expected_header.starknet_version)?;
 
+    let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
+        block_info.height,
+        block_info.timestamp,
+        SequencerAddress(block_info.builder.0),
+        match block_info.l1_da_mode {
+            Calldata => L1DataAvailabilityMode::Calldata,
+            Blob => L1DataAvailabilityMode::Blob,
+        },
+        block_info.l2_gas_price_fri,
+        block_info.l1_gas_price_wei,
+        block_info.l1_data_gas_price_wei,
+        block_info.eth_to_fri_rate,
+        expected_header.starknet_version,
+        // TODO workaround for inconsistent ethfri rate in the blocks
+        expected_header.eth_l2_gas_price.0,
+        expected_header.strk_l1_gas_price.0,
+        expected_header.strk_l1_data_gas_price.0,
+    )?;
+
+    debug!("block_info: {block_info:#?}");
+
     let mut validator = Validator::new(
         ChainId::SEPOLIA_TESTNET,
-        pathfinder_executor::types::BlockInfo::try_from_proposal(
-            block_info.height,
-            block_info.timestamp,
-            SequencerAddress(block_info.builder.0),
-            match block_info.l1_da_mode {
-                Calldata => L1DataAvailabilityMode::Calldata,
-                Blob => L1DataAvailabilityMode::Blob,
-            },
-            block_info.l2_gas_price_fri,
-            block_info.l1_gas_price_wei,
-            block_info.l1_data_gas_price_wei,
-            block_info.eth_to_fri_rate,
-            expected_header.starknet_version,
-        )?,
+        block_info,
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
         db_txn,
@@ -211,14 +222,32 @@ fn main() -> anyhow::Result<()> {
 
     let receipt_commitment = calculate_receipt_commitment(&receipts)?;
 
-    let events_by_txn = events
+    let events_ref_by_txn = events
         .iter()
         .zip(txn_hashes.iter().copied())
         .map(|(e, h)| (h, e.as_slice()))
         .collect::<Vec<_>>();
     let event_commitment =
-        calculate_event_commitment(&events_by_txn, expected_header.starknet_version)?;
+        calculate_event_commitment(&events_ref_by_txn, expected_header.starknet_version)?;
 
+    let events = events
+        .into_iter()
+        .zip(txn_hashes.iter().copied())
+        .map(|(e, h)| (h, e))
+        .collect::<Vec<_>>();
+
+    // Compare transactions, receipts, events
+    pretty_assertions_sorted::assert_eq!(
+        common_txns,
+        expected_transactions,
+        "Comparing transactions"
+    );
+    // pretty_assertions_sorted::assert_eq!(receipts, expected_receipts, "Comparing
+    // receipts");
+    // pretty_assertions_sorted::assert_eq!(events, expected_events, "Comparing
+    // events");
+
+    // Compare transaction-, receipt-, event- commitments
     assert_eq!(
         expected_header.transaction_commitment,
         transaction_commitment
@@ -713,12 +742,18 @@ fn deployed_address(
 fn create_proposal(
     db_txn: &pathfinder_storage::Transaction,
     block_number: BlockNumber,
-) -> anyhow::Result<(VecDeque<ProposalPart>, BlockHeader)> {
+) -> anyhow::Result<(
+    VecDeque<ProposalPart>,
+    BlockHeader,
+    Vec<Transaction>,
+    Vec<Receipt>,
+    Vec<(TransactionHash, Vec<Event>)>,
+)> {
     let header = db_txn
         .block_header(block_number.into())?
         .context("Block not found")?;
 
-    trace!(?header);
+    debug!("header: {header:#?}");
 
     let mut proposal_parts = VecDeque::new();
     let height = header.number.get();
@@ -735,41 +770,68 @@ fn create_proposal(
 
     use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
 
-    let wei_l2_gas_price = if header.eth_l2_gas_price.0 == 0 {
-        warn!("wei L2 gas price is 0, correcting to 1");
-        1
-    } else {
-        header.eth_l2_gas_price.0
-    };
+    // let wei_l2_gas_price = if header.eth_l2_gas_price.0 == 0 {
+    //     warn!("wei L2 gas price is 0, correcting to 1");
+    //     1
+    // } else {
+    //     header.eth_l2_gas_price.0
+    // };
 
-    let fri_l2_gas_price = if header.strk_l2_gas_price.0 == 0 {
-        warn!("fri L2 gas price is 0, correcting to 1");
-        1
-    } else {
-        header.strk_l2_gas_price.0
-    };
+    // let fri_l2_gas_price = if header.strk_l2_gas_price.0 == 0 {
+    //     warn!("fri L2 gas price is 0, correcting to 1");
+    //     1
+    // } else {
+    //     header.strk_l2_gas_price.0
+    // };
+
+    // debug!(
+    //     "header.eth_l1_data_gas_price.0: {}",
+    //     header.eth_l1_data_gas_price.0
+    // );
+    // debug!("wei_l2_gas_price: {}", wei_l2_gas_price);
+    // debug!("fri_l2_gas_price: {}", fri_l2_gas_price);
+    // debug!(
+    //     "wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price: {}",
+    //     wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price
+    // );
+    // debug!(
+    //     "fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price: {}",
+    //     fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price
+    // );
 
     proposal_parts.push_back(ProposalPart::BlockInfo(BlockInfo {
         height,
         timestamp: header.timestamp.get(),
         // Decent random value
-        builder: Address(Felt::from_u64(42)),
+        builder: Address(header.sequencer_address.0),
         l1_da_mode: match header.l1_da_mode {
             L1DataAvailabilityMode::Calldata => Calldata,
             L1DataAvailabilityMode::Blob => Blob,
         },
-        l2_gas_price_fri: fri_l2_gas_price,
+        l2_gas_price_fri: header.strk_l2_gas_price.0,
         l1_gas_price_wei: header.eth_l1_gas_price.0,
         l1_data_gas_price_wei: header.eth_l1_data_gas_price.0,
-        // Eth/Fri = Wei * 10^18 / Fri
-        eth_to_fri_rate: wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price,
+        // eth_to_fri_rate: fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price,
+        eth_to_fri_rate: header.strk_l1_gas_price.0 * ETH_TO_WEI_RATE / header.eth_l1_gas_price.0,
     }));
 
-    let txns = db_txn
-        .transactions_for_block(block_number.into())?
-        .context("Block not found")?;
+    let (txns, receipts): (Vec<_>, Vec<_>) = db_txn
+        .transactions_with_receipts_for_block(block_number.into())?
+        .context("Block not found")?
+        .into_iter()
+        // .take(1)
+        .unzip();
+    let events = db_txn
+        .events_for_block(block_number.into())?
+        .context("Block not found")?
+        .into_iter()
+        // .take(1)
+        .collect();
 
-    let txns = txns
+    // debug!("txn 1: {:#?}", txns[1]);
+
+    let consensus_txns = txns
+        .clone()
         .into_iter()
         .map(|Transaction { hash, variant }| {
             use TransactionVariant::{DeclareV3, DeployAccountV3, InvokeV3, L1Handler};
@@ -806,12 +868,12 @@ fn create_proposal(
         })
         .collect::<anyhow::Result<_>>()?;
 
-    proposal_parts.push_back(ProposalPart::TransactionBatch(txns));
+    proposal_parts.push_back(ProposalPart::TransactionBatch(consensus_txns));
 
     proposal_parts.push_back(ProposalPart::ProposalFin(ProposalFin {
         // FIXME
         proposal_commitment: Hash(Felt::from_u64(42)),
     }));
 
-    Ok((proposal_parts, header))
+    Ok((proposal_parts, header, txns, receipts, events))
 }
