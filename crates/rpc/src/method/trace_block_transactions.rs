@@ -431,20 +431,15 @@ fn map_gateway_function_invocation(
     Ok(pathfinder_executor::types::FunctionInvocation {
         calldata: invocation.calldata,
         contract_address: invocation.contract_address,
-        selector: invocation
-            .selector
-            .ok_or_else(|| anyhow::anyhow!("selector is missing from trace response"))?,
-        call_type: match invocation
-            .call_type
-            .ok_or_else(|| anyhow::anyhow!("call_type is missing from trace response"))?
-        {
+        selector: invocation.selector,
+        call_type: invocation.call_type.map(|call_type| match call_type {
             starknet_gateway_types::trace::CallType::Call => {
                 pathfinder_executor::types::CallType::Call
             }
             starknet_gateway_types::trace::CallType::Delegate => {
                 pathfinder_executor::types::CallType::Delegate
             }
-        },
+        }),
         caller_address: invocation.caller_address,
         internal_calls: invocation
             .internal_calls
@@ -452,20 +447,19 @@ fn map_gateway_function_invocation(
             .map(map_gateway_function_invocation)
             .collect::<Result<_, _>>()?,
         class_hash: invocation.class_hash,
-        entry_point_type: match invocation
-            .entry_point_type
-            .ok_or_else(|| anyhow::anyhow!("entry_point_type is missing from trace response"))?
-        {
-            starknet_gateway_types::trace::EntryPointType::Constructor => {
-                pathfinder_executor::types::EntryPointType::Constructor
-            }
-            starknet_gateway_types::trace::EntryPointType::External => {
-                pathfinder_executor::types::EntryPointType::External
-            }
-            starknet_gateway_types::trace::EntryPointType::L1Handler => {
-                pathfinder_executor::types::EntryPointType::L1Handler
-            }
-        },
+        entry_point_type: invocation.entry_point_type.map(
+            |entry_point_type| match entry_point_type {
+                starknet_gateway_types::trace::EntryPointType::External => {
+                    pathfinder_executor::types::EntryPointType::External
+                }
+                starknet_gateway_types::trace::EntryPointType::Constructor => {
+                    pathfinder_executor::types::EntryPointType::Constructor
+                }
+                starknet_gateway_types::trace::EntryPointType::L1Handler => {
+                    pathfinder_executor::types::EntryPointType::L1Handler
+                }
+            },
+        ),
         events: invocation
             .events
             .into_iter()
@@ -994,6 +988,96 @@ pub(crate) mod tests {
 
         let block: starknet_gateway_types::reply::Block =
             serde_json::from_str(include_str!("../../fixtures/mainnet-619596.json")).unwrap();
+        let transaction_count = block.transactions.len();
+        let event_count = block
+            .transaction_receipts
+            .iter()
+            .map(|(_, events)| events.len())
+            .sum();
+        let header = BlockHeader {
+            hash: block.block_hash,
+            parent_hash: block.parent_block_hash,
+            number: block.block_number,
+            timestamp: block.timestamp,
+            eth_l1_gas_price: block.l1_gas_price.price_in_wei,
+            strk_l1_gas_price: block.l1_gas_price.price_in_fri,
+            eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
+            strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
+            eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
+            strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
+            sequencer_address: block
+                .sequencer_address
+                .unwrap_or(SequencerAddress(Felt::ZERO)),
+            starknet_version: block.starknet_version,
+            event_commitment: Default::default(),
+            state_commitment: Default::default(),
+            transaction_commitment: Default::default(),
+            transaction_count,
+            event_count,
+            l1_da_mode: block.l1_da_mode.into(),
+            receipt_commitment: Default::default(),
+            state_diff_commitment: Default::default(),
+            state_diff_length: 0,
+        };
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 1,
+                hash: block.parent_block_hash,
+                ..header.clone()
+            })
+            .unwrap();
+        transaction
+            .insert_block_header(&BlockHeader {
+                number: block.block_number - 10,
+                hash: block_hash!("0x1"),
+                ..header.clone()
+            })
+            .unwrap();
+        transaction.insert_block_header(&header).unwrap();
+        let (transactions_data, events_data) = block
+            .transactions
+            .into_iter()
+            .zip(block.transaction_receipts.into_iter())
+            .map(|(tx, (receipt, events))| ((tx, receipt), events))
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+        transaction
+            .insert_transaction_data(header.number, &transactions_data, Some(&events_data))
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(connection);
+
+        // The tracing succeeds.
+        trace_block_transactions(
+            context.clone(),
+            TraceBlockTransactionsInput {
+                block_id: BlockId::Number(block.block_number),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// Test that tracing succeeds for a pre-0.9 block where the feeder gateway
+    /// traces are missing the `call_type` field.
+    #[tokio::test]
+    async fn mainnet_pre_0_9_traces() {
+        let context = RpcContext::for_tests_on(pathfinder_common::Chain::Mainnet);
+        let mut connection = context.storage.connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+
+        // Need to avoid skipping blocks for `insert_transaction_data`
+        // so that there is no gap in event filters.
+        (0..200)
+            .step_by(usize::try_from(pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN).unwrap())
+            .for_each(|block: u64| {
+                let block = BlockNumber::new_or_panic(block.saturating_sub(1));
+                transaction
+                    .insert_transaction_data(block, &[], Some(&[]))
+                    .unwrap();
+            });
+
+        let block: starknet_gateway_types::reply::Block =
+            serde_json::from_str(include_str!("../../fixtures/mainnet-200.json")).unwrap();
         let transaction_count = block.transactions.len();
         let event_count = block
             .transaction_receipts

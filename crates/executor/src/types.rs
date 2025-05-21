@@ -178,12 +178,12 @@ pub struct Event {
 pub struct FunctionInvocation {
     pub calldata: Vec<Felt>,
     pub contract_address: ContractAddress,
-    pub selector: Felt,
-    pub call_type: CallType,
+    pub selector: Option<Felt>,
+    pub call_type: Option<CallType>,
     pub caller_address: Felt,
     pub internal_calls: Vec<FunctionInvocation>,
     pub class_hash: Option<Felt>,
-    pub entry_point_type: EntryPointType,
+    pub entry_point_type: Option<EntryPointType>,
     pub events: Vec<Event>,
     pub messages: Vec<MsgToL1>,
     pub result: Vec<Felt>,
@@ -341,15 +341,15 @@ impl FunctionInvocation {
             contract_address: ContractAddress::new_or_panic(
                 call_info.call.storage_address.0.key().into_felt(),
             ),
-            selector: call_info.call.entry_point_selector.0.into_felt(),
-            call_type: call_info.call.call_type.into(),
+            selector: Some(call_info.call.entry_point_selector.0.into_felt()),
+            call_type: Some(call_info.call.call_type.into()),
             caller_address: call_info.call.caller_address.0.key().into_felt(),
             internal_calls,
             class_hash: call_info
                 .call
                 .class_hash
                 .map(|class_hash| class_hash.0.into_felt()),
-            entry_point_type: call_info.call.entry_point_type.into(),
+            entry_point_type: Some(call_info.call.entry_point_type.into()),
             events,
             messages,
             result,
