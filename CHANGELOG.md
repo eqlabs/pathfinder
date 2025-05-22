@@ -64,6 +64,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `--rpc.get-events-max-uncached-event-filters-to-load` CLI option has been replaced with `rpc.get-events-event-filter-block-range-limit`. The new option serves the same purpose of preventing queries from taking too long, but it should be clearer in its intent.
 
+## [0.16.5] - 2025-05-22
+
+### Fixed
+
+- `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.
+- `starknet_unsubscribe` does not accept subscription IDs as strings.
+- `starknet_traceBlockTransactions` fails for blocks <= 2687.
+
 ## [0.16.4] - 2025-04-15
 
 ### Fixed
