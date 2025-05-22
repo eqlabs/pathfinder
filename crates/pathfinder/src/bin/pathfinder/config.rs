@@ -305,15 +305,6 @@ This should only be enabled for debugging purposes as it adds substantial proces
     submission_tracker_size_limit: std::num::NonZeroUsize,
 
     #[arg(
-        long = "rpc.get-events-max-blocks-to-scan",
-        long_help = "The number of blocks to scan when querying for events. This limit is used to \
-                     prevent queries from taking too long.",
-        env = "PATHFINDER_RPC_GET_EVENTS_MAX_BLOCKS_TO_SCAN",
-        default_value = "500"
-    )]
-    get_events_max_blocks_to_scan: std::num::NonZeroUsize,
-
-    #[arg(
         long = "rpc.get-events-event-filter-block-range-limit",
         long_help = format!(
             "The maximum number of blocks to be covered by aggregate Bloom filters when querying for events. Each filter covers a {} block range. 
@@ -736,7 +727,6 @@ pub struct Config {
     pub gateway_api_key: Option<String>,
     pub gateway_timeout: Duration,
     pub event_filter_cache_size: NonZeroUsize,
-    pub get_events_max_blocks_to_scan: NonZeroUsize,
     pub get_events_event_filter_block_range_limit: NonZeroUsize,
     pub blockchain_history: Option<BlockchainHistory>,
     pub state_tries: Option<StateTries>,
@@ -923,7 +913,6 @@ impl Config {
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
             event_filter_cache_size: cli.event_filter_cache_size,
-            get_events_max_blocks_to_scan: cli.get_events_max_blocks_to_scan,
             get_events_event_filter_block_range_limit: cli
                 .get_events_event_filter_block_range_limit,
             gateway_timeout: Duration::from_secs(cli.gateway_timeout.get()),

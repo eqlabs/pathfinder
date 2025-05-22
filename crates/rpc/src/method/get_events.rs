@@ -222,7 +222,6 @@ pub async fn get_events(
         let page = transaction
             .events(
                 &constraints,
-                context.config.get_events_max_blocks_to_scan,
                 context.config.get_events_event_filter_block_range_limit,
             )
             .map_err(|e| match e {
