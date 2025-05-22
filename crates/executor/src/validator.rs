@@ -17,7 +17,13 @@ use crate::transaction::{
     set_l2_gas_limit,
     ExecutionBehaviorOnRevert,
 };
-use crate::types::{BlockInfo, FeeEstimate, StateDiff, TransactionSimulation};
+use crate::types::{
+    BlockInfo,
+    FeeEstimate,
+    OrderedTransactionSimulation,
+    StateDiff,
+    TransactionSimulation,
+};
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
 pub struct Validator<'a> {

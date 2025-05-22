@@ -1,5 +1,5 @@
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
@@ -199,31 +199,56 @@ impl TransactionSimulation {
     }
 
     pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
-        use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
-        match self.trace {
-            TransactionTrace::Declare(_)
-            | TransactionTrace::DeployAccount(_)
-            | TransactionTrace::L1Handler(_) => Succeeded,
-            TransactionTrace::Invoke(ref t) => match &t.execute_invocation {
-                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
-                ExecuteInvocation::RevertedReason(reason) => Reverted {
-                    reason: reason.clone(),
-                },
-            },
-        }
+        self.trace.execution_status()
     }
 
     pub fn execution_resources(
         &self,
     ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
-        match &self.trace {
-            TransactionTrace::Declare(t) => &t.execution_resources,
-            TransactionTrace::DeployAccount(t) => &t.execution_resources,
-            TransactionTrace::Invoke(t) => &t.execution_resources,
-            TransactionTrace::L1Handler(t) => &t.execution_resources,
-        }
-        .try_into()
+        self.trace.execution_resources()
     }
+}
+
+#[derive(Debug)]
+pub struct OrderedTransactionSimulation {
+    pub transaction_index: usize,
+    pub trace: TransactionTrace,
+    pub fee_estimation: FeeEstimate,
+}
+
+// TODO FIXME remove older version of this function
+fn collect_events_and_messages5(
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<i64, VecDeque<pathfinder_common::event::Event>>,
+    messages: &mut BTreeMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
+) {
+    fi.events.into_iter().for_each(|e| {
+        events
+            .entry(e.order)
+            .or_default()
+            .push_back(pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            });
+    });
+    fi.messages.into_iter().for_each(|m| {
+        messages
+            .entry(m.order)
+            .or_default()
+            .push_back(pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            });
+    });
+    fi.internal_calls
+        .into_iter()
+        .for_each(|fi| collect_events_and_messages5(fi, events, messages));
 }
 
 // TODO FIXME leave only one version either via ref or consuming
@@ -399,6 +424,63 @@ fn _collect_events_and_messages3_backup(
         .into_iter()
         .for_each(|fi| _collect_events_and_messages3_backup(fi, events, messages, visit_order));
 }
+
+// TODO FIXME remove older version of this function
+fn collect_events_and_messages4(
+    transaction_index: usize,
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<(usize, i64), pathfinder_common::event::Event>,
+    messages: &mut BTreeMap<(usize, usize), pathfinder_common::receipt::L2ToL1Message>,
+    visit_counter: &mut usize,
+) {
+    fi.events.into_iter().for_each(|e| {
+        // let order = if events.contains_key(&e.order) {
+        //     // Push the event with duplicated idx to the end of the list
+        //     e.order
+        //         + i64::try_from(*visit_counter).expect("Number of events will not
+        //           exceed i64::MAX")
+        // } else {
+        //     e.order
+        // };
+        // debug!("Inserting event: {e:#?} with order {order}");
+        events.insert(
+            // order,
+            (transaction_index, e.order),
+            pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            },
+        );
+        // *visit_counter += 1;
+    });
+    fi.messages.into_iter().for_each(|m| {
+        // let order = if messages.contains_key(&m.order) {
+        //     // Push the message with duplicated idx to the end of the list
+        //     m.order + *visit_counter
+        // } else {
+        //     m.order
+        // };
+        messages.insert(
+            // order,
+            (transaction_index, m.order),
+            pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            },
+        );
+        // *visit_counter += 1;
+    });
+    fi.internal_calls.into_iter().for_each(|fi| {
+        collect_events_and_messages4(transaction_index, fi, events, messages, visit_counter)
+    });
+}
+
 /*
 // TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
 // transaction indices, keep only one conversion (ie. from self or &self)
@@ -467,60 +549,115 @@ impl TryFrom<&TransactionSimulation> for (Receipt, Vec<pathfinder_common::event:
 
 // TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
 // transaction indices, keep only one conversion (ie. from self or &self)
-impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
+impl TryFrom<OrderedTransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
     type Error = anyhow::Error;
 
-    fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
-        // Maps to collect events and messages are ordered by (visit order, idx of
-        // ordered item) because indices of ordered items are not unique across
-        // the entire block and from comparing the order of events/messages to the
-        // existing blocks we know that duplicated indices are put at the end.
+    fn try_from(x: OrderedTransactionSimulation) -> Result<Self, Self::Error> {
+        let OrderedTransactionSimulation {
+            transaction_index,
+            trace,
+            fee_estimation,
+        } = x;
         let mut messages = BTreeMap::new();
         let mut events = BTreeMap::new();
         let mut visit_order = 0;
 
-        let execution_resources = x.execution_resources()?;
-        let execution_status = x.execution_status();
-        match x.trace {
+        let execution_resources = trace.execution_resources()?;
+        let execution_status = trace.execution_status();
+        match trace {
             TransactionTrace::Declare(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
             }
             TransactionTrace::DeployAccount(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
                 t.constructor_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
             }
             TransactionTrace::Invoke(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
                 if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 }
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
             }
             TransactionTrace::L1Handler(t) => {
                 t.function_invocation.map(|fi| {
-                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
+                    collect_events_and_messages4(
+                        transaction_index,
+                        fi,
+                        &mut events,
+                        &mut messages,
+                        &mut visit_order,
+                    );
                 });
             }
         };
 
         let mut buf = [0u8; 32];
-        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
+        fee_estimation.overall_fee.to_big_endian(&mut buf);
         let actual_fee = Fee(Felt::from_be_bytes(buf)?);
 
         let receipt = Receipt {
@@ -534,6 +671,102 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
 
         Ok((receipt, events.into_values().collect()))
     }
+}
+
+impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
+    type Error = anyhow::Error;
+
+    fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
+        // Maps to collect events and messages are ordered by the internal index of an
+        // ordered but because indices of such items are not unique across
+        // the entire block we must put duplicates and from comparing the order of
+        // events/messages to the existing blocks we know that duplicated
+        // indices are put at the end.
+        let mut messages = BTreeMap::new();
+        let mut events = BTreeMap::new();
+
+        let execution_resources = x.execution_resources()?;
+        let execution_status = x.execution_status();
+        match x.trace {
+            TransactionTrace::Declare(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::DeployAccount(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+                t.constructor_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::Invoke(t) => {
+                t.validate_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                }
+                t.fee_transfer_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+            }
+            TransactionTrace::L1Handler(t) => {
+                t.function_invocation.map(|fi| {
+                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                });
+            }
+        };
+
+        let l2_to_l1_messages = collect_items(messages);
+        let events = collect_items(events);
+
+        let mut buf = [0u8; 32];
+        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
+        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
+
+        let receipt = Receipt {
+            actual_fee,
+            execution_resources,
+            l2_to_l1_messages,
+            execution_status,
+            transaction_hash: TransactionHash::ZERO, // TODO FIXME
+            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
+        };
+
+        Ok((receipt, events))
+    }
+}
+
+/// Collects all items, taking the first item from each key, one at a time,
+/// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
+/// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
+fn collect_items<Idx: Copy + Ord, Item>(mut messages: BTreeMap<Idx, VecDeque<Item>>) -> Vec<Item> {
+    let mut items =
+        Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
+    let mut keys = Vec::with_capacity(messages.len());
+
+    while !messages.is_empty() {
+        messages.keys().for_each(|k| keys.push(*k));
+
+        for key in &keys {
+            let messages_with_same_key = messages.get_mut(&key).expect("Key exists");
+            items.push(messages_with_same_key.pop_front().expect("Not empty"));
+            if messages_with_same_key.is_empty() {
+                messages.remove(&key);
+            }
+        }
+
+        keys.clear();
+    }
+    items
 }
 
 #[derive(Debug, Clone)]
@@ -562,6 +795,33 @@ impl TransactionTrace {
             TransactionTrace::Invoke(trace) => &trace.state_diff,
             TransactionTrace::L1Handler(trace) => &trace.state_diff,
         }
+    }
+
+    pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
+        use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
+        match self {
+            TransactionTrace::Declare(_)
+            | TransactionTrace::DeployAccount(_)
+            | TransactionTrace::L1Handler(_) => Succeeded,
+            TransactionTrace::Invoke(ref t) => match &t.execute_invocation {
+                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
+                ExecuteInvocation::RevertedReason(reason) => Reverted {
+                    reason: reason.clone(),
+                },
+            },
+        }
+    }
+
+    pub fn execution_resources(
+        &self,
+    ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
+        match &self {
+            TransactionTrace::Declare(t) => &t.execution_resources,
+            TransactionTrace::DeployAccount(t) => &t.execution_resources,
+            TransactionTrace::Invoke(t) => &t.execution_resources,
+            TransactionTrace::L1Handler(t) => &t.execution_resources,
+        }
+        .try_into()
     }
 }
 
