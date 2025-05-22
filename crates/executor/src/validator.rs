@@ -2,6 +2,7 @@ use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::state::cached_state::StateChanges;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash};
+use tracing::debug;
 
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
 use crate::simulate::{
@@ -102,6 +103,8 @@ impl<'a> Validator<'a> {
                     &mut self.executor,
                     ExecutionBehaviorOnRevert::Continue,
                 )?;
+
+                debug!("tx_info: {:#?}", tx_info);
 
                 tracing::trace!(
                     "Transaction execution finished, actual_fee: {}, actual_resources: {:?}",
