@@ -1,3 +1,4 @@
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashSet};
 
 use anyhow::Context;
@@ -7,6 +8,7 @@ use pathfinder_common::receipt::Receipt;
 use pathfinder_crypto::Felt;
 use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
+use tracing::debug;
 
 use super::felt::IntoFelt;
 
@@ -266,6 +268,13 @@ fn collect_events_and_messages2(
     messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
 ) {
     fi.events.into_iter().for_each(|e| {
+        debug!("Inserting event: {e:#?}");
+        let x = pathfinder_common::event::Event {
+            data: e.data.clone().into_iter().map(EventData).collect(),
+            from_address: fi.contract_address,
+            keys: e.keys.clone().into_iter().map(EventKey).collect(),
+        };
+        debug!("Inserting event translated into: {x:#?}");
         events.insert(
             e.order,
             pathfinder_common::event::Event {
@@ -290,10 +299,106 @@ fn collect_events_and_messages2(
         );
     });
     fi.internal_calls
-        .iter()
-        .for_each(|fi| collect_events_and_messages(fi, events, messages));
+        .into_iter()
+        .for_each(|fi| collect_events_and_messages2(fi, events, messages));
 }
 
+// TODO FIXME remove older version of this function
+fn collect_events_and_messages3(
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
+    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
+    visit_counter: &mut usize,
+) {
+    fi.events.into_iter().for_each(|e| {
+        let order = if events.contains_key(&e.order) {
+            // Push the event with duplicated idx to the end of the list
+            e.order
+                + i64::try_from(*visit_counter).expect("Number of events will not exceed i64::MAX")
+        } else {
+            e.order
+        };
+        debug!("Inserting event: {e:#?} with order {order}");
+        events.insert(
+            order,
+            pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            },
+        );
+        *visit_counter += 1;
+    });
+    fi.messages.into_iter().for_each(|m| {
+        let order = if messages.contains_key(&m.order) {
+            // Push the message with duplicated idx to the end of the list
+            m.order + *visit_counter
+        } else {
+            m.order
+        };
+        messages.insert(
+            order,
+            pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            },
+        );
+        *visit_counter += 1;
+    });
+    fi.internal_calls
+        .into_iter()
+        .for_each(|fi| collect_events_and_messages3(fi, events, messages, visit_counter));
+}
+
+// TODO FIXME remove older version of this function
+fn _collect_events_and_messages3_backup(
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<(i64, usize), pathfinder_common::event::Event>,
+    messages: &mut BTreeMap<(usize, usize), pathfinder_common::receipt::L2ToL1Message>,
+    visit_order: &mut usize,
+) {
+    fi.events.into_iter().for_each(|e| {
+        debug!("Inserting event: {e:#?}");
+        let x = pathfinder_common::event::Event {
+            data: e.data.clone().into_iter().map(EventData).collect(),
+            from_address: fi.contract_address,
+            keys: e.keys.clone().into_iter().map(EventKey).collect(),
+        };
+        debug!("Inserting event translated into: {x:#?}");
+        events.insert(
+            (e.order, *visit_order),
+            pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            },
+        );
+        *visit_order += 1;
+    });
+    fi.messages.into_iter().for_each(|m| {
+        messages.insert(
+            (m.order, *visit_order),
+            pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            },
+        );
+        *visit_order += 1;
+    });
+    fi.internal_calls
+        .into_iter()
+        .for_each(|fi| _collect_events_and_messages3_backup(fi, events, messages, visit_order));
+}
 /*
 // TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
 // transaction indices, keep only one conversion (ie. from self or &self)
@@ -366,45 +471,50 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
     type Error = anyhow::Error;
 
     fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
+        // Maps to collect events and messages are ordered by (visit order, idx of
+        // ordered item) because indices of ordered items are not unique across
+        // the entire block and from comparing the order of events/messages to the
+        // existing blocks we know that duplicated indices are put at the end.
         let mut messages = BTreeMap::new();
         let mut events = BTreeMap::new();
+        let mut visit_order = 0;
 
         let execution_resources = x.execution_resources()?;
         let execution_status = x.execution_status();
         match x.trace {
             TransactionTrace::Declare(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
             }
             TransactionTrace::DeployAccount(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
                 t.constructor_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
             }
             TransactionTrace::Invoke(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
                 if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 }
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
             }
             TransactionTrace::L1Handler(t) => {
                 t.function_invocation.map(|fi| {
-                    collect_events_and_messages2(fi, &mut events, &mut messages);
+                    collect_events_and_messages3(fi, &mut events, &mut messages, &mut visit_order);
                 });
             }
         };

@@ -2,6 +2,7 @@ use core::panic;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter::Extend;
 use std::str::FromStr;
+use std::usize;
 
 use anyhow::Context;
 use p2p::sync::client::conv::{ToDto, TryFromDto};
@@ -67,23 +68,23 @@ fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
     // Hash the block header.
     let mut hasher = PoseidonHasher::new();
    +hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
-   + ProposalInit::height hasher.write(header.number.get().into());
+   +hasher.write(header.number.get().into());
     hasher.write(header.state_commitment.0.into());
-   + ?ProposalInit::proposal? hasher.write(header.sequencer_address.0.into());
-   + BlockInfo::timestamp hasher.write(header.timestamp.get().into());
+  ?+hasher.write(header.sequencer_address.0.into());
+   +hasher.write(header.timestamp.get().into());
     hasher.write(concatenate_counts(header));
     hasher.write(header.state_diff_commitment.0.into());
-    hasher.write(header.transaction_commitment.0.into());
-    hasher.write(header.event_commitment.0.into());
-    hasher.write(header.receipt_commitment.0.into());
-    hasher.write(gas_prices_to_hash(header));
-    hasher.write(
+   +hasher.write(header.transaction_commitment.0.into());
+   +hasher.write(header.event_commitment.0.into());
+   +hasher.write(header.receipt_commitment.0.into());
+   +hasher.write(gas_prices_to_hash(header));
+ ---hasher.write(
         Felt::from_be_slice(header.starknet_version_str.as_bytes())
             .expect("Starknet version should fit into a felt")
             .into(),
     );
-    hasher.write(MontFelt::ZERO);
-    hasher.write(header.parent_hash.0.into());
+   +hasher.write(MontFelt::ZERO);
+   +hasher.write(header.parent_hash.0.into());
     BlockHash(hasher.finish().into())
 }
 */
@@ -240,12 +241,21 @@ fn main() -> anyhow::Result<()> {
     pretty_assertions_sorted::assert_eq!(
         common_txns,
         expected_transactions,
-        "Comparing transactions"
+        "Comparing transactions: actual vs expected"
     );
-    // pretty_assertions_sorted::assert_eq!(receipts, expected_receipts, "Comparing
-    // receipts");
-    // pretty_assertions_sorted::assert_eq!(events, expected_events, "Comparing
-    // events");
+    // TODO Execution resources dont match but is this important?
+    // Because they're not hashed to get the receipt commitment.
+    //
+    // pretty_assertions_sorted::assert_eq!
+    // (receipts, expected_receipts, "Comparing receipts: actual vs expected");
+
+    debug!("actual events: {events:#?}");
+
+    pretty_assertions_sorted::assert_eq!(
+        events,
+        expected_events,
+        "Comparing events: actual vs expected"
+    );
 
     // Compare transaction-, receipt-, event- commitments
     assert_eq!(
@@ -819,13 +829,19 @@ fn create_proposal(
         .transactions_with_receipts_for_block(block_number.into())?
         .context("Block not found")?
         .into_iter()
-        // .take(1)
+        // TODO for testing -- start
+        .skip(0)
+        .take(usize::MAX)
+        // TODO for testing -- end
         .unzip();
     let events = db_txn
         .events_for_block(block_number.into())?
         .context("Block not found")?
         .into_iter()
-        // .take(1)
+        // TODO for testing -- start
+        .skip(0)
+        .take(usize::MAX)
+        // TODO for testing -- end
         .collect();
 
     // debug!("txn 1: {:#?}", txns[1]);
