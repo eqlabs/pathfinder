@@ -73,6 +73,7 @@ async fn async_main() -> anyhow::Result<Storage> {
             .create(&config.data_directory)
             .context("Creating database directory")?;
     }
+    std::env::set_var("SQLITE_TMPDIR", &config.data_directory);
 
     permission_check(&config.data_directory)?;
 
