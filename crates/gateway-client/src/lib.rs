@@ -1,7 +1,6 @@
 //! Starknet L2 sequencer client.
 use std::fmt::Debug;
 use std::result::Result;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use pathfinder_common::prelude::*;
@@ -215,8 +214,6 @@ pub struct Client {
     /// Starknet gateway URL.
     gateway: Url,
     /// Starknet feeder gateway URL.
-    // TODO remove this once mainnet is on 0.14.0
-    pre_0_14_0_feeder_gateway: Url,
     feeder_gateway: Url,
     /// Whether __read only__ requests should be retried, defaults to __true__
     /// for production.
@@ -228,17 +225,11 @@ pub struct Client {
     api_key: Option<String>,
 }
 
-/// We cannot use a flag inside the `Client` struct because Atomic is not
-/// `Clone`.
-// TODO remove this workaround once mainnet is on 0.14.0
-static IS_PRE_0_14_0: AtomicBool = AtomicBool::new(true);
-
 impl Client {
     /// Creates a [Client] for [pathfinder_common::Chain::Mainnet].
     pub fn mainnet(timeout: Duration) -> Self {
         Self::with_urls(
             Url::parse("https://alpha-mainnet.starknet.io/gateway").unwrap(),
-            Url::parse("https://alpha-mainnet.starknet.io/feeder_gateway").unwrap(),
             Url::parse("https://feeder.alpha-mainnet.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
@@ -249,7 +240,6 @@ impl Client {
     pub fn sepolia_testnet(timeout: Duration) -> Self {
         Self::with_urls(
             Url::parse("https://alpha-sepolia.starknet.io/gateway").unwrap(),
-            Url::parse("https://alpha-sepolia.starknet.io/feeder_gateway").unwrap(),
             Url::parse("https://feeder.alpha-sepolia.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
@@ -260,7 +250,6 @@ impl Client {
     pub fn sepolia_integration(timeout: Duration) -> Self {
         Self::with_urls(
             Url::parse("https://integration-sepolia.starknet.io/gateway").unwrap(),
-            Url::parse("https://integration-sepolia.starknet.io/feeder_gateway").unwrap(),
             Url::parse("https://feeder.integration-sepolia.starknet.io/feeder_gateway").unwrap(),
             timeout,
         )
@@ -268,20 +257,14 @@ impl Client {
     }
 
     /// Creates a [Client] with a shared feeder gateway and gateway base url.
-    // TODO remove after 0.14.0
-    pub fn with_base_url(base: Url, timeout: Duration) -> anyhow::Result<Self> {
+    pub fn for_test(base: Url) -> anyhow::Result<Self> {
         let gateway = base.join("gateway")?;
         let feeder_gateway = base.join("feeder_gateway")?;
-        Self::with_urls(gateway, feeder_gateway.clone(), feeder_gateway, timeout)
+        Self::with_urls(gateway, feeder_gateway, Duration::from_secs(5))
     }
 
     /// Create a Sequencer client for the given [Url]s.
-    pub fn with_urls(
-        gateway: Url,
-        pre_0_14_0_feeder_gateway: Url,
-        feeder_gateway: Url,
-        timeout: Duration,
-    ) -> anyhow::Result<Self> {
+    pub fn with_urls(gateway: Url, feeder_gateway: Url, timeout: Duration) -> anyhow::Result<Self> {
         metrics::register();
 
         Ok(Self {
@@ -290,7 +273,6 @@ impl Client {
                 .user_agent(pathfinder_version::USER_AGENT)
                 .build()?,
             gateway,
-            pre_0_14_0_feeder_gateway,
             feeder_gateway,
             retry: true,
             api_key: None,
@@ -314,33 +296,15 @@ impl Client {
     }
 
     fn gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        builder::Request::builder(
-            &self.inner,
-            self.gateway.clone(),
-            self.gateway.clone(),
-            self.api_key.clone(),
-        )
+        builder::Request::builder(&self.inner, self.gateway.clone(), self.api_key.clone())
     }
 
     fn feeder_gateway_request(&self) -> builder::Request<'_, builder::stage::Method> {
-        if IS_PRE_0_14_0.load(Ordering::Relaxed) {
-            // Use <0.14.0 feeder gateway URL as primary and >=0.14.0 feeder gateway
-            // URL as fallback.
-            builder::Request::builder(
-                &self.inner,
-                self.pre_0_14_0_feeder_gateway.clone(),
-                self.feeder_gateway.clone(),
-                self.api_key.clone(),
-            )
-        } else {
-            // Use >=0.14.0 feeder gateway URL only
-            builder::Request::builder(
-                &self.inner,
-                self.feeder_gateway.clone(),
-                self.feeder_gateway.clone(),
-                self.api_key.clone(),
-            )
-        }
+        builder::Request::builder(
+            &self.inner,
+            self.feeder_gateway.clone(),
+            self.api_key.clone(),
+        )
     }
 }
 
@@ -619,7 +583,7 @@ mod tests {
 
         let url = format!("http://{addr}");
         let url = Url::parse(&url).unwrap();
-        let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+        let client = Client::for_test(url).unwrap();
 
         let _ = client.block_header(BlockId::Latest).await;
         shutdown_tx.send(()).unwrap();
@@ -644,7 +608,7 @@ mod tests {
                     200,
                 ),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
             assert_eq!(
                 client
                     .transaction_status(INVALID_TX_HASH)
@@ -673,7 +637,7 @@ mod tests {
                 200,
             ),
         )]);
-        let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+        let client = Client::for_test(url).unwrap();
         client.eth_contract_addresses().await.unwrap();
     }
 
@@ -737,7 +701,7 @@ mod tests {
                     "/gateway/add_transaction",
                     response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let invoke = InvokeFunction::V0(InvokeFunctionV0V1 {
                     max_fee: fee,
@@ -766,7 +730,7 @@ mod tests {
                         200,
                     ),
                 )]);
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
                 // test with values dumped from `starknet invoke` for a test contract
                 let (_, fee, sig, nonce, addr, call) = inputs();
                 let invoke = InvokeFunction::V1(InvokeFunctionV0V1 {
@@ -795,7 +759,7 @@ mod tests {
                     "/gateway/add_transaction",
                     response_from(KnownStarknetErrorCode::DeprecatedTransaction),
                 )]);
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
@@ -829,7 +793,7 @@ mod tests {
                         200,
                     ),
                 )]);
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
 
                 let declare = Declare::V1(DeclareV0V1V2 {
                     version: TransactionVersion::ONE,
@@ -906,7 +870,7 @@ mod tests {
                         200,
                     ),
                 )]);
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
 
                 let declare = Declare::V2(DeclareV0V1V2 {
                     version: TransactionVersion::TWO,
@@ -1005,8 +969,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client =
-                    Client::with_base_url(url, gateway_test_utils::GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
@@ -1035,7 +998,7 @@ mod tests {
                 let (_jh, addr) = test_server();
                 let mut url = reqwest::Url::parse("http://localhost/").unwrap();
                 url.set_port(Some(addr.port())).unwrap();
-                let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+                let client = Client::for_test(url).unwrap();
 
                 let declare = Declare::V0(DeclareV0V1V2 {
                     version: TransactionVersion::ZERO,
@@ -1078,7 +1041,7 @@ mod tests {
                 "/feeder_gateway/get_block?blockNumber=9703&headerOnly=true",
                 (REPLY.to_owned(), 200),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
 
             client
                 .block_header(BlockId::Number(BlockNumber::new_or_panic(9703)))
@@ -1094,7 +1057,7 @@ mod tests {
                  headerOnly=true",
                 (REPLY.to_owned(), 200),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
 
             client
                 .block_header(
@@ -1114,7 +1077,7 @@ mod tests {
                 format!("/feeder_gateway/get_block?blockNumber={BLOCK_NUMBER}&headerOnly=true",),
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
             let error = client
                 .block_header(BlockNumber::new_or_panic(BLOCK_NUMBER).into())
                 .await
@@ -1138,7 +1101,7 @@ mod tests {
                     200,
                 ),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
 
             client.pending_block().await.unwrap();
         }
@@ -1149,7 +1112,7 @@ mod tests {
                 "/feeder_gateway/get_state_update?blockNumber=pending&includeBlock=true",
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
             let error = client.pending_block().await.unwrap_err();
             assert_matches!(
                 error,
@@ -1170,7 +1133,7 @@ mod tests {
                     200,
                 ),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
 
             client
                 .state_update_with_block(BlockNumber::new_or_panic(9703))
@@ -1187,7 +1150,7 @@ mod tests {
                 ),
                 response_from(KnownStarknetErrorCode::BlockNotFound),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
             let error = client
                 .state_update_with_block(BlockNumber::new_or_panic(BLOCK_NUMBER))
                 .await
@@ -1211,7 +1174,7 @@ mod tests {
                     200,
                 ),
             )]);
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT).unwrap();
+            let client = Client::for_test(url).unwrap();
 
             client
                 .signature(BlockId::Number(BlockNumber::new_or_panic(350000)))

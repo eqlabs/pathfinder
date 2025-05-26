@@ -13,19 +13,16 @@
 //!   4. [Final](stage::Final) where you select the REST operation type, which
 //!      is then executed.
 use pathfinder_common::{BlockId, ClassHash, TransactionHash};
-use reqwest::StatusCode;
 use starknet_gateway_types::error::SequencerError;
 
 use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
-use crate::IS_PRE_0_14_0;
 
 const X_THROTTLING_BYPASS: &str = "X-Throttling-Bypass";
 
 /// A Sequencer Request builder.
 pub struct Request<'a, S: RequestState> {
     state: S,
-    primary_url: reqwest::Url,
-    secondary_url: reqwest::Url,
+    url: reqwest::Url,
     api_key: Option<String>,
     client: &'a reqwest::Client,
 }
@@ -80,13 +77,11 @@ impl<'a> Request<'a, stage::Init> {
     /// Initialize a [Request] builder.
     pub fn builder(
         client: &'a reqwest::Client,
-        primary_url: reqwest::Url,
-        secondary_url: reqwest::Url,
+        url: reqwest::Url,
         api_key: Option<String>,
     ) -> Request<'a, stage::Method> {
         Request {
-            primary_url,
-            secondary_url,
+            url,
             client,
             api_key,
             state: stage::Method,
@@ -158,19 +153,13 @@ impl<'a> Request<'a, stage::Method> {
 
     /// Appends the given method to the request url.
     fn method(mut self, method: &'static str) -> Request<'a, stage::Params> {
-        self.primary_url
+        self.url
             .path_segments_mut()
-            .expect("Primary URL is valid")
-            .push(method);
-
-        self.secondary_url
-            .path_segments_mut()
-            .expect("Secondary URL is valid")
+            .expect("Base URL is valid")
             .push(method);
 
         Request {
-            primary_url: self.primary_url,
-            secondary_url: self.secondary_url,
+            url: self.url,
             client: self.client,
             api_key: self.api_key,
             state: stage::Params {
@@ -216,7 +205,7 @@ impl<'a> Request<'a, stage::Params> {
     }
 
     pub fn param(mut self, name: &str, value: &str) -> Self {
-        self.primary_url.query_pairs_mut().append_pair(name, value);
+        self.url.query_pairs_mut().append_pair(name, value);
         self
     }
 
@@ -228,8 +217,7 @@ impl<'a> Request<'a, stage::Params> {
     /// Sets the request retry behavior.
     pub fn retry(self, retry: bool) -> Request<'a, stage::Final> {
         Request {
-            primary_url: self.primary_url,
-            secondary_url: self.secondary_url,
+            url: self.url,
             client: self.client,
             api_key: self.api_key,
             state: stage::Final {
@@ -247,36 +235,6 @@ impl Request<'_, stage::Final> {
     where
         T: serde::de::DeserializeOwned,
     {
-        // TODO remove this workaround once mainnet is on 0.14.0
-        async fn send_request_and_probe_0_14_0<T: serde::de::DeserializeOwned>(
-            primary_url: reqwest::Url,
-            secondary_url: reqwest::Url,
-            api_key: Option<String>,
-            client: &reqwest::Client,
-            meta: RequestMetadata,
-        ) -> Result<T, SequencerError> {
-            // The flag could in theory be set multiple times, but as it's only ever
-            // set to false the multiple stores don't cause any problems.
-            let is_pre_0_14_0 = IS_PRE_0_14_0.load(std::sync::atomic::Ordering::Relaxed);
-            match send_request(primary_url, api_key.clone(), client, meta).await {
-                Err(SequencerError::ReqwestError(e))
-                    if e.status() == Some(StatusCode::NOT_FOUND) && is_pre_0_14_0 =>
-                {
-                    let result = send_request(secondary_url, api_key, client, meta).await;
-                    if result.is_ok() {
-                        // The old URL was not found, and we got a successful reply from the new
-                        // one, which gives us enough confidence to start using the new URL
-                        // for the next requests.
-                        IS_PRE_0_14_0.store(false, std::sync::atomic::Ordering::Relaxed);
-                        tracing::info!("Feeder gateway URL updated to Starknet 0.14.0");
-                    }
-
-                    result
-                }
-                r => r,
-            }
-        }
-
         async fn send_request<T: serde::de::DeserializeOwned>(
             url: reqwest::Url,
             api_key: Option<String>,
@@ -297,30 +255,13 @@ impl Request<'_, stage::Final> {
         }
 
         match self.state.retry {
-            false => {
-                send_request_and_probe_0_14_0(
-                    self.primary_url,
-                    self.secondary_url,
-                    self.api_key,
-                    self.client,
-                    self.state.meta,
-                )
-                .await
-            }
+            false => send_request(self.url, self.api_key, self.client, self.state.meta).await,
             true => {
                 retry0(
                     || async {
-                        let primary_url = self.primary_url.clone();
-                        let secondary_url = self.secondary_url.clone();
+                        let url = self.url.clone();
                         let api_key = self.api_key.clone();
-                        send_request_and_probe_0_14_0(
-                            primary_url,
-                            secondary_url,
-                            api_key,
-                            self.client,
-                            self.state.meta,
-                        )
-                        .await
+                        send_request(url, api_key, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -332,36 +273,6 @@ impl Request<'_, stage::Final> {
     /// Sends the Sequencer request as a REST `GET` operation and returns the
     /// response's bytes.
     pub async fn get_as_bytes(self) -> Result<bytes::Bytes, SequencerError> {
-        // TODO remove this workaround once mainnet is on 0.14.0
-        async fn get_as_bytes_inner_and_probe_0_14_0(
-            primary_url: reqwest::Url,
-            secondary_url: reqwest::Url,
-            api_key: Option<String>,
-            client: &reqwest::Client,
-            meta: RequestMetadata,
-        ) -> Result<bytes::Bytes, SequencerError> {
-            // The flag could in theory be set multiple times, but as it's only ever
-            // set to false the multiple stores don't cause any problems.
-            let is_pre_0_14_0 = IS_PRE_0_14_0.load(std::sync::atomic::Ordering::Relaxed);
-            match get_as_bytes_inner(primary_url, api_key.clone(), client, meta).await {
-                Err(SequencerError::ReqwestError(e))
-                    if e.status() == Some(StatusCode::NOT_FOUND) && is_pre_0_14_0 =>
-                {
-                    let result = get_as_bytes_inner(secondary_url, api_key, client, meta).await;
-                    if result.is_ok() {
-                        // The old URL was not found, and we got a successful reply from the new
-                        // one, which gives us enough confidence to start using the new URL
-                        // for the next requests.
-                        IS_PRE_0_14_0.store(false, std::sync::atomic::Ordering::Relaxed);
-                        tracing::info!("Feeder gateway URL updated to Starknet 0.14.0");
-                    }
-
-                    result
-                }
-                r => r,
-            }
-        }
-
         async fn get_as_bytes_inner(
             url: reqwest::Url,
             api_key: Option<String>,
@@ -384,30 +295,13 @@ impl Request<'_, stage::Final> {
         }
 
         match self.state.retry {
-            false => {
-                get_as_bytes_inner_and_probe_0_14_0(
-                    self.primary_url,
-                    self.secondary_url,
-                    self.api_key,
-                    self.client,
-                    self.state.meta,
-                )
-                .await
-            }
+            false => get_as_bytes_inner(self.url, self.api_key, self.client, self.state.meta).await,
             true => {
                 retry0(
                     || async {
-                        let primary_url = self.primary_url.clone();
-                        let secondary_url = self.secondary_url.clone();
+                        let url = self.url.clone();
                         let api_key = self.api_key.clone();
-                        get_as_bytes_inner_and_probe_0_14_0(
-                            primary_url,
-                            secondary_url,
-                            api_key,
-                            self.client,
-                            self.state.meta,
-                        )
-                        .await
+                        get_as_bytes_inner(url, api_key, self.client, self.state.meta).await
                     },
                     retry_condition,
                 )
@@ -461,7 +355,7 @@ impl Request<'_, stage::Final> {
         match self.state.retry {
             false => {
                 post_with_json_inner(
-                    self.primary_url,
+                    self.url,
                     self.api_key,
                     self.client,
                     self.state.meta,
@@ -473,8 +367,8 @@ impl Request<'_, stage::Final> {
             true => {
                 retry0(
                     || async {
-                        tracing::trace!(url=%self.primary_url, "Posting data to gateway");
-                        let url = self.primary_url.clone();
+                        tracing::trace!(url=%self.url, "Posting data to gateway");
+                        let url = self.url.clone();
                         let api_key = self.api_key.clone();
                         post_with_json_inner(
                             url,
@@ -761,7 +655,6 @@ mod tests {
     }
 
     mod invalid_starknet_error_variant {
-        use gateway_test_utils::GATEWAY_TIMEOUT;
         use warp::http::response::Builder;
         use warp::Filter;
 
@@ -779,9 +672,7 @@ mod tests {
             let (_jh, addr) = server();
             let mut url = reqwest::Url::parse("http://localhost/").unwrap();
             url.set_port(Some(addr.port())).unwrap();
-            let client = Client::with_base_url(url, GATEWAY_TIMEOUT)
-                .unwrap()
-                .disable_retry_for_tests();
+            let client = Client::for_test(url).unwrap().disable_retry_for_tests();
             let error = client
                 .block_header(pathfinder_common::BlockId::Latest)
                 .await
@@ -795,7 +686,6 @@ mod tests {
 
     mod api_key_is_set_when_configured {
         use fake::{Fake, Faker};
-        use gateway_test_utils::GATEWAY_TIMEOUT;
         use httpmock::prelude::*;
         use httpmock::Mock;
         use serde_json::json;
@@ -810,7 +700,7 @@ mod tests {
                 then.status(200).json_body(json!({}));
             });
 
-            let client = Client::with_base_url(server.base_url().parse().unwrap(), GATEWAY_TIMEOUT)
+            let client = Client::for_test(server.base_url().parse().unwrap())
                 .unwrap()
                 .with_api_key(Some(api_key.clone()));
 
