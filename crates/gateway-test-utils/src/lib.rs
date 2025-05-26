@@ -1,8 +1,5 @@
-use std::time::Duration;
-
 use starknet_gateway_types::error::KnownStarknetErrorCode;
 
-pub const GATEWAY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Helper function which allows for easy creation of a response tuple
 /// that contains a
 /// [StarknetError](starknet_gateway_types::error::StarknetError) for a

@@ -186,25 +186,28 @@ impl RpcContext {
         chain: pathfinder_common::Chain,
         trie_prune_mode: pathfinder_storage::TriePruneMode,
     ) -> Self {
-        use gateway_test_utils::GATEWAY_TIMEOUT;
+        use std::time::Duration;
+
         use pathfinder_common::Chain;
         use pathfinder_ethereum::core_addr;
+
+        const TIMEOUT: Duration = Duration::from_secs(5);
 
         let (chain_id, core_contract_address, sequencer) = match chain {
             Chain::Mainnet => (
                 ChainId::MAINNET,
                 core_addr::MAINNET,
-                SequencerClient::mainnet(GATEWAY_TIMEOUT),
+                SequencerClient::mainnet(TIMEOUT),
             ),
             Chain::SepoliaTestnet => (
                 ChainId::SEPOLIA_TESTNET,
                 core_addr::SEPOLIA_TESTNET,
-                SequencerClient::sepolia_testnet(GATEWAY_TIMEOUT),
+                SequencerClient::sepolia_testnet(TIMEOUT),
             ),
             Chain::SepoliaIntegration => (
                 ChainId::SEPOLIA_INTEGRATION,
                 core_addr::SEPOLIA_INTEGRATION,
-                SequencerClient::sepolia_integration(GATEWAY_TIMEOUT),
+                SequencerClient::sepolia_integration(TIMEOUT),
             ),
             Chain::Custom => unreachable!("Should not be testing with custom chain"),
         };

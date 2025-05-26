@@ -7,7 +7,7 @@
 use std::future::Future;
 
 use futures::stream::StreamExt;
-use gateway_test_utils::{response_from, setup_with_varied_responses, GATEWAY_TIMEOUT};
+use gateway_test_utils::{response_from, setup_with_varied_responses};
 use pathfinder_common::{BlockId, BlockNumber};
 use pretty_assertions_sorted::assert_eq;
 use starknet_gateway_client::{Client, GatewayApi};
@@ -70,9 +70,7 @@ where
             responses,
         ),
     ]);
-    let client = Client::with_base_url(url, GATEWAY_TIMEOUT)
-        .unwrap()
-        .disable_retry_for_tests();
+    let client = Client::for_test(url).unwrap().disable_retry_for_tests();
 
     [BlockId::Number(BlockNumber::new_or_panic(123)); 7]
         .into_iter()
