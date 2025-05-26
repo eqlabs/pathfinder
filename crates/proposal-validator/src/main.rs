@@ -1,6 +1,5 @@
 use core::panic;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::iter::Extend;
 use std::str::FromStr;
 use std::usize;
 
@@ -18,8 +17,8 @@ use p2p_proto::consensus::{
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
-use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::ContractClassUpdate;
+use pathfinder_common::receipt::{ExecutionStatus, L2ToL1Message, Receipt};
+use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
@@ -33,8 +32,6 @@ use pathfinder_common::{
     L1DataAvailabilityMode,
     SequencerAddress,
     StateUpdate,
-    StorageAddress,
-    StorageValue,
     TransactionHash,
     TransactionIndex,
 };
@@ -44,10 +41,9 @@ use pathfinder_executor::types::{
     DeployedContract,
     ReplacedClass,
     StateDiff,
-    StorageDiff,
     ETH_TO_WEI_RATE,
 };
-use pathfinder_executor::{ClassInfo, ExecutionState, IntoStarkFelt, Validator};
+use pathfinder_executor::{ClassInfo, IntoStarkFelt, Validator};
 use pathfinder_lib::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
@@ -60,8 +56,7 @@ use rayon::prelude::*;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::{debug, error, warn};
-use util::percentage::Percentage;
+use tracing::debug;
 
 /*
 fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
@@ -88,6 +83,27 @@ fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
     BlockHash(hasher.finish().into())
 }
 */
+
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
+pub struct ReceiptWithoutExecutionResources {
+    pub actual_fee: pathfinder_common::Fee,
+    pub l2_to_l1_messages: Vec<L2ToL1Message>,
+    pub execution_status: ExecutionStatus,
+    pub transaction_hash: TransactionHash,
+    pub transaction_index: TransactionIndex,
+}
+
+impl From<Receipt> for ReceiptWithoutExecutionResources {
+    fn from(receipt: Receipt) -> Self {
+        Self {
+            actual_fee: receipt.actual_fee,
+            l2_to_l1_messages: receipt.l2_to_l1_messages,
+            execution_status: receipt.execution_status,
+            transaction_hash: receipt.transaction_hash,
+            transaction_index: receipt.transaction_index,
+        }
+    }
+}
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -129,6 +145,10 @@ fn main() -> anyhow::Result<()> {
 
     let (mut proposal, expected_header, expected_transactions, expected_receipts, expected_events) =
         create_proposal(&db_txn, block_number)?;
+
+    let expected_state_update = db_txn
+        .state_update(block_number.into())?
+        .context("State update not found")?;
 
     // TODO verify
     assert!(matches!(
@@ -193,8 +213,6 @@ fn main() -> anyhow::Result<()> {
         expected_header.strk_l1_data_gas_price.0,
     )?;
 
-    debug!("block_info: {block_info:#?}");
-
     let mut validator = Validator::new(
         ChainId::SEPOLIA_TESTNET,
         block_info,
@@ -243,13 +261,24 @@ fn main() -> anyhow::Result<()> {
         expected_transactions,
         "Comparing transactions: actual vs expected"
     );
-    // TODO Execution resources dont match but is this important?
-    // Because they're not hashed to get the receipt commitment.
-    //
-    // pretty_assertions_sorted::assert_eq!
-    // (receipts, expected_receipts, "Comparing receipts: actual vs expected");
 
-    debug!("actual events: {events:#?}");
+    let receipts = receipts
+        .into_iter()
+        .map(ReceiptWithoutExecutionResources::from)
+        .collect::<Vec<_>>();
+
+    let expected_receipts = expected_receipts
+        .into_iter()
+        .map(ReceiptWithoutExecutionResources::from)
+        .collect::<Vec<_>>();
+
+    // TODO FIXME Execution resources dont match but is this important?
+    // Because they're not hashed to get the receipt commitment.
+    pretty_assertions_sorted::assert_eq!(
+        receipts,
+        expected_receipts,
+        "Comparing receipts: actual vs expected EXCEPT execution resources"
+    );
 
     pretty_assertions_sorted::assert_eq!(
         events,
@@ -259,132 +288,37 @@ fn main() -> anyhow::Result<()> {
 
     // Compare transaction-, receipt-, event- commitments
     assert_eq!(
-        expected_header.transaction_commitment,
-        transaction_commitment
+        transaction_commitment,
+        expected_header.transaction_commitment
     );
-    assert_eq!(expected_header.receipt_commitment, receipt_commitment);
-    assert_eq!(expected_header.event_commitment, event_commitment);
+    assert_eq!(receipt_commitment, expected_header.receipt_commitment);
+    assert_eq!(event_commitment, expected_header.event_commitment);
 
-    // let execution_state = ExecutionState::trace(
-    //     ChainId::SEPOLIA_TESTNET,
-    //     header,
-    //     None,
-    //     Default::default(),
-    //     ETH_FEE_TOKEN_ADDRESS,
-    //     STRK_FEE_TOKEN_ADDRESS,
-    //     None,
-    // );
-    // // let mut executor = create_executor(db_tx, execution_state)?;
+    /*
+    let expected_state_diff = StateUpdateData::from(expected_state_update).into();
+    pretty_assertions_sorted::assert_eq!(
+        state_diff,
+        expected_state_diff,
+        "Comparing state updates: actual vs expected"
+    );
+    */
 
-    // execute_batch0(db_txn, execution_state, txns, block_number);
+    let expected_state_update: StateUpdateData = expected_state_update.into();
+    let state_update: StateUpdateData = state_diff.into();
+    pretty_assertions_sorted::assert_eq!(
+        state_update,
+        expected_state_update,
+        "Comparing state updates: actual vs expected"
+    );
+
+    let state_update_commitment = state_update.compute_state_diff_commitment();
+    assert_eq!(
+        state_update_commitment, expected_header.state_diff_commitment,
+        "Comparing state diff commitments: actual vs expected"
+    );
 
     Ok(())
 }
-
-/*
-fn execute_batch(
-    execution_state: ExecutionState,
-    txns: Vec<p2p_proto::consensus::Transaction>,
-    block_number: BlockNumber,
-    start_tx_index: usize,
-) {
-    let txns = txns
-        .into_iter()
-        .map(compose_executor_transaction)
-        .collect::<anyhow::Result<Vec<_>>>()
-        .expect("Mapping into executor transactions");
-
-    pathfinder_executor::execute_batch(block_number, executor, txns, start_tx_index)?;
-
-    // Tuple:
-    // (collected after each transaction execution,
-    // vs
-    // taken from the cached state of the executor after all were executed)
-    let (txn_sims, state_changes_after_execution) =
-        match pathfinder_executor::simulate2(db_tx, execution_state, txns, Percentage::new(0)) {
-            Ok(x) => x,
-            Err(error) => {
-                error!(?error);
-                return;
-            }
-        };
-
-    let mut actual_storage: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
-        BTreeMap::new();
-    txn_sims.iter().for_each(|txn_sim| {
-        let storage_diffs = &txn_sim.state_diff().storage_diffs;
-        storage_diffs
-            .iter()
-            .for_each(|(contract_address, storage)| {
-                // IMPORTANT!!! Consecutive storage value updates to the same key are lost
-                // except for the last one
-                actual_storage.entry(*contract_address).or_default().extend(
-                    storage
-                        .iter()
-                        .map(|StorageDiff { key, value }| (*key, *value)),
-                );
-            });
-    });
-
-    let mut actual_storage2: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
-        BTreeMap::new();
-    state_changes_after_execution
-        .storage_diffs
-        .iter()
-        .for_each(|(contract_address, storage)| {
-            // IMPORTANT!!! Consecutive storage value updates to the same key are lost
-            // except for the last one
-            actual_storage2
-                .entry(*contract_address)
-                .or_default()
-                .extend(
-                    storage
-                        .iter()
-                        .map(|StorageDiff { key, value }| (*key, *value)),
-                );
-        });
-
-    let expected_storage = expected_state_update
-        .contract_updates
-        .iter()
-        .map(|(contract_address, update)| (contract_address, &update.storage))
-        .chain(
-            expected_state_update
-                .system_contract_updates
-                .iter()
-                .map(|(contract_address, update)| (contract_address, &update.storage)),
-        )
-        .filter_map(|(contract_address, storage)| {
-            let storage = storage
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect::<BTreeMap<_, _>>();
-            // Omit contracts that have no storage updates
-            (!storage.is_empty()).then_some((*contract_address, storage))
-        })
-        .collect::<BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>>>();
-
-    // pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage,
-    // "Actual vs Expected");
-    pretty_assertions_sorted::assert_eq!(actual_storage2, expected_storage, "Actual2 vs Expected");
-    // pretty_assertions_sorted::assert_eq!(actual_storage, actual_storage2,
-    // "Actual vs Actual2");
-    println!("Actual storage updates match expected ones!");
-
-    let actual_rest = StateDiffWithoutStorage::from(&state_changes_after_execution);
-    let expected_rest = StateDiffWithoutStorage::from(&expected_state_update);
-
-    pretty_assertions_sorted::assert_eq!(
-        actual_rest,
-        expected_rest,
-        "The rest: Actual vs Expected"
-    );
-
-    println!("The rest also matches!");
-
-    // TODO validate other parts of the state update
-}
-*/
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct StateDiffWithoutStorage {
@@ -456,157 +390,6 @@ impl From<&StateUpdate> for StateDiffWithoutStorage {
                 .collect(),
         }
     }
-}
-
-fn execute_batch0(
-    db_tx: pathfinder_storage::Transaction<'_>,
-    execution_state: ExecutionState,
-    txns: Vec<p2p_proto::consensus::Transaction>,
-    block_number: BlockNumber,
-) {
-    let expected_state_update = db_tx
-        .state_update(block_number.into())
-        .expect("DB is fine")
-        .expect("Block exists");
-
-    let txns = txns
-        .into_iter()
-        .map(compose_executor_transaction)
-        .collect::<anyhow::Result<Vec<_>>>()
-        .expect("Mapping into executor transactions");
-
-    // Tuple:
-    // (collected after each transaction execution,
-    // vs
-    // taken from the cached state of the executor after all were executed)
-    let (txn_sims, state_changes_after_execution) =
-        match pathfinder_executor::simulate2(db_tx, execution_state, txns, Percentage::new(0)) {
-            Ok(x) => x,
-            Err(error) => {
-                error!(?error);
-                return;
-            }
-        };
-
-    let mut actual_storage: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
-        BTreeMap::new();
-    txn_sims.iter().for_each(|txn_sim| {
-        let storage_diffs = &txn_sim.state_diff().storage_diffs;
-        storage_diffs
-            .iter()
-            .for_each(|(contract_address, storage)| {
-                // IMPORTANT!!! Consecutive storage value updates to the same key are lost
-                // except for the last one
-                actual_storage.entry(*contract_address).or_default().extend(
-                    storage
-                        .iter()
-                        .map(|StorageDiff { key, value }| (*key, *value)),
-                );
-            });
-    });
-
-    let mut actual_storage2: BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>> =
-        BTreeMap::new();
-    state_changes_after_execution
-        .storage_diffs
-        .iter()
-        .for_each(|(contract_address, storage)| {
-            // IMPORTANT!!! Consecutive storage value updates to the same key are lost
-            // except for the last one
-            actual_storage2
-                .entry(*contract_address)
-                .or_default()
-                .extend(
-                    storage
-                        .iter()
-                        .map(|StorageDiff { key, value }| (*key, *value)),
-                );
-        });
-
-    let expected_storage = expected_state_update
-        .contract_updates
-        .iter()
-        .map(|(contract_address, update)| (contract_address, &update.storage))
-        .chain(
-            expected_state_update
-                .system_contract_updates
-                .iter()
-                .map(|(contract_address, update)| (contract_address, &update.storage)),
-        )
-        .filter_map(|(contract_address, storage)| {
-            let storage = storage
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect::<BTreeMap<_, _>>();
-            // Omit contracts that have no storage updates
-            (!storage.is_empty()).then_some((*contract_address, storage))
-        })
-        .collect::<BTreeMap<ContractAddress, BTreeMap<StorageAddress, StorageValue>>>();
-
-    // pretty_assertions_sorted::assert_eq!(actual_storage, expected_storage,
-    // "Actual vs Expected");
-    pretty_assertions_sorted::assert_eq!(actual_storage2, expected_storage, "Actual2 vs Expected");
-    // pretty_assertions_sorted::assert_eq!(actual_storage, actual_storage2,
-    // "Actual vs Actual2");
-    println!("Actual storage updates match expected ones!");
-
-    let actual_rest = StateDiffWithoutStorage::from(&state_changes_after_execution);
-    let expected_rest = StateDiffWithoutStorage::from(&expected_state_update);
-
-    pretty_assertions_sorted::assert_eq!(
-        actual_rest,
-        expected_rest,
-        "The rest: Actual vs Expected"
-    );
-
-    println!("The rest also matches!");
-
-    // TODO validate other parts of the state update
-}
-
-// Based on [`pathfinder_rpc::executor::compose_executor_transaction`]
-// TODO deduplicate the code with
-// `pathfinder_rpc::executor::compose_executor_transaction` and move it to the
-// executor crate
-fn compose_executor_transaction(
-    transaction: p2p_proto::consensus::Transaction,
-) -> anyhow::Result<pathfinder_executor::Transaction> {
-    let p2p_proto::consensus::Transaction {
-        txn,
-        transaction_hash,
-    } = transaction;
-    let (v, class_info) = match txn {
-        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
-            (SyncVariant::DeclareV3(common), Some(class_info(class)?))
-        }
-        ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
-        ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
-        ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),
-    };
-
-    let v =
-        TransactionVariant::try_from_dto(v).expect("Proposal part was generated from a valid DB");
-
-    let deployed_address = deployed_address(&v, true);
-
-    // TODO why 10^12?
-    let paid_fee_on_l1 = match &v {
-        TransactionVariant::L1Handler(_) => Some(Fee(1_000_000_000_000)),
-        _ => None,
-    };
-
-    let transaction = map_transaction_variant(v)?;
-    let tx_hash = starknet_api::transaction::TransactionHash(transaction_hash.0.into_starkfelt());
-    let tx = pathfinder_executor::Transaction::from_api(
-        transaction,
-        tx_hash,
-        class_info,
-        paid_fee_on_l1,
-        deployed_address,
-        pathfinder_executor::AccountTransactionExecutionFlags::default(),
-    )?;
-
-    Ok(tx)
 }
 
 fn map_transaction(
@@ -821,7 +604,6 @@ fn create_proposal(
         l2_gas_price_fri: header.strk_l2_gas_price.0,
         l1_gas_price_wei: header.eth_l1_gas_price.0,
         l1_data_gas_price_wei: header.eth_l1_data_gas_price.0,
-        // eth_to_fri_rate: fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price,
         eth_to_fri_rate: header.strk_l1_gas_price.0 * ETH_TO_WEI_RATE / header.eth_l1_gas_price.0,
     }));
 

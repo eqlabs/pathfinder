@@ -2,7 +2,6 @@ use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::state::cached_state::StateChanges;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash};
-use tracing::debug;
 
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
 use crate::simulate::{
@@ -11,19 +10,8 @@ use crate::simulate::{
     transaction_declared_deprecated_class,
     transaction_type,
 };
-use crate::transaction::{
-    execute_transaction,
-    get_max_l2_gas_amount_covered_by_balance,
-    set_l2_gas_limit,
-    ExecutionBehaviorOnRevert,
-};
-use crate::types::{
-    BlockInfo,
-    FeeEstimate,
-    OrderedTransactionSimulation,
-    StateDiff,
-    TransactionSimulation,
-};
+use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
+use crate::types::{BlockInfo, FeeEstimate, StateDiff, TransactionSimulation};
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
 pub struct Validator<'a> {
@@ -77,7 +65,7 @@ impl<'a> Validator<'a> {
         let sims = txns
             .into_iter()
             .enumerate()
-            .map(|(tx_index, mut tx)| {
+            .map(|(tx_index, tx)| {
                 let tx_index = start_tx_index + tx_index;
                 let _span = tracing::debug_span!(
                     "Validator::execute",
@@ -93,24 +81,14 @@ impl<'a> Validator<'a> {
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
 
-                // let max_l2_gas_limit = get_max_l2_gas_amount_covered_by_balance(
-                //     &tx,
-                //     &self.executor.block_context,
-                //     self.executor
-                //         .block_state
-                //         .as_mut()
-                //         .expect(BLOCK_STATE_ACCESS_ERR),
-                // )?;
-                // set_l2_gas_limit(&mut tx, max_l2_gas_limit);
-
+                // TODO use executor::execute_txs instead (concurrency can then be enabled via
+                // configuration)
                 let ((tx_info, _), gas_limit) = execute_transaction(
                     &tx,
                     tx_index,
                     &mut self.executor,
                     ExecutionBehaviorOnRevert::Continue,
                 )?;
-
-                debug!("tx_info: {:#?}", tx_info);
 
                 tracing::trace!(
                     "Transaction execution finished, actual_fee: {}, actual_resources: {:?}",
@@ -149,11 +127,13 @@ impl<'a> Validator<'a> {
 
     pub fn finalize(self) -> anyhow::Result<StateDiff> {
         let Self {
-            executor,
+            mut executor,
             initial_state,
             declared_deprecated_classes,
             ..
         } = self;
+
+        executor.finalize()?;
 
         let mut state = executor.block_state.expect(BLOCK_STATE_ACCESS_ERR);
         let StateChanges { state_maps, .. } = state.to_state_diff()?;

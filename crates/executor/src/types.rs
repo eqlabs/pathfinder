@@ -1,16 +1,23 @@
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::hash::Hash;
 
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::{
+    ContractClassUpdate,
+    ContractUpdate,
+    StateUpdateData,
+    SystemContractUpdate,
+};
 use pathfinder_crypto::Felt;
+use serde_json::de;
 use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
-use tracing::debug;
 
 use super::felt::IntoFelt;
+use crate::class;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
 
@@ -216,8 +223,7 @@ pub struct OrderedTransactionSimulation {
     pub fee_estimation: FeeEstimate,
 }
 
-// TODO FIXME remove older version of this function
-fn collect_events_and_messages5(
+fn collect_events_and_messages(
     fi: FunctionInvocation,
     events: &mut BTreeMap<i64, VecDeque<pathfinder_common::event::Event>>,
     messages: &mut BTreeMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
@@ -248,429 +254,7 @@ fn collect_events_and_messages5(
     });
     fi.internal_calls
         .into_iter()
-        .for_each(|fi| collect_events_and_messages5(fi, events, messages));
-}
-
-// TODO FIXME leave only one version either via ref or consuming
-fn collect_events_and_messages(
-    fi: &FunctionInvocation,
-    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
-    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
-) {
-    fi.events.iter().for_each(|e| {
-        events.insert(
-            e.order,
-            pathfinder_common::event::Event {
-                data: e.data.iter().map(|d| EventData(*d)).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.iter().map(|k| EventKey(*k)).collect(),
-            },
-        );
-    });
-    fi.messages.iter().for_each(|m| {
-        messages.insert(
-            m.order,
-            pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .iter()
-                    .map(|p| L2ToL1MessagePayloadElem(*p))
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            },
-        );
-    });
-    fi.internal_calls
-        .iter()
         .for_each(|fi| collect_events_and_messages(fi, events, messages));
-}
-
-// TODO FIXME leave only one version either via ref or consuming
-fn collect_events_and_messages2(
-    fi: FunctionInvocation,
-    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
-    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
-) {
-    fi.events.into_iter().for_each(|e| {
-        debug!("Inserting event: {e:#?}");
-        let x = pathfinder_common::event::Event {
-            data: e.data.clone().into_iter().map(EventData).collect(),
-            from_address: fi.contract_address,
-            keys: e.keys.clone().into_iter().map(EventKey).collect(),
-        };
-        debug!("Inserting event translated into: {x:#?}");
-        events.insert(
-            e.order,
-            pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            },
-        );
-    });
-    fi.messages.into_iter().for_each(|m| {
-        messages.insert(
-            m.order,
-            pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            },
-        );
-    });
-    fi.internal_calls
-        .into_iter()
-        .for_each(|fi| collect_events_and_messages2(fi, events, messages));
-}
-
-// TODO FIXME remove older version of this function
-fn collect_events_and_messages3(
-    fi: FunctionInvocation,
-    events: &mut BTreeMap<i64, pathfinder_common::event::Event>,
-    messages: &mut BTreeMap<usize, pathfinder_common::receipt::L2ToL1Message>,
-    visit_counter: &mut usize,
-) {
-    fi.events.into_iter().for_each(|e| {
-        let order = if events.contains_key(&e.order) {
-            // Push the event with duplicated idx to the end of the list
-            e.order
-                + i64::try_from(*visit_counter).expect("Number of events will not exceed i64::MAX")
-        } else {
-            e.order
-        };
-        debug!("Inserting event: {e:#?} with order {order}");
-        events.insert(
-            order,
-            pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            },
-        );
-        *visit_counter += 1;
-    });
-    fi.messages.into_iter().for_each(|m| {
-        let order = if messages.contains_key(&m.order) {
-            // Push the message with duplicated idx to the end of the list
-            m.order + *visit_counter
-        } else {
-            m.order
-        };
-        messages.insert(
-            order,
-            pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            },
-        );
-        *visit_counter += 1;
-    });
-    fi.internal_calls
-        .into_iter()
-        .for_each(|fi| collect_events_and_messages3(fi, events, messages, visit_counter));
-}
-
-// TODO FIXME remove older version of this function
-fn _collect_events_and_messages3_backup(
-    fi: FunctionInvocation,
-    events: &mut BTreeMap<(i64, usize), pathfinder_common::event::Event>,
-    messages: &mut BTreeMap<(usize, usize), pathfinder_common::receipt::L2ToL1Message>,
-    visit_order: &mut usize,
-) {
-    fi.events.into_iter().for_each(|e| {
-        debug!("Inserting event: {e:#?}");
-        let x = pathfinder_common::event::Event {
-            data: e.data.clone().into_iter().map(EventData).collect(),
-            from_address: fi.contract_address,
-            keys: e.keys.clone().into_iter().map(EventKey).collect(),
-        };
-        debug!("Inserting event translated into: {x:#?}");
-        events.insert(
-            (e.order, *visit_order),
-            pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            },
-        );
-        *visit_order += 1;
-    });
-    fi.messages.into_iter().for_each(|m| {
-        messages.insert(
-            (m.order, *visit_order),
-            pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            },
-        );
-        *visit_order += 1;
-    });
-    fi.internal_calls
-        .into_iter()
-        .for_each(|fi| _collect_events_and_messages3_backup(fi, events, messages, visit_order));
-}
-
-// TODO FIXME remove older version of this function
-fn collect_events_and_messages4(
-    transaction_index: usize,
-    fi: FunctionInvocation,
-    events: &mut BTreeMap<(usize, i64), pathfinder_common::event::Event>,
-    messages: &mut BTreeMap<(usize, usize), pathfinder_common::receipt::L2ToL1Message>,
-    visit_counter: &mut usize,
-) {
-    fi.events.into_iter().for_each(|e| {
-        // let order = if events.contains_key(&e.order) {
-        //     // Push the event with duplicated idx to the end of the list
-        //     e.order
-        //         + i64::try_from(*visit_counter).expect("Number of events will not
-        //           exceed i64::MAX")
-        // } else {
-        //     e.order
-        // };
-        // debug!("Inserting event: {e:#?} with order {order}");
-        events.insert(
-            // order,
-            (transaction_index, e.order),
-            pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            },
-        );
-        // *visit_counter += 1;
-    });
-    fi.messages.into_iter().for_each(|m| {
-        // let order = if messages.contains_key(&m.order) {
-        //     // Push the message with duplicated idx to the end of the list
-        //     m.order + *visit_counter
-        // } else {
-        //     m.order
-        // };
-        messages.insert(
-            // order,
-            (transaction_index, m.order),
-            pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            },
-        );
-        // *visit_counter += 1;
-    });
-    fi.internal_calls.into_iter().for_each(|fi| {
-        collect_events_and_messages4(transaction_index, fi, events, messages, visit_counter)
-    });
-}
-
-/*
-// TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
-// transaction indices, keep only one conversion (ie. from self or &self)
-impl TryFrom<&TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
-    type Error = anyhow::Error;
-
-    fn try_from(x: &TransactionSimulation) -> Result<Self, Self::Error> {
-        let mut messages = BTreeMap::new();
-        let mut events = BTreeMap::new();
-
-        match &x.trace {
-            TransactionTrace::Declare(t) => {
-                t.validate_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.fee_transfer_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::DeployAccount(t) => {
-                t.validate_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.constructor_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.fee_transfer_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::Invoke(t) => {
-                t.validate_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = &t.execute_invocation {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                }
-                t.fee_transfer_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::L1Handler(t) => {
-                t.function_invocation.as_ref().map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-        };
-
-        let mut buf = [0u8; 32];
-        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
-        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
-
-        let receipt = Receipt {
-            actual_fee,
-            execution_resources: x.execution_resources()?,
-            l2_to_l1_messages: messages.into_values().collect(),
-            execution_status: x.execution_status(),
-            transaction_hash: TransactionHash::ZERO, // TODO FIXME
-            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
-        };
-
-        Ok((receipt, events.into_values().collect()))
-    }
-}
-*/
-
-// TODO FIXME common::Receipt-s shouldn't hold transaction hashes nor
-// transaction indices, keep only one conversion (ie. from self or &self)
-impl TryFrom<OrderedTransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
-    type Error = anyhow::Error;
-
-    fn try_from(x: OrderedTransactionSimulation) -> Result<Self, Self::Error> {
-        let OrderedTransactionSimulation {
-            transaction_index,
-            trace,
-            fee_estimation,
-        } = x;
-        let mut messages = BTreeMap::new();
-        let mut events = BTreeMap::new();
-        let mut visit_order = 0;
-
-        let execution_resources = trace.execution_resources()?;
-        let execution_status = trace.execution_status();
-        match trace {
-            TransactionTrace::Declare(t) => {
-                t.validate_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-                t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-            }
-            TransactionTrace::DeployAccount(t) => {
-                t.validate_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-                t.constructor_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-                t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-            }
-            TransactionTrace::Invoke(t) => {
-                t.validate_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                }
-                t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-            }
-            TransactionTrace::L1Handler(t) => {
-                t.function_invocation.map(|fi| {
-                    collect_events_and_messages4(
-                        transaction_index,
-                        fi,
-                        &mut events,
-                        &mut messages,
-                        &mut visit_order,
-                    );
-                });
-            }
-        };
-
-        let mut buf = [0u8; 32];
-        fee_estimation.overall_fee.to_big_endian(&mut buf);
-        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
-
-        let receipt = Receipt {
-            actual_fee,
-            execution_resources,
-            l2_to_l1_messages: messages.into_values().collect(),
-            execution_status,
-            transaction_hash: TransactionHash::ZERO, // TODO FIXME
-            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
-        };
-
-        Ok((receipt, events.into_values().collect()))
-    }
 }
 
 impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
@@ -690,37 +274,37 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
         match x.trace {
             TransactionTrace::Declare(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
             TransactionTrace::DeployAccount(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
                 t.constructor_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
             TransactionTrace::Invoke(t) => {
                 t.validate_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
                 if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 }
                 t.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
             TransactionTrace::L1Handler(t) => {
                 t.function_invocation.map(|fi| {
-                    collect_events_and_messages5(fi, &mut events, &mut messages);
+                    collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
         };
@@ -1228,44 +812,154 @@ impl From<cairo_vm::vm::runners::cairo_runner::ExecutionResources> for Computati
     }
 }
 
-impl From<StateUpdate> for StateDiff {
-    fn from(value: StateUpdate) -> Self {
-        let StateUpdate {
-            block_hash: _,
-            parent_state_commitment: _,
-            state_commitment: _,
+impl From<StateDiff> for StateUpdateData {
+    fn from(x: StateDiff) -> Self {
+        let StateDiff {
+            storage_diffs,
+            deployed_contracts,
+            deprecated_declared_classes,
+            declared_classes,
+            nonces,
+            replaced_classes,
+        } = x;
+
+        let mut contract_updates = HashMap::new();
+        let mut system_contract_updates = HashMap::new();
+
+        storage_diffs.into_iter().for_each(|(address, storage)| {
+            let storage = storage
+                .into_iter()
+                .map(|StorageDiff { key, value }| (key, value))
+                .collect();
+
+            if address.is_system_contract() {
+                system_contract_updates.insert(address, SystemContractUpdate { storage });
+            } else {
+                contract_updates.insert(
+                    address,
+                    ContractUpdate {
+                        storage,
+                        class: None,
+                        nonce: None,
+                    },
+                );
+            }
+        });
+
+        deployed_contracts.into_iter().for_each(
+            |DeployedContract {
+                 address,
+                 class_hash,
+             }| {
+                contract_updates.entry(address).or_default().class =
+                    Some(ContractClassUpdate::Deploy(class_hash));
+            },
+        );
+
+        nonces.into_iter().for_each(|(address, nonce)| {
+            contract_updates.entry(address).or_default().nonce = Some(nonce);
+        });
+
+        replaced_classes.into_iter().for_each(
+            |ReplacedClass {
+                 contract_address,
+                 class_hash,
+             }| {
+                contract_updates.entry(contract_address).or_default().class =
+                    Some(ContractClassUpdate::Replace(class_hash));
+            },
+        );
+
+        Self {
+            contract_updates,
+            system_contract_updates,
+            declared_cairo_classes: deprecated_declared_classes,
+            declared_sierra_classes: declared_classes
+                .into_iter()
+                .map(|c| (c.class_hash, c.compiled_class_hash))
+                .collect(),
+        }
+    }
+}
+
+impl From<StateUpdateData> for StateDiff {
+    fn from(x: StateUpdateData) -> Self {
+        let StateUpdateData {
             contract_updates,
             system_contract_updates,
             declared_cairo_classes,
             declared_sierra_classes,
-        } = value;
+        } = x;
 
-        let storage_diffs = contract_updates
-            .iter()
-            .map(|(contract_address, x)| (contract_address, x.storage.clone()))
-            .chain(
-                system_contract_updates
-                    .iter()
-                    .map(|(contract_address, x)| (contract_address, x.storage.clone())),
-            )
-            .map(|(contract_address, storage)| {
-                (
-                    *contract_address,
+        let mut storage_diffs = BTreeMap::new();
+        let mut deployed_contracts = Vec::new();
+        let mut nonces = BTreeMap::new();
+        let mut replaced_classes = Vec::new();
+
+        contract_updates.into_iter().for_each(|(address, update)| {
+            let ContractUpdate {
+                storage,
+                class,
+                nonce,
+            } = update;
+
+            storage_diffs.insert(
+                address,
+                storage
+                    .into_iter()
+                    .map(|(key, value)| StorageDiff { key, value })
+                    .collect(),
+            );
+
+            if let Some(class_update) = class {
+                match class_update {
+                    ContractClassUpdate::Deploy(class_hash) => {
+                        deployed_contracts.push(DeployedContract {
+                            address,
+                            class_hash,
+                        });
+                    }
+                    ContractClassUpdate::Replace(class_hash) => {
+                        replaced_classes.push(ReplacedClass {
+                            contract_address: address,
+                            class_hash,
+                        });
+                    }
+                }
+            }
+
+            if let Some(nonce) = nonce {
+                nonces.insert(address, nonce);
+            }
+        });
+
+        system_contract_updates
+            .into_iter()
+            .for_each(|(address, update)| {
+                let SystemContractUpdate { storage } = update;
+
+                storage_diffs.insert(
+                    address,
                     storage
                         .into_iter()
                         .map(|(key, value)| StorageDiff { key, value })
                         .collect(),
-                )
-            })
-            .collect();
+                );
+            });
 
         Self {
             storage_diffs,
-            deployed_contracts: Default::default(),
-            declared_classes: Default::default(),
-            nonces: Default::default(),
-            replaced_classes: Default::default(),
-            deprecated_declared_classes: Default::default(),
+            deployed_contracts,
+            deprecated_declared_classes: declared_cairo_classes,
+            declared_classes: declared_sierra_classes
+                .into_iter()
+                .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
+                    class_hash,
+                    compiled_class_hash,
+                })
+                .collect(),
+            nonces,
+            replaced_classes,
         }
     }
 }
