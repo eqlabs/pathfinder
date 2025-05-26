@@ -8853,6 +8853,7 @@ dependencies = [
  "pathfinder-compiler",
  "pathfinder-crypto",
  "pathfinder-executor",
+ "pathfinder-merkle-tree",
  "pathfinder-rpc",
  "pathfinder-storage",
  "pretty_assertions_sorted",

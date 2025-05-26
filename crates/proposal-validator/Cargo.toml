@@ -15,6 +15,7 @@ pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-executor = { path = "../executor" }
+pathfinder-merkle-tree = { path = "../merkle-tree" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage" }
 pretty_assertions_sorted = { workspace = true }

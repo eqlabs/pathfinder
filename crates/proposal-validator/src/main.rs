@@ -22,8 +22,10 @@ use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
+    BlockHash,
     BlockHeader,
     BlockNumber,
+    BlockTimestamp,
     ChainId,
     ClassHash,
     ContractAddress,
@@ -31,6 +33,7 @@ use pathfinder_common::{
     EntryPoint,
     L1DataAvailabilityMode,
     SequencerAddress,
+    StateCommitment,
     StateUpdate,
     TransactionHash,
     TransactionIndex,
@@ -48,11 +51,14 @@ use pathfinder_lib::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
+    BlockHeaderData,
 };
+use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
 use pathfinder_storage::StorageBuilder;
 use rayon::prelude::*;
+use starknet_api::block;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
@@ -68,7 +74,7 @@ fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
   ?+hasher.write(header.sequencer_address.0.into());
    +hasher.write(header.timestamp.get().into());
     hasher.write(concatenate_counts(header));
-    hasher.write(header.state_diff_commitment.0.into());
+   +hasher.write(header.state_diff_commitment.0.into());
    +hasher.write(header.transaction_commitment.0.into());
    +hasher.write(header.event_commitment.0.into());
    +hasher.write(header.receipt_commitment.0.into());
@@ -130,7 +136,7 @@ fn main() -> anyhow::Result<()> {
     let storage = StorageBuilder::file(database_path.into())
         .migrate()
         .context("Migrating database")?
-        .create_read_only_pool(
+        .create_pool(
             connection_pool_capacity
                 .try_into()
                 .expect("Max number of threads < 2^32-1"),
@@ -159,6 +165,9 @@ fn main() -> anyhow::Result<()> {
     let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
         panic!("Expected block info");
     };
+
+    let block_number = BlockNumber::new_or_panic(block_info.height);
+    let block_timestamp = BlockTimestamp::new_or_panic(block_info.timestamp);
 
     // TODO verify
     assert!(matches!(
@@ -316,6 +325,54 @@ fn main() -> anyhow::Result<()> {
         state_update_commitment, expected_header.state_diff_commitment,
         "Comparing state diff commitments: actual vs expected"
     );
+
+    let mut db_conn = storage.connection().context("Create database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Create database transaction")?;
+
+    let (storage_commitment, class_commitment) = update_starknet_state(
+        &db_txn,
+        (&state_update).into(),
+        true,
+        expected_header.number,
+        storage,
+    )?;
+
+    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+
+    assert_eq!(
+        state_commitment, expected_header.state_commitment,
+        "Comparing state commitments: actual vs expected"
+    );
+
+    let bhd = BlockHeaderData {
+        // TODO FIXME we need a BlockHeader type, without the block hash
+        hash: BlockHash::ZERO,
+        parent_hash: expected_header.parent_hash,
+        number: block_number,
+        timestamp: block_timestamp,
+        sequencer_address: todo!(),
+        state_commitment,
+        state_diff_commitment: todo!(),
+        transaction_commitment,
+        transaction_count: todo!(),
+        event_commitment,
+        event_count: todo!(),
+        state_diff_length: todo!(),
+        starknet_version: todo!(),
+        starknet_version_str: todo!(),
+        eth_l1_gas_price: todo!(),
+        strk_l1_gas_price: todo!(),
+        eth_l1_data_gas_price: todo!(),
+        strk_l1_data_gas_price: todo!(),
+        eth_l2_gas_price: todo!(),
+        strk_l2_gas_price: todo!(),
+        receipt_commitment,
+        l1_da_mode: todo!(),
+    };
+
+    debug!("Proposal validation completed successfully");
 
     Ok(())
 }
