@@ -1,6 +1,7 @@
 use core::panic;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::str::FromStr;
+use std::time::Instant;
 use std::usize;
 
 use anyhow::Context;
@@ -22,7 +23,6 @@ use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
-    BlockHash,
     BlockHeader,
     BlockNumber,
     BlockTimestamp,
@@ -62,7 +62,7 @@ use rayon::prelude::*;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
-use tracing::debug;
+use tracing::info;
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct ReceiptWithoutExecutionResources {
@@ -85,21 +85,27 @@ impl From<Receipt> for ReceiptWithoutExecutionResources {
     }
 }
 
+fn log_elapsed(start: Instant, message: &str) -> Instant {
+    let elapsed = start.elapsed();
+    info!("\t{} in {} ms", message, elapsed.as_millis());
+    Instant::now()
+}
+
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
-
-    debug!("Starting proposal validator");
 
     let database_path = std::env::args()
         .nth(1)
         .context("Please provide the database path as the first argument")?;
 
+    /*
     let block_number = std::env::args()
         .nth(2)
         .context("Please provide the block number as the second argument")?
         .parse::<u64>()
         .context("Parsing block number")?;
     let block_number = BlockNumber::new(block_number).context("Parsing block number")?;
+    */
 
     // A wild guess based on pathfiner's `main()`
     let connection_pool_capacity = std::thread::available_parallelism()
@@ -107,7 +113,7 @@ fn main() -> anyhow::Result<()> {
         .checked_add(5)
         .expect(">5");
 
-    let storage = StorageBuilder::file(database_path.into())
+    let storage = StorageBuilder::file(database_path.clone().into())
         .migrate()
         .context("Migrating database")?
         .create_pool(
@@ -117,262 +123,296 @@ fn main() -> anyhow::Result<()> {
         )
         .context("Creating connection pool")?;
 
-    let mut db_conn = storage.connection().context("Create database connection")?;
+    let mut buffer = String::new();
 
-    let db_txn = db_conn
-        .transaction()
-        .context("Create database transaction")?;
+    while std::io::stdin().read_line(&mut buffer).is_ok() {
+        let start = Instant::now();
 
-    let (mut proposal, expected_header, expected_transactions, expected_receipts, expected_events) =
-        create_proposal(&db_txn, block_number)?;
+        let block_number: u64 = buffer
+            .trim()
+            .parse()
+            .context("Parsing block number from stdin")?;
+        buffer.clear();
 
-    let expected_state_update = db_txn
-        .state_update(block_number.into())?
-        .context("State update not found")?;
+        info!("Block {} Starting proposal validation", block_number);
 
-    // TODO verify
-    assert!(matches!(
-        proposal.pop_front().expect("Proposal init"),
-        ProposalPart::ProposalInit(_)
-    ));
+        let block_number = BlockNumber::new_or_panic(block_number);
 
-    let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
-        panic!("Expected block info");
-    };
+        let mut db_conn = storage.connection().context("Create database connection")?;
 
-    // TODO verify
-    assert!(matches!(
-        proposal.pop_back().expect("Proposal fin"),
-        ProposalPart::ProposalFin(_)
-    ));
+        let db_txn = db_conn
+            .transaction()
+            .context("Create database transaction")?;
 
-    let part = proposal.pop_front().expect("Transaction batch");
-    let ProposalPart::TransactionBatch(txns) = part else {
-        panic!("Expected transaction batch");
-    };
+        let start = log_elapsed(start, "Database connection and transaction created");
 
-    use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
+        let (
+            mut proposal,
+            expected_header,
+            expected_transactions,
+            expected_receipts,
+            expected_events,
+        ) = create_proposal(&db_txn, block_number)?;
 
-    let txns = txns
-        .into_iter()
-        .map(map_transaction)
-        .collect::<anyhow::Result<Vec<_>>>()
-        .expect("Mapping into executor transactions");
-    let (common_txn_variants, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+        let expected_state_update = db_txn
+            .state_update(block_number.into())?
+            .context("State update not found")?;
 
-    let txn_hashes = common_txn_variants
-        .par_iter()
-        .map(|v| v.calculate_hash(ChainId::SEPOLIA_TESTNET, false))
-        .collect::<Vec<_>>();
+        let start = log_elapsed(start, "Proposal created");
 
-    let common_txns = common_txn_variants
-        .into_iter()
-        .zip(txn_hashes.iter().copied())
-        .map(|(variant, hash)| Transaction { hash, variant })
-        .collect::<Vec<_>>();
+        // TODO verify
+        assert!(matches!(
+            proposal.pop_front().expect("Proposal init"),
+            ProposalPart::ProposalInit(_)
+        ));
 
-    let transaction_commitment =
-        calculate_transaction_commitment(&common_txns, expected_header.starknet_version)?;
+        let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
+            panic!("Expected block info");
+        };
 
-    let block_number = BlockNumber::new_or_panic(block_info.height);
-    let block_timestamp = BlockTimestamp::new_or_panic(block_info.timestamp);
-    let sequencer_address = SequencerAddress(block_info.builder.0);
-    let l1_da_mode = match block_info.l1_da_mode {
-        Calldata => L1DataAvailabilityMode::Calldata,
-        Blob => L1DataAvailabilityMode::Blob,
-    };
+        // TODO verify
+        assert!(matches!(
+            proposal.pop_back().expect("Proposal fin"),
+            ProposalPart::ProposalFin(_)
+        ));
 
-    let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-        block_info.height,
-        block_info.timestamp,
-        sequencer_address,
-        l1_da_mode,
-        block_info.l2_gas_price_fri,
-        block_info.l1_gas_price_wei,
-        block_info.l1_data_gas_price_wei,
-        block_info.eth_to_fri_rate,
-        expected_header.starknet_version,
-        // TODO workaround for inconsistent ethfri rate in the blocks
-        expected_header.eth_l2_gas_price.0,
-        expected_header.strk_l1_gas_price.0,
-        expected_header.strk_l1_data_gas_price.0,
-    )?;
+        let part = proposal.pop_front().expect("Transaction batch");
+        let ProposalPart::TransactionBatch(txns) = part else {
+            panic!("Expected transaction batch");
+        };
 
-    let mut validator = Validator::new(
-        ChainId::SEPOLIA_TESTNET,
-        block_info.clone(),
-        ETH_FEE_TOKEN_ADDRESS,
-        STRK_FEE_TOKEN_ADDRESS,
-        db_txn,
-    )?;
+        use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
 
-    let (receipts, events): (Vec<_>, Vec<_>) =
-        validator.execute(executor_txns)?.into_iter().unzip();
+        let txns = txns
+            .into_iter()
+            .map(map_transaction)
+            .collect::<anyhow::Result<Vec<_>>>()
+            .expect("Mapping into executor transactions");
+        let (common_txn_variants, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
 
-    let state_diff = validator.finalize()?;
+        let txn_hashes = common_txn_variants
+            .par_iter()
+            .map(|v| v.calculate_hash(ChainId::SEPOLIA_TESTNET, false))
+            .collect::<Vec<_>>();
 
-    let receipts = receipts
-        .into_iter()
-        .zip(txn_hashes.iter().copied())
-        .enumerate()
-        .map(|(idx, (r, h))| Receipt {
-            transaction_hash: h,
-            transaction_index: TransactionIndex::new_or_panic(
-                idx.try_into().expect("idx < i64::MAX"),
-            ),
-            ..r
-        })
-        .collect::<Vec<_>>();
+        let common_txns = common_txn_variants
+            .into_iter()
+            .zip(txn_hashes.iter().copied())
+            .map(|(variant, hash)| Transaction { hash, variant })
+            .collect::<Vec<_>>();
 
-    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+        let transaction_commitment =
+            calculate_transaction_commitment(&common_txns, expected_header.starknet_version)?;
 
-    let events_ref_by_txn = events
-        .iter()
-        .zip(txn_hashes.iter().copied())
-        .map(|(e, h)| (h, e.as_slice()))
-        .collect::<Vec<_>>();
-    let event_commitment =
-        calculate_event_commitment(&events_ref_by_txn, expected_header.starknet_version)?;
+        let start = log_elapsed(
+            start,
+            "Transaction hashes and transaction commitment calculated",
+        );
 
-    let events = events
-        .into_iter()
-        .zip(txn_hashes.iter().copied())
-        .map(|(e, h)| (h, e))
-        .collect::<Vec<_>>();
+        let block_number = BlockNumber::new_or_panic(block_info.height);
+        let block_timestamp = BlockTimestamp::new_or_panic(block_info.timestamp);
+        let sequencer_address = SequencerAddress(block_info.builder.0);
+        let l1_da_mode = match block_info.l1_da_mode {
+            Calldata => L1DataAvailabilityMode::Calldata,
+            Blob => L1DataAvailabilityMode::Blob,
+        };
 
-    // Compare transactions, receipts, events
-    pretty_assertions_sorted::assert_eq!(
-        common_txns,
-        expected_transactions,
-        "Comparing transactions: actual vs expected"
-    );
+        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
+            block_info.height,
+            block_info.timestamp,
+            sequencer_address,
+            l1_da_mode,
+            block_info.l2_gas_price_fri,
+            block_info.l1_gas_price_wei,
+            block_info.l1_data_gas_price_wei,
+            block_info.eth_to_fri_rate,
+            expected_header.starknet_version,
+            // TODO workaround for inconsistent ethfri rate in the blocks
+            expected_header.eth_l2_gas_price.0,
+            expected_header.strk_l1_gas_price.0,
+            expected_header.strk_l1_data_gas_price.0,
+        )?;
 
-    let receipts = receipts
-        .into_iter()
-        .map(ReceiptWithoutExecutionResources::from)
-        .collect::<Vec<_>>();
+        let mut validator = Validator::new(
+            ChainId::SEPOLIA_TESTNET,
+            block_info.clone(),
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            db_txn,
+        )?;
 
-    let expected_receipts = expected_receipts
-        .into_iter()
-        .map(ReceiptWithoutExecutionResources::from)
-        .collect::<Vec<_>>();
+        let (receipts, events): (Vec<_>, Vec<_>) =
+            validator.execute(executor_txns)?.into_iter().unzip();
 
-    // TODO FIXME Execution resources dont match but is this important?
-    // Because they're not hashed to get the receipt commitment.
-    pretty_assertions_sorted::assert_eq!(
-        receipts,
-        expected_receipts,
-        "Comparing receipts: actual vs expected EXCEPT execution resources"
-    );
+        let state_diff = validator.finalize()?;
 
-    pretty_assertions_sorted::assert_eq!(
-        events,
-        expected_events,
-        "Comparing events: actual vs expected"
-    );
+        let start = log_elapsed(start, "Transactions executed");
 
-    // Compare transaction-, receipt-, event- commitments
-    assert_eq!(
-        transaction_commitment,
-        expected_header.transaction_commitment
-    );
-    assert_eq!(receipt_commitment, expected_header.receipt_commitment);
-    assert_eq!(event_commitment, expected_header.event_commitment);
+        let receipts = receipts
+            .into_iter()
+            .zip(txn_hashes.iter().copied())
+            .enumerate()
+            .map(|(idx, (r, h))| Receipt {
+                transaction_hash: h,
+                transaction_index: TransactionIndex::new_or_panic(
+                    idx.try_into().expect("idx < i64::MAX"),
+                ),
+                ..r
+            })
+            .collect::<Vec<_>>();
 
-    /*
-    let expected_state_diff = StateUpdateData::from(expected_state_update).into();
-    pretty_assertions_sorted::assert_eq!(
-        state_diff,
-        expected_state_diff,
-        "Comparing state updates: actual vs expected"
-    );
-    */
+        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
 
-    let expected_state_update: StateUpdateData = expected_state_update.into();
-    let state_update: StateUpdateData = state_diff.into();
-    pretty_assertions_sorted::assert_eq!(
-        state_update,
-        expected_state_update,
-        "Comparing state updates: actual vs expected"
-    );
-
-    let state_update_commitment = state_update.compute_state_diff_commitment();
-    assert_eq!(
-        state_update_commitment, expected_header.state_diff_commitment,
-        "Comparing state diff commitments: actual vs expected"
-    );
-
-    let mut db_conn = storage.connection().context("Create database connection")?;
-    let db_txn = db_conn
-        .transaction()
-        .context("Create database transaction")?;
-
-    let (storage_commitment, class_commitment) = update_starknet_state(
-        &db_txn,
-        (&state_update).into(),
-        true,
-        expected_header.number,
-        storage,
-    )?;
-
-    let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
-
-    assert_eq!(
-        state_commitment, expected_header.state_commitment,
-        "Comparing state commitments: actual vs expected"
-    );
-
-    let bhd = BlockHeaderData {
-        // TODO FIXME we need a BlockHeader type, without the block hash
-        hash: expected_header.hash,
-        parent_hash: expected_header.parent_hash,
-        number: block_number,
-        timestamp: block_timestamp,
-        sequencer_address,
-        state_commitment,
-        state_diff_commitment: state_update_commitment,
-        transaction_commitment,
-        transaction_count: common_txns
-            .len()
-            .try_into()
-            .expect("Txn count is small enough"),
-        event_commitment,
-        event_count: events
+        let events_ref_by_txn = events
             .iter()
-            .flat_map(|(_, events)| events)
-            .count()
-            .try_into()
-            .expect("ptr size is 64bits"),
-        state_diff_length: state_update
-            .state_diff_length()
-            .try_into()
-            .expect("State diff length is small enough"),
-        starknet_version: expected_header.starknet_version,
-        starknet_version_str: expected_header.starknet_version.to_string(),
-        eth_l1_gas_price: block_info.eth_l1_gas_price,
-        strk_l1_gas_price: block_info.strk_l1_gas_price,
-        eth_l1_data_gas_price: block_info.eth_l1_data_gas_price,
-        strk_l1_data_gas_price: block_info.strk_l1_data_gas_price,
-        eth_l2_gas_price: block_info.eth_l2_gas_price,
-        strk_l2_gas_price: block_info.strk_l2_gas_price,
-        receipt_commitment,
-        l1_da_mode,
-    };
+            .zip(txn_hashes.iter().copied())
+            .map(|(e, h)| (h, e.as_slice()))
+            .collect::<Vec<_>>();
+        let event_commitment =
+            calculate_event_commitment(&events_ref_by_txn, expected_header.starknet_version)?;
 
-    let expected_bhd = BlockHeaderData::from_header(&expected_header);
-    pretty_assertions_sorted::assert_eq!(
-        bhd,
-        expected_bhd,
-        "Comparing block header data: actual vs expected"
-    );
+        let events = events
+            .into_iter()
+            .zip(txn_hashes.iter().copied())
+            .map(|(e, h)| (h, e))
+            .collect::<Vec<_>>();
 
-    let computed_block_hash = block_hash::compute_final_hash(&bhd);
-    assert_eq!(
-        computed_block_hash, expected_header.hash,
-        "Comparing block hashes: actual vs expected"
-    );
+        // Compare transactions, receipts, events
+        pretty_assertions_sorted::assert_eq!(
+            common_txns,
+            expected_transactions,
+            "Comparing transactions: actual vs expected"
+        );
 
-    debug!("Proposal validation completed successfully");
+        let receipts = receipts
+            .into_iter()
+            .map(ReceiptWithoutExecutionResources::from)
+            .collect::<Vec<_>>();
+
+        let expected_receipts = expected_receipts
+            .into_iter()
+            .map(ReceiptWithoutExecutionResources::from)
+            .collect::<Vec<_>>();
+
+        // TODO FIXME Execution resources dont match but is this important?
+        // Because they're not hashed to get the receipt commitment.
+        pretty_assertions_sorted::assert_eq!(
+            receipts,
+            expected_receipts,
+            "Comparing receipts: actual vs expected EXCEPT execution resources"
+        );
+
+        pretty_assertions_sorted::assert_eq!(
+            events,
+            expected_events,
+            "Comparing events: actual vs expected"
+        );
+
+        // Compare transaction-, receipt-, event- commitments
+        assert_eq!(
+            transaction_commitment,
+            expected_header.transaction_commitment
+        );
+        assert_eq!(receipt_commitment, expected_header.receipt_commitment);
+        assert_eq!(event_commitment, expected_header.event_commitment);
+
+        let expected_state_update: StateUpdateData = expected_state_update.into();
+        let state_update: StateUpdateData = state_diff.into();
+        pretty_assertions_sorted::assert_eq!(
+            state_update,
+            expected_state_update,
+            "Comparing state updates: actual vs expected"
+        );
+
+        let state_update_commitment = state_update.compute_state_diff_commitment();
+        assert_eq!(
+            state_update_commitment, expected_header.state_diff_commitment,
+            "Comparing state diff commitments: actual vs expected"
+        );
+
+        let start = log_elapsed(start, "Receipt, event, state diff commitments calculated");
+
+        let mut db_conn = storage.connection().context("Create database connection")?;
+        let db_txn = db_conn
+            .transaction()
+            .context("Create database transaction")?;
+
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db_txn,
+            (&state_update).into(),
+            true,
+            expected_header.number,
+            storage.clone(),
+        )?;
+
+        let start = log_elapsed(start, "Tries updated");
+
+        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+
+        let start = log_elapsed(start, "State commitment calculated");
+
+        assert_eq!(
+            state_commitment, expected_header.state_commitment,
+            "Comparing state commitments: actual vs expected"
+        );
+
+        let bhd = BlockHeaderData {
+            // TODO FIXME we need a BlockHeader type, without the block hash
+            hash: expected_header.hash,
+            parent_hash: expected_header.parent_hash,
+            number: block_number,
+            timestamp: block_timestamp,
+            sequencer_address,
+            state_commitment,
+            state_diff_commitment: state_update_commitment,
+            transaction_commitment,
+            transaction_count: common_txns
+                .len()
+                .try_into()
+                .expect("Txn count is small enough"),
+            event_commitment,
+            event_count: events
+                .iter()
+                .flat_map(|(_, events)| events)
+                .count()
+                .try_into()
+                .expect("ptr size is 64bits"),
+            state_diff_length: state_update
+                .state_diff_length()
+                .try_into()
+                .expect("State diff length is small enough"),
+            starknet_version: expected_header.starknet_version,
+            starknet_version_str: expected_header.starknet_version.to_string(),
+            eth_l1_gas_price: block_info.eth_l1_gas_price,
+            strk_l1_gas_price: block_info.strk_l1_gas_price,
+            eth_l1_data_gas_price: block_info.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: block_info.strk_l1_data_gas_price,
+            eth_l2_gas_price: block_info.eth_l2_gas_price,
+            strk_l2_gas_price: block_info.strk_l2_gas_price,
+            receipt_commitment,
+            l1_da_mode,
+        };
+
+        let expected_bhd = BlockHeaderData::from_header(&expected_header);
+        pretty_assertions_sorted::assert_eq!(
+            bhd,
+            expected_bhd,
+            "Comparing block header data: actual vs expected"
+        );
+
+        let computed_block_hash = block_hash::compute_final_hash(&bhd);
+        assert_eq!(
+            computed_block_hash, expected_header.hash,
+            "Comparing block hashes: actual vs expected"
+        );
+
+        let _ = log_elapsed(start, "Block hash calculated");
+
+        info!(
+            "Block {} Proposal validation completed successfully",
+            block_number
+        );
+    }
 
     Ok(())
 }
@@ -602,8 +642,6 @@ fn create_proposal(
     let header = db_txn
         .block_header(block_number.into())?
         .context("Block not found")?;
-
-    debug!("header: {header:#?}");
 
     let mut proposal_parts = VecDeque::new();
     let height = header.number.get();

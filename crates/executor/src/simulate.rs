@@ -3,16 +3,16 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use blockifier::blockifier::transaction_executor::{
-    TransactionExecutionOutput, TransactionExecutorError, BLOCK_STATE_ACCESS_ERR
+    TransactionExecutorError,
+    BLOCK_STATE_ACCESS_ERR,
 };
-use blockifier::state::cached_state::{StateChanges, StateMaps};
+use blockifier::state::cached_state::StateMaps;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::versioned_constants::VersionedConstants;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;
-use starknet_api::execution_resources::GasVector;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 use util::percentage::Percentage;
 
@@ -20,7 +20,7 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
-use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
+use crate::execution_state::{create_executor, PathfinderExecutionState};
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -97,176 +97,6 @@ impl Default for TraceCache {
     fn default() -> Self {
         Self(Arc::new(Mutex::new(SizedCache::with_size(128))))
     }
-}
-
-/// Validate execution of a batch of transactions.
-///
-/// TODO TransactionSimulation carries a state diff which we don't use,
-/// instead we take the final state diff after finalizing the block to
-/// make sure that the special system contracts' storages are also updated.
-pub fn execute_batch(
-    block_number: BlockNumber,
-    executor: &mut PathfinderExecutor<'_>,
-    transactions: Vec<Transaction>,
-    start_tx_index: usize,
-) -> Result<(Vec<TransactionSimulation>, usize), TransactionExecutionError> {
-    let state_before_batch = executor
-        .block_state
-        .as_ref()
-        .expect(BLOCK_STATE_ACCESS_ERR)
-        .clone();
-    let next_start_idx = transactions.len() + start_tx_index;
-
-    transactions
-        .into_iter()
-        .enumerate()
-        .map(|(tx_index, mut tx)| {
-            let tx_index = start_tx_index + tx_index;
-            let _span = tracing::debug_span!(
-                "validate_batch",
-                block_number = %block_number,
-                transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
-                transaction_index = %tx_index
-            )
-            .entered();
-
-            let tx_type = transaction_type(&tx);
-            let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
-            let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-
-            let ((tx_info, state_maps), gas_limit) = 
-                execute_transaction(&tx, tx_index, executor, ExecutionBehaviorOnRevert::Continue)?;
-
-            tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
-
-            Ok(TransactionSimulation {
-                fee_estimation: FeeEstimate::from_tx_and_gas_vector(
-                    &tx,
-                    &gas_limit,
-                    &gas_vector_computation_mode,
-                    &executor.block_context,
-                ),
-                trace: to_trace(
-                    tx_type,
-                    tx_info,
-                    StateDiff::default(),
-                    executor.block_context.versioned_constants(),
-                    &gas_vector_computation_mode,
-                ),
-            })
-        })
-        .collect::<Result<Vec<_>, _>>().map(|x| (x, next_start_idx))
-}
-
-// Returns a tuple:
-// - collected transaction execution results, for each execution separately
-// - vs a state diff taken from the executor after all those transactions were
-//   ran
-pub fn simulate2(
-    db_tx: pathfinder_storage::Transaction<'_>,
-    execution_state: ExecutionState,
-    transactions: Vec<Transaction>,
-    epsilon: Percentage,
-) -> Result<(Vec<TransactionSimulation>, StateDiff), TransactionExecutionError> {
-    let block_number = execution_state.block_info.number;
-    let mut tx_executor = create_executor(db_tx, execution_state)?;
-
-    let initial_state_before_all_execution = tx_executor
-        .block_state
-        .as_ref()
-        .expect(BLOCK_STATE_ACCESS_ERR)
-        .clone();
-
-    let results = transactions
-        .into_iter()
-        .enumerate()
-        .map(|(tx_index, mut tx)| {
-            let _span = tracing::debug_span!(
-                "simulate",
-                block_number = %block_number,
-                transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
-                transaction_index = %tx_index
-            )
-            .entered();
-
-            let tx_type = transaction_type(&tx);
-            let tx_declared_deprecated_class_hash = transaction_declared_deprecated_class(&tx);
-            let gas_vector_computation_mode = super::transaction::gas_vector_computation_mode(&tx);
-
-            let initial_state = tx_executor
-                .block_state
-                .as_ref()
-                .expect(BLOCK_STATE_ACCESS_ERR)
-                .clone();
-            let ((tx_info, state_maps), gas_limit) = if l2_gas_accounting_enabled(
-                &tx,
-                tx_executor.block_state.as_ref().expect(BLOCK_STATE_ACCESS_ERR),
-                &tx_executor.block_context,
-                &gas_vector_computation_mode,
-            )? {
-                find_l2_gas_limit_and_execute_transaction(
-                    &mut tx,
-                    tx_index,
-                    &mut tx_executor,
-                    ExecutionBehaviorOnRevert::Continue,
-                    epsilon,
-                )?
-            } else {
-                execute_transaction(&tx, tx_index, &mut tx_executor, ExecutionBehaviorOnRevert::Continue)?
-            };
-            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())?;
-
-            tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
-
-            Ok(TransactionSimulation {
-                fee_estimation: FeeEstimate::from_tx_and_gas_vector(
-                    &tx,
-                    &gas_limit,
-                    &gas_vector_computation_mode,
-                    &tx_executor.block_context,
-                ),
-                trace: to_trace(
-                    tx_type,
-                    tx_info,
-                    state_diff,
-                    tx_executor.block_context.versioned_constants(),
-                    &gas_vector_computation_mode,
-                ),
-            })
-        })
-        .collect::<Result<Vec<_>, _>>();
-
-    // TODO check if the summary is useful for validation
-    // Finalization is necessary for updating storage of contract 2, can be tested
-    // on block 709878
-    let block_execution_summary = tx_executor.finalize().expect("Finalizing block");
-
-    // Simulation results don't contain contract 1 storage updates, as these don't
-    // belong to any transaction and are created with
-    // PathfinderExecutor::pre_process_and_create
-    let mut cache_state = tx_executor
-        .block_state
-        .expect("Cached state is returned to the executor");
-
-    let state_changes_after_execution = cache_state
-        .to_state_diff()
-        .expect("Converting cached state to state diff");
-
-    // tracing::debug!("state_changes_after_execution:
-    // {state_changes_after_execution:#?}");
-
-    let state_changes_after_execution = to_state_diff(
-        state_changes_after_execution.state_maps,
-        initial_state_before_all_execution, /* FIXME This is not really initial before executing
-                                             * all txns, but it only
-                                             * impacts class declarations and this state diff is
-                                             * to compare storage
-                                             * updates with the collected partial simulation
-                                             * results */
-        std::iter::empty(), // FIXME
-    )?;
-
-    results.map(|r| (r, state_changes_after_execution))
 }
 
 pub fn simulate(
@@ -415,13 +245,16 @@ pub fn trace(
                 return Err(error.into());
             }
         };
-        let state_diff =
-            to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())
-                .inspect_err(|_| {
-                    // Remove the cache entry so it's no longer inflight.
-                    let mut cache = cache.0.lock().unwrap();
-                    cache.cache_remove(&block_hash);
-                })?;
+        let state_diff = to_state_diff(
+            state_maps,
+            initial_state,
+            tx_declared_deprecated_class_hash.into_iter(),
+        )
+        .inspect_err(|_| {
+            // Remove the cache entry so it's no longer inflight.
+            let mut cache = cache.0.lock().unwrap();
+            cache.cache_remove(&block_hash);
+        })?;
 
         tracing::trace!("Transaction tracing finished");
 
@@ -467,7 +300,9 @@ pub(crate) fn transaction_type(transaction: &Transaction) -> TransactionType {
     }
 }
 
-pub(crate) fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
+pub(crate) fn transaction_declared_deprecated_class(
+    transaction: &Transaction,
+) -> Option<ClassHash> {
     match transaction {
         Transaction::Account(outer) => match &outer.tx {
             starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {

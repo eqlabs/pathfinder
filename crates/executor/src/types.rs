@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-use std::hash::Hash;
 
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
@@ -12,12 +11,10 @@ use pathfinder_common::state_update::{
     SystemContractUpdate,
 };
 use pathfinder_crypto::Felt;
-use serde_json::de;
 use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
 
 use super::felt::IntoFelt;
-use crate::class;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
 
