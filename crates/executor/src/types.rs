@@ -268,6 +268,11 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
 
         let execution_resources = x.execution_resources()?;
         let execution_status = x.execution_status();
+
+        let mut buf = [0u8; 32];
+        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
+        let mut actual_fee = Fee(Felt::from_be_bytes(buf)?);
+
         match x.trace {
             TransactionTrace::Declare(t) => {
                 t.validate_invocation.map(|fi| {
@@ -300,6 +305,12 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
                 });
             }
             TransactionTrace::L1Handler(t) => {
+                // IMPORTANT
+                // L1 handler transactions have an actual fee of 0, because they're charged on
+                // L1 and not L2. Additionally the fee is not in STRK, but in
+                // ETH, because L1 handler transactions are pre-v3.
+                actual_fee = Fee::ZERO;
+
                 t.function_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
@@ -308,10 +319,6 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
 
         let l2_to_l1_messages = collect_items(messages);
         let events = collect_items(events);
-
-        let mut buf = [0u8; 32];
-        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
-        let actual_fee = Fee(Felt::from_be_bytes(buf)?);
 
         let receipt = Receipt {
             actual_fee,
