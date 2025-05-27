@@ -48,6 +48,7 @@ use pathfinder_executor::types::{
 };
 use pathfinder_executor::{ClassInfo, IntoStarkFelt, Validator};
 use pathfinder_lib::state::block_hash::{
+    self,
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
@@ -58,37 +59,10 @@ use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
 use pathfinder_storage::StorageBuilder;
 use rayon::prelude::*;
-use starknet_api::block;
 use starknet_api::contract_class::SierraVersion;
 use starknet_api::core::PatriciaKey;
 use starknet_api::transaction::fields::Fee;
 use tracing::debug;
-
-/*
-fn compute_final_hash_v1(header: &BlockHeaderData) -> BlockHash {
-    // Hash the block header.
-    let mut hasher = PoseidonHasher::new();
-   +hasher.write(felt_bytes!(b"STARKNET_BLOCK_HASH1").into());
-   +hasher.write(header.number.get().into());
-    hasher.write(header.state_commitment.0.into());
-  ?+hasher.write(header.sequencer_address.0.into());
-   +hasher.write(header.timestamp.get().into());
-    hasher.write(concatenate_counts(header));
-   +hasher.write(header.state_diff_commitment.0.into());
-   +hasher.write(header.transaction_commitment.0.into());
-   +hasher.write(header.event_commitment.0.into());
-   +hasher.write(header.receipt_commitment.0.into());
-   +hasher.write(gas_prices_to_hash(header));
- ---hasher.write(
-        Felt::from_be_slice(header.starknet_version_str.as_bytes())
-            .expect("Starknet version should fit into a felt")
-            .into(),
-    );
-   +hasher.write(MontFelt::ZERO);
-   +hasher.write(header.parent_hash.0.into());
-    BlockHash(hasher.finish().into())
-}
-*/
 
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct ReceiptWithoutExecutionResources {
@@ -166,9 +140,6 @@ fn main() -> anyhow::Result<()> {
         panic!("Expected block info");
     };
 
-    let block_number = BlockNumber::new_or_panic(block_info.height);
-    let block_timestamp = BlockTimestamp::new_or_panic(block_info.timestamp);
-
     // TODO verify
     assert!(matches!(
         proposal.pop_back().expect("Proposal fin"),
@@ -203,14 +174,19 @@ fn main() -> anyhow::Result<()> {
     let transaction_commitment =
         calculate_transaction_commitment(&common_txns, expected_header.starknet_version)?;
 
+    let block_number = BlockNumber::new_or_panic(block_info.height);
+    let block_timestamp = BlockTimestamp::new_or_panic(block_info.timestamp);
+    let sequencer_address = SequencerAddress(block_info.builder.0);
+    let l1_da_mode = match block_info.l1_da_mode {
+        Calldata => L1DataAvailabilityMode::Calldata,
+        Blob => L1DataAvailabilityMode::Blob,
+    };
+
     let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
         block_info.height,
         block_info.timestamp,
-        SequencerAddress(block_info.builder.0),
-        match block_info.l1_da_mode {
-            Calldata => L1DataAvailabilityMode::Calldata,
-            Blob => L1DataAvailabilityMode::Blob,
-        },
+        sequencer_address,
+        l1_da_mode,
         block_info.l2_gas_price_fri,
         block_info.l1_gas_price_wei,
         block_info.l1_data_gas_price_wei,
@@ -224,7 +200,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut validator = Validator::new(
         ChainId::SEPOLIA_TESTNET,
-        block_info,
+        block_info.clone(),
         ETH_FEE_TOKEN_ADDRESS,
         STRK_FEE_TOKEN_ADDRESS,
         db_txn,
@@ -348,29 +324,53 @@ fn main() -> anyhow::Result<()> {
 
     let bhd = BlockHeaderData {
         // TODO FIXME we need a BlockHeader type, without the block hash
-        hash: BlockHash::ZERO,
+        hash: expected_header.hash,
         parent_hash: expected_header.parent_hash,
         number: block_number,
         timestamp: block_timestamp,
-        sequencer_address: todo!(),
+        sequencer_address,
         state_commitment,
-        state_diff_commitment: todo!(),
+        state_diff_commitment: state_update_commitment,
         transaction_commitment,
-        transaction_count: todo!(),
+        transaction_count: common_txns
+            .len()
+            .try_into()
+            .expect("Txn count is small enough"),
         event_commitment,
-        event_count: todo!(),
-        state_diff_length: todo!(),
-        starknet_version: todo!(),
-        starknet_version_str: todo!(),
-        eth_l1_gas_price: todo!(),
-        strk_l1_gas_price: todo!(),
-        eth_l1_data_gas_price: todo!(),
-        strk_l1_data_gas_price: todo!(),
-        eth_l2_gas_price: todo!(),
-        strk_l2_gas_price: todo!(),
+        event_count: events
+            .iter()
+            .flat_map(|(_, events)| events)
+            .count()
+            .try_into()
+            .expect("ptr size is 64bits"),
+        state_diff_length: state_update
+            .state_diff_length()
+            .try_into()
+            .expect("State diff length is small enough"),
+        starknet_version: expected_header.starknet_version,
+        starknet_version_str: expected_header.starknet_version.to_string(),
+        eth_l1_gas_price: block_info.eth_l1_gas_price,
+        strk_l1_gas_price: block_info.strk_l1_gas_price,
+        eth_l1_data_gas_price: block_info.eth_l1_data_gas_price,
+        strk_l1_data_gas_price: block_info.strk_l1_data_gas_price,
+        eth_l2_gas_price: block_info.eth_l2_gas_price,
+        strk_l2_gas_price: block_info.strk_l2_gas_price,
         receipt_commitment,
-        l1_da_mode: todo!(),
+        l1_da_mode,
     };
+
+    let expected_bhd = BlockHeaderData::from_header(&expected_header);
+    pretty_assertions_sorted::assert_eq!(
+        bhd,
+        expected_bhd,
+        "Comparing block header data: actual vs expected"
+    );
+
+    let computed_block_hash = block_hash::compute_final_hash(&bhd);
+    assert_eq!(
+        computed_block_hash, expected_header.hash,
+        "Comparing block hashes: actual vs expected"
+    );
 
     debug!("Proposal validation completed successfully");
 
