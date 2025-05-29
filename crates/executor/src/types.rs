@@ -214,64 +214,6 @@ impl TransactionSimulation {
     }
 }
 
-fn collect_events_and_messages(
-    fi: FunctionInvocation,
-    events: &mut BTreeMap<i64, VecDeque<pathfinder_common::event::Event>>,
-    messages: &mut BTreeMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
-) {
-    fi.events.into_iter().for_each(|e| {
-        events
-            .entry(e.order)
-            .or_default()
-            .push_back(pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            });
-    });
-    fi.messages.into_iter().for_each(|m| {
-        messages
-            .entry(m.order)
-            .or_default()
-            .push_back(pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            });
-    });
-    fi.internal_calls
-        .into_iter()
-        .for_each(|fi| collect_events_and_messages(fi, events, messages));
-}
-
-/// Collects all items, taking the first item from each key, one at a time,
-/// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
-/// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
-fn collect_items<Idx: Copy + Ord, Item>(mut messages: BTreeMap<Idx, VecDeque<Item>>) -> Vec<Item> {
-    let mut items =
-        Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
-    let mut keys = Vec::with_capacity(messages.len());
-
-    while !messages.is_empty() {
-        messages.keys().for_each(|k| keys.push(*k));
-
-        for key in &keys {
-            let messages_with_same_key = messages.get_mut(&key).expect("Key exists");
-            items.push(messages_with_same_key.pop_front().expect("Not empty"));
-            if messages_with_same_key.is_empty() {
-                messages.remove(&key);
-            }
-        }
-
-        keys.clear();
-    }
-    items
-}
-
 #[derive(Debug, Clone)]
 pub enum TransactionExecutionInfo {
     Declare(DeclareTransactionExecutionInfo),
@@ -898,6 +840,64 @@ pub(crate) fn to_receipts_and_events(
     };
 
     Ok((receipt, events))
+}
+
+fn collect_events_and_messages(
+    fi: FunctionInvocation,
+    events: &mut BTreeMap<i64, VecDeque<pathfinder_common::event::Event>>,
+    messages: &mut BTreeMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
+) {
+    fi.events.into_iter().for_each(|e| {
+        events
+            .entry(e.order)
+            .or_default()
+            .push_back(pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            });
+    });
+    fi.messages.into_iter().for_each(|m| {
+        messages
+            .entry(m.order)
+            .or_default()
+            .push_back(pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            });
+    });
+    fi.internal_calls
+        .into_iter()
+        .for_each(|fi| collect_events_and_messages(fi, events, messages));
+}
+
+/// Collects all items, taking the first item from each key, one at a time,
+/// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
+/// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
+fn collect_items<Idx: Copy + Ord, Item>(mut messages: BTreeMap<Idx, VecDeque<Item>>) -> Vec<Item> {
+    let mut items =
+        Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
+    let mut keys = Vec::with_capacity(messages.len());
+
+    while !messages.is_empty() {
+        messages.keys().for_each(|k| keys.push(*k));
+
+        for key in &keys {
+            let messages_with_same_key = messages.get_mut(&key).expect("Key exists");
+            items.push(messages_with_same_key.pop_front().expect("Not empty"));
+            if messages_with_same_key.is_empty() {
+                messages.remove(&key);
+            }
+        }
+
+        keys.clear();
+    }
+    items
 }
 
 pub(crate) enum TransactionType {
