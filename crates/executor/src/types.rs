@@ -2,6 +2,10 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::state::cached_state::StateMaps;
+use blockifier::state::errors::StateError;
+use blockifier::state::state_api::StateReader as _;
+use blockifier::transaction::transaction_execution::Transaction;
 use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{
@@ -16,7 +20,7 @@ use starknet_api::execution_resources::GasVector;
 use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::felt::IntoFelt;
-use crate::simulate::TransactionType;
+use crate::execution_state::PathfinderExecutionState;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
 
@@ -820,6 +824,215 @@ impl From<StateDiff> for StateUpdateData {
     }
 }
 
+pub(crate) fn to_receipts_and_events(
+    transaction_type: TransactionType,
+    execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
+    versioned_constants: &VersionedConstants,
+    gas_vector_computation_mode: &GasVectorComputationMode,
+) -> anyhow::Result<(Receipt, Vec<pathfinder_common::event::Event>)> {
+    let actual_fee = Fee(Felt::from_u128(execution_info.receipt.fee.0));
+    let execution_info = to_execution_info(
+        transaction_type,
+        execution_info,
+        versioned_constants,
+        gas_vector_computation_mode,
+    );
+
+    // Maps to collect events and messages are ordered by the internal index of an
+    // ordered but because indices of such items are not unique across
+    // the entire block we must put duplicates and from comparing the order of
+    // events/messages to the existing blocks we know that duplicated
+    // indices are put at the end.
+    let mut messages = BTreeMap::new();
+    let mut events = BTreeMap::new();
+
+    let execution_resources = execution_info.execution_resources()?;
+    let execution_status = execution_info.execution_status();
+
+    match execution_info {
+        TransactionExecutionInfo::Declare(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::DeployAccount(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.constructor_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::Invoke(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            if let ExecuteInvocation::FunctionInvocation(Some(fi)) = i.execute_invocation {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            }
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::L1Handler(i) => {
+            i.function_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+    };
+
+    let l2_to_l1_messages = collect_items(messages);
+    let events = collect_items(events);
+
+    let receipt = Receipt {
+        actual_fee,
+        execution_resources,
+        l2_to_l1_messages,
+        execution_status,
+    };
+
+    Ok((receipt, events))
+}
+
+pub(crate) enum TransactionType {
+    Declare,
+    DeployAccount,
+    Invoke,
+    L1Handler,
+}
+
+pub(crate) fn transaction_type(transaction: &Transaction) -> TransactionType {
+    match transaction {
+        Transaction::Account(tx) => match tx.tx {
+            starknet_api::executable_transaction::AccountTransaction::Declare(_) => {
+                TransactionType::Declare
+            }
+            starknet_api::executable_transaction::AccountTransaction::DeployAccount(_) => {
+                TransactionType::DeployAccount
+            }
+            starknet_api::executable_transaction::AccountTransaction::Invoke(_) => {
+                TransactionType::Invoke
+            }
+        },
+        Transaction::L1Handler(_) => TransactionType::L1Handler,
+    }
+}
+
+pub(crate) fn transaction_declared_deprecated_class(
+    transaction: &Transaction,
+) -> Option<ClassHash> {
+    match transaction {
+        Transaction::Account(outer) => match &outer.tx {
+            starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {
+                match inner.tx {
+                    starknet_api::transaction::DeclareTransaction::V0(_)
+                    | starknet_api::transaction::DeclareTransaction::V1(_) => {
+                        Some(ClassHash(inner.class_hash().0.into_felt()))
+                    }
+                    starknet_api::transaction::DeclareTransaction::V2(_)
+                    | starknet_api::transaction::DeclareTransaction::V3(_) => None,
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub(crate) fn to_state_diff(
+    state_maps: StateMaps,
+    initial_state: PathfinderExecutionState<'_>,
+    old_declared_contracts: impl Iterator<Item = ClassHash>,
+) -> Result<StateDiff, StateError> {
+    let mut deployed_contracts = Vec::new();
+    let mut replaced_classes = Vec::new();
+
+    // We need to check the previous class hash for a contract to decide if it's a
+    // deployed contract or a replaced class.
+    for (address, class_hash) in state_maps.class_hashes {
+        let is_deployed = initial_state
+            .get_class_hash_at(address)?
+            .0
+            .into_felt()
+            .is_zero();
+        if is_deployed {
+            deployed_contracts.push(DeployedContract {
+                address: ContractAddress::new_or_panic(address.0.key().into_felt()),
+                class_hash: ClassHash(class_hash.0.into_felt()),
+            });
+        } else {
+            replaced_classes.push(ReplacedClass {
+                contract_address: ContractAddress::new_or_panic(address.0.key().into_felt()),
+                class_hash: ClassHash(class_hash.0.into_felt()),
+            });
+        }
+    }
+
+    let mut storage_diffs: BTreeMap<_, _> = Default::default();
+    for ((address, key), value) in state_maps.storage {
+        storage_diffs
+            .entry(ContractAddress::new_or_panic(address.0.key().into_felt()))
+            .and_modify(|map: &mut BTreeMap<StorageAddress, StorageValue>| {
+                map.insert(
+                    StorageAddress::new_or_panic(key.0.key().into_felt()),
+                    StorageValue(value.into_felt()),
+                );
+            })
+            .or_insert_with(|| {
+                let mut map = BTreeMap::new();
+                map.insert(
+                    StorageAddress::new_or_panic(key.0.key().into_felt()),
+                    StorageValue(value.into_felt()),
+                );
+                map
+            });
+    }
+    let storage_diffs: BTreeMap<_, Vec<StorageDiff>> = storage_diffs
+        .into_iter()
+        .map(|(address, diffs)| {
+            (
+                address,
+                diffs
+                    .into_iter()
+                    .map(|(key, value)| StorageDiff { key, value })
+                    .collect(),
+            )
+        })
+        .collect();
+
+    Ok(StateDiff {
+        storage_diffs,
+        deployed_contracts,
+        // This info is not present in the state diff, so we need to pass it separately.
+        deprecated_declared_classes: old_declared_contracts.collect(),
+        declared_classes: state_maps
+            .compiled_class_hashes
+            .into_iter()
+            .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
+                class_hash: SierraHash(class_hash.0.into_felt()),
+                compiled_class_hash: CasmHash(compiled_class_hash.0.into_felt()),
+            })
+            .collect(),
+        nonces: state_maps
+            .nonces
+            .into_iter()
+            .map(|(address, nonce)| {
+                (
+                    ContractAddress::new_or_panic(address.0.key().into_felt()),
+                    ContractNonce(nonce.0.into_felt()),
+                )
+            })
+            .collect(),
+        replaced_classes,
+    })
+}
+
 pub(crate) fn to_execution_info(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
@@ -907,80 +1120,4 @@ pub(crate) fn to_execution_info(
             })
         }
     }
-}
-
-pub(crate) fn to_receipts_and_events(
-    transaction_type: TransactionType,
-    execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
-    versioned_constants: &VersionedConstants,
-    gas_vector_computation_mode: &GasVectorComputationMode,
-) -> anyhow::Result<(Receipt, Vec<pathfinder_common::event::Event>)> {
-    let actual_fee = Fee(Felt::from_u128(execution_info.receipt.fee.0));
-    let execution_info = to_execution_info(
-        transaction_type,
-        execution_info,
-        versioned_constants,
-        gas_vector_computation_mode,
-    );
-
-    // Maps to collect events and messages are ordered by the internal index of an
-    // ordered but because indices of such items are not unique across
-    // the entire block we must put duplicates and from comparing the order of
-    // events/messages to the existing blocks we know that duplicated
-    // indices are put at the end.
-    let mut messages = BTreeMap::new();
-    let mut events = BTreeMap::new();
-
-    let execution_resources = execution_info.execution_resources()?;
-    let execution_status = execution_info.execution_status();
-
-    match execution_info {
-        TransactionExecutionInfo::Declare(i) => {
-            i.validate_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-            i.fee_transfer_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-        }
-        TransactionExecutionInfo::DeployAccount(i) => {
-            i.validate_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-            i.constructor_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-            i.fee_transfer_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-        }
-        TransactionExecutionInfo::Invoke(i) => {
-            i.validate_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-            if let ExecuteInvocation::FunctionInvocation(Some(fi)) = i.execute_invocation {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            }
-            i.fee_transfer_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-        }
-        TransactionExecutionInfo::L1Handler(i) => {
-            i.function_invocation.map(|fi| {
-                collect_events_and_messages(fi, &mut events, &mut messages);
-            });
-        }
-    };
-
-    let l2_to_l1_messages = collect_items(messages);
-    let events = collect_items(events);
-
-    let receipt = Receipt {
-        actual_fee,
-        execution_resources,
-        l2_to_l1_messages,
-        execution_status,
-    };
-
-    Ok((receipt, events))
 }

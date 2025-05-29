@@ -3,9 +3,16 @@ use blockifier::state::cached_state::StateChanges;
 use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash};
 
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
-use crate::simulate::{to_state_diff, transaction_declared_deprecated_class, transaction_type};
 use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
-use crate::types::{to_receipts_and_events, BlockInfo, Receipt, StateDiff};
+use crate::types::{
+    to_receipts_and_events,
+    to_state_diff,
+    transaction_declared_deprecated_class,
+    transaction_type,
+    BlockInfo,
+    Receipt,
+    StateDiff,
+};
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
 // TODO rename to BlockExecutor or similar
