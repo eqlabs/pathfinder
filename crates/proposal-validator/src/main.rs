@@ -2,7 +2,6 @@ use core::panic;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::str::FromStr;
 use std::time::Instant;
-use std::usize;
 
 use anyhow::Context;
 use p2p::sync::client::conv::{ToDto, TryFromDto};
@@ -251,7 +250,7 @@ fn main() -> anyhow::Result<()> {
 
         let mut validator = BlockExecutor::new(
             ChainId::SEPOLIA_TESTNET,
-            block_info.clone(),
+            block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
             db_txn,
@@ -313,7 +312,7 @@ fn main() -> anyhow::Result<()> {
             .map(ReceiptWithoutExecutionResources::from)
             .collect::<Vec<_>>();
 
-        // TODO FIXME Execution resources dont match but is this important?
+        // TODO Execution resources dont match but is this important?
         // Because they're not hashed to get the receipt commitment.
         pretty_assertions_sorted::assert_eq!(
             receipts,
@@ -385,7 +384,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         let bhd = BlockHeaderData {
-            // TODO FIXME we need a BlockHeader type, without the block hash
+            // TODO we need a BlockHeader type, without the block hash
             hash: expected_header.hash,
             parent_hash: expected_header.parent_hash,
             number: block_number,
@@ -667,17 +666,19 @@ fn deployed_address(
     }
 }
 
-/// Create a valid sequence of proposal parts for the given block.
-fn create_proposal(
-    db_txn: &pathfinder_storage::Transaction,
-    block_number: BlockNumber,
-) -> anyhow::Result<(
+type ProposalSimulation = (
     VecDeque<ProposalPart>,
     BlockHeader,
     Vec<Transaction>,
     Vec<Receipt>,
     Vec<(TransactionHash, Vec<Event>)>,
-)> {
+);
+
+/// Create a valid sequence of proposal parts for the given block.
+fn create_proposal(
+    db_txn: &pathfinder_storage::Transaction<'_>,
+    block_number: BlockNumber,
+) -> anyhow::Result<ProposalSimulation> {
     let header = db_txn
         .block_header(block_number.into())?
         .context("Block not found")?;
@@ -696,35 +697,6 @@ fn create_proposal(
     }));
 
     use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
-
-    // let wei_l2_gas_price = if header.eth_l2_gas_price.0 == 0 {
-    //     warn!("wei L2 gas price is 0, correcting to 1");
-    //     1
-    // } else {
-    //     header.eth_l2_gas_price.0
-    // };
-
-    // let fri_l2_gas_price = if header.strk_l2_gas_price.0 == 0 {
-    //     warn!("fri L2 gas price is 0, correcting to 1");
-    //     1
-    // } else {
-    //     header.strk_l2_gas_price.0
-    // };
-
-    // debug!(
-    //     "header.eth_l1_data_gas_price.0: {}",
-    //     header.eth_l1_data_gas_price.0
-    // );
-    // debug!("wei_l2_gas_price: {}", wei_l2_gas_price);
-    // debug!("fri_l2_gas_price: {}", fri_l2_gas_price);
-    // debug!(
-    //     "wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price: {}",
-    //     wei_l2_gas_price * ETH_TO_WEI_RATE / fri_l2_gas_price
-    // );
-    // debug!(
-    //     "fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price: {}",
-    //     fri_l2_gas_price * ETH_TO_WEI_RATE / wei_l2_gas_price
-    // );
 
     proposal_parts.push_back(ProposalPart::BlockInfo(BlockInfo {
         height,
@@ -745,22 +717,12 @@ fn create_proposal(
         .transactions_with_receipts_for_block(block_number.into())?
         .context("Block not found")?
         .into_iter()
-        // TODO for testing -- start
-        .skip(0)
-        .take(usize::MAX)
-        // TODO for testing -- end
         .unzip();
     let events = db_txn
         .events_for_block(block_number.into())?
         .context("Block not found")?
         .into_iter()
-        // TODO for testing -- start
-        .skip(0)
-        .take(usize::MAX)
-        // TODO for testing -- end
         .collect();
-
-    // debug!("txn 1: {:#?}", txns[1]);
 
     let consensus_txns = txns
         .clone()

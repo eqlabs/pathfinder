@@ -33,14 +33,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 /// Create a valid sequence of proposal parts for the given block.
-fn find_compatible_blocks(db_txn: &pathfinder_storage::Transaction) -> anyhow::Result<()> {
+fn find_compatible_blocks(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<()> {
     let latest = db_txn
         .block_number(BlockId::Latest)
         .context("Getting latest block number")?
         .context("No blocks found")?
         .get();
 
-    (0..=latest).into_iter().try_for_each(|block_number| {
+    (0..=latest).try_for_each(|block_number| {
         let txns = db_txn
             .transactions_for_block(BlockNumber::new(block_number).expect("is valid").into())?
             .context("Block not found")?;

@@ -80,8 +80,7 @@ impl<'a> BlockExecutor<'a> {
                 .entered();
 
                 let tx_type = transaction_type(&tx);
-                transaction_declared_deprecated_class(&tx)
-                    .map(|class| self.declared_deprecated_classes.push(class));
+                if let Some(class) = transaction_declared_deprecated_class(&tx) { self.declared_deprecated_classes.push(class) }
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
 

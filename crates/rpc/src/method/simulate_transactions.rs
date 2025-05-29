@@ -477,7 +477,6 @@ pub(crate) mod tests {
             pathfinder_executor::types::TransactionSimulation{
                 trace: pathfinder_executor::types::TransactionTrace::Declare(pathfinder_executor::types::DeclareTransactionTrace {
                     execution_info: DeclareTransactionExecutionInfo {
-                        
                     validate_invocation: Some(
                         pathfinder_executor::types::FunctionInvocation {
                             call_type: Some(pathfinder_executor::types::CallType::Call),
@@ -839,18 +838,23 @@ pub(crate) mod tests {
                                     account_contract_address,
                                     last_block_header,
                                 )),
-                                validate_invocation: Some(declare_validate(account_contract_address)),
-                                execution_resources: pathfinder_executor::types::ExecutionResources {
-                                    computation_resources: declare_validate_computation_resources()
-                                        + declare_fee_transfer_computation_resources(),
-                                    data_availability: pathfinder_executor::types::DataAvailabilityResources {
-                                        l1_gas: 0,
+                                validate_invocation: Some(declare_validate(
+                                    account_contract_address,
+                                )),
+                                execution_resources:
+                                    pathfinder_executor::types::ExecutionResources {
+                                        computation_resources:
+                                            declare_validate_computation_resources()
+                                                + declare_fee_transfer_computation_resources(),
+                                        data_availability:
+                                            pathfinder_executor::types::DataAvailabilityResources {
+                                                l1_gas: 0,
+                                                l1_data_gas: 192,
+                                            },
+                                        l1_gas: 878,
                                         l1_data_gas: 192,
+                                        l2_gas: 0,
                                     },
-                                    l1_gas: 878,
-                                    l1_data_gas: 192,
-                                    l2_gas: 0,
-                                },
                             },
                             state_diff: declare_state_diff(
                                 account_contract_address,
