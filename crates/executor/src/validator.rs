@@ -1,6 +1,5 @@
 use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::state::cached_state::StateChanges;
-use pathfinder_common::receipt::Receipt;
 use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash};
 
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
@@ -11,9 +10,17 @@ use crate::simulate::{
     transaction_type,
 };
 use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
-use crate::types::{BlockInfo, FeeEstimate, StateDiff, TransactionSimulation};
+use crate::types::{
+    to_receipts_and_events,
+    BlockInfo,
+    FeeEstimate,
+    Receipt,
+    StateDiff,
+    TransactionSimulation,
+};
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
+// TODO rename to BlockExecutor or similar
 pub struct Validator<'a> {
     executor: PathfinderExecutor<'a>,
     initial_state: PathfinderExecutionState<'a>,
@@ -21,7 +28,11 @@ pub struct Validator<'a> {
     next_txn_idx: usize,
 }
 
-type ReceiptAndEvents = (Receipt, Vec<pathfinder_common::event::Event>);
+type ReceiptAndEvents = (
+    pathfinder_common::receipt::Receipt,
+    Vec<pathfinder_common::event::Event>,
+);
+type ReceiptAndEvents2 = (Receipt, Vec<pathfinder_common::event::Event>);
 
 impl<'a> Validator<'a> {
     pub fn new(
@@ -123,6 +134,64 @@ impl<'a> Validator<'a> {
         sims.into_iter()
             .map(|sim| ReceiptAndEvents::try_from(sim).map_err(TransactionExecutionError::Custom))
             .collect::<Result<_, _>>()
+    }
+
+    pub fn execute2(
+        &mut self,
+        txns: Vec<Transaction>,
+    ) -> Result<Vec<ReceiptAndEvents2>, TransactionExecutionError> {
+        let start_tx_index = self.next_txn_idx;
+        self.next_txn_idx += txns.len();
+        let block_number = self.executor.block_context.block_info().block_number;
+        let receipts_events = txns
+            .into_iter()
+            .enumerate()
+            .map(|(tx_index, tx)| {
+                let tx_index = start_tx_index + tx_index;
+                let _span = tracing::debug_span!(
+                    "Validator::execute",
+                    block_number = %block_number,
+                    transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
+                    transaction_index = %tx_index
+                )
+                .entered();
+
+                let tx_type = transaction_type(&tx);
+                transaction_declared_deprecated_class(&tx)
+                    .map(|class| self.declared_deprecated_classes.push(class));
+                let gas_vector_computation_mode =
+                    crate::transaction::gas_vector_computation_mode(&tx);
+
+                // TODO use executor::execute_txs instead (concurrency can then be enabled via
+                // configuration)
+                let ((tx_info, _), _) = execute_transaction(
+                    &tx,
+                    tx_index,
+                    &mut self.executor,
+                    ExecutionBehaviorOnRevert::Continue,
+                )?;
+
+                tracing::trace!(
+                    "Transaction execution finished, actual_fee: {}, actual_resources: {:?}",
+                    tx_info.receipt.fee.0,
+                    tx_info.receipt.resources
+                );
+
+                // TODO FIXME The following blows up rustfmt
+                //tracing::trace!(actual_fee=%tx_info.receipt.fee.0,
+                // actual_resources=?tx_info.receipt.resources, "Transaction execution
+                // finished");
+
+                to_receipts_and_events(
+                    tx_type,
+                    tx_info,
+                    self.executor.block_context.versioned_constants(),
+                    &gas_vector_computation_mode,
+                )
+                .map_err(TransactionExecutionError::Custom)
+            })
+            .collect::<Result<Vec<_>, TransactionExecutionError>>()?;
+        Ok(receipts_events)
     }
 
     pub fn finalize(self) -> anyhow::Result<StateDiff> {

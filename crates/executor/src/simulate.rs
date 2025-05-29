@@ -28,20 +28,26 @@ use crate::transaction::{
     ExecutionBehaviorOnRevert,
 };
 use crate::types::{
+    to_execution_info,
     DataAvailabilityResources,
+    DeclareTransactionExecutionInfo,
     DeclareTransactionTrace,
     DeclaredSierraClass,
+    DeployAccountTransactionExecutionInfo,
     DeployAccountTransactionTrace,
     DeployedContract,
     ExecuteInvocation,
     ExecutionResources,
     FeeEstimate,
     FunctionInvocation,
+    InvokeTransactionExecutionInfo,
     InvokeTransactionTrace,
+    L1HandlerTransactionExecutionInfo,
     L1HandlerTransactionTrace,
     ReplacedClass,
     StateDiff,
     StorageDiff,
+    TransactionExecutionInfo,
 };
 use crate::IntoFelt;
 
@@ -416,83 +422,37 @@ pub(crate) fn to_trace(
     versioned_constants: &VersionedConstants,
     gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> TransactionTrace {
-    let validate_invocation = execution_info.validate_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
-    let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
-    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
+    let execution_info = to_execution_info(
+        transaction_type,
+        execution_info,
+        versioned_constants,
+        gas_vector_computation_mode,
+    );
 
-    let computation_resources = validate_invocation
-        .as_ref()
-        .map(|i: &FunctionInvocation| i.computation_resources.clone())
-        .unwrap_or_default()
-        + maybe_function_invocation
-            .as_ref()
-            .map(|i: &FunctionInvocation| i.computation_resources.clone())
-            .unwrap_or_default()
-        + fee_transfer_invocation
-            .as_ref()
-            .map(|i: &FunctionInvocation| i.computation_resources.clone())
-            .unwrap_or_default();
-    let data_availability = DataAvailabilityResources {
-        l1_gas: execution_info.receipt.da_gas.l1_gas.0.into(),
-        l1_data_gas: execution_info.receipt.da_gas.l1_data_gas.0.into(),
-    };
-    let execution_resources = ExecutionResources {
-        computation_resources,
-        data_availability,
-        l1_gas: execution_info.receipt.gas.l1_gas.0.into(),
-        l1_data_gas: execution_info.receipt.gas.l1_data_gas.0.into(),
-        l2_gas: execution_info.receipt.gas.l2_gas.0.into(),
-    };
-
-    match transaction_type {
-        TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
-            validate_invocation,
-            fee_transfer_invocation,
-            state_diff,
-            execution_resources,
-        }),
-        TransactionType::DeployAccount => {
-            TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
-                validate_invocation,
-                constructor_invocation: maybe_function_invocation,
-                fee_transfer_invocation,
+    match execution_info {
+        TransactionExecutionInfo::Declare(execution_info) => {
+            TransactionTrace::Declare(DeclareTransactionTrace {
+                execution_info,
                 state_diff,
-                execution_resources,
             })
         }
-        TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
-            validate_invocation,
-            execute_invocation: if let Some(reason) = execution_info.revert_error {
-                ExecuteInvocation::RevertedReason(reason.to_string())
-            } else {
-                ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
-            },
-            fee_transfer_invocation,
-            state_diff,
-            execution_resources,
-        }),
-        TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
-            function_invocation: maybe_function_invocation,
-            state_diff,
-            execution_resources,
-        }),
+        crate::types::TransactionExecutionInfo::DeployAccount(execution_info) => {
+            TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
+        crate::types::TransactionExecutionInfo::Invoke(execution_info) => {
+            TransactionTrace::Invoke(InvokeTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
+        crate::types::TransactionExecutionInfo::L1Handler(execution_info) => {
+            TransactionTrace::L1Handler(L1HandlerTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
     }
 }

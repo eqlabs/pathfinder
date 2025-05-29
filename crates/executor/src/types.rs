@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use anyhow::Context;
 use blockifier::execution::call_info::OrderedL2ToL1Message;
+use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::prelude::*;
-use pathfinder_common::receipt::Receipt;
 use pathfinder_common::state_update::{
     ContractClassUpdate,
     ContractUpdate,
@@ -13,10 +13,22 @@ use pathfinder_common::state_update::{
 use pathfinder_crypto::Felt;
 use starknet_api::block::FeeType;
 use starknet_api::execution_resources::GasVector;
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::felt::IntoFelt;
+use crate::simulate::TransactionType;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
+
+// TODO should probably go to pathfinder_common
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Receipt {
+    pub actual_fee: Fee,
+    // FIXME currently there's a mismatch between reexecution and historical receipts
+    pub execution_resources: pathfinder_common::receipt::ExecutionResources,
+    pub l2_to_l1_messages: Vec<pathfinder_common::receipt::L2ToL1Message>,
+    pub execution_status: pathfinder_common::receipt::ExecutionStatus,
+}
 
 // TODO FIXME probably much better in pathfinder_common
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -213,13 +225,6 @@ impl TransactionSimulation {
     }
 }
 
-#[derive(Debug)]
-pub struct OrderedTransactionSimulation {
-    pub transaction_index: usize,
-    pub trace: TransactionTrace,
-    pub fee_estimation: FeeEstimate,
-}
-
 fn collect_events_and_messages(
     fi: FunctionInvocation,
     events: &mut BTreeMap<i64, VecDeque<pathfinder_common::event::Event>>,
@@ -254,7 +259,48 @@ fn collect_events_and_messages(
         .for_each(|fi| collect_events_and_messages(fi, events, messages));
 }
 
-impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::Event>) {
+fn collect_events_and_messages2(
+    fi: FunctionInvocation,
+    events: &mut HashMap<i64, VecDeque<pathfinder_common::event::Event>>,
+    messages: &mut HashMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
+) {
+    fi.events.into_iter().for_each(|e| {
+        events
+            .entry(e.order)
+            .or_default()
+            .push_back(pathfinder_common::event::Event {
+                data: e.data.into_iter().map(EventData).collect(),
+                from_address: fi.contract_address,
+                keys: e.keys.into_iter().map(EventKey).collect(),
+            });
+    });
+    fi.messages.into_iter().for_each(|m| {
+        messages
+            .entry(m.order)
+            .or_default()
+            .push_back(pathfinder_common::receipt::L2ToL1Message {
+                from_address: ContractAddress(m.from_address),
+                payload: m
+                    .payload
+                    .into_iter()
+                    .map(L2ToL1MessagePayloadElem)
+                    .collect(),
+                to_address: ContractAddress(m.to_address),
+            });
+    });
+    fi.internal_calls
+        .into_iter()
+        .for_each(|fi| collect_events_and_messages2(fi, events, messages));
+}
+
+// TODO Add new type:
+// Receipt without transaction hash and transaction index
+impl TryFrom<TransactionSimulation>
+    for (
+        pathfinder_common::receipt::Receipt,
+        Vec<pathfinder_common::event::Event>,
+    )
+{
     type Error = anyhow::Error;
 
     fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
@@ -275,32 +321,34 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
 
         match x.trace {
             TransactionTrace::Declare(t) => {
-                t.validate_invocation.map(|fi| {
+                t.execution_info.validate_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
-                t.fee_transfer_invocation.map(|fi| {
+                t.execution_info.fee_transfer_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
             TransactionTrace::DeployAccount(t) => {
-                t.validate_invocation.map(|fi| {
+                t.execution_info.validate_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
-                t.constructor_invocation.map(|fi| {
+                t.execution_info.constructor_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
-                t.fee_transfer_invocation.map(|fi| {
+                t.execution_info.fee_transfer_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
             TransactionTrace::Invoke(t) => {
-                t.validate_invocation.map(|fi| {
+                t.execution_info.validate_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
-                if let ExecuteInvocation::FunctionInvocation(Some(fi)) = t.execute_invocation {
+                if let ExecuteInvocation::FunctionInvocation(Some(fi)) =
+                    t.execution_info.execute_invocation
+                {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 }
-                t.fee_transfer_invocation.map(|fi| {
+                t.execution_info.fee_transfer_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
@@ -311,7 +359,7 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
                 // ETH, because L1 handler transactions are pre-v3.
                 actual_fee = Fee::ZERO;
 
-                t.function_invocation.map(|fi| {
+                t.execution_info.function_invocation.map(|fi| {
                     collect_events_and_messages(fi, &mut events, &mut messages);
                 });
             }
@@ -320,7 +368,7 @@ impl TryFrom<TransactionSimulation> for (Receipt, Vec<pathfinder_common::event::
         let l2_to_l1_messages = collect_items(messages);
         let events = collect_items(events);
 
-        let receipt = Receipt {
+        let receipt = pathfinder_common::receipt::Receipt {
             actual_fee,
             execution_resources,
             l2_to_l1_messages,
@@ -357,6 +405,103 @@ fn collect_items<Idx: Copy + Ord, Item>(mut messages: BTreeMap<Idx, VecDeque<Ite
     items
 }
 
+/// Collects all items, taking the first item from each key, one at a time,
+/// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
+/// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
+fn collect_items2<Idx: Copy + Eq + std::hash::Hash, Item>(
+    mut messages: HashMap<Idx, VecDeque<Item>>,
+) -> Vec<Item> {
+    let mut items =
+        Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
+    let mut keys = Vec::with_capacity(messages.len());
+
+    while !messages.is_empty() {
+        messages.keys().for_each(|k| keys.push(*k));
+
+        for key in &keys {
+            let messages_with_same_key = messages.get_mut(&key).expect("Key exists");
+            items.push(messages_with_same_key.pop_front().expect("Not empty"));
+            if messages_with_same_key.is_empty() {
+                messages.remove(&key);
+            }
+        }
+
+        keys.clear();
+    }
+    items
+}
+
+#[derive(Debug, Clone)]
+pub enum TransactionExecutionInfo {
+    Declare(DeclareTransactionExecutionInfo),
+    DeployAccount(DeployAccountTransactionExecutionInfo),
+    Invoke(InvokeTransactionExecutionInfo),
+    L1Handler(L1HandlerTransactionExecutionInfo),
+}
+
+impl TransactionExecutionInfo {
+    pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
+        use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
+        match self {
+            Self::Declare(_) | Self::DeployAccount(_) | Self::L1Handler(_) => Succeeded,
+            Self::Invoke(ref i) => match &i.execute_invocation {
+                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
+                ExecuteInvocation::RevertedReason(reason) => Reverted {
+                    reason: reason.clone(),
+                },
+            },
+        }
+    }
+
+    pub fn execution_resources(
+        &self,
+    ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
+        match &self {
+            Self::Declare(i) => &i.execution_resources,
+            Self::DeployAccount(i) => &i.execution_resources,
+            Self::Invoke(i) => &i.execution_resources,
+            Self::L1Handler(i) => &i.execution_resources,
+        }
+        .try_into()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclareTransactionExecutionInfo {
+    pub validate_invocation: Option<FunctionInvocation>,
+    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_resources: ExecutionResources,
+}
+
+#[derive(Debug, Clone)]
+pub struct DeployAccountTransactionExecutionInfo {
+    pub validate_invocation: Option<FunctionInvocation>,
+    pub constructor_invocation: Option<FunctionInvocation>,
+    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_resources: ExecutionResources,
+}
+
+#[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
+pub enum ExecuteInvocation {
+    FunctionInvocation(Option<FunctionInvocation>),
+    RevertedReason(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct InvokeTransactionExecutionInfo {
+    pub validate_invocation: Option<FunctionInvocation>,
+    pub execute_invocation: ExecuteInvocation,
+    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_resources: ExecutionResources,
+}
+
+#[derive(Debug, Clone)]
+pub struct L1HandlerTransactionExecutionInfo {
+    pub function_invocation: Option<FunctionInvocation>,
+    pub execution_resources: ExecutionResources,
+}
+
 #[derive(Debug, Clone)]
 pub enum TransactionTrace {
     Declare(DeclareTransactionTrace),
@@ -369,7 +514,11 @@ impl TransactionTrace {
     fn revert_reason(&self) -> Option<&str> {
         match self {
             TransactionTrace::Invoke(InvokeTransactionTrace {
-                execute_invocation: ExecuteInvocation::RevertedReason(revert_reason),
+                execution_info:
+                    InvokeTransactionExecutionInfo {
+                        execute_invocation: ExecuteInvocation::RevertedReason(revert_reason),
+                        ..
+                    },
                 ..
             }) => Some(revert_reason.as_str()),
             _ => None,
@@ -391,7 +540,7 @@ impl TransactionTrace {
             TransactionTrace::Declare(_)
             | TransactionTrace::DeployAccount(_)
             | TransactionTrace::L1Handler(_) => Succeeded,
-            TransactionTrace::Invoke(ref t) => match &t.execute_invocation {
+            TransactionTrace::Invoke(ref t) => match &t.execution_info.execute_invocation {
                 ExecuteInvocation::FunctionInvocation(_) => Succeeded,
                 ExecuteInvocation::RevertedReason(reason) => Reverted {
                     reason: reason.clone(),
@@ -404,10 +553,10 @@ impl TransactionTrace {
         &self,
     ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
         match &self {
-            TransactionTrace::Declare(t) => &t.execution_resources,
-            TransactionTrace::DeployAccount(t) => &t.execution_resources,
-            TransactionTrace::Invoke(t) => &t.execution_resources,
-            TransactionTrace::L1Handler(t) => &t.execution_resources,
+            TransactionTrace::Declare(t) => &t.execution_info.execution_resources,
+            TransactionTrace::DeployAccount(t) => &t.execution_info.execution_resources,
+            TransactionTrace::Invoke(t) => &t.execution_info.execution_resources,
+            TransactionTrace::L1Handler(t) => &t.execution_info.execution_resources,
         }
         .try_into()
     }
@@ -415,42 +564,26 @@ impl TransactionTrace {
 
 #[derive(Debug, Clone)]
 pub struct DeclareTransactionTrace {
-    pub validate_invocation: Option<FunctionInvocation>,
-    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_info: DeclareTransactionExecutionInfo,
     pub state_diff: StateDiff,
-    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeployAccountTransactionTrace {
-    pub validate_invocation: Option<FunctionInvocation>,
-    pub constructor_invocation: Option<FunctionInvocation>,
-    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_info: DeployAccountTransactionExecutionInfo,
     pub state_diff: StateDiff,
-    pub execution_resources: ExecutionResources,
-}
-
-#[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
-pub enum ExecuteInvocation {
-    FunctionInvocation(Option<FunctionInvocation>),
-    RevertedReason(String),
 }
 
 #[derive(Debug, Clone)]
 pub struct InvokeTransactionTrace {
-    pub validate_invocation: Option<FunctionInvocation>,
-    pub execute_invocation: ExecuteInvocation,
-    pub fee_transfer_invocation: Option<FunctionInvocation>,
+    pub execution_info: InvokeTransactionExecutionInfo,
     pub state_diff: StateDiff,
-    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
 pub struct L1HandlerTransactionTrace {
-    pub function_invocation: Option<FunctionInvocation>,
+    pub execution_info: L1HandlerTransactionExecutionInfo,
     pub state_diff: StateDiff,
-    pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -966,4 +1099,169 @@ impl From<StateUpdateData> for StateDiff {
             replaced_classes,
         }
     }
+}
+
+pub(crate) fn to_execution_info(
+    transaction_type: TransactionType,
+    execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
+    versioned_constants: &VersionedConstants,
+    gas_vector_computation_mode: &GasVectorComputationMode,
+) -> TransactionExecutionInfo {
+    let validate_invocation = execution_info.validate_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
+    let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
+    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
+        FunctionInvocation::from_call_info(
+            call_info,
+            versioned_constants,
+            gas_vector_computation_mode,
+        )
+    });
+
+    let computation_resources = validate_invocation
+        .as_ref()
+        .map(|i: &FunctionInvocation| i.computation_resources.clone())
+        .unwrap_or_default()
+        + maybe_function_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.computation_resources.clone())
+            .unwrap_or_default()
+        + fee_transfer_invocation
+            .as_ref()
+            .map(|i: &FunctionInvocation| i.computation_resources.clone())
+            .unwrap_or_default();
+    let data_availability = DataAvailabilityResources {
+        l1_gas: execution_info.receipt.da_gas.l1_gas.0.into(),
+        l1_data_gas: execution_info.receipt.da_gas.l1_data_gas.0.into(),
+    };
+    let execution_resources = ExecutionResources {
+        computation_resources,
+        data_availability,
+        l1_gas: execution_info.receipt.gas.l1_gas.0.into(),
+        l1_data_gas: execution_info.receipt.gas.l1_data_gas.0.into(),
+        l2_gas: execution_info.receipt.gas.l2_gas.0.into(),
+    };
+
+    match transaction_type {
+        TransactionType::Declare => {
+            TransactionExecutionInfo::Declare(DeclareTransactionExecutionInfo {
+                validate_invocation,
+                fee_transfer_invocation,
+                execution_resources,
+            })
+        }
+        TransactionType::DeployAccount => {
+            TransactionExecutionInfo::DeployAccount(DeployAccountTransactionExecutionInfo {
+                validate_invocation,
+                constructor_invocation: maybe_function_invocation,
+                fee_transfer_invocation,
+                execution_resources,
+            })
+        }
+        TransactionType::Invoke => {
+            TransactionExecutionInfo::Invoke(InvokeTransactionExecutionInfo {
+                validate_invocation,
+                execute_invocation: if let Some(reason) = execution_info.revert_error {
+                    ExecuteInvocation::RevertedReason(reason.to_string())
+                } else {
+                    ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
+                },
+                fee_transfer_invocation,
+                execution_resources,
+            })
+        }
+        TransactionType::L1Handler => {
+            TransactionExecutionInfo::L1Handler(L1HandlerTransactionExecutionInfo {
+                function_invocation: maybe_function_invocation,
+                execution_resources,
+            })
+        }
+    }
+}
+
+pub(crate) fn to_receipts_and_events(
+    transaction_type: TransactionType,
+    execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
+    versioned_constants: &VersionedConstants,
+    gas_vector_computation_mode: &GasVectorComputationMode,
+) -> anyhow::Result<(Receipt, Vec<pathfinder_common::event::Event>)> {
+    let actual_fee = Fee(Felt::from_u128(execution_info.receipt.fee.0));
+    let execution_info = to_execution_info(
+        transaction_type,
+        execution_info,
+        versioned_constants,
+        gas_vector_computation_mode,
+    );
+
+    // Maps to collect events and messages are ordered by the internal index of an
+    // ordered but because indices of such items are not unique across
+    // the entire block we must put duplicates and from comparing the order of
+    // events/messages to the existing blocks we know that duplicated
+    // indices are put at the end.
+    let mut messages = BTreeMap::new();
+    let mut events = BTreeMap::new();
+
+    let execution_resources = execution_info.execution_resources()?;
+    let execution_status = execution_info.execution_status();
+
+    match execution_info {
+        TransactionExecutionInfo::Declare(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::DeployAccount(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.constructor_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::Invoke(i) => {
+            i.validate_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+            if let ExecuteInvocation::FunctionInvocation(Some(fi)) = i.execute_invocation {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            }
+            i.fee_transfer_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+        TransactionExecutionInfo::L1Handler(i) => {
+            i.function_invocation.map(|fi| {
+                collect_events_and_messages(fi, &mut events, &mut messages);
+            });
+        }
+    };
+
+    let l2_to_l1_messages = collect_items(messages);
+    let events = collect_items(events);
+
+    let receipt = Receipt {
+        actual_fee,
+        execution_resources,
+        l2_to_l1_messages,
+        execution_status,
+    };
+
+    Ok((receipt, events))
 }

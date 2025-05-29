@@ -258,7 +258,7 @@ fn main() -> anyhow::Result<()> {
         )?;
 
         let (receipts, events): (Vec<_>, Vec<_>) =
-            validator.execute(executor_txns)?.into_iter().unzip();
+            validator.execute2(executor_txns)?.into_iter().unzip();
 
         let state_diff = validator.finalize()?;
 
@@ -273,7 +273,10 @@ fn main() -> anyhow::Result<()> {
                 transaction_index: TransactionIndex::new_or_panic(
                     idx.try_into().expect("idx < i64::MAX"),
                 ),
-                ..r
+                actual_fee: r.actual_fee,
+                execution_resources: r.execution_resources,
+                l2_to_l1_messages: r.l2_to_l1_messages,
+                execution_status: r.execution_status,
             })
             .collect::<Vec<_>>();
 
