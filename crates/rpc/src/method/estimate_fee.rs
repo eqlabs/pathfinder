@@ -5,6 +5,12 @@ use serde::de::Error;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
+use crate::executor::{
+    calldata_limit_exceeded,
+    signature_elem_limit_exceeded,
+    CALLDATA_LIMIT,
+    SIGNATURE_ELEMENT_LIMIT,
+};
 use crate::types::request::BroadcastedTransaction;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -47,6 +53,17 @@ pub struct Output(Vec<pathfinder_executor::types::FeeEstimate>);
 
 pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, EstimateFeeError> {
     let span = tracing::Span::current();
+    if let Some(bad_tx_idx) = input.request.iter().position(calldata_limit_exceeded) {
+        return Err(EstimateFeeError::Custom(anyhow::anyhow!(
+            "Calldata limit ({CALLDATA_LIMIT}) exceeded by transaction at index {bad_tx_idx}"
+        )));
+    }
+    if let Some(bad_tx_idx) = input.request.iter().position(signature_elem_limit_exceeded) {
+        return Err(EstimateFeeError::Custom(anyhow::anyhow!(
+            "Signature element limit ({SIGNATURE_ELEMENT_LIMIT}) exceeded by transaction at index \
+             {bad_tx_idx}"
+        )));
+    }
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db_conn = context
@@ -199,6 +216,7 @@ impl crate::dto::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
@@ -1042,5 +1060,77 @@ mod tests {
             }
         ]);
         pretty_assertions_sorted::assert_eq!(expected_json, output_json);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn calldata_limit_exceeded() {
+        let starknet_version = StarknetVersion::new(0, 13, 1, 0);
+        let (context, last_block_header, _account_contract_address, _universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(starknet_version).await;
+
+        let invoke_tx = crate::types::request::BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                // Calldata length over the limit, the rest of the fields should not matter.
+                calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
+
+                version: TransactionVersion::THREE,
+                signature: vec![],
+                nonce: transaction_nonce!("0x1"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                sender_address: contract_address!("0xdeadbeef"),
+            },
+        );
+
+        let input = Input {
+            request: vec![BroadcastedTransaction::Invoke(invoke_tx)],
+            simulation_flags: vec![],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+
+        let err = super::estimate_fee(context, input).await.unwrap_err();
+
+        let error_cause = "Calldata limit (10000) exceeded by transaction at index 0";
+        assert_matches!(err, EstimateFeeError::Custom(e) if e.root_cause().to_string() == error_cause);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn signature_element_limit_exceeded() {
+        let starknet_version = StarknetVersion::new(0, 13, 1, 0);
+        let (context, last_block_header, _account_contract_address, _universal_deployer_address) =
+            crate::test_setup::test_context_with_starknet_version(starknet_version).await;
+
+        let invoke_tx = crate::types::request::BroadcastedInvokeTransaction::V3(
+            BroadcastedInvokeTransactionV3 {
+                // Signature length over the limit, the rest of the fields should not matter.
+                signature: vec![transaction_signature_elem!("0x123"); SIGNATURE_ELEMENT_LIMIT + 5],
+
+                version: TransactionVersion::THREE,
+                nonce: transaction_nonce!("0x1"),
+                resource_bounds: ResourceBounds::default(),
+                tip: Tip(0),
+                paymaster_data: vec![],
+                account_deployment_data: vec![],
+                nonce_data_availability_mode: DataAvailabilityMode::L1,
+                fee_data_availability_mode: DataAvailabilityMode::L1,
+                sender_address: contract_address!("0xdeadbeef"),
+                calldata: vec![],
+            },
+        );
+
+        let input = Input {
+            request: vec![BroadcastedTransaction::Invoke(invoke_tx)],
+            simulation_flags: vec![],
+            block_id: BlockId::Number(last_block_header.number),
+        };
+
+        let err = super::estimate_fee(context, input).await.unwrap_err();
+
+        let error_cause = "Signature element limit (10000) exceeded by transaction at index 0";
+        assert_matches!(err, EstimateFeeError::Custom(e) if e.root_cause().to_string() == error_cause);
     }
 }

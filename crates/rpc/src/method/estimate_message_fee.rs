@@ -10,6 +10,7 @@ use starknet_api::transaction::fields::{Calldata, Fee};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
+use crate::executor::CALLDATA_LIMIT;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EstimateMessageFeeInput {
@@ -58,6 +59,11 @@ pub async fn estimate_message_fee(
     input: EstimateMessageFeeInput,
 ) -> Result<Output, EstimateMessageFeeError> {
     let span = tracing::Span::current();
+    if input.message.payload.len() > CALLDATA_LIMIT {
+        return Err(EstimateMessageFeeError::Custom(anyhow::anyhow!(
+            "Calldata limit ({CALLDATA_LIMIT}) exceeded"
+        )));
+    }
     let mut result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
         let mut db_conn = context
@@ -249,6 +255,7 @@ impl From<EstimateMessageFeeError> for ApplicationError {
 
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::{BlockId, L1DataAvailabilityMode};
@@ -363,5 +370,26 @@ mod tests {
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(output_json, version, "fee_estimates/full.json");
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn calldata_limit_exceeded() {
+        let rpc = setup(Setup::Full).await.expect("RPC context");
+        let input = EstimateMessageFeeInput {
+            message: MsgFromL1 {
+                // Calldata length over the limit, the rest of the fields should not matter.
+                payload: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
+
+                to_address: contract_address!("0xdeadbeef"),
+                entry_point_selector: EntryPoint::ZERO,
+                from_address: EthereumAddress(H160::zero()),
+            },
+            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+        };
+
+        let err = super::estimate_message_fee(rpc, input).await.unwrap_err();
+
+        let error_cause = "Calldata limit (10000) exceeded";
+        assert_matches!(err, EstimateMessageFeeError::Custom(e) if e.root_cause().to_string() == error_cause);
     }
 }
