@@ -151,8 +151,7 @@ impl FeeEstimate {
         let l2_gas_consumed = gas_vector.l2_gas.max(minimal_gas_vector.l2_gas);
 
         // Blockifier does not put the actual fee into the receipt if `max_fee` in the
-        // transaction was zero. In that case we have to compute the fee
-        // explicitly.
+        // transaction was zero. In that case we have to compute the fee explicitly.
         let overall_fee = blockifier::fee::fee_utils::get_fee_by_gas_vector(
             block_info,
             GasVector {
@@ -209,20 +208,6 @@ impl TransactionSimulation {
     pub fn revert_reason(&self) -> Option<&str> {
         self.trace.revert_reason()
     }
-
-    pub fn state_diff(&self) -> &StateDiff {
-        self.trace.state_diff()
-    }
-
-    pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
-        self.trace.execution_status()
-    }
-
-    pub fn execution_resources(
-        &self,
-    ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
-        self.trace.execution_resources()
-    }
 }
 
 fn collect_events_and_messages(
@@ -259,158 +244,10 @@ fn collect_events_and_messages(
         .for_each(|fi| collect_events_and_messages(fi, events, messages));
 }
 
-fn collect_events_and_messages2(
-    fi: FunctionInvocation,
-    events: &mut HashMap<i64, VecDeque<pathfinder_common::event::Event>>,
-    messages: &mut HashMap<usize, VecDeque<pathfinder_common::receipt::L2ToL1Message>>,
-) {
-    fi.events.into_iter().for_each(|e| {
-        events
-            .entry(e.order)
-            .or_default()
-            .push_back(pathfinder_common::event::Event {
-                data: e.data.into_iter().map(EventData).collect(),
-                from_address: fi.contract_address,
-                keys: e.keys.into_iter().map(EventKey).collect(),
-            });
-    });
-    fi.messages.into_iter().for_each(|m| {
-        messages
-            .entry(m.order)
-            .or_default()
-            .push_back(pathfinder_common::receipt::L2ToL1Message {
-                from_address: ContractAddress(m.from_address),
-                payload: m
-                    .payload
-                    .into_iter()
-                    .map(L2ToL1MessagePayloadElem)
-                    .collect(),
-                to_address: ContractAddress(m.to_address),
-            });
-    });
-    fi.internal_calls
-        .into_iter()
-        .for_each(|fi| collect_events_and_messages2(fi, events, messages));
-}
-
-// TODO Add new type:
-// Receipt without transaction hash and transaction index
-impl TryFrom<TransactionSimulation>
-    for (
-        pathfinder_common::receipt::Receipt,
-        Vec<pathfinder_common::event::Event>,
-    )
-{
-    type Error = anyhow::Error;
-
-    fn try_from(x: TransactionSimulation) -> Result<Self, Self::Error> {
-        // Maps to collect events and messages are ordered by the internal index of an
-        // ordered but because indices of such items are not unique across
-        // the entire block we must put duplicates and from comparing the order of
-        // events/messages to the existing blocks we know that duplicated
-        // indices are put at the end.
-        let mut messages = BTreeMap::new();
-        let mut events = BTreeMap::new();
-
-        let execution_resources = x.execution_resources()?;
-        let execution_status = x.execution_status();
-
-        let mut buf = [0u8; 32];
-        x.fee_estimation.overall_fee.to_big_endian(&mut buf);
-        let mut actual_fee = Fee(Felt::from_be_bytes(buf)?);
-
-        match x.trace {
-            TransactionTrace::Declare(t) => {
-                t.execution_info.validate_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.execution_info.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::DeployAccount(t) => {
-                t.execution_info.validate_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.execution_info.constructor_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                t.execution_info.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::Invoke(t) => {
-                t.execution_info.validate_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-                if let ExecuteInvocation::FunctionInvocation(Some(fi)) =
-                    t.execution_info.execute_invocation
-                {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                }
-                t.execution_info.fee_transfer_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-            TransactionTrace::L1Handler(t) => {
-                // IMPORTANT
-                // L1 handler transactions have an actual fee of 0, because they're charged on
-                // L1 and not L2. Additionally the fee is not in STRK, but in
-                // ETH, because L1 handler transactions are pre-v3.
-                actual_fee = Fee::ZERO;
-
-                t.execution_info.function_invocation.map(|fi| {
-                    collect_events_and_messages(fi, &mut events, &mut messages);
-                });
-            }
-        };
-
-        let l2_to_l1_messages = collect_items(messages);
-        let events = collect_items(events);
-
-        let receipt = pathfinder_common::receipt::Receipt {
-            actual_fee,
-            execution_resources,
-            l2_to_l1_messages,
-            execution_status,
-            transaction_hash: TransactionHash::ZERO, // TODO FIXME
-            transaction_index: TransactionIndex::new_or_panic(0), // TODO FIXME
-        };
-
-        Ok((receipt, events))
-    }
-}
-
 /// Collects all items, taking the first item from each key, one at a time,
 /// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
 /// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
 fn collect_items<Idx: Copy + Ord, Item>(mut messages: BTreeMap<Idx, VecDeque<Item>>) -> Vec<Item> {
-    let mut items =
-        Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
-    let mut keys = Vec::with_capacity(messages.len());
-
-    while !messages.is_empty() {
-        messages.keys().for_each(|k| keys.push(*k));
-
-        for key in &keys {
-            let messages_with_same_key = messages.get_mut(&key).expect("Key exists");
-            items.push(messages_with_same_key.pop_front().expect("Not empty"));
-            if messages_with_same_key.is_empty() {
-                messages.remove(&key);
-            }
-        }
-
-        keys.clear();
-    }
-    items
-}
-
-/// Collects all items, taking the first item from each key, one at a time,
-/// until all items are consumed. Example: `{(0, [A, D]), (1, [B, E, G]), (2,
-/// [C, F, H, I])} => [A, B, C, D, E, F, G, H, I]`
-fn collect_items2<Idx: Copy + Eq + std::hash::Hash, Item>(
-    mut messages: HashMap<Idx, VecDeque<Item>>,
-) -> Vec<Item> {
     let mut items =
         Vec::with_capacity(messages.iter().fold(0, |cnt, (_, items)| cnt + items.len()));
     let mut keys = Vec::with_capacity(messages.len());
@@ -523,42 +360,6 @@ impl TransactionTrace {
             }) => Some(revert_reason.as_str()),
             _ => None,
         }
-    }
-
-    fn state_diff(&self) -> &StateDiff {
-        match self {
-            TransactionTrace::Declare(trace) => &trace.state_diff,
-            TransactionTrace::DeployAccount(trace) => &trace.state_diff,
-            TransactionTrace::Invoke(trace) => &trace.state_diff,
-            TransactionTrace::L1Handler(trace) => &trace.state_diff,
-        }
-    }
-
-    pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
-        use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
-        match self {
-            TransactionTrace::Declare(_)
-            | TransactionTrace::DeployAccount(_)
-            | TransactionTrace::L1Handler(_) => Succeeded,
-            TransactionTrace::Invoke(ref t) => match &t.execution_info.execute_invocation {
-                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
-                ExecuteInvocation::RevertedReason(reason) => Reverted {
-                    reason: reason.clone(),
-                },
-            },
-        }
-    }
-
-    pub fn execution_resources(
-        &self,
-    ) -> anyhow::Result<pathfinder_common::receipt::ExecutionResources> {
-        match &self {
-            TransactionTrace::Declare(t) => &t.execution_info.execution_resources,
-            TransactionTrace::DeployAccount(t) => &t.execution_info.execution_resources,
-            TransactionTrace::Invoke(t) => &t.execution_info.execution_resources,
-            TransactionTrace::L1Handler(t) => &t.execution_info.execution_resources,
-        }
-        .try_into()
     }
 }
 
@@ -1015,88 +816,6 @@ impl From<StateDiff> for StateUpdateData {
                 .into_iter()
                 .map(|c| (c.class_hash, c.compiled_class_hash))
                 .collect(),
-        }
-    }
-}
-
-impl From<StateUpdateData> for StateDiff {
-    fn from(x: StateUpdateData) -> Self {
-        let StateUpdateData {
-            contract_updates,
-            system_contract_updates,
-            declared_cairo_classes,
-            declared_sierra_classes,
-        } = x;
-
-        let mut storage_diffs = BTreeMap::new();
-        let mut deployed_contracts = Vec::new();
-        let mut nonces = BTreeMap::new();
-        let mut replaced_classes = Vec::new();
-
-        contract_updates.into_iter().for_each(|(address, update)| {
-            let ContractUpdate {
-                storage,
-                class,
-                nonce,
-            } = update;
-
-            storage_diffs.insert(
-                address,
-                storage
-                    .into_iter()
-                    .map(|(key, value)| StorageDiff { key, value })
-                    .collect(),
-            );
-
-            if let Some(class_update) = class {
-                match class_update {
-                    ContractClassUpdate::Deploy(class_hash) => {
-                        deployed_contracts.push(DeployedContract {
-                            address,
-                            class_hash,
-                        });
-                    }
-                    ContractClassUpdate::Replace(class_hash) => {
-                        replaced_classes.push(ReplacedClass {
-                            contract_address: address,
-                            class_hash,
-                        });
-                    }
-                }
-            }
-
-            if let Some(nonce) = nonce {
-                nonces.insert(address, nonce);
-            }
-        });
-
-        system_contract_updates
-            .into_iter()
-            .for_each(|(address, update)| {
-                let SystemContractUpdate { storage } = update;
-
-                storage_diffs.insert(
-                    address,
-                    storage
-                        .into_iter()
-                        .map(|(key, value)| StorageDiff { key, value })
-                        .collect(),
-                );
-            });
-
-        Self {
-            storage_diffs,
-            deployed_contracts,
-            deprecated_declared_classes: declared_cairo_classes,
-            declared_classes: declared_sierra_classes
-                .into_iter()
-                .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
-                    class_hash,
-                    compiled_class_hash,
-                })
-                .collect(),
-            nonces,
-            replaced_classes,
         }
     }
 }

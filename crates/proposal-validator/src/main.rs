@@ -258,7 +258,7 @@ fn main() -> anyhow::Result<()> {
         )?;
 
         let (receipts, events): (Vec<_>, Vec<_>) =
-            validator.execute2(executor_txns)?.into_iter().unzip();
+            validator.execute(executor_txns)?.into_iter().unzip();
 
         let state_diff = validator.finalize()?;
 
