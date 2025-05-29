@@ -46,7 +46,7 @@ use pathfinder_executor::types::{
     StateDiff,
     ETH_TO_WEI_RATE,
 };
-use pathfinder_executor::{ClassInfo, IntoStarkFelt, Validator};
+use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_lib::state::block_hash::{
     self,
     calculate_event_commitment,
@@ -249,7 +249,7 @@ fn main() -> anyhow::Result<()> {
             expected_header.strk_l1_data_gas_price.0,
         )?;
 
-        let mut validator = Validator::new(
+        let mut validator = BlockExecutor::new(
             ChainId::SEPOLIA_TESTNET,
             block_info.clone(),
             ETH_FEE_TOKEN_ADDRESS,

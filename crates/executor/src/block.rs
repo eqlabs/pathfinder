@@ -15,8 +15,9 @@ use crate::types::{
 };
 use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
 
-// TODO rename to BlockExecutor or similar
-pub struct Validator<'a> {
+/// Executes transactions from a single block. Produces transactions receipts,
+/// events, and the final state diff for the entire block.
+pub struct BlockExecutor<'a> {
     executor: PathfinderExecutor<'a>,
     initial_state: PathfinderExecutionState<'a>,
     declared_deprecated_classes: Vec<ClassHash>,
@@ -25,7 +26,7 @@ pub struct Validator<'a> {
 
 type ReceiptAndEvents = (Receipt, Vec<pathfinder_common::event::Event>);
 
-impl<'a> Validator<'a> {
+impl<'a> BlockExecutor<'a> {
     pub fn new(
         chain_id: ChainId,
         block_info: BlockInfo,
@@ -57,6 +58,7 @@ impl<'a> Validator<'a> {
         })
     }
 
+    /// Evecute a batch of transactions in the current block.
     pub fn execute(
         &mut self,
         txns: Vec<Transaction>,
@@ -98,11 +100,6 @@ impl<'a> Validator<'a> {
                     tx_info.receipt.resources
                 );
 
-                // TODO FIXME The following blows up rustfmt
-                // tracing::trace!(actual_fee=%tx_info.receipt.fee.0,
-                // actual_resources=?tx_info.receipt.resources, "Transaction execution
-                // finished");
-
                 to_receipts_and_events(
                     tx_type,
                     tx_info,
@@ -115,6 +112,7 @@ impl<'a> Validator<'a> {
         Ok(receipts_events)
     }
 
+    /// Finalizes block execution and returns the state diff for the block.
     pub fn finalize(self) -> anyhow::Result<StateDiff> {
         let Self {
             mut executor,

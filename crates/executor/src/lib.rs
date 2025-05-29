@@ -1,3 +1,4 @@
+pub(crate) mod block;
 pub(crate) mod call;
 pub(crate) mod class;
 pub(crate) mod error;
@@ -11,9 +12,9 @@ pub(crate) mod simulate;
 pub(crate) mod state_reader;
 pub(crate) mod transaction;
 pub mod types;
-pub(crate) mod validator;
 
 // re-export blockifier transaction type since it's exposed on our API
+pub use block::BlockExecutor;
 pub use blockifier::transaction::account_transaction::{
     AccountTransaction,
     ExecutionFlags as AccountTransactionExecutionFlags,
@@ -30,4 +31,3 @@ pub use felt::{IntoFelt, IntoStarkFelt};
 pub use simulate::{simulate, trace, TraceCache};
 pub use starknet_api::contract_class::ClassInfo;
 pub use state_reader::NativeClassCache;
-pub use validator::Validator;
