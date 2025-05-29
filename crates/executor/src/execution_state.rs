@@ -201,18 +201,6 @@ pub type PathfinderExecutor<'tx> =
 pub type PathfinderExecutionState<'tx> =
     CachedState<PendingStateReader<PathfinderStateReader<'tx>>>;
 
-// Used from block header
-//  block number
-//  parent number
-//  starknet_version
-//  eth_l1_gas_price
-//  strk_l1_gas_price
-//  eth_l1_data_gas_price
-//  strk_l1_data_gas_price
-//  eth_l2_gas_price
-//  timestamp
-//  sequencer address
-//  l1_da_mode
 pub struct ExecutionState {
     pub chain_id: ChainId,
     pub block_info: BlockInfo,
@@ -265,13 +253,6 @@ pub fn create_executor(
     let versioned_constants = execution_state
         .versioned_constants_map
         .for_version(&execution_state.block_info.starknet_version);
-
-    // tracing::debug!(?old_block_number_and_hash);
-    // tracing::debug!(%versioned_constants.enable_stateful_compression);
-    // tracing::debug!(
-    //     "versioned_constants.os_constants: {:#?}",
-    //     versioned_constants.os_constants
-    // );
 
     let block_context = BlockContext::new(
         block_info,
@@ -543,27 +524,6 @@ impl ExecutionState {
             native_class_cache,
         }
     }
-
-    // pub struct ProposalInit {
-    //     pub height: u64,
-    //     pub round: u32,
-    //     #[optional]
-    //     pub valid_round: Option<u32>,
-    //     pub proposer: Address,
-    // }
-
-    // #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-    // #[protobuf(name = "crate::proto::consensus::BlockInfo")]
-    // pub struct BlockInfo {
-    //     pub height: u64,
-    //     pub timestamp: u64,
-    //     pub builder: Address,
-    //     pub l1_da_mode: L1DataAvailabilityMode,
-    //     pub l2_gas_price_fri: u128,
-    //     pub l1_gas_price_wei: u128,
-    //     pub l1_data_gas_price_wei: u128,
-    //     pub eth_to_fri_rate: u128,
-    // }
 }
 
 #[derive(Copy, Clone, PartialEq)]
