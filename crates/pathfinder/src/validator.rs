@@ -44,20 +44,16 @@ use crate::state::block_hash::{
     BlockHeaderData,
 };
 
-pub struct Validator;
-
-impl Validator {
-    pub fn new(
-        chain_id: ChainId,
-        proposal_init: ProposalInit,
-    ) -> anyhow::Result<ValidatorBlockInfoStage> {
-        // TODO how can we validate the proposal init?
-        Ok(ValidatorBlockInfoStage {
-            chain_id,
-            proposal_height: BlockNumber::new(proposal_init.height)
-                .context("ProposalInit height exceeds i64::MAX")?,
-        })
-    }
+pub fn new(
+    chain_id: ChainId,
+    proposal_init: ProposalInit,
+) -> anyhow::Result<ValidatorBlockInfoStage> {
+    // TODO how can we validate the proposal init?
+    Ok(ValidatorBlockInfoStage {
+        chain_id,
+        proposal_height: BlockNumber::new(proposal_init.height)
+            .context("ProposalInit height exceeds i64::MAX")?,
+    })
 }
 
 pub struct ValidatorBlockInfoStage {
@@ -133,7 +129,7 @@ impl<'a> ValidatorBlockInfoStage {
 
         let block_executor = BlockExecutor::new(
             chain_id,
-            block_info.clone(),
+            block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
             db_tx,
@@ -160,7 +156,7 @@ pub struct ValidatorTransactionBatchStage<'a> {
     events: Vec<Vec<Event>>,
 }
 
-impl<'a> ValidatorTransactionBatchStage<'a> {
+impl ValidatorTransactionBatchStage<'_> {
     pub fn execute_transactions(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
@@ -317,7 +313,7 @@ impl<'a> ValidatorTransactionBatchStage<'a> {
             event_count: self
                 .events
                 .iter()
-                .flat_map(|events| events)
+                .flatten()
                 .count()
                 .try_into()
                 .expect("ptr size is 64bits"),

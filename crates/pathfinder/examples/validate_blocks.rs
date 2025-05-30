@@ -22,7 +22,7 @@ use pathfinder_common::{
 };
 use pathfinder_crypto::Felt;
 use pathfinder_executor::types::ETH_TO_WEI_RATE;
-use pathfinder_lib::validator::Validator;
+use pathfinder_lib::validator;
 use pathfinder_storage::StorageBuilder;
 use tracing::{info, warn};
 
@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
             panic!("Expected proposal init");
         };
 
-        let validator = Validator::new(ChainId::SEPOLIA_TESTNET, proposal_init)
+        let validator = validator::new(ChainId::SEPOLIA_TESTNET, proposal_init)
             .context("Validator creation")?;
 
         let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
