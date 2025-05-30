@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use blockifier::blockifier_versioned_constants::VersionedConstants;
 use blockifier::context::TransactionContext;
 use blockifier::execution::entry_point::{
     CallEntryPoint,
@@ -12,7 +13,6 @@ use blockifier::execution::stack_trace::{
 };
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::objects::{DeprecatedTransactionInfo, TransactionInfo};
-use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::{felt, CallParam, CallResultValue, ContractAddress, EntryPoint};
 use starknet_api::contract_class::EntryPointType;
 use starknet_api::core::PatriciaKey;
@@ -59,7 +59,7 @@ pub fn call(
 
     let mut context = EntryPointExecutionContext::new_invoke(
         Arc::new(TransactionContext {
-            block_context,
+            block_context: Arc::new(block_context),
             tx_info: TransactionInfo::Deprecated(DeprecatedTransactionInfo::default()),
         }),
         false,

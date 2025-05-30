@@ -6,11 +6,11 @@ use blockifier::blockifier::transaction_executor::{
     TransactionExecutorError,
     BLOCK_STATE_ACCESS_ERR,
 };
+use blockifier::blockifier_versioned_constants::VersionedConstants;
 use blockifier::state::cached_state::StateMaps;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
 use blockifier::transaction::transaction_execution::Transaction;
-use blockifier::versioned_constants::VersionedConstants;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;
 use starknet_api::transaction::fields::GasVectorComputationMode;
