@@ -216,6 +216,10 @@ pub(crate) mod tests {
     use pathfinder_common::prelude::*;
     use pathfinder_common::BlockId;
     use pathfinder_crypto::Felt;
+    use pathfinder_executor::types::{
+        DeclareTransactionExecutionInfo,
+        DeployAccountTransactionExecutionInfo,
+    };
     use pathfinder_storage::Storage;
     use starknet_gateway_test_fixtures::class_definitions::ERC20_CONTRACT_DEFINITION_CLASS_HASH;
 
@@ -303,6 +307,7 @@ pub(crate) mod tests {
                 },
                 trace: pathfinder_executor::types::TransactionTrace::DeployAccount(
                     pathfinder_executor::types::DeployAccountTransactionTrace {
+                        execution_info: DeployAccountTransactionExecutionInfo {
                         constructor_invocation: Some(pathfinder_executor::types::FunctionInvocation {
                                 call_type: Some(pathfinder_executor::types::CallType::Call),
                                 caller_address: felt!("0x0"),
@@ -364,6 +369,22 @@ pub(crate) mod tests {
                             },
                         ),
                         fee_transfer_invocation: None,
+                        execution_resources: pathfinder_executor::types::ExecutionResources {
+                            computation_resources: pathfinder_executor::types::ComputationResources{
+                                memory_holes: 1,
+                                pedersen_builtin_applications: 2,
+                                range_check_builtin_applications: 10,
+                                steps:447,
+                                ..Default::default()
+                            },
+                            data_availability: pathfinder_executor::types::DataAvailabilityResources{
+                                l1_gas:0,
+                                l1_data_gas:352
+                            },
+                            l1_gas: 0,
+                            l1_data_gas: 160,
+                            l2_gas: 0,
+                        },},
                         state_diff: pathfinder_executor::types::StateDiff {
                             storage_diffs: BTreeMap::from([
                                 (
@@ -397,22 +418,6 @@ pub(crate) mod tests {
                                 DEPLOYED_CONTRACT_ADDRESS,
                                 contract_nonce!("0x1"),
                             )]),
-                        },
-                        execution_resources: pathfinder_executor::types::ExecutionResources {
-                            computation_resources: pathfinder_executor::types::ComputationResources{
-                                memory_holes: 1,
-                                pedersen_builtin_applications: 2,
-                                range_check_builtin_applications: 10,
-                                steps:447,
-                                ..Default::default()
-                            },
-                            data_availability: pathfinder_executor::types::DataAvailabilityResources{
-                                l1_gas:0,
-                                l1_data_gas:352
-                            },
-                            l1_gas: 0,
-                            l1_data_gas: 160,
-                            l2_gas: 0,
                         },
                     },
                 ),
@@ -471,6 +476,7 @@ pub(crate) mod tests {
         let expected = crate::method::simulate_transactions::Output(vec![
             pathfinder_executor::types::TransactionSimulation{
                 trace: pathfinder_executor::types::TransactionTrace::Declare(pathfinder_executor::types::DeclareTransactionTrace {
+                    execution_info: DeclareTransactionExecutionInfo {
                     validate_invocation: Some(
                         pathfinder_executor::types::FunctionInvocation {
                             call_type: Some(pathfinder_executor::types::CallType::Call),
@@ -533,6 +539,23 @@ pub(crate) mod tests {
                             is_reverted: false,
                         }
                     ),
+                    execution_resources: pathfinder_executor::types::ExecutionResources{
+                        computation_resources: pathfinder_executor::types::ComputationResources{
+                            steps: 1557,
+                            memory_holes: 60,
+                            range_check_builtin_applications: 35,
+                            pedersen_builtin_applications: 4,
+                            ..Default::default()
+                        },
+                        data_availability: pathfinder_executor::types::DataAvailabilityResources{
+                            l1_gas: 0,
+                            l1_data_gas: 128,
+                        },
+                        l1_gas: 0,
+                        l1_data_gas: 128,
+                        l2_gas: 0,
+                    },},
+
                     state_diff: pathfinder_executor::types::StateDiff {
                         storage_diffs: BTreeMap::from([
                             (ETH_FEE_TOKEN_ADDRESS, vec![
@@ -556,22 +579,7 @@ pub(crate) mod tests {
                             (account_contract_address, contract_nonce!("0x1")),
                         ]),
                     },
-                    execution_resources: pathfinder_executor::types::ExecutionResources{
-                        computation_resources: pathfinder_executor::types::ComputationResources{
-                            steps: 1557,
-                            memory_holes: 60,
-                            range_check_builtin_applications: 35,
-                            pedersen_builtin_applications: 4,
-                            ..Default::default()
-                        },
-                        data_availability: pathfinder_executor::types::DataAvailabilityResources{
-                            l1_gas: 0,
-                            l1_data_gas: 128,
-                        },
-                        l1_gas: 0,
-                        l1_data_gas: 128,
-                        l2_gas: 0,
-                    },
+
                 }),
                 fee_estimation: pathfinder_executor::types::FeeEstimate {
                     l1_gas_consumed: 15464.into(),
@@ -808,7 +816,6 @@ pub(crate) mod tests {
             const DECLARE_OVERALL_FEE: u64 = 1262;
             const DECLARE_GAS_CONSUMED: u64 = 878;
             const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
-
             pub fn declare(
                 account_contract_address: ContractAddress,
                 last_block_header: &BlockHeader,
@@ -826,27 +833,33 @@ pub(crate) mod tests {
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Declare(
                         pathfinder_executor::types::DeclareTransactionTrace {
-                            fee_transfer_invocation: Some(declare_fee_transfer(
-                                account_contract_address,
-                                last_block_header,
-                            )),
-                            validate_invocation: Some(declare_validate(account_contract_address)),
+                            execution_info: DeclareTransactionExecutionInfo {
+                                fee_transfer_invocation: Some(declare_fee_transfer(
+                                    account_contract_address,
+                                    last_block_header,
+                                )),
+                                validate_invocation: Some(declare_validate(
+                                    account_contract_address,
+                                )),
+                                execution_resources:
+                                    pathfinder_executor::types::ExecutionResources {
+                                        computation_resources:
+                                            declare_validate_computation_resources()
+                                                + declare_fee_transfer_computation_resources(),
+                                        data_availability:
+                                            pathfinder_executor::types::DataAvailabilityResources {
+                                                l1_gas: 0,
+                                                l1_data_gas: 192,
+                                            },
+                                        l1_gas: 878,
+                                        l1_data_gas: 192,
+                                        l2_gas: 0,
+                                    },
+                            },
                             state_diff: declare_state_diff(
                                 account_contract_address,
                                 declare_fee_transfer_storage_diffs(),
                             ),
-                            execution_resources: pathfinder_executor::types::ExecutionResources {
-                                computation_resources: declare_validate_computation_resources()
-                                    + declare_fee_transfer_computation_resources(),
-                                data_availability:
-                                    pathfinder_executor::types::DataAvailabilityResources {
-                                        l1_gas: 0,
-                                        l1_data_gas: 192,
-                                    },
-                                l1_gas: 878,
-                                l1_data_gas: 192,
-                                l2_gas: 0,
-                            },
                         },
                     ),
                 }
@@ -1008,6 +1021,7 @@ pub(crate) mod tests {
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
                         pathfinder_executor::types::InvokeTransactionTrace {
+                            execution_info : pathfinder_executor::types::InvokeTransactionExecutionInfo {
                             validate_invocation: Some(universal_deployer_validate(
                                 account_contract_address,
                                 universal_deployer_address,
@@ -1024,10 +1038,6 @@ pub(crate) mod tests {
                                 last_block_header,
                                 0,
                             )),
-                            state_diff: universal_deployer_state_diff(
-                                account_contract_address,
-                                universal_deployer_fee_transfer_storage_diffs(0),
-                            ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources:
                                     universal_deployer_validate_computation_resources()
@@ -1041,7 +1051,12 @@ pub(crate) mod tests {
                                 l1_gas: 19,
                                 l1_data_gas: 224,
                                 l2_gas: 0,
-                            },
+                            },},
+                            state_diff: universal_deployer_state_diff(
+                                account_contract_address,
+                                universal_deployer_fee_transfer_storage_diffs(0),
+                            ),
+
                         },
                     ),
                 }
@@ -1341,6 +1356,7 @@ pub(crate) mod tests {
                     },
                     trace: pathfinder_executor::types::TransactionTrace::Invoke(
                         pathfinder_executor::types::InvokeTransactionTrace {
+                            execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
                             validate_invocation: Some(invoke_validate(account_contract_address)),
                             execute_invocation:
                                 pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(
@@ -1354,10 +1370,6 @@ pub(crate) mod tests {
                                 last_block_header,
                                 0,
                             )),
-                            state_diff: invoke_state_diff(
-                                account_contract_address,
-                                invoke_fee_transfer_storage_diffs(0),
-                            ),
                             execution_resources: pathfinder_executor::types::ExecutionResources {
                                 computation_resources: invoke_validate_computation_resources()
                                     + invoke_execute_computation_resources()
@@ -1370,7 +1382,12 @@ pub(crate) mod tests {
                                 l1_gas: 14,
                                 l1_data_gas: 128,
                                 l2_gas: 0,
-                            },
+                            },},
+                            state_diff: invoke_state_diff(
+                                account_contract_address,
+                                invoke_fee_transfer_storage_diffs(0),
+                            ),
+
                         },
                     ),
                 }

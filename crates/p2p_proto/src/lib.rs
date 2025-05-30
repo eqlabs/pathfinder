@@ -7,6 +7,9 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
@@ -167,6 +170,7 @@ fn proto_field<T>(input: Option<T>, field_name: &'static str) -> Result<T, std::
 use p2p_proto_derive::*;
 pub mod class;
 pub mod common;
+pub mod consensus;
 pub mod event;
 pub mod header;
 pub mod receipt;

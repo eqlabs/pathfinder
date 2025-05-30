@@ -344,16 +344,18 @@ pub(crate) fn map_gateway_trace(
         | TransactionVariant::DeclareV3(_) => {
             pathfinder_executor::types::TransactionTrace::Declare(
                 pathfinder_executor::types::DeclareTransactionTrace {
-                    fee_transfer_invocation: trace
-                        .fee_transfer_invocation
-                        .map(map_gateway_function_invocation)
-                        .transpose()?,
-                    validate_invocation: trace
-                        .validate_invocation
-                        .map(map_gateway_function_invocation)
-                        .transpose()?,
+                    execution_info: pathfinder_executor::types::DeclareTransactionExecutionInfo {
+                        fee_transfer_invocation: trace
+                            .fee_transfer_invocation
+                            .map(map_gateway_function_invocation)
+                            .transpose()?,
+                        validate_invocation: trace
+                            .validate_invocation
+                            .map(map_gateway_function_invocation)
+                            .transpose()?,
+                        execution_resources,
+                    },
                     state_diff: Default::default(),
-                    execution_resources,
                 },
             )
         }
@@ -363,10 +365,41 @@ pub(crate) fn map_gateway_trace(
         | TransactionVariant::DeployV1(_) => {
             pathfinder_executor::types::TransactionTrace::DeployAccount(
                 pathfinder_executor::types::DeployAccountTransactionTrace {
-                    constructor_invocation: trace
-                        .function_invocation
-                        .map(map_gateway_function_invocation)
-                        .transpose()?,
+                    execution_info:
+                        pathfinder_executor::types::DeployAccountTransactionExecutionInfo {
+                            constructor_invocation: trace
+                                .function_invocation
+                                .map(map_gateway_function_invocation)
+                                .transpose()?,
+                            fee_transfer_invocation: trace
+                                .fee_transfer_invocation
+                                .map(map_gateway_function_invocation)
+                                .transpose()?,
+                            validate_invocation: trace
+                                .validate_invocation
+                                .map(map_gateway_function_invocation)
+                                .transpose()?,
+                            execution_resources,
+                        },
+                    state_diff: Default::default(),
+                },
+            )
+        }
+        TransactionVariant::InvokeV0(_)
+        | TransactionVariant::InvokeV1(_)
+        | TransactionVariant::InvokeV3(_) => pathfinder_executor::types::TransactionTrace::Invoke(
+            pathfinder_executor::types::InvokeTransactionTrace {
+                execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
+                    execute_invocation: if let Some(revert_reason) = trace.revert_error {
+                        pathfinder_executor::types::ExecuteInvocation::RevertedReason(revert_reason)
+                    } else {
+                        pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(
+                            trace
+                                .function_invocation
+                                .map(map_gateway_function_invocation)
+                                .transpose()?,
+                        )
+                    },
                     fee_transfer_invocation: trace
                         .fee_transfer_invocation
                         .map(map_gateway_function_invocation)
@@ -375,46 +408,22 @@ pub(crate) fn map_gateway_trace(
                         .validate_invocation
                         .map(map_gateway_function_invocation)
                         .transpose()?,
-                    state_diff: Default::default(),
                     execution_resources,
                 },
-            )
-        }
-        TransactionVariant::InvokeV0(_)
-        | TransactionVariant::InvokeV1(_)
-        | TransactionVariant::InvokeV3(_) => pathfinder_executor::types::TransactionTrace::Invoke(
-            pathfinder_executor::types::InvokeTransactionTrace {
-                execute_invocation: if let Some(revert_reason) = trace.revert_error {
-                    pathfinder_executor::types::ExecuteInvocation::RevertedReason(revert_reason)
-                } else {
-                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(
-                        trace
-                            .function_invocation
-                            .map(map_gateway_function_invocation)
-                            .transpose()?,
-                    )
-                },
-                fee_transfer_invocation: trace
-                    .fee_transfer_invocation
-                    .map(map_gateway_function_invocation)
-                    .transpose()?,
-                validate_invocation: trace
-                    .validate_invocation
-                    .map(map_gateway_function_invocation)
-                    .transpose()?,
                 state_diff: Default::default(),
-                execution_resources,
             },
         ),
         TransactionVariant::L1Handler(_) => {
             pathfinder_executor::types::TransactionTrace::L1Handler(
                 pathfinder_executor::types::L1HandlerTransactionTrace {
-                    function_invocation: trace
-                        .function_invocation
-                        .map(map_gateway_function_invocation)
-                        .transpose()?,
+                    execution_info: pathfinder_executor::types::L1HandlerTransactionExecutionInfo {
+                        function_invocation: trace
+                            .function_invocation
+                            .map(map_gateway_function_invocation)
+                            .transpose()?,
+                        execution_resources,
+                    },
                     state_diff: Default::default(),
-                    execution_resources,
                 },
             )
         }

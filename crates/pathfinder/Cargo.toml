@@ -61,6 +61,7 @@ serde_json = { workspace = true, features = [
 sha3 = { workspace = true }
 starknet-gateway-client = { path = "../gateway-client" }
 starknet-gateway-types = { path = "../gateway-types" }
+starknet_api = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["macros"] }
@@ -93,7 +94,6 @@ rand_chacha = { workspace = true }
 rstest = { workspace = true }
 serde_with = { workspace = true }
 starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
-starknet_api = { workspace = true }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 warp = { workspace = true }

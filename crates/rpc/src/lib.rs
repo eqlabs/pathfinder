@@ -25,7 +25,7 @@ use axum::error_handling::HandleErrorLayer;
 use axum::extract::DefaultBodyLimit;
 use axum::response::IntoResponse;
 use context::RpcContext;
-pub use executor::compose_executor_transaction;
+pub use executor::{compose_executor_transaction, map_transaction_variant};
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
