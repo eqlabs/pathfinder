@@ -44,6 +44,22 @@ where
     })
 }
 
+/// Same as [`spawn`] but passes a [`CancellationToken`] to the caller to
+/// handle cancellation.
+pub fn spawn_with_cancel<F, Fut>(func: F) -> tokio::task::JoinHandle<Fut::Output>
+where
+    F: FnOnce(CancellationToken) -> Fut + Send + 'static,
+    Fut: Future + Send + 'static,
+    Fut::Output: FutureOutputExt + Send + 'static,
+{
+    let Handle {
+        task_tracker,
+        cancellation_token,
+    } = HANDLE.clone();
+
+    task_tracker.spawn(func(cancellation_token))
+}
+
 /// Runs the provided closure on a `tokio` thread where blocking is acceptable,
 /// similarly to [`tokio::task::spawn_blocking`], however internally the closure
 /// is spawned through a [`tokio_util::task::TaskTracker`] to ensure that it
