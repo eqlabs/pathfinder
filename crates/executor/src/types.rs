@@ -298,7 +298,7 @@ pub struct DataAvailabilityResources {
 impl FunctionInvocation {
     pub fn from_call_info(
         call_info: blockifier::execution::call_info::CallInfo,
-        versioned_constants: &blockifier::versioned_constants::VersionedConstants,
+        versioned_constants: &blockifier::blockifier_versioned_constants::VersionedConstants,
         gas_vector_computation_mode: &starknet_api::transaction::fields::GasVectorComputationMode,
     ) -> Self {
         let gas_consumed = call_info
