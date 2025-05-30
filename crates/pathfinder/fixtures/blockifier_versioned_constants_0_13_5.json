@@ -1,0 +1,529 @@
+{
+    "tx_event_limits": {
+        "max_data_length": 300,
+        "max_keys_length": 50,
+        "max_n_emitted_events": 1000
+    },
+    "gateway": {
+        "max_calldata_length": 5000,
+        "max_contract_bytecode_size": 81920
+    },
+    "invoke_tx_max_n_steps": 10000000,
+    "deprecated_l2_resource_gas_costs": {
+        "gas_per_data_felt": [
+            128,
+            1000
+        ],
+        "event_key_factor": [
+            2,
+            1
+        ],
+        "gas_per_code_byte": [
+            32,
+            1000
+        ]
+    },
+    "archival_data_gas_costs": {
+        "gas_per_data_felt": [
+            5120,
+            1
+        ],
+        "event_key_factor": [
+            2,
+            1
+        ],
+        "gas_per_code_byte": [
+            1280,
+            1
+        ]
+    },
+    "disable_cairo0_redeclaration": true,
+    "enable_stateful_compression": true,
+    "comprehensive_state_diff": true,
+    "block_direct_execute_call": false,
+    "allocation_cost": {
+        "blob_cost": {
+            "l1_gas": 0,
+            "l1_data_gas": 32,
+            "l2_gas": 0
+        },
+        "gas_cost": {
+            "l1_gas": 551,
+            "l1_data_gas": 0,
+            "l2_gas": 0
+        }
+    },
+    "ignore_inner_event_resources": false,
+    "disable_deploy_in_validation_mode": false,
+    "enable_reverts": true,
+    "max_recursion_depth": 50,
+    "segment_arena_cells": false,
+    "os_constants": {
+        "constructor_entry_point_selector": "0x28ffe4ff0f226a9107253e17a904099aa4f63a02a5621de0576e5aa71bc5194",
+        "default_entry_point_selector": "0x0",
+        "entry_point_initial_budget": {
+            "step_gas_cost": 100
+        },
+        "entry_point_type_constructor": 2,
+        "entry_point_type_external": 0,
+        "entry_point_type_l1_handler": 1,
+        "error_block_number_out_of_range": "Block number out of range",
+        "error_invalid_input_len": "Invalid input length",
+        "error_invalid_argument": "Invalid argument",
+        "error_out_of_gas": "Out of gas",
+        "error_entry_point_failed": "ENTRYPOINT_FAILED",
+        "error_entry_point_not_found": "ENTRYPOINT_NOT_FOUND",
+        "execute_entry_point_selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+        "execute_max_sierra_gas": 1000000000,
+        "default_initial_gas_cost": {
+            "step_gas_cost": 100000000
+        },
+        "l1_gas": "L1_GAS",
+        "l1_gas_index": 0,
+        "l1_handler_version": 0,
+        "l2_gas": "L2_GAS",
+        "l1_data_gas": "L1_DATA",
+        "l1_data_gas_index": 2,
+        "l2_gas_index": 1,
+        "memory_hole_gas_cost": 10,
+        "nop_entry_point_offset": -1,
+        "os_contract_addresses": {
+            "block_hash_contract_address": 1,
+            "alias_contract_address": 2,
+            "reserved_contract_address": 3
+        },
+        "builtin_gas_costs": {
+            "range_check": 70,
+            "range_check96": 56,
+            "keccak": 136189,
+            "pedersen": 4050,
+            "bitwise": 583,
+            "ecop": 4085,
+            "poseidon": 491,
+            "add_mod": 230,
+            "mul_mod": 604,
+            "ecdsa": 10561
+        },
+        "l1_handler_max_amount_bounds": {
+            "l1_gas": 10000000000,
+            "l1_data_gas": 10000000000,
+            "l2_gas": 10000000000
+        },
+        "sierra_array_len_bound": 4294967296,
+        "step_gas_cost": 100,
+        "stored_block_hash_buffer": 10,
+        "syscall_base_gas_cost": {
+            "step_gas_cost": 100
+        },
+        "transfer_entry_point_selector": "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+        "validate_declare_entry_point_selector": "0x289da278a8dc833409cabfdad1581e8e7d40e42dcaed693fa4008dcdb4963b3",
+        "validate_deploy_entry_point_selector": "0x36fcbf06cd96843058359e1a75928beacfac10727dab22a3972f0af8aa92895",
+        "validate_entry_point_selector": "0x162da33a4585851fe8d3af3c2a9c60b557814e221e0d4f30ff0b2189d9c7775",
+        "validate_max_sierra_gas": 100000000,
+        "validate_rounding_consts": {
+            "validate_block_number_rounding": 100,
+            "validate_timestamp_rounding": 3600
+        },
+        "validated": "VALID",
+        "v1_bound_accounts_cairo0": [
+            "0x06d706cfbac9b8262d601c38251c5fbe0497c3a96cc91a92b08d91b61d9e70c4",
+            "0x0309c042d3729173c7f2f91a34f04d8c509c1b292d334679ef1aabf8da0899cc",
+            "0x01a7820094feaf82d53f53f214b81292d717e7bb9a92bb2488092cd306f3993f",
+            "0x033434ad846cdd5f23eb73ff09fe6fddd568284a0fb7d1be20ee482f044dabe2"
+        ],
+        "v1_bound_accounts_cairo1": [
+            "0x01a736d6ed154502257f02b1ccdf4d9d1089f80811cd6acad48e6b6a9d1f2003",
+            "0x0737ee2f87ce571a58c6c8da558ec18a07ceb64a6172d5ec46171fbc80077a48",
+            "0x05400e90f7e0ae78bd02c77cd75527280470e2fe19c54970dd79dc37a9d3645c",
+            "0x04c6d6cf894f8bc96bb9c525e6853e5483177841f7388f74a46cfda6f028c755",
+            "0x01c0bb51e2ce73dc007601a1e7725453627254016c28f118251a71bbb0507fcb",
+            "0x0251830adc3d8b4d818c2c309d71f1958308e8c745212480c26e01120c69ee49",
+            "0x0251cac7b2f45d255b83b7a06dcdef70c8a8752f00ea776517c1c2243c7a06e5"
+        ],
+        "v1_bound_accounts_max_tip": "0x746a5288000",
+        "data_gas_accounts": []
+    },
+    "os_resources": {
+        "execute_syscalls": {
+            "CallContract": {
+                "n_steps": 866,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 15
+                },
+                "n_memory_holes": 0
+            },
+            "DelegateCall": {
+                "n_steps": 713,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 19
+                },
+                "n_memory_holes": 0
+            },
+            "DelegateL1Handler": {
+                "n_steps": 692,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 15
+                },
+                "n_memory_holes": 0
+            },
+            "Deploy": {
+                "constant": {
+                    "n_steps": 1132,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 7,
+                        "range_check_builtin": 18
+                    },
+                    "n_memory_holes": 0
+                },
+                "calldata_factor": {
+                    "n_steps": 8,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 1
+                    },
+                    "n_memory_holes": 0
+                }
+            },
+            "EmitEvent": {
+                "n_steps": 61,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetBlockHash": {
+                "n_steps": 104,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 2
+                },
+                "n_memory_holes": 0
+            },
+            "GetBlockNumber": {
+                "n_steps": 40,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "GetBlockTimestamp": {
+                "n_steps": 38,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "GetCallerAddress": {
+                "n_steps": 64,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetContractAddress": {
+                "n_steps": 64,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetExecutionInfo": {
+                "n_steps": 64,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetSequencerAddress": {
+                "n_steps": 34,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "GetTxInfo": {
+                "n_steps": 64,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetTxSignature": {
+                "n_steps": 44,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "KeccakRound": {
+                "n_steps": 281,
+                "builtin_instance_counter": {
+                    "bitwise_builtin": 6,
+                    "keccak_builtin": 1,
+                    "range_check_builtin": 56
+                },
+                "n_memory_holes": 0
+            },
+            "Keccak": {
+                "n_steps": 100,
+                "builtin_instance_counter": {},
+                "n_memory_holes": 0
+            },
+            "LibraryCall": {
+                "n_steps": 842,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 15
+                },
+                "n_memory_holes": 0
+            },
+            "LibraryCallL1Handler": {
+                "n_steps": 659,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 15
+                },
+                "n_memory_holes": 0
+            },
+            "MetaTxV0": {
+                "n_steps": 0,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 0
+                },
+                "n_memory_holes": 0
+            },
+            "ReplaceClass": {
+                "n_steps": 104,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256k1Add": {
+                "n_steps": 410,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 29
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256k1GetPointFromX": {
+                "n_steps": 395,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 30
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256k1GetXy": {
+                "n_steps": 207,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 11
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256k1Mul": {
+                "n_steps": 76505,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 7045
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256k1New": {
+                "n_steps": 461,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 35
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256r1Add": {
+                "n_steps": 593,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 57
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256r1GetPointFromX": {
+                "n_steps": 514,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 44
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256r1GetXy": {
+                "n_steps": 209,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 11
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256r1Mul": {
+                "n_steps": 125344,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 13961
+                },
+                "n_memory_holes": 0
+            },
+            "Secp256r1New": {
+                "n_steps": 580,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 49
+                },
+                "n_memory_holes": 0
+            },
+            "SendMessageToL1": {
+                "n_steps": 141,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "Sha256ProcessBlock": {
+                "n_steps": 1865,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 65,
+                    "bitwise_builtin": 1115
+                },
+                "n_memory_holes": 0
+            },
+            "StorageRead": {
+                "n_steps": 87,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "StorageWrite": {
+                "n_steps": 93,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            },
+            "GetClassHashAt": {
+                "n_steps": 89,
+                "builtin_instance_counter": {
+                    "range_check_builtin": 1
+                },
+                "n_memory_holes": 0
+            }
+        },
+        "execute_txs_inner": {
+            "Declare": {
+                "constant": {
+                    "n_steps": 3203,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 16,
+                        "range_check_builtin": 56,
+                        "poseidon_builtin": 4
+                    },
+                    "n_memory_holes": 0
+                },
+                "calldata_factor": {
+                    "n_steps": 0,
+                    "builtin_instance_counter": {},
+                    "n_memory_holes": 0
+                }
+            },
+            "DeployAccount": {
+                "constant": {
+                    "n_steps": 4161,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 23,
+                        "range_check_builtin": 72
+                    },
+                    "n_memory_holes": 0
+                },
+                "calldata_factor": {
+                    "n_steps": 21,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 2
+                    },
+                    "n_memory_holes": 0
+                }
+            },
+            "InvokeFunction": {
+                "constant": {
+                    "n_steps": 3918,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 14,
+                        "range_check_builtin": 69
+                    },
+                    "n_memory_holes": 0
+                },
+                "calldata_factor": {
+                    "n_steps": 8,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 1
+                    },
+                    "n_memory_holes": 0
+                }
+            },
+            "L1Handler": {
+                "constant": {
+                    "n_steps": 1279,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 11,
+                        "range_check_builtin": 16
+                    },
+                    "n_memory_holes": 0
+                },
+                "calldata_factor": {
+                    "n_steps": 13,
+                    "builtin_instance_counter": {
+                        "pedersen_builtin": 1
+                    },
+                    "n_memory_holes": 0
+                }
+            }
+        },
+        "compute_os_kzg_commitment_info": {
+            "n_steps": 113,
+            "builtin_instance_counter": {
+                "range_check_builtin": 17
+            },
+            "n_memory_holes": 0
+        }
+    },
+    "validate_max_n_steps": 1000000,
+    "min_sierra_version_for_sierra_gas": "1.7.0",
+    "vm_resource_fee_cost": {
+        "builtins": {
+            "add_mod_builtin": [
+                4,
+                100
+            ],
+            "bitwise_builtin": [
+                16,
+                100
+            ],
+            "ec_op_builtin": [
+                256,
+                100
+            ],
+            "ecdsa_builtin": [
+                512,
+                100
+            ],
+            "keccak_builtin": [
+                512,
+                100
+            ],
+            "mul_mod_builtin": [
+                4,
+                100
+            ],
+            "output_builtin": [
+                0,
+                1
+            ],
+            "pedersen_builtin": [
+                8,
+                100
+            ],
+            "poseidon_builtin": [
+                8,
+                100
+            ],
+            "range_check_builtin": [
+                4,
+                100
+            ],
+            "range_check96_builtin": [
+                4,
+                100
+            ]
+        },
+        "n_steps": [
+            25,
+            10000
+        ]
+    },
+    "enable_tip": false
+}

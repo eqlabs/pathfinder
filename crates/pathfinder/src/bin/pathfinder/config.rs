@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::File;
 use std::net::SocketAddr;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{ArgAction, CommandFactory, Parser};
@@ -635,10 +635,10 @@ enum RpcCorsDomainsParseError {
 }
 
 fn parse_versioned_constants(
-    path: PathBuf,
+    path: &Path,
 ) -> Result<VersionedConstantsMap, ParseVersionedConstantsError> {
     let mut target = BTreeMap::new();
-    let file = File::open(path.clone())?;
+    let file = File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let src_res: Result<HashMap<String, String>, _> = serde_json::from_reader(reader);
     if let Ok(source) = src_res {
@@ -661,7 +661,7 @@ fn parse_versioned_constants(
     } else {
         // logging isn't set up yet...
         eprintln!("Unknown versioned constants map file format - trying legacy...");
-        let constants = VersionedConstants::from_path(&path)?;
+        let constants = VersionedConstants::from_path(path)?;
         target.insert(
             VersionedConstantsMap::latest_version(),
             Cow::Owned(constants.into()),
@@ -677,7 +677,7 @@ fn parse_versioned_constants(
     Ok(VersionedConstantsMap::custom(target))
 }
 
-pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstantsMap {
+pub fn parse_versioned_constants_or_exit(path: &Path) -> VersionedConstantsMap {
     use clap::error::ErrorKind;
 
     match parse_versioned_constants(path) {
@@ -919,7 +919,7 @@ impl Config {
             state_tries: cli.state_tries,
             versioned_constants_map: cli
                 .custom_versioned_constants_path
-                .map(parse_versioned_constants_or_exit)
+                .map(|path| parse_versioned_constants_or_exit(&path))
                 .unwrap_or_default(),
             fetch_casm_from_fgw: cli.fetch_casm_from_fgw,
             shutdown_grace_period: Duration::from_secs(cli.shutdown_grace_period.get()),
@@ -1049,7 +1049,7 @@ mod tests {
     #[test]
     fn parse_versioned_constants_fails_if_file_not_found() {
         assert_matches!(
-            super::parse_versioned_constants("./nonexistent_versioned_constants.json".into()).unwrap_err(),
+            super::parse_versioned_constants("./nonexistent_versioned_constants.json".as_ref()).unwrap_err(),
             ParseVersionedConstantsError::Io(err) => assert_eq!(err.kind(), std::io::ErrorKind::NotFound)
         );
     }
@@ -1057,22 +1057,23 @@ mod tests {
     #[test]
     fn parse_versioned_constants_fails_on_parse_error() {
         assert_matches!(
-            super::parse_versioned_constants("fixtures/invalid_versioned_constants.json".into())
+            super::parse_versioned_constants("fixtures/invalid_versioned_constants.json".as_ref())
                 .unwrap_err(),
-            ParseVersionedConstantsError::Parse(_)
+            ParseVersionedConstantsError::ParseMap(_)
         )
     }
 
     #[test]
     fn parse_versioned_constants_legacy() {
         super::parse_versioned_constants(
-            "../executor/resources/versioned_constants_0_13_1_1.json".into(),
+            "fixtures/blockifier_versioned_constants_0_13_1_1.json".as_ref(),
         )
         .unwrap();
     }
 
     #[test]
     fn parse_versioned_constants_success() {
-        super::parse_versioned_constants("fixtures/multi_versioned_constants.json".into()).unwrap();
+        super::parse_versioned_constants("fixtures/multi_versioned_constants.json".as_ref())
+            .unwrap();
     }
 }
