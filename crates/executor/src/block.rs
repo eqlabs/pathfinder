@@ -1,11 +1,12 @@
+use anyhow::Context;
 use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::state::cached_state::StateChanges;
-use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash};
+use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash, TransactionIndex};
 
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
 use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
 use crate::types::{
-    to_receipts_and_events,
+    to_receipt_and_events,
     to_state_diff,
     transaction_declared_deprecated_class,
     transaction_type,
@@ -80,7 +81,9 @@ impl<'a> BlockExecutor<'a> {
                 .entered();
 
                 let tx_type = transaction_type(&tx);
-                if let Some(class) = transaction_declared_deprecated_class(&tx) { self.declared_deprecated_classes.push(class) }
+                if let Some(class) = transaction_declared_deprecated_class(&tx) {
+                    self.declared_deprecated_classes.push(class)
+                }
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
 
@@ -99,8 +102,10 @@ impl<'a> BlockExecutor<'a> {
                     tx_info.receipt.resources
                 );
 
-                to_receipts_and_events(
+                to_receipt_and_events(
                     tx_type,
+                    TransactionIndex::new(tx_index.try_into().expect("ptr size is 64bits"))
+                        .context("tx_index < i64::MAX")?,
                     tx_info,
                     self.executor.block_context.versioned_constants(),
                     &gas_vector_computation_mode,

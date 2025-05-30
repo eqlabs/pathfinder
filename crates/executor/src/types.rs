@@ -32,6 +32,7 @@ pub struct Receipt {
     pub execution_resources: pathfinder_common::receipt::ExecutionResources,
     pub l2_to_l1_messages: Vec<pathfinder_common::receipt::L2ToL1Message>,
     pub execution_status: pathfinder_common::receipt::ExecutionStatus,
+    pub transaction_index: TransactionIndex,
 }
 
 // TODO probably much better in pathfinder_common
@@ -767,8 +768,9 @@ impl From<StateDiff> for StateUpdateData {
     }
 }
 
-pub(crate) fn to_receipts_and_events(
+pub(crate) fn to_receipt_and_events(
     transaction_type: TransactionType,
+    transaction_index: TransactionIndex,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     versioned_constants: &VersionedConstants,
     gas_vector_computation_mode: &GasVectorComputationMode,
@@ -838,6 +840,7 @@ pub(crate) fn to_receipts_and_events(
         execution_resources,
         l2_to_l1_messages,
         execution_status,
+        transaction_index,
     };
 
     Ok((receipt, events))
