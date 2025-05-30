@@ -90,6 +90,7 @@ impl FeeEstimate {
         block_context: &blockifier::context::BlockContext,
     ) -> Self {
         let fee_type = fee_type(transaction);
+        let tip = crate::transaction::get_tip(transaction);
         let minimal_gas_vector = match transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
@@ -105,6 +106,7 @@ impl FeeEstimate {
             gas_vector,
             block_context.block_info(),
             fee_type,
+            tip,
             &minimal_gas_vector,
         )
     }

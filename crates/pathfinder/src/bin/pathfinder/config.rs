@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use clap::{ArgAction, CommandFactory, Parser};
 use pathfinder_common::{AllowedOrigins, StarknetVersion};
-use pathfinder_executor::VersionedConstantsMap;
+use pathfinder_executor::{VersionedConstants, VersionedConstantsMap};
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use util::percentage::Percentage;
@@ -649,31 +649,27 @@ fn parse_versioned_constants(
         })?;
         for (raw_version, rel_path) in source {
             let version = raw_version.parse::<StarknetVersion>().map_err(|_| {
-                ParseVersionedConstantsError::Parse(serde::de::Error::custom(format!(
+                ParseVersionedConstantsError::ParseMap(serde::de::Error::custom(format!(
                     "Invalid Starknet version \"{}\"",
                     raw_version
                 )))
             })?;
             let abs_path = std::fs::canonicalize(dir_path.join(rel_path))?;
-            let file = File::open(abs_path)?;
-            let reader = std::io::BufReader::new(file);
-            let constants = serde_json::from_reader(reader)?;
-            target.insert(version, Cow::Owned(constants));
+            let constants = VersionedConstants::from_path(&abs_path)?;
+            target.insert(version, Cow::Owned(constants.into()));
         }
     } else {
         // logging isn't set up yet...
         eprintln!("Unknown versioned constants map file format - trying legacy...");
-        let file = File::open(path)?;
-        let reader = std::io::BufReader::new(file);
-        let constants = serde_json::from_reader(reader)?;
+        let constants = VersionedConstants::from_path(&path)?;
         target.insert(
             VersionedConstantsMap::latest_version(),
-            Cow::Owned(constants),
+            Cow::Owned(constants.into()),
         );
     }
 
     if target.is_empty() {
-        return Err(ParseVersionedConstantsError::Parse(
+        return Err(ParseVersionedConstantsError::ParseMap(
             serde::de::Error::custom("Version constants map file specified but empty"),
         ));
     }
@@ -696,8 +692,10 @@ pub fn parse_versioned_constants_or_exit(path: PathBuf) -> VersionedConstantsMap
 enum ParseVersionedConstantsError {
     #[error("IO error while reading versioned constants: {0}.")]
     Io(#[from] std::io::Error),
+    #[error("Parse error while loading versioned constants map: {0}.")]
+    ParseMap(#[from] serde_json::Error),
     #[error("Parse error while loading versioned constants: {0}.")]
-    Parse(#[from] serde_json::Error),
+    Parse(#[from] pathfinder_executor::VersionedConstantsError),
 }
 
 pub struct Config {

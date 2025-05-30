@@ -26,6 +26,7 @@ impl FeeEstimate {
         gas_vector: &GasVector,
         block_info: &BlockInfo,
         fee_type: FeeType,
+        tip: starknet_api::transaction::fields::Tip,
         minimal_gas_vector: &Option<GasVector>,
     ) -> FeeEstimate {
         tracing::trace!(?gas_vector, "Transaction resources");
@@ -51,6 +52,7 @@ impl FeeEstimate {
                 l2_gas: l2_gas_consumed,
             },
             &fee_type,
+            tip,
         )
         .0;
 
