@@ -1,62 +1,40 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::marker::PhantomData;
-use std::pin::Pin;
 use std::str::FromStr;
 use std::time::Instant;
 
 use anyhow::Context;
-use fake::faker::phone_number;
-use p2p::sync::client::conv::{ToDto, TryFromDto};
+use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
-use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{
     BlockInfo,
     ProposalFin,
     ProposalInit,
-    ProposalPart,
     TransactionVariant as ConsensusVariant,
 };
-use p2p_proto::proto::receipt;
 use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
-use pathfinder_common::receipt::{ExecutionStatus, L2ToL1Message, Receipt};
-use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::state_update::StateUpdateData;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
     BlockHash,
-    BlockHeader,
     BlockNumber,
-    BlockTimestamp,
     ChainId,
-    ClassHash,
-    ContractAddress,
-    ContractNonce,
     EntryPoint,
     L1DataAvailabilityMode,
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
-    StateUpdate,
     TransactionHash,
-    TransactionIndex,
 };
-use pathfinder_crypto::Felt;
-use pathfinder_executor::types::{
-    DeclaredSierraClass,
-    DeployedContract,
-    ReplacedClass,
-    StateDiff,
-    ETH_TO_WEI_RATE,
-};
-use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt, TransactionExecutionError};
+use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
 use pathfinder_rpc::map_transaction_variant;
-use pathfinder_storage::{Storage, StorageBuilder};
+use pathfinder_storage::Storage;
 use rayon::prelude::*;
-use tracing::{info, warn};
+use tracing::debug;
 
 use crate::state::block_hash::{
     self,
@@ -99,6 +77,14 @@ impl<'a> ValidatorBlockInfoStage {
         workaround_l1_gas_price_fri: u128,
         workaround_l1_data_gas_price_fri: u128,
     ) -> anyhow::Result<ValidatorTransactionBatchStage<'a>> {
+        let _span = tracing::debug_span!(
+            "Validator::validate_block_info",
+            height = %block_info.height,
+            timestamp = %block_info.timestamp,
+            builder = %block_info.builder.0,
+        )
+        .entered();
+
         let Self {
             chain_id,
             proposal_height,
@@ -178,29 +164,46 @@ impl<'a> ValidatorTransactionBatchStage<'a> {
     pub fn execute_transactions(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
-    ) -> Result<(), TransactionExecutionError> {
+    ) -> anyhow::Result<()> {
+        let _span = tracing::debug_span!(
+            "Validator::execute_transactions",
+            height = %self.block_info.number,
+            batch_size = %transactions.len(),
+        )
+        .entered();
+
+        if transactions.is_empty() {
+            // TODO is an empty batch valid?
+            return Ok(());
+        }
+
+        let start = Instant::now();
+
         let txns = transactions
             .into_iter()
             .map(try_map_transaction)
             .collect::<anyhow::Result<Vec<_>>>()?;
-        let (common_txn_variants, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+        let (mut common_txns, executor_txns): (Vec<_>, Vec<_>) = txns.into_iter().unzip();
+
+        let txn_hashes = common_txns
+            .par_iter()
+            .map(|t| {
+                if t.verify_hash(self.chain_id) {
+                    Ok(t.hash)
+                } else {
+                    Err(anyhow::anyhow!(
+                        "Transaction hash mismatch, expected: {}",
+                        t.hash
+                    ))
+                }
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let (receipts, mut events): (Vec<_>, Vec<_>) = self
             .block_executor
             .execute(executor_txns)?
             .into_iter()
             .unzip();
-
-        let txn_hashes = common_txn_variants
-            .par_iter()
-            .map(|v| v.calculate_hash(self.chain_id, false))
-            .collect::<Vec<_>>();
-
-        let mut transactions = common_txn_variants
-            .into_iter()
-            .zip(txn_hashes.iter().copied())
-            .map(|(variant, hash)| Transaction { hash, variant })
-            .collect::<Vec<_>>();
 
         let mut receipts = receipts
             .into_iter()
@@ -215,9 +218,28 @@ impl<'a> ValidatorTransactionBatchStage<'a> {
             })
             .collect::<Vec<_>>();
 
-        self.transactions.append(&mut transactions);
+        let start_idx = receipts
+            .first()
+            .expect("At least one transaction")
+            .transaction_index
+            .get();
+        let end_idx = receipts
+            .last()
+            .expect("At least one transaction")
+            .transaction_index
+            .get();
+
+        self.transactions.append(&mut common_txns);
         self.receipts.append(&mut receipts);
         self.events.append(&mut events);
+
+        debug!(
+            "Executed {} transactions ({}..={}) in {} ms",
+            self.transactions.len(),
+            start_idx,
+            end_idx,
+            start.elapsed().as_millis()
+        );
 
         Ok(())
     }
@@ -234,6 +256,15 @@ impl<'a> ValidatorTransactionBatchStage<'a> {
         const VERIFY_HASHES: bool = true;
         #[cfg(not(debug_assertions))]
         const VERIFY_HASHES: bool = false;
+
+        let _span = tracing::debug_span!(
+            "Validator::finalize",
+            height = %self.block_info.number,
+            num_transactions = %self.transactions.len(),
+        )
+        .entered();
+
+        let start = Instant::now();
 
         let state_diff = self.block_executor.finalize()?;
 
@@ -307,59 +338,26 @@ impl<'a> ValidatorTransactionBatchStage<'a> {
         };
 
         let computed_block_hash = block_hash::compute_final_hash(&bhd);
-        let expected_block_hash = BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
+        let expected_block_hash =
+            BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
+
+        debug!(
+            "Block {} finalized in {} ms",
+            self.block_info.number,
+            start.elapsed().as_millis()
+        );
 
         Ok(computed_block_hash == expected_block_hash)
     }
 }
 
-/*
-pub mod stage {
-    pub struct ProposalInit;
-    pub struct BlockInfo;
-    pub struct TransactionBatch;
-    pub struct ProposalFin;
-}
-
-struct Validator<'a, Stage> {
-    chain_id: ChainId,
-    storage: Storage,
-    block_executor: BlockExecutor<'a>,
-    _stage: PhantomData<Stage>,
-}
-
-impl<'a> Validator<'a, stage::ProposalInit> {
-    pub fn new(
-        chain_id: ChainId,
-        storage: Storage,
-        proposal_init: ProposalInit,
-    ) -> Validator<stage::BlockInfo> {
-        let block_executor = BlockExecutor::new(
-            storage.clone(),
-            proposal_init.block_number,
-            proposal_init.block_timestamp,
-            proposal_init.sequencer_address,
-            proposal_init.state_update,
-        );
-
-        Validator {
-            chain_id,
-            storage,
-            _stage: PhantomData,
-        }
-    }
-}
-
-impl Validator<stage::BlockInfo> {
-    pub fn add_transactions(&mut self) {}
-
-    pub fn finalize_block(&mut self) {}
-}
-*/
+/// Maps consensus transaction to a pair of:
+/// - common transaction, which is used for verifying the transaction hash
+/// - executor transaction, which is used for executing the transaction
 fn try_map_transaction(
     transaction: p2p_proto::consensus::Transaction,
 ) -> anyhow::Result<(
-    pathfinder_common::transaction::TransactionVariant,
+    pathfinder_common::transaction::Transaction,
     pathfinder_executor::Transaction,
 )> {
     let p2p_proto::consensus::Transaction {
@@ -397,8 +395,12 @@ fn try_map_transaction(
         deployed_address,
         pathfinder_executor::AccountTransactionExecutionFlags::default(),
     )?;
+    let common_txn = pathfinder_common::transaction::Transaction {
+        hash: TransactionHash(transaction_hash.0),
+        variant: common_txn_variant,
+    };
 
-    Ok((common_txn_variant, executor_txn))
+    Ok((common_txn, executor_txn))
 }
 
 fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {

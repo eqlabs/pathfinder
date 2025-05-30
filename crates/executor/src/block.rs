@@ -73,7 +73,7 @@ impl<'a> BlockExecutor<'a> {
             .map(|(tx_index, tx)| {
                 let tx_index = start_tx_index + tx_index;
                 let _span = tracing::debug_span!(
-                    "Validator::execute",
+                    "BlockExecutor::execute",
                     block_number = %block_number,
                     transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
                     transaction_index = %tx_index
