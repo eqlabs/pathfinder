@@ -7,6 +7,10 @@ pub mod proto {
     pub mod common {
         include!(concat!(env!("OUT_DIR"), "/starknet.common.rs"));
     }
+    #[allow(clippy::large_enum_variant)]
+    pub mod consensus {
+        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
+    }
     pub mod event {
         include!(concat!(env!("OUT_DIR"), "/starknet.event.rs"));
     }
@@ -24,10 +28,6 @@ pub mod proto {
     #[allow(clippy::large_enum_variant)]
     pub mod transaction {
         include!(concat!(env!("OUT_DIR"), "/starknet.transaction.rs"));
-    }
-    #[allow(clippy::large_enum_variant)]
-    pub mod consensus {
-        include!(concat!(env!("OUT_DIR"), "/starknet.consensus.rs"));
     }
 }
 
