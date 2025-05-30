@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
 async fn async_main() -> anyhow::Result<Storage> {
     if std::env::var_os("RUST_LOG").is_none() {
         // Disable all dependency logs by default.
-        std::env::set_var("RUST_LOG", "pathfinder=info");
+        std::env::set_var("RUST_LOG", "pathfinder=info,error");
     }
 
     let config = config::Config::parse();
