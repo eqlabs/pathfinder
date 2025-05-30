@@ -8842,30 +8842,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proposal-validator"
-version = "0.17.0-beta.1"
-dependencies = [
- "anyhow",
- "p2p",
- "p2p_proto",
- "pathfinder",
- "pathfinder-common",
- "pathfinder-compiler",
- "pathfinder-crypto",
- "pathfinder-executor",
- "pathfinder-merkle-tree",
- "pathfinder-rpc",
- "pathfinder-storage",
- "pretty_assertions_sorted",
- "rayon",
- "serde_json",
- "starknet_api",
- "tracing",
- "tracing-subscriber",
- "util",
-]
-
-[[package]]
 name = "proptest"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
