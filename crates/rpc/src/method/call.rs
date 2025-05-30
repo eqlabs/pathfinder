@@ -4,6 +4,7 @@ use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
+use crate::executor::CALLDATA_LIMIT;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -111,6 +112,11 @@ pub struct Output(pub Vec<CallResultValue>);
 
 pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
     let span = tracing::Span::current();
+    if input.request.calldata.len() > CALLDATA_LIMIT {
+        return Err(CallError::Custom(anyhow::anyhow!(
+            "Calldata limit ({CALLDATA_LIMIT}) exceeded"
+        )));
+    }
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -235,7 +241,7 @@ mod tests {
     }
 
     mod in_memory {
-
+        use assert_matches::assert_matches;
         use pathfinder_common::felt;
         use pathfinder_common::prelude::*;
         use starknet_gateway_test_fixtures::class_definitions::{
@@ -720,6 +726,27 @@ mod tests {
                     assert_eq!(error_string, "0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1')");
                 });
             });
+        }
+
+        #[test_log::test(tokio::test)]
+        async fn calldata_limit_exceeded() {
+            let (context, _, _, _, _) = test_context().await;
+
+            let input = Input {
+                request: FunctionCall {
+                    // Calldata length over the limit, the rest of the fields should not matter.
+                    calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
+
+                    contract_address: contract_address!("deadbeef"),
+                    entry_point_selector: entry_point!("deadbeef"),
+                },
+                block_id: BlockId::Latest,
+            };
+
+            let err = call(context, input).await.unwrap_err();
+
+            let error_cause = "Calldata limit (10000) exceeded";
+            assert_matches!(err, CallError::Custom(e) if e.root_cause().to_string() == error_cause);
         }
     }
 

@@ -31,7 +31,8 @@ impl Params {
             }
         }
         if let Some(keys) = &self.keys {
-            if keys.is_empty() {
+            let no_key_constraints = keys.iter().flatten().count() == 0;
+            if no_key_constraints {
                 return true;
             }
             if event.keys.len() < keys.len() {
@@ -166,7 +167,14 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         let mut blocks = state.notifications.l2_blocks.subscribe();
         let mut reorgs = state.notifications.reorgs.subscribe();
         let mut pending_data = state.pending_data.0.clone();
-        let params = params.unwrap_or_default();
+        let mut params = params.unwrap_or_default();
+
+        if let Some(ref mut keys) = params.keys {
+            // Truncate empty key lists from the end of the key filter.
+            if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+                keys.truncate(last_non_empty + 1);
+            }
+        }
 
         let mut sent_txs = HashSet::new();
         let mut current_block = BlockNumber::GENESIS;

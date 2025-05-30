@@ -154,7 +154,7 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
         contract_address: Option<ContractAddress>,
-        keys: Vec<Vec<EventKey>>,
+        mut keys: Vec<Vec<EventKey>>,
     ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
         let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
             // No blocks in the database.
@@ -164,6 +164,11 @@ impl Transaction<'_> {
             return Ok((vec![], None));
         }
         let to_block = std::cmp::min(to_block, latest_block);
+
+        // truncate empty key lists from the end of the key filter
+        if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+            keys.truncate(last_non_empty + 1);
+        }
 
         let constraints = EventConstraints {
             contract_address,
