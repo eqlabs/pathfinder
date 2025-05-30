@@ -44,9 +44,9 @@ use crate::state::block_hash::{
     BlockHeaderData,
 };
 
-struct ValidatorProposalInitStage;
+pub struct Validator;
 
-impl ValidatorProposalInitStage {
+impl Validator {
     pub fn new(
         chain_id: ChainId,
         proposal_init: ProposalInit,
@@ -60,7 +60,7 @@ impl ValidatorProposalInitStage {
     }
 }
 
-struct ValidatorBlockInfoStage {
+pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
     proposal_height: BlockNumber,
 }
@@ -151,7 +151,7 @@ impl<'a> ValidatorBlockInfoStage {
     }
 }
 
-struct ValidatorTransactionBatchStage<'a> {
+pub struct ValidatorTransactionBatchStage<'a> {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     block_executor: BlockExecutor<'a>,
