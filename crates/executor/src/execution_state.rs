@@ -6,10 +6,10 @@ use anyhow::Context;
 use blockifier::blockifier::block::pre_process_block;
 use blockifier::blockifier::config::TransactionExecutorConfig;
 use blockifier::blockifier::transaction_executor::TransactionExecutor;
+use blockifier::blockifier_versioned_constants::VersionedConstants;
 use blockifier::bouncer::BouncerConfig;
 use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
-use blockifier::versioned_constants::VersionedConstants;
 use pathfinder_common::prelude::*;
 use pathfinder_common::L1DataAvailabilityMode;
 use starknet_api::block::{BlockHashAndNumber, BlockInfo, GasPrice, NonzeroGasPrice};
@@ -20,36 +20,8 @@ use super::state_reader::PathfinderStateReader;
 use crate::state_reader::NativeClassCache;
 use crate::IntoStarkFelt;
 
-mod versioned_constants {
-    use std::sync::LazyLock;
-
+mod versions {
     use pathfinder_common::StarknetVersion;
-
-    use super::VersionedConstants;
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_0.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_1.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_1_1.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_2.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2_1: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_2_1.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_3.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_4.json");
-
-    const BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5: &[u8] =
-        include_bytes!("../resources/versioned_constants_0_13_5.json");
 
     pub(super) const STARKNET_VERSION_0_13_1: StarknetVersion = StarknetVersion::new(0, 13, 1, 0);
 
@@ -64,46 +36,6 @@ mod versioned_constants {
     pub(super) const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
 
     pub(super) const STARKNET_VERSION_0_13_5: StarknetVersion = StarknetVersion::new(0, 13, 5, 0);
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_0).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_1_1).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_2_1).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_3).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_4).unwrap()
-        });
-
-    pub static BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5: LazyLock<VersionedConstants> =
-        LazyLock::new(|| {
-            serde_json::from_slice(BLOCKIFIER_VERSIONED_CONSTANTS_JSON_0_13_5).unwrap()
-        });
 }
 
 #[derive(Clone, Debug)]
@@ -124,46 +56,53 @@ impl VersionedConstantsMap {
     }
 
     pub fn latest_version() -> StarknetVersion {
-        versioned_constants::STARKNET_VERSION_0_13_5
+        versions::STARKNET_VERSION_0_13_5
     }
 
     fn fill_default(data: &mut BTreeMap<StarknetVersion, Cow<'static, VersionedConstants>>) {
-        use versioned_constants::*;
+        use versions::*;
 
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_1,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_1)
+                .expect("Failed to get versioned constants for 0.13.1"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_1_1,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_1_1,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_1_1)
+                .expect("Failed to get versioned constants for 0.13.1.1"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_2,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_2)
+                .expect("Failed to get versioned constants for 0.13.2"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_2_1,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_2_1,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_2_1)
+                .expect("Failed to get versioned constants for 0.13.2.1"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_3,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_3,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_3)
+                .expect("Failed to get versioned constants for 0.13.3"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_4,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_4,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_4)
+                .expect("Failed to get versioned constants for 0.13.4"),
         );
         Self::insert_default(
             data,
             &STARKNET_VERSION_0_13_5,
-            &BLOCKIFIER_VERSIONED_CONSTANTS_0_13_5,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_5)
+                .expect("Failed to get versioned constants for 0.13.5"),
         );
     }
 
@@ -184,7 +123,10 @@ impl VersionedConstantsMap {
             kv.1.clone()
         } else {
             // We use 0.13.0 for all blocks before 0.13.1.
-            Cow::Borrowed(&versioned_constants::BLOCKIFIER_VERSIONED_CONSTANTS_0_13_0)
+            Cow::Borrowed(
+                VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_0)
+                    .expect("Failed to get versioned constants for 0.13.0"),
+            )
         }
     }
 }
@@ -234,8 +176,7 @@ pub(crate) fn create_executor(
             .block_hash(block_number_whose_hash_becomes_available.into())?
             .context("Getting historical block hash")?;
 
-        tracing::trace!(%block_number_whose_hash_becomes_available,
-%block_hash, "Setting historical block hash");
+        tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
 
         Some(BlockHashAndNumber {
             number: starknet_api::block::BlockNumber(
@@ -508,9 +449,9 @@ pub enum L1BlobDataAvailability {
 
 #[cfg(test)]
 mod tests {
-    use blockifier::versioned_constants::ResourceCost;
+    use blockifier::blockifier_versioned_constants::ResourceCost;
 
-    use super::versioned_constants::*;
+    use super::versions::*;
     use super::VersionedConstantsMap;
 
     #[test]

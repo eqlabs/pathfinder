@@ -60,20 +60,20 @@ axum = "0.7.5"
 base64 = "0.13.1"
 bincode = "2.0.0-rc.3"
 bitvec = "1.0.1"
-blockifier = { version = "0.14.0-rc.3", features = ["node_api", "reexecution"] }
+blockifier = { version = "0.15.0-rc.1", features = ["node_api", "reexecution"] }
 bloomfilter = "1.0.12"
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
-cairo-lang-starknet-classes = "=2.10.0"
+cairo-lang-starknet-classes = "=2.12.0-dev.1"
 # This one needs to match the version used by blockifier
-cairo-native = "0.3.1"
+cairo-native = "0.5.0-rc.5"
 # This one needs to match the version used by blockifier
-cairo-vm = "=1.0.2"
+cairo-vm = "=2.2.0"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
-casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.10.0" }
+casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.12.0-dev.1" }
 clap = "4.1.13"
 console-subscriber = "0.1.10"
 const-decoder = "0.3.0"
@@ -130,9 +130,9 @@ serde_with = "3.7.0"
 sha2 = "0.10.7"
 sha3 = "0.10"
 # This one needs to match the version used by blockifier
-starknet_api = "0.14.0-rc.1"
+starknet_api = "0.15.0-rc.1"
 # This one needs to match the version used by blockifier
-starknet-types-core = "=0.1.7"
+starknet-types-core = "=0.1.8"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }

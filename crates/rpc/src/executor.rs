@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
 use pathfinder_common::{ChainId, StarknetVersion};
@@ -177,6 +179,7 @@ pub(crate) fn map_broadcasted_transaction(
         only_query: has_query_version,
         validate: !skip_validate,
         charge_fee: !skip_fee_charge,
+        strict_nonce_check: true,
     };
 
     let transaction = transaction.clone().into_common(chain_id);
@@ -204,9 +207,9 @@ fn map_transaction_variant(
                 max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
                 sender_address: starknet_api::core::ContractAddress(
@@ -224,9 +227,9 @@ fn map_transaction_variant(
                 max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
                 sender_address: starknet_api::core::ContractAddress(
@@ -244,9 +247,9 @@ fn map_transaction_variant(
                 max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
                 sender_address: starknet_api::core::ContractAddress(
@@ -266,9 +269,9 @@ fn map_transaction_variant(
             let tx = starknet_api::transaction::DeclareTransactionV3 {
                 resource_bounds: map_resource_bounds(tx.resource_bounds)?,
                 tip: Tip(tx.tip.0),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
                 compiled_class_hash: starknet_api::core::CompiledClassHash(
@@ -313,9 +316,9 @@ fn map_transaction_variant(
                     max_fee: Fee(u128::from_be_bytes(
                         tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                     )),
-                    signature: TransactionSignature(
+                    signature: TransactionSignature(Arc::new(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
+                    )),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
 
@@ -340,9 +343,9 @@ fn map_transaction_variant(
                 starknet_api::transaction::DeployAccountTransactionV3 {
                     resource_bounds,
                     tip: Tip(tx.tip.0),
-                    signature: TransactionSignature(
+                    signature: TransactionSignature(Arc::new(
                         tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                    ),
+                    )),
                     nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                     class_hash: starknet_api::core::ClassHash(tx.class_hash.0.into_starkfelt()),
                     contract_address_salt: ContractAddressSalt(
@@ -379,9 +382,9 @@ fn map_transaction_variant(
                 max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 contract_address: starknet_api::core::ContractAddress(
                     PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
                         .expect("No sender address overflow expected"),
@@ -404,9 +407,9 @@ fn map_transaction_variant(
                 max_fee: Fee(u128::from_be_bytes(
                     tx.max_fee.0.to_be_bytes()[16..].try_into().unwrap(),
                 )),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 sender_address: starknet_api::core::ContractAddress(
                     PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())
@@ -427,9 +430,9 @@ fn map_transaction_variant(
             let tx = starknet_api::transaction::InvokeTransactionV3 {
                 resource_bounds,
                 tip: Tip(tx.tip.0),
-                signature: TransactionSignature(
+                signature: TransactionSignature(Arc::new(
                     tx.signature.iter().map(|s| s.0.into_starkfelt()).collect(),
-                ),
+                )),
                 nonce: starknet_api::core::Nonce(tx.nonce.0.into_starkfelt()),
                 sender_address: starknet_api::core::ContractAddress(
                     PatriciaKey::try_from(tx.sender_address.get().into_starkfelt())

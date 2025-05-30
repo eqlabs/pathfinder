@@ -69,6 +69,7 @@ pub fn estimate(
             tracing::trace!(
                 actual_fee = %tx_info.receipt.fee.0,
                 actual_resources = ?tx_info.receipt.resources,
+                gas_vector = ?gas_limit,
                 "Transaction estimation finished"
             );
 
@@ -90,6 +91,13 @@ impl FeeEstimate {
         block_context: &blockifier::context::BlockContext,
     ) -> Self {
         let fee_type = fee_type(transaction);
+
+        let tip = if block_context.versioned_constants().enable_tip {
+            crate::transaction::get_tip(transaction)
+        } else {
+            starknet_api::transaction::fields::Tip(0)
+        };
+
         let minimal_gas_vector = match transaction {
             Transaction::Account(account_transaction) => {
                 Some(blockifier::fee::gas_usage::estimate_minimal_gas_vector(
@@ -103,8 +111,10 @@ impl FeeEstimate {
 
         FeeEstimate::from_gas_vector_and_gas_price(
             gas_vector,
-            block_context.block_info(),
+            block_context,
             fee_type,
+            gas_vector_computation_mode,
+            tip,
             &minimal_gas_vector,
         )
     }
