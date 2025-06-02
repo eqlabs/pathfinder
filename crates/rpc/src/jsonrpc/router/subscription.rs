@@ -1,7 +1,8 @@
+use std::borrow::Cow;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::{close_code, CloseFrame, Message, WebSocket};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use pathfinder_common::BlockNumber;
@@ -366,27 +367,44 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
     let (mut ws_sender, mut ws_receiver) = ws.split();
     // Send messages to the websocket using an MPSC channel.
     let (sender_tx, mut sender_rx) = mpsc::channel::<Result<Message, RpcResponse>>(1024);
-    util::task::spawn(async move {
-        while let Some(msg) = sender_rx.recv().await {
-            match msg {
-                Ok(msg) => {
-                    if let Err(e) = ws_sender.send(msg).await {
-                        tracing::debug!(error=?e, "Error sending websocket message");
+    util::task::spawn_with_cancel(move |cancellation_token| {
+        async move {
+            loop {
+                tokio::select! {
+                    _ = cancellation_token.cancelled() => {
+                        // Ignore the error since we're shutting down anyway.
+                        let _ = ws_sender.send(Message::Close(Some(CloseFrame {
+                            code: close_code::NORMAL,
+                            reason:  Cow::Borrowed("Server shutdown"),
+                        }))).await.ok();
                         break;
                     }
-                }
-                Err(e) => {
-                    if let Err(e) = ws_sender
-                        .send(Message::Text(
-                            serde_json::to_string(
-                                &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
-                            )
-                            .unwrap(),
-                        ))
-                        .await
-                    {
-                        tracing::debug!(error=?e, "Error sending websocket error message");
-                        break;
+                    msg = sender_rx.recv() => {
+                        let Some(msg) = msg else {
+                            break;
+                        };
+                        match msg {
+                            Ok(msg) => {
+                                if let Err(e) = ws_sender.send(msg).await {
+                                    tracing::debug!(error=?e, "Error sending websocket message");
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                if let Err(e) = ws_sender
+                                    .send(Message::Text(
+                                        serde_json::to_string(
+                                            &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
+                                        )
+                                        .unwrap(),
+                                    ))
+                                    .await
+                                {
+                                    tracing::debug!(error=?e, "Error sending websocket error message");
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             }
