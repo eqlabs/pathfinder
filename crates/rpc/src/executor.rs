@@ -36,8 +36,50 @@ impl From<anyhow::Error> for ExecutionStateError {
     }
 }
 
+pub const CALLDATA_LIMIT: usize = 10_000;
+pub const SIGNATURE_ELEMENT_LIMIT: usize = 10_000;
 pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY:
     StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
+
+pub(crate) fn calldata_limit_exceeded(tx: &BroadcastedTransaction) -> bool {
+    match tx {
+        BroadcastedTransaction::Declare(_) => false,
+        BroadcastedTransaction::Invoke(broadcasted_invoke_tx) => match broadcasted_invoke_tx {
+            BroadcastedInvokeTransaction::V0(tx) => tx.calldata.len() > CALLDATA_LIMIT,
+            BroadcastedInvokeTransaction::V1(tx) => tx.calldata.len() > CALLDATA_LIMIT,
+            BroadcastedInvokeTransaction::V3(tx) => tx.calldata.len() > CALLDATA_LIMIT,
+        },
+        BroadcastedTransaction::DeployAccount(broadcasted_deploy_tx) => match broadcasted_deploy_tx
+        {
+            BroadcastedDeployAccountTransaction::V1(tx) => {
+                tx.constructor_calldata.len() > CALLDATA_LIMIT
+            }
+            BroadcastedDeployAccountTransaction::V3(tx) => {
+                tx.constructor_calldata.len() > CALLDATA_LIMIT
+            }
+        },
+    }
+}
+
+pub(crate) fn signature_elem_limit_exceeded(tx: &BroadcastedTransaction) -> bool {
+    match tx {
+        BroadcastedTransaction::Declare(_) => false,
+        BroadcastedTransaction::Invoke(broadcasted_invoke_tx) => match broadcasted_invoke_tx {
+            BroadcastedInvokeTransaction::V0(tx) => tx.signature.len() > SIGNATURE_ELEMENT_LIMIT,
+            BroadcastedInvokeTransaction::V1(tx) => tx.signature.len() > SIGNATURE_ELEMENT_LIMIT,
+            BroadcastedInvokeTransaction::V3(tx) => tx.signature.len() > SIGNATURE_ELEMENT_LIMIT,
+        },
+        BroadcastedTransaction::DeployAccount(broadcasted_deploy_tx) => match broadcasted_deploy_tx
+        {
+            BroadcastedDeployAccountTransaction::V1(tx) => {
+                tx.signature.len() > SIGNATURE_ELEMENT_LIMIT
+            }
+            BroadcastedDeployAccountTransaction::V3(tx) => {
+                tx.signature.len() > SIGNATURE_ELEMENT_LIMIT
+            }
+        },
+    }
+}
 
 pub(crate) fn map_broadcasted_transaction(
     transaction: &BroadcastedTransaction,

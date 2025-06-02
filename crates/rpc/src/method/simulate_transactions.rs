@@ -3,7 +3,13 @@ use pathfinder_common::BlockId;
 use pathfinder_executor::TransactionExecutionError;
 
 use crate::context::RpcContext;
-use crate::executor::ExecutionStateError;
+use crate::executor::{
+    calldata_limit_exceeded,
+    signature_elem_limit_exceeded,
+    ExecutionStateError,
+    CALLDATA_LIMIT,
+    SIGNATURE_ELEMENT_LIMIT,
+};
 use crate::types::request::BroadcastedTransaction;
 
 #[derive(Debug)]
@@ -27,6 +33,7 @@ impl crate::dto::DeserializeForVersion for SimulateTransactionInput {
     }
 }
 
+#[derive(Debug)]
 pub struct Output(Vec<pathfinder_executor::types::TransactionSimulation>);
 
 pub async fn simulate_transactions(
@@ -34,6 +41,21 @@ pub async fn simulate_transactions(
     input: SimulateTransactionInput,
 ) -> Result<Output, SimulateTransactionError> {
     let span = tracing::Span::current();
+    if let Some(bad_tx_idx) = input.transactions.iter().position(calldata_limit_exceeded) {
+        return Err(SimulateTransactionError::Custom(anyhow::anyhow!(
+            "Calldata limit ({CALLDATA_LIMIT}) exceeded by transaction at index {bad_tx_idx}"
+        )));
+    }
+    if let Some(bad_tx_idx) = input
+        .transactions
+        .iter()
+        .position(signature_elem_limit_exceeded)
+    {
+        return Err(SimulateTransactionError::Custom(anyhow::anyhow!(
+            "Signature element limit ({SIGNATURE_ELEMENT_LIMIT}) exceeded by transaction at index \
+             {bad_tx_idx}"
+        )));
+    }
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
@@ -212,6 +234,7 @@ impl From<ExecutionStateError> for SimulateTransactionError {
 pub(crate) mod tests {
     use std::collections::{BTreeMap, HashSet};
 
+    use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::BlockId;
@@ -222,7 +245,11 @@ pub(crate) mod tests {
     use super::simulate_transactions;
     use crate::context::{RpcContext, ETH_FEE_TOKEN_ADDRESS};
     use crate::dto::{DeserializeForVersion, SerializeForVersion, Serializer};
-    use crate::method::simulate_transactions::SimulateTransactionInput;
+    use crate::executor::{CALLDATA_LIMIT, SIGNATURE_ELEMENT_LIMIT};
+    use crate::method::simulate_transactions::{
+        SimulateTransactionError,
+        SimulateTransactionInput,
+    };
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
@@ -1755,5 +1782,70 @@ pub(crate) mod tests {
             "\nExpected fixture content from {}\nGot output",
             "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_13_4.json"
         );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn calldata_limit_exceeded() {
+        use crate::types::request::{BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1};
+
+        let (storage, last_block_header, account_contract_address, _, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 4, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let input = SimulateTransactionInput {
+            transactions: vec![BroadcastedTransaction::Invoke(
+                BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
+                    // Calldata length over the limit, the rest of the fields should not matter.
+                    calldata: vec![call_param!("0x123"); CALLDATA_LIMIT + 5],
+
+                    nonce: transaction_nonce!("0x1"),
+                    version: TransactionVersion::ONE,
+                    max_fee: Fee::default(),
+                    signature: vec![],
+                    sender_address: account_contract_address,
+                }),
+            )],
+            block_id: BlockId::Number(last_block_header.number),
+            simulation_flags: crate::dto::SimulationFlags(vec![]),
+        };
+
+        let err = simulate_transactions(context, input).await.unwrap_err();
+
+        let error_cause = "Calldata limit (10000) exceeded by transaction at index 0";
+        assert_matches!(err, SimulateTransactionError::Custom(e) if e.root_cause().to_string() == error_cause);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn signature_element_limit_exceeded() {
+        use crate::types::request::{BroadcastedInvokeTransaction, BroadcastedInvokeTransactionV1};
+
+        let (storage, last_block_header, account_contract_address, _, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 4, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let input = SimulateTransactionInput {
+            transactions: vec![BroadcastedTransaction::Invoke(
+                BroadcastedInvokeTransaction::V1(BroadcastedInvokeTransactionV1 {
+                    // Signature length over the limit, the rest of the fields should not matter.
+                    signature: vec![
+                        transaction_signature_elem!("0x123");
+                        SIGNATURE_ELEMENT_LIMIT + 5
+                    ],
+
+                    nonce: transaction_nonce!("0x1"),
+                    version: TransactionVersion::ONE,
+                    max_fee: Fee::default(),
+                    sender_address: account_contract_address,
+                    calldata: vec![],
+                }),
+            )],
+            block_id: BlockId::Number(last_block_header.number),
+            simulation_flags: crate::dto::SimulationFlags(vec![]),
+        };
+
+        let err = simulate_transactions(context, input).await.unwrap_err();
+
+        let error_cause = "Signature element limit (10000) exceeded by transaction at index 0";
+        assert_matches!(err, SimulateTransactionError::Custom(e) if e.root_cause().to_string() == error_cause);
     }
 }
