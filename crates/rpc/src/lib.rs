@@ -16,6 +16,7 @@ pub mod types;
 pub mod v06;
 pub mod v07;
 pub mod v08;
+pub mod v09;
 
 use std::net::SocketAddr;
 use std::result::Result;
@@ -48,6 +49,7 @@ pub enum RpcVersion {
     #[default]
     V07,
     V08,
+    V09,
     PathfinderV01,
 }
 
@@ -57,6 +59,7 @@ impl RpcVersion {
             RpcVersion::V06 => "v0.6",
             RpcVersion::V07 => "v0.7",
             RpcVersion::V08 => "v0.8",
+            RpcVersion::V09 => "v0.9",
             RpcVersion::PathfinderV01 => "v0.1",
         }
     }
@@ -167,12 +170,14 @@ impl RpcServer {
         let v06_routes = v06::register_routes().build(self.context.clone());
         let v07_routes = v07::register_routes().build(self.context.clone());
         let v08_routes = v08::register_routes().build(self.context.clone());
+        let v09_routes = v09::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             RpcVersion::V06 => v06_routes.clone(),
             RpcVersion::V07 => v07_routes.clone(),
             RpcVersion::V08 => v08_routes.clone(),
+            RpcVersion::V09 => v09_routes.clone(),
             RpcVersion::PathfinderV01 => {
                 anyhow::bail!("Did not expect default RPC version to be Pathfinder v0.1")
             }
@@ -189,6 +194,8 @@ impl RpcServer {
             .with_state(v07_routes.clone())
             .route("/rpc/v0_8", post(rpc_handler).get(rpc_handler))
             .with_state(v08_routes.clone())
+            .route("/rpc/v0_9", post(rpc_handler).get(rpc_handler))
+            .with_state(v09_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .route("/rpc/pathfinder/v0_1", post(rpc_handler))
             .with_state(pathfinder_routes.clone());
@@ -203,6 +210,8 @@ impl RpcServer {
                 .with_state(v07_routes)
                 .route("/ws/rpc/v0_8", post(rpc_handler).get(rpc_handler))
                 .with_state(v08_routes)
+                .route("/ws/rpc/v0_9", post(rpc_handler).get(rpc_handler))
+                .with_state(v09_routes)
                 .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
                 .with_state(pathfinder_routes)
         } else {
@@ -297,6 +306,9 @@ pub mod test_utils {
                 }
                 $crate::RpcVersion::V08 => {
                     include_str!(concat!("../../fixtures/0.8.0/", $file_name))
+                }
+                $crate::RpcVersion::V09 => {
+                    include_str!(concat!("../../fixtures/0.9.0/", $file_name))
                 }
                 _ => unreachable!(),
             }
@@ -962,6 +974,42 @@ mod tests {
     // get_transaction_status is now part of the official spec, so we are phasing it out.
     #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
     #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+
+    #[case::v0_9_api("/rpc/v0_9", "v09/starknet_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_9_executables("/rpc/v0_9", "v09/starknet_executables.json", &[], Api::Both)]
+    #[case::v0_9_trace("/rpc/v0_9", "v09/starknet_trace_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_9_write("/rpc/v0_9", "v09/starknet_write_api.json", &[], Api::Both)]
+    #[case::v0_9_websocket(
+        "/rpc/v0_9",
+        "v09/starknet_ws_api.json",
+        // "starknet_subscription*" methods are in fact notifications
+        &[
+            "starknet_subscriptionNewHeads",
+            "starknet_subscriptionPendingTransactions",
+            "starknet_subscriptionTransactionStatus",
+            "starknet_subscriptionEvents",
+            "starknet_subscriptionReorg"
+        ],
+        Api::WebsocketOnly)]
+
+    #[case::v0_9_api_alternative_path("/ws/rpc/v0_9", "v09/starknet_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_9_executables_alternative_path("/ws/rpc/v0_9", "v09/starknet_executables.json", &[], Api::Both)]
+    #[case::v0_9_trace_alternative_path("/ws/rpc/v0_9", "v09/starknet_trace_api_openrpc.json", &[], Api::Both)]
+    #[case::v0_9_write_alternative_path("/ws/rpc/v0_9", "v09/starknet_write_api.json", &[], Api::Both)]
+    #[case::v0_9_websocket_alternative_path(
+        "/ws/rpc/v0_9",
+        "v09/starknet_ws_api.json",
+        // "starknet_subscription*" methods are in fact notifications
+        &[
+            "starknet_subscriptionNewHeads",
+            "starknet_subscriptionPendingTransactions",
+            "starknet_subscriptionTransactionStatus",
+            "starknet_subscriptionEvents",
+            "starknet_subscriptionReorg"
+        ],
+        Api::WebsocketOnly)]
+    // get_transaction_status is now part of the official spec, so we are phasing it out.
+    #[case::v0_9_pathfinder("/rpc/v0_9", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::Both)]
 
     #[case::v0_8_api("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[], Api::Both)]
     #[case::v0_8_executables("/rpc/v0_8", "v08/starknet_executables.json", &[], Api::Both)]

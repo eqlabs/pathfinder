@@ -256,6 +256,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn json_rpc_latest(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
@@ -277,6 +278,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn json_rpc_pending(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
@@ -298,6 +300,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn json_rpc_at_block(#[case] version: RpcVersion) {
         use pathfinder_common::BlockNumber;

@@ -70,7 +70,7 @@ impl crate::dto::SerializeForVersion for pathfinder_common::BlockHeader {
             )?;
         }
 
-        if serializer.version == RpcVersion::V08 {
+        if serializer.version >= RpcVersion::V08 {
             serializer.serialize_field(
                 "l2_gas_price",
                 &ResourcePrice {
@@ -119,7 +119,7 @@ impl crate::dto::SerializeForVersion for starknet_gateway_types::reply::PendingB
             )?;
         }
 
-        if serializer.version == RpcVersion::V08 {
+        if serializer.version >= RpcVersion::V08 {
             serializer.serialize_field(
                 "l2_gas_price",
                 &ResourcePrice {
