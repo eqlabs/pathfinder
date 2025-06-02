@@ -369,15 +369,7 @@ fn map_to_block_to_number(
 
             Ok(Some(number))
         }
-        Some(Number(number)) => {
-            let number = tx
-                .block_id(number.into())
-                .context("Querying block number")?
-                .ok_or(GetEventsError::BlockNotFound)?
-                .0;
-
-            Ok(Some(number))
-        }
+        Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) | None => Ok(None),
     }
 }
@@ -403,15 +395,7 @@ fn map_from_block_to_number(
 
             Ok(Some(number))
         }
-        Some(Number(number)) => {
-            let number = tx
-                .block_id(number.into())
-                .context("Querying block number")?
-                .ok_or(GetEventsError::BlockNotFound)?
-                .0;
-
-            Ok(Some(number))
-        }
+        Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) => {
             let number = tx
                 .block_id(pathfinder_storage::BlockId::Latest)
