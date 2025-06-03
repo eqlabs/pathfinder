@@ -1,4 +1,4 @@
-mod method;
+pub mod method;
 
 use method as v08_method;
 
