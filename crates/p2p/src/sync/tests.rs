@@ -192,14 +192,7 @@ mod propagate_codec_errors_to_caller {
     }
 
     fn error_factory<T>() -> TypeErasedReadFactory<T> {
-        Box::new(|| {
-            Box::new(|_| {
-                async {
-                    Err(std::io::Error::other("stream error"))
-                }
-                .boxed()
-            })
-        })
+        Box::new(|| Box::new(|_| async { Err(std::io::Error::other("stream error")) }.boxed()))
     }
 
     async fn create_peers(bad_peer: BadPeer, bad_codec: BadCodec) -> (SyncTestPeer, SyncTestPeer) {
