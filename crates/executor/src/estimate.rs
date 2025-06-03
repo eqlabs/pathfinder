@@ -25,7 +25,7 @@ pub fn estimate(
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
-    let block_number = execution_state.header.number;
+    let block_number = execution_state.block_info.number;
     let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     transactions

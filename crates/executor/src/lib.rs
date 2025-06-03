@@ -1,3 +1,4 @@
+pub(crate) mod block;
 pub(crate) mod call;
 pub(crate) mod class;
 pub(crate) mod error;
@@ -13,6 +14,7 @@ pub(crate) mod transaction;
 pub mod types;
 
 // re-export blockifier transaction type since it's exposed on our API
+pub use block::BlockExecutor;
 pub use blockifier::transaction::account_transaction::{
     AccountTransaction,
     ExecutionFlags as AccountTransactionExecutionFlags,
