@@ -231,6 +231,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn l2_accepted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
@@ -254,6 +255,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn pending(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
@@ -311,6 +313,7 @@ mod tests {
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[tokio::test]
     async fn reverted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;

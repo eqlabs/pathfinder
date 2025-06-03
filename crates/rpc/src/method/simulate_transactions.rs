@@ -1612,6 +1612,7 @@ pub(crate) mod tests {
     #[rstest::rstest]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[test_log::test(tokio::test)]
     async fn declare_deploy_and_invoke_sierra_class(#[case] version: RpcVersion) {
         let (storage, last_block_header, account_contract_address, universal_deployer_address, _) =
@@ -1652,6 +1653,7 @@ pub(crate) mod tests {
     #[rstest::rstest]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[test_log::test(tokio::test)]
     async fn declare_deploy_and_invoke_sierra_class_with_skip_fee_charge(
         #[case] version: RpcVersion,
@@ -1696,6 +1698,7 @@ pub(crate) mod tests {
     #[rstest::rstest]
     #[case::v07(RpcVersion::V07)]
     #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[test_log::test(tokio::test)]
     async fn declare_deploy_and_invoke_sierra_class_with_skip_validate(
         #[case] version: RpcVersion,

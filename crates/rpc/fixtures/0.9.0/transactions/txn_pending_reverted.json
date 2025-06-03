@@ -1,0 +1,10 @@
+{
+  "calldata": [],
+  "contract_address": "0x70656e64696e6720636f6e747261637420616464722030",
+  "entry_point_selector": "0x656e74727920706f696e742030",
+  "max_fee": "0x0",
+  "signature": [],
+  "transaction_hash": "0x70656e64696e67207265766572746564",
+  "type": "INVOKE",
+  "version": "0x0"
+}
