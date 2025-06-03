@@ -195,10 +195,7 @@ mod propagate_codec_errors_to_caller {
         Box::new(|| {
             Box::new(|_| {
                 async {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "stream error",
-                    ))
+                    Err(std::io::Error::other("stream error"))
                 }
                 .boxed()
             })

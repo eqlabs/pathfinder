@@ -348,6 +348,7 @@ fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: Ga
 /// the function returns the saved initial state to the caller to decide whether
 /// to commit the state update (by doing nothing) or revert it (by assigning it
 /// back into the executor).
+#[allow(clippy::result_large_err)]
 fn simulate_transaction<'tx>(
     tx: &Transaction,
     tx_index: usize,
@@ -391,6 +392,7 @@ fn simulate_transaction<'tx>(
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum TransactionSimulationError<'tx> {
     OutOfGas(PathfinderExecutionState<'tx>),
     ExecutionError(TransactionExecutionError),
