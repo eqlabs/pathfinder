@@ -12,12 +12,13 @@ use blockifier::context::{BlockContext, ChainInfo};
 use blockifier::state::cached_state::CachedState;
 use pathfinder_common::prelude::*;
 use pathfinder_common::L1DataAvailabilityMode;
-use starknet_api::block::{BlockHashAndNumber, BlockInfo, GasPrice, NonzeroGasPrice};
+use starknet_api::block::{BlockHashAndNumber, GasPrice, NonzeroGasPrice};
 use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
 use crate::state_reader::NativeClassCache;
+use crate::types::BlockInfo;
 use crate::IntoStarkFelt;
 
 mod versions {
@@ -152,7 +153,7 @@ pub type PathfinderExecutionState<'tx> =
 
 pub struct ExecutionState {
     pub chain_id: ChainId,
-    pub header: BlockHeader,
+    pub block_info: BlockInfo,
     execute_on_parent_state: bool,
     pending_state: Option<Arc<StateUpdate>>,
     allow_use_kzg_data: bool,
@@ -162,14 +163,14 @@ pub struct ExecutionState {
     native_class_cache: Option<NativeClassCache>,
 }
 
-pub(crate) fn create_executor(
+pub fn create_executor(
     db_tx: pathfinder_storage::Transaction<'_>,
     execution_state: ExecutionState,
 ) -> anyhow::Result<PathfinderExecutor<'_>> {
     let block_number = if execution_state.execute_on_parent_state {
-        execution_state.header.number.parent()
+        execution_state.block_info.number.parent()
     } else {
-        Some(execution_state.header.number)
+        Some(execution_state.block_info.number)
     };
 
     let chain_info = execution_state.chain_info()?;
@@ -177,9 +178,11 @@ pub(crate) fn create_executor(
 
     // Perform system contract updates if we are executing ontop of a parent block.
     // Currently this is only the block hash from 10 blocks ago.
-    let old_block_number_and_hash = if execution_state.header.number.get() >= 10 {
+    let old_block_number_and_hash = if execution_state.block_info.number.get() >= 10 {
         let block_number_whose_hash_becomes_available =
-            pathfinder_common::BlockNumber::new_or_panic(execution_state.header.number.get() - 10);
+            pathfinder_common::BlockNumber::new_or_panic(
+                execution_state.block_info.number.get() - 10,
+            );
         let block_hash = db_tx
             .block_hash(block_number_whose_hash_becomes_available.into())?
             .context("Getting historical block hash")?;
@@ -198,7 +201,7 @@ pub(crate) fn create_executor(
 
     let versioned_constants = execution_state
         .versioned_constants_map
-        .for_version(&execution_state.header.starknet_version);
+        .for_version(&execution_state.block_info.starknet_version);
 
     let block_context = BlockContext::new(
         block_info,
@@ -234,9 +237,9 @@ impl ExecutionState {
         BlockContext,
     )> {
         let block_number = if self.execute_on_parent_state {
-            self.header.number.parent()
+            self.block_info.number.parent()
         } else {
-            Some(self.header.number)
+            Some(self.block_info.number)
         };
 
         let chain_info = self.chain_info()?;
@@ -244,9 +247,9 @@ impl ExecutionState {
 
         // Perform system contract updates if we are executing ontop of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
-        let old_block_number_and_hash = if self.header.number.get() >= 10 {
+        let old_block_number_and_hash = if self.block_info.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
-                pathfinder_common::BlockNumber::new_or_panic(self.header.number.get() - 10);
+                pathfinder_common::BlockNumber::new_or_panic(self.block_info.number.get() - 10);
             let block_hash = db_tx
                 .block_hash(block_number_whose_hash_becomes_available.into())?
                 .context("Getting historical block hash")?;
@@ -265,7 +268,7 @@ impl ExecutionState {
 
         let versioned_constants = self
             .versioned_constants_map
-            .for_version(&self.header.starknet_version);
+            .for_version(&self.block_info.starknet_version);
 
         let raw_reader = PathfinderStateReader::new(
             db_tx,
@@ -327,61 +330,61 @@ impl ExecutionState {
         })
     }
 
-    fn block_info(&self) -> anyhow::Result<BlockInfo> {
+    fn block_info(&self) -> anyhow::Result<starknet_api::block::BlockInfo> {
         let eth_l1_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.eth_l1_gas_price.0 == 0 {
                 // Bad API design - the genesis block has 0 gas price, but
                 // blockifier doesn't allow for it. This isn't critical for
                 // consensus, so we just use 1.
                 1
             } else {
-                self.header.eth_l1_gas_price.0
+                self.block_info.eth_l1_gas_price.0
             }))?;
         let strk_l1_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.strk_l1_gas_price.0 == 0 {
                 // Bad API design - the genesis block has 0 gas price, but
                 // blockifier doesn't allow for it. This isn't critical for
                 // consensus, so we just use 1.
                 1
             } else {
-                self.header.strk_l1_gas_price.0
+                self.block_info.strk_l1_gas_price.0
             }))?;
         let eth_l1_data_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.eth_l1_data_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.eth_l1_data_gas_price.0 == 0 {
                 // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
                 // blockifier doesn't allow for it. This value is ignored for those
                 // transactions.
                 1
             } else {
-                self.header.eth_l1_data_gas_price.0
+                self.block_info.eth_l1_data_gas_price.0
             }))?;
         let strk_l1_data_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.strk_l1_data_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.strk_l1_data_gas_price.0 == 0 {
                 // Bad API design - pre-v0.13.1 blocks have 0 data gas price, but
                 // blockifier doesn't allow for it. This value is ignored for those
                 // transactions.
                 1
             } else {
-                self.header.strk_l1_data_gas_price.0
+                self.block_info.strk_l1_data_gas_price.0
             }))?;
         let eth_l2_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.eth_l2_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.eth_l2_gas_price.0 == 0 {
                 1
             } else {
-                self.header.eth_l2_gas_price.0
+                self.block_info.eth_l2_gas_price.0
             }))?;
         let strk_l2_gas_price =
-            NonzeroGasPrice::new(GasPrice(if self.header.strk_l2_gas_price.0 == 0 {
+            NonzeroGasPrice::new(GasPrice(if self.block_info.strk_l2_gas_price.0 == 0 {
                 1
             } else {
-                self.header.strk_l2_gas_price.0
+                self.block_info.strk_l2_gas_price.0
             }))?;
 
-        Ok(BlockInfo {
-            block_number: starknet_api::block::BlockNumber(self.header.number.get()),
-            block_timestamp: starknet_api::block::BlockTimestamp(self.header.timestamp.get()),
+        Ok(starknet_api::block::BlockInfo {
+            block_number: starknet_api::block::BlockNumber(self.block_info.number.get()),
+            block_timestamp: starknet_api::block::BlockTimestamp(self.block_info.timestamp.get()),
             sequencer_address: starknet_api::core::ContractAddress(
-                PatriciaKey::try_from(self.header.sequencer_address.0.into_starkfelt())
+                PatriciaKey::try_from(self.block_info.sequencer_address.0.into_starkfelt())
                     .expect("Sequencer address overflow"),
             ),
             gas_prices: starknet_api::block::GasPrices {
@@ -397,7 +400,7 @@ impl ExecutionState {
                 },
             },
             use_kzg_da: self.allow_use_kzg_data
-                && self.header.l1_da_mode == L1DataAvailabilityMode::Blob,
+                && self.block_info.l1_da_mode == L1DataAvailabilityMode::Blob,
         })
     }
 
@@ -413,7 +416,7 @@ impl ExecutionState {
     ) -> Self {
         Self {
             chain_id,
-            header,
+            block_info: header.into(),
             pending_state,
             execute_on_parent_state: true,
             allow_use_kzg_data: true,
@@ -437,10 +440,33 @@ impl ExecutionState {
     ) -> Self {
         Self {
             chain_id,
-            header,
+            block_info: header.into(),
             pending_state,
             execute_on_parent_state: false,
             allow_use_kzg_data: l1_blob_data_availability == L1BlobDataAvailability::Enabled,
+            versioned_constants_map,
+            eth_fee_address,
+            strk_fee_address,
+            native_class_cache,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn validation(
+        chain_id: ChainId,
+        block_info: BlockInfo,
+        pending_state: Option<Arc<StateUpdate>>,
+        versioned_constants_map: VersionedConstantsMap,
+        eth_fee_address: ContractAddress,
+        strk_fee_address: ContractAddress,
+        native_class_cache: Option<NativeClassCache>,
+    ) -> Self {
+        Self {
+            chain_id,
+            block_info,
+            pending_state,
+            execute_on_parent_state: true,
+            allow_use_kzg_data: true,
             versioned_constants_map,
             eth_fee_address,
             strk_fee_address,
