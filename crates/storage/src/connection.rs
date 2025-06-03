@@ -131,6 +131,13 @@ impl Transaction<'_> {
         matches!(self.trie_prune_mode, TriePruneMode::Prune { .. })
     }
 
+    pub fn blockchain_pruning_enabled(&self) -> bool {
+        matches!(
+            self.blockchain_history_mode,
+            BlockchainHistoryMode::Prune { .. }
+        )
+    }
+
     /// Store the in-memory [`Storage`](crate::Storage) state in the database.
     /// To be performed on shutdown.
     pub fn store_in_memory_state(self) -> anyhow::Result<()> {

@@ -197,14 +197,28 @@ where
             _phantom: Default::default(),
         };
 
-        let first_block = T::starting_block(&params);
-        let first_block = pathfinder_storage::BlockId::from(first_block);
+        let starting_block = T::starting_block(&params);
         let storage = router.context.storage.clone();
         let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
 
-            db.block_number(first_block)
+            let starting_block = match starting_block {
+                SubscriptionBlockId::Number(starting_block_number)
+                    if db.blockchain_pruning_enabled() =>
+                {
+                    let earliest = db
+                        .earliest_block_number()
+                        .map_err(RpcError::InternalError)?
+                        .unwrap_or(BlockNumber::GENESIS);
+                    let starting_block = std::cmp::max(earliest, starting_block_number);
+                    SubscriptionBlockId::Number(starting_block)
+                }
+                _ => starting_block,
+            };
+            let starting_block = pathfinder_storage::BlockId::from(starting_block);
+
+            db.block_number(starting_block)
                 .map_err(RpcError::InternalError)?
                 .ok_or_else(|| ApplicationError::BlockNotFound.into())
         })

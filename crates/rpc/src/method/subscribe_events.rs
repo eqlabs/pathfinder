@@ -31,7 +31,8 @@ impl Params {
             }
         }
         if let Some(keys) = &self.keys {
-            if keys.is_empty() {
+            let no_key_constraints = keys.iter().flatten().count() == 0;
+            if no_key_constraints {
                 return true;
             }
             if event.keys.len() < keys.len() {
@@ -128,6 +129,28 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         let (events, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
+
+            if db.blockchain_pruning_enabled() {
+                let blockchain_history_tip = db
+                    .earliest_block_number()
+                    .map_err(RpcError::InternalError)?
+                    .unwrap_or(BlockNumber::GENESIS);
+                if from < blockchain_history_tip {
+                    tracing::debug!(
+                        from_block = %from,
+                        %blockchain_history_tip,
+                        "Event catch-up batch is below the blockchain history tip, sending an error and closing the subscription"
+                    );
+                    // Some of the blocks that were supposed to be part of this catch-up batch have
+                    // been pruned in the meantime. Send the user an error because we cannot
+                    // maintain data integrity at this point.
+                    return Err(RpcError::InternalError(anyhow::anyhow!(
+                        "Next block to be streamed ({from}) could not be found. It has likely \
+                         been pruned during an ongoing subscription"
+                    )));
+                }
+            }
+
             let events = db
                 .events_in_range(
                     from,
@@ -166,7 +189,14 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         let mut blocks = state.notifications.l2_blocks.subscribe();
         let mut reorgs = state.notifications.reorgs.subscribe();
         let mut pending_data = state.pending_data.0.clone();
-        let params = params.unwrap_or_default();
+        let mut params = params.unwrap_or_default();
+
+        if let Some(ref mut keys) = params.keys {
+            // Truncate empty key lists from the end of the key filter.
+            if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+                keys.truncate(last_non_empty + 1);
+            }
+        }
 
         let mut sent_txs = HashSet::new();
         let mut current_block = BlockNumber::GENESIS;

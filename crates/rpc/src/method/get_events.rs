@@ -118,7 +118,7 @@ pub async fn get_events(
 
     use BlockId::*;
 
-    let request = input.filter;
+    let mut request = input.filter;
 
     let continuation_token = match &request.continuation_token {
         Some(s) => Some(
@@ -141,9 +141,8 @@ pub async fn get_events(
     let storage = context.storage.clone();
 
     // truncate empty key lists from the end of the key filter
-    let mut keys = request.keys.clone();
-    if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
-        keys.truncate(last_non_empty + 1);
+    if let Some(last_non_empty) = request.keys.iter().rposition(|keys| !keys.is_empty()) {
+        request.keys.truncate(last_non_empty + 1);
     }
 
     // blocking task to perform database event query
@@ -214,7 +213,7 @@ pub async fn get_events(
             from_block,
             to_block,
             contract_address: request.address,
-            keys: keys.clone(),
+            keys: request.keys.clone(),
             page_size: request.chunk_size,
             offset: requested_offset,
         };
@@ -859,8 +858,8 @@ mod tests {
 
         let input = GetEventsInput {
             filter: EventFilter {
-                from_block: Some(BlockId::Number(BlockNumber::new_or_panic(100))),
-                to_block: Some(BlockId::Number(BlockNumber::new_or_panic(20))),
+                from_block: Some(BlockId::Number(BlockNumber::new_or_panic(3))),
+                to_block: Some(BlockId::Number(BlockNumber::new_or_panic(1))),
                 ..Default::default()
             },
         };

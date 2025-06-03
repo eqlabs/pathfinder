@@ -154,7 +154,7 @@ impl Transaction<'_> {
         from_block: BlockNumber,
         to_block: BlockNumber,
         contract_address: Option<ContractAddress>,
-        keys: Vec<Vec<EventKey>>,
+        mut keys: Vec<Vec<EventKey>>,
     ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
         let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
             // No blocks in the database.
@@ -164,6 +164,11 @@ impl Transaction<'_> {
             return Ok((vec![], None));
         }
         let to_block = std::cmp::min(to_block, latest_block);
+
+        // Truncate empty key lists from the end of the key filter.
+        if let Some(last_non_empty) = keys.iter().rposition(|keys| !keys.is_empty()) {
+            keys.truncate(last_non_empty + 1);
+        }
 
         let constraints = EventConstraints {
             contract_address,
@@ -260,12 +265,27 @@ impl Transaction<'_> {
             .try_into()
             .expect("Conversion error");
 
-        let from_block = constraints.from_block.unwrap_or(BlockNumber::GENESIS);
+        let from_block = constraints
+            .from_block
+            .map(|from_block| {
+                if self.blockchain_pruning_enabled() {
+                    self.earliest_block_number()
+                        .context("Fetching earliest block in database")
+                        .transpose()
+                        .expect("There should be blocks in the database")
+                } else {
+                    Ok(from_block)
+                }
+            })
+            .transpose()?
+            .unwrap_or(BlockNumber::GENESIS);
         // The -1 is needed since `from_block` also counts as one block.
         let max_to_block = from_block + block_range_limit - 1;
-        let to_block = constraints.to_block.unwrap_or(latest_block);
-        // Can't go beyond latest block.
-        let to_block = std::cmp::min(to_block, latest_block);
+        let to_block = constraints
+            .to_block
+            // Can't go beyond latest block.
+            .map(|to_block| std::cmp::min(to_block, latest_block))
+            .unwrap_or(latest_block);
         // Can't exceed `block_range_limit`.
         let to_block_limited = std::cmp::min(to_block, max_to_block);
 
@@ -301,7 +321,7 @@ impl Transaction<'_> {
 
             let block_header = self
                 .block_header(crate::BlockId::Number(block))?
-                .expect("to_block <= BlockId::Latest");
+                .expect("Only existing blocks should be scanned");
 
             let events = match self.events_for_block(block.into())? {
                 Some(events) => events,
