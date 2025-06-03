@@ -65,7 +65,7 @@ impl TryFrom<u32> for Action {
             7 => Ok(Action::SanityResponse((value & 0xFFFFFF00) >> 8)),
             8 => Ok(Action::TimeoutOnWriteRequest),
             9 => Ok(Action::TimeoutOnReadRequest),
-            _ => Err(io::Error::new(io::ErrorKind::Other, "invalid action")),
+            _ => Err(io::Error::other( "invalid action")),
         }
     }
 }
@@ -90,7 +90,7 @@ impl Codec for TestCodec {
 
         match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadRequest => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnReadRequest"))
+                Err(io::Error::other("FailOnReadRequest"))
             }
             Action::TimeoutOnReadRequest => loop {
                 tokio::time::sleep(Duration::MAX).await;
@@ -113,7 +113,7 @@ impl Codec for TestCodec {
 
         match u32::from_be_bytes(buf).try_into()? {
             Action::FailOnReadResponse => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnReadResponse"))
+                Err(io::Error::other("FailOnReadResponse"))
             }
             Action::TimeoutOnReadResponse => loop {
                 tokio::time::sleep(Duration::MAX).await;
@@ -133,7 +133,7 @@ impl Codec for TestCodec {
     {
         match req {
             Action::FailOnWriteRequest => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteRequest"))
+                Err(io::Error::other("FailOnWriteRequest"))
             }
             Action::TimeoutOnWriteRequest => loop {
                 tokio::time::sleep(Duration::MAX).await;
@@ -157,7 +157,7 @@ impl Codec for TestCodec {
     {
         match res {
             Action::FailOnWriteResponse => {
-                Err(io::Error::new(io::ErrorKind::Other, "FailOnWriteResponse"))
+                Err(io::Error::other("FailOnWriteResponse"))
             }
             Action::TimeoutOnWriteResponse => loop {
                 tokio::time::sleep(Duration::MAX).await;
