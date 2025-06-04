@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.
 - `starknet_traceBlockTransactions` fails for blocks <= 2687.
 
+### Changed
+
+- `blockifier` has been upgraded to version 0.15.0-rc.1, adding initial support for Starknet 0.14.0 execution.
+
 ## [0.17.0-beta.1] - 2025-05-13
 
 ### Added

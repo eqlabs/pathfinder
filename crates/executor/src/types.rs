@@ -3,8 +3,9 @@ use std::collections::{BTreeMap, HashSet};
 use blockifier::execution::call_info::OrderedL2ToL1Message;
 use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
-use starknet_api::block::{BlockInfo, FeeType};
-use starknet_api::execution_resources::GasVector;
+use starknet_api::block::FeeType;
+use starknet_api::execution_resources::{GasAmount, GasVector};
+use starknet_api::transaction::fields::GasVectorComputationMode;
 
 use super::felt::IntoFelt;
 
@@ -24,42 +25,73 @@ impl FeeEstimate {
     /// Computes fee estimate from the transaction execution information.
     pub(crate) fn from_gas_vector_and_gas_price(
         gas_vector: &GasVector,
-        block_info: &BlockInfo,
+        block_context: &blockifier::context::BlockContext,
         fee_type: FeeType,
+        gas_vector_computation_mode: &GasVectorComputationMode,
+        tip: starknet_api::transaction::fields::Tip,
         minimal_gas_vector: &Option<GasVector>,
     ) -> FeeEstimate {
         tracing::trace!(?gas_vector, "Transaction resources");
-        let gas_prices = block_info.gas_prices.gas_price_vector(&fee_type);
+        let gas_prices = block_context
+            .block_info()
+            .gas_prices
+            .gas_price_vector(&fee_type);
         let l1_gas_price = gas_prices.l1_gas_price.get();
         let l1_data_gas_price = gas_prices.l1_data_gas_price.get();
         let l2_gas_price = gas_prices.l2_gas_price.get();
 
         let minimal_gas_vector = minimal_gas_vector.unwrap_or_default();
 
-        let l1_gas_consumed = gas_vector.l1_gas.max(minimal_gas_vector.l1_gas);
-        let l1_data_gas_consumed = gas_vector.l1_data_gas.max(minimal_gas_vector.l1_data_gas);
-        let l2_gas_consumed = gas_vector.l2_gas.max(minimal_gas_vector.l2_gas);
+        let adjusted_gas_vector = GasVector {
+            l1_gas: gas_vector.l1_gas.max(minimal_gas_vector.l1_gas),
+            l1_data_gas: gas_vector.l1_data_gas.max(minimal_gas_vector.l1_data_gas),
+            l2_gas: gas_vector.l2_gas.max(minimal_gas_vector.l2_gas),
+        };
+
+        // In some cases (like: L1 handler transactions with blockifier >= 0.15.0) we
+        // may have L2 gas in the gas vector even though the gas vector
+        // computation mode (derived from the transaction type) is set to
+        // `NoL2Gas`. In that case we need to convert the L2 gas to L1
+        // gas and add it to the L1 gas amount.
+        let adjusted_gas_vector = match gas_vector_computation_mode {
+            GasVectorComputationMode::All => adjusted_gas_vector,
+            GasVectorComputationMode::NoL2Gas => GasVector {
+                l1_gas: adjusted_gas_vector
+                    .l1_gas
+                    .checked_add(
+                        block_context
+                            .versioned_constants()
+                            .sierra_gas_to_l1_gas_amount_round_up(adjusted_gas_vector.l2_gas),
+                    )
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "L1 gas amount overflowed: addition of converted L2 gas ({}) to L1 \
+                             gas ({}) resulted in overflow.",
+                            adjusted_gas_vector.l2_gas, adjusted_gas_vector.l1_gas
+                        )
+                    }),
+                l1_data_gas: adjusted_gas_vector.l1_data_gas,
+                l2_gas: GasAmount(0),
+            },
+        };
 
         // Blockifier does not put the actual fee into the receipt if `max_fee` in the
         // transaction was zero. In that case we have to compute the fee
         // explicitly.
         let overall_fee = blockifier::fee::fee_utils::get_fee_by_gas_vector(
-            block_info,
-            GasVector {
-                l1_gas: l1_gas_consumed,
-                l1_data_gas: l1_data_gas_consumed,
-                l2_gas: l2_gas_consumed,
-            },
+            block_context.block_info(),
+            adjusted_gas_vector,
             &fee_type,
+            tip,
         )
         .0;
 
         FeeEstimate {
-            l1_gas_consumed: l1_gas_consumed.0.into(),
+            l1_gas_consumed: adjusted_gas_vector.l1_gas.0.into(),
             l1_gas_price: l1_gas_price.0.into(),
-            l1_data_gas_consumed: l1_data_gas_consumed.0.into(),
+            l1_data_gas_consumed: adjusted_gas_vector.l1_data_gas.0.into(),
             l1_data_gas_price: l1_data_gas_price.0.into(),
-            l2_gas_consumed: l2_gas_consumed.0.into(),
+            l2_gas_consumed: adjusted_gas_vector.l2_gas.0.into(),
             l2_gas_price: l2_gas_price.0.into(),
             overall_fee: overall_fee.into(),
             unit: fee_type.into(),
@@ -298,7 +330,7 @@ pub struct DataAvailabilityResources {
 impl FunctionInvocation {
     pub fn from_call_info(
         call_info: blockifier::execution::call_info::CallInfo,
-        versioned_constants: &blockifier::versioned_constants::VersionedConstants,
+        versioned_constants: &blockifier::blockifier_versioned_constants::VersionedConstants,
         gas_vector_computation_mode: &starknet_api::transaction::fields::GasVectorComputationMode,
     ) -> Self {
         let gas_consumed = call_info

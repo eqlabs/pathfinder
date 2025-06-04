@@ -12,6 +12,7 @@ use starknet_api::execution_resources::{GasAmount, GasVector};
 use starknet_api::transaction::fields::{
     AllResourceBounds,
     GasVectorComputationMode,
+    Tip,
     ValidResourceBounds,
 };
 use util::percentage::Percentage;
@@ -348,6 +349,7 @@ fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: Ga
 /// the function returns the saved initial state to the caller to decide whether
 /// to commit the state update (by doing nothing) or revert it (by assigning it
 /// back into the executor).
+#[allow(clippy::result_large_err)]
 fn simulate_transaction<'tx>(
     tx: &Transaction,
     tx_index: usize,
@@ -391,6 +393,7 @@ fn simulate_transaction<'tx>(
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum TransactionSimulationError<'tx> {
     OutOfGas(PathfinderExecutionState<'tx>),
     ExecutionError(TransactionExecutionError),
@@ -515,6 +518,57 @@ fn get_resource_bounds(tx: &Transaction) -> Result<AllResourceBounds, Transactio
     }
 }
 
+pub(crate) fn get_tip(tx: &Transaction) -> Tip {
+    use starknet_api::transaction::{
+        DeclareTransaction,
+        DeclareTransactionV3,
+        DeployAccountTransaction,
+        DeployAccountTransactionV3,
+        InvokeTransaction,
+        InvokeTransactionV3,
+    };
+
+    match tx {
+        Transaction::Account(
+            blockifier::transaction::account_transaction::AccountTransaction {
+                tx:
+                    starknet_api::executable_transaction::AccountTransaction::Declare(
+                        starknet_api::executable_transaction::DeclareTransaction {
+                            tx: DeclareTransaction::V3(DeclareTransactionV3 { tip, .. }),
+                            ..
+                        },
+                    ),
+                ..
+            },
+        ) => *tip,
+        Transaction::Account(
+            blockifier::transaction::account_transaction::AccountTransaction {
+                tx:
+                    starknet_api::executable_transaction::AccountTransaction::DeployAccount(
+                        starknet_api::executable_transaction::DeployAccountTransaction {
+                            tx: DeployAccountTransaction::V3(DeployAccountTransactionV3 { tip, .. }),
+                            ..
+                        },
+                    ),
+                ..
+            },
+        ) => *tip,
+        Transaction::Account(
+            blockifier::transaction::account_transaction::AccountTransaction {
+                tx:
+                    starknet_api::executable_transaction::AccountTransaction::Invoke(
+                        starknet_api::executable_transaction::InvokeTransaction {
+                            tx: InvokeTransaction::V3(InvokeTransactionV3 { tip, .. }),
+                            ..
+                        },
+                    ),
+                ..
+            },
+        ) => *tip,
+        _ => Tip::ZERO,
+    }
+}
+
 fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
     match tx {
         Transaction::Account(account_transaction) => account_transaction.execution_flags.clone(),
@@ -533,7 +587,8 @@ fn get_max_l2_gas_amount_covered_by_balance(
         ..initial_resource_bounds
     };
     let max_possible_fee_without_l2_gas =
-        ValidResourceBounds::AllResources(resource_bounds_without_l2_gas).max_possible_fee();
+        ValidResourceBounds::AllResources(resource_bounds_without_l2_gas)
+            .max_possible_fee(get_tip(tx));
 
     match tx {
         Transaction::Account(account_transaction) => {

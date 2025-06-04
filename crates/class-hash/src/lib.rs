@@ -699,6 +699,7 @@ pub mod json {
         SelectorAndOffset,
     };
 
+    #[allow(clippy::large_enum_variant)]
     pub enum ContractDefinition<'a> {
         Cairo(CairoContractDefinition<'a>),
         Sierra(SierraContractDefinition<'a>),

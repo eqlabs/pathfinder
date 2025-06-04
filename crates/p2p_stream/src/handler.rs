@@ -248,7 +248,7 @@ where
                                 ),
                             )))
                             .await
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                            .map_err(std::io::Error::other)?;
                         return Err(io::Error::new(
                             io::ErrorKind::TimedOut,
                             format!(
@@ -260,7 +260,7 @@ where
                         rs_send
                             .send(Ok(response))
                             .await
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                            .map_err(std::io::Error::other)?;
                     }
                     // The stream is closed, there's nothing more to receive
                     Ok(Err(error)) if error.kind() == io::ErrorKind::UnexpectedEof => break,
@@ -270,7 +270,7 @@ where
                         rs_send
                             .send(Err(error_clone))
                             .await
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                            .map_err(std::io::Error::other)?;
                         return Err(error);
                     }
                 }
