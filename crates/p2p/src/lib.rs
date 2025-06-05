@@ -22,7 +22,7 @@ mod secret;
 mod test_utils;
 mod transport;
 
-pub use builder::Builder;
+use builder::Builder;
 pub use libp2p;
 pub use peer_data::PeerData;
 
@@ -49,14 +49,12 @@ pub fn new_consensus(
     _consensus_config: consensus::Config,
     chain_id: ChainId,
 ) -> (
-    core::Client<sync::Command>,
-    mpsc::Receiver<sync::Event>,
-    main_loop::MainLoop<sync::Behaviour>,
+    core::Client<consensus::Command>,
+    mpsc::Receiver<consensus::Event>,
+    main_loop::MainLoop<consensus::Behaviour>,
 ) {
-    // TODO remove allow when behaviour is built properly
-    #[allow(unreachable_code)]
-    Builder::new(keypair, core_config, chain_id)
-        .app_behaviour(todo!())
+    Builder::new(keypair.clone(), core_config, chain_id)
+        .app_behaviour(consensus::Behaviour::new(keypair))
         .build()
 }
 
