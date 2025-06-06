@@ -1171,7 +1171,6 @@ mod tests {
                 from: BlockNumber,
                 to: BlockNumber,
             ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
-                eprintln!("limited history catch-up: {from} to {to}");
                 let messages: Vec<_> = (from.get()..=to.get())
                     .map(BlockNumber::new_or_panic)
                     .map(|block| SubscriptionMessage {
@@ -1266,7 +1265,7 @@ mod tests {
 
     async fn setup(
         num_blocks: u64,
-        webscoket_history: WebsocketHistory,
+        websocket_history: WebsocketHistory,
         endpoint: impl RpcSubscriptionEndpoint + 'static,
     ) -> RpcRouter {
         let storage = StorageBuilder::in_memory().unwrap();
@@ -1309,7 +1308,7 @@ mod tests {
             .with_notifications(notifications)
             .with_pending_data(pending_data.clone())
             .with_websockets(WebsocketContext::new(
-                webscoket_history,
+                websocket_history,
                 NonZeroUsize::new(1024).unwrap(),
                 NonZeroUsize::new(1024).unwrap(),
                 pending_data,
