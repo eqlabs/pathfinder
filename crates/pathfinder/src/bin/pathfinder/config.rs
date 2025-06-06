@@ -963,6 +963,33 @@ pub struct WebsocketConfig {
         env = "PATHFINDER_WEBSOCKET_TOPIC_CAPACITY"
     )]
     pub topic_sender_capacity: NonZeroUsize,
+    #[arg(
+        long = "rpc.websocket.max-history",
+        long_help = "The maximum number of historical messages to send for each topic when a new client subscribes. If set to `unlimited`, all historical messages are sent. If set to a number N, only the last N messages are sent. Defaults to 1024 if not specified.",
+        default_value = "1024",
+        value_name = "unlimited | N",
+        value_parser = parse_websocket_history,
+        env = "PATHFINDER_WEBSOCKET_MAX_HISTORY"
+    )]
+    pub max_history: WebsocketHistory,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WebsocketHistory {
+    Limited(u64),
+    Unlimited,
+}
+
+fn parse_websocket_history(s: &str) -> Result<WebsocketHistory, String> {
+    match s {
+        "unlimited" => Ok(WebsocketHistory::Unlimited),
+        _ => {
+            let value: u64 = s
+                .parse()
+                .map_err(|_| "Expected either `unlimited` or a number".to_string())?;
+            Ok(WebsocketHistory::Limited(value))
+        }
+    }
 }
 
 #[cfg(test)]

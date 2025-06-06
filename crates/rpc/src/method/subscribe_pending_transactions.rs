@@ -136,6 +136,8 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+
     use axum::extract::ws::Message;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
@@ -145,7 +147,8 @@ mod tests {
     use starknet_gateway_types::reply::PendingBlock;
     use tokio::sync::{mpsc, watch};
 
-    use crate::context::RpcContext;
+    use crate::context::{RpcContext, WebsocketContext};
+    use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
     use crate::{v08, Notifications, PendingData};
 
@@ -479,7 +482,13 @@ mod tests {
         let ctx = RpcContext::for_tests()
             .with_storage(storage)
             .with_notifications(notifications)
-            .with_pending_data(pending_data);
+            .with_pending_data(pending_data.clone())
+            .with_websockets(WebsocketContext::new(
+                WebsocketHistory::Unlimited,
+                NonZeroUsize::new(1024).unwrap(),
+                NonZeroUsize::new(1024).unwrap(),
+                pending_data,
+            ));
         let router = v08::register_routes().build(ctx);
         let (sender_tx, sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
