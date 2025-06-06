@@ -111,7 +111,7 @@ impl RpcContext {
             config.submission_tracker_size_limit.into(),
             config.submission_tracker_time_limit.into(),
         );
-        let pending_data = PendingWatcher::new(pending_data);
+        let pending_watcher = PendingWatcher::new(pending_data.clone());
         let native_class_cache = if config.native_execution {
             Some(NativeClassCache::spawn(config.native_class_cache_size))
         } else {
@@ -125,7 +125,7 @@ impl RpcContext {
             submission_tracker,
             chain_id,
             contract_addresses,
-            pending_data,
+            pending_data: pending_watcher,
             sequencer,
             websocket: None,
             notifications,
