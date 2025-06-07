@@ -199,7 +199,7 @@ impl BlockHeaderData {
 /// Verify the block hash value.
 ///
 /// The method to compute the block hash is documented
-/// [here](https://docs.starknet.io/docs/Blocks/header/#block-hash).
+/// [here](https://docs.starknet.io/architecture-and-concepts/network-architecture/block-structure/#block-hash).
 ///
 /// Unfortunately that'a not-fully-correct description, since the transaction
 /// commitment Merkle tree is not constructed directly with the transaction
