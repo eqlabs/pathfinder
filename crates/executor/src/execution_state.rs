@@ -36,6 +36,8 @@ mod versions {
     pub(super) const STARKNET_VERSION_0_13_4: StarknetVersion = StarknetVersion::new(0, 13, 4, 0);
 
     pub(super) const STARKNET_VERSION_0_13_5: StarknetVersion = StarknetVersion::new(0, 13, 5, 0);
+
+    pub(super) const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
 }
 
 #[derive(Clone, Debug)]
@@ -103,6 +105,12 @@ impl VersionedConstantsMap {
             &STARKNET_VERSION_0_13_5,
             VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_13_5)
                 .expect("Failed to get versioned constants for 0.13.5"),
+        );
+        Self::insert_default(
+            data,
+            &STARKNET_VERSION_0_14_0,
+            VersionedConstants::get(&starknet_api::block::StarknetVersion::V0_14_0)
+                .expect("Failed to get versioned constants for 0.14.0"),
         );
     }
 

@@ -1741,8 +1741,13 @@ pub(crate) mod tests {
         );
     }
 
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
     #[test_log::test(tokio::test)]
-    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4() {
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_13_4(#[case] version: RpcVersion) {
         let (storage, last_block_header, account_contract_address, universal_deployer_address, _) =
             setup_storage_with_starknet_version(StarknetVersion::new(0, 13, 4, 0)).await;
         let context = RpcContext::for_tests().with_storage(storage);
@@ -1761,9 +1766,7 @@ pub(crate) mod tests {
         };
         let result = simulate_transactions(context, input).await.unwrap();
 
-        let serializer = crate::dto::Serializer {
-            version: RpcVersion::V08,
-        };
+        let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
         let result_serialized = serializer
             .serialize_iter(
@@ -1772,18 +1775,51 @@ pub(crate) mod tests {
             )
             .unwrap();
 
-        let expected_str = include_str!(
-            "../../fixtures/0.8.0/simulations/\
-             declare_deploy_and_invoke_sierra_class_starknet_0_13_4.json"
-        );
-        let expected_json: serde_json::Value =
-            serde_json::from_str(expected_str).expect("Failed to parse fixture as JSON");
-
-        pretty_assertions_sorted::assert_eq!(
+        crate::assert_json_matches_fixture!(
             result_serialized,
-            expected_json,
-            "\nExpected fixture content from {}\nGot output",
+            version,
             "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_13_4.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[test_log::test(tokio::test)]
+    async fn declare_deploy_and_invoke_sierra_class_starknet_0_14_0(#[case] version: RpcVersion) {
+        let (storage, last_block_header, account_contract_address, universal_deployer_address, _) =
+            setup_storage_with_starknet_version(StarknetVersion::new(0, 14, 0, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage);
+
+        let input = SimulateTransactionInput {
+            transactions: vec![
+                fixtures::input::declare(account_contract_address),
+                fixtures::input::universal_deployer(
+                    account_contract_address,
+                    universal_deployer_address,
+                ),
+                fixtures::input::invoke_v3_with_data_gas_bound(account_contract_address),
+            ],
+            block_id: BlockId::Number(last_block_header.number),
+            simulation_flags: crate::dto::SimulationFlags(vec![]),
+        };
+        let result = simulate_transactions(context, input).await.unwrap();
+
+        let serializer = crate::dto::Serializer { version };
+        let result_serializable = result.0.into_iter().collect::<Vec<_>>();
+        let result_serialized = serializer
+            .serialize_iter(
+                result_serializable.len(),
+                &mut result_serializable.into_iter(),
+            )
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(
+            result_serialized,
+            version,
+            "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_14_0.json"
         );
     }
 
