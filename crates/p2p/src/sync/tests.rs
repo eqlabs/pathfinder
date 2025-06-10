@@ -315,7 +315,6 @@ mod propagate_codec_errors_to_caller {
                         panic!(
                             "sending request using: {}, line: {}",
                             std::stringify!($req_fn),
-                            // "TODO",
                             line!()
                         )
                     });

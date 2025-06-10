@@ -36,18 +36,18 @@ use crate::IntoStarkFelt as _;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
 
-// TODO should probably go to pathfinder_common
+// TODO(validator) should probably go to pathfinder_common
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub actual_fee: Fee,
-    // TODO currently there's a mismatch between reexecution and historical receipts
+    // TODO(validator) currently there's a mismatch between reexecution and historical receipts
     pub execution_resources: pathfinder_common::receipt::ExecutionResources,
     pub l2_to_l1_messages: Vec<pathfinder_common::receipt::L2ToL1Message>,
     pub execution_status: pathfinder_common::receipt::ExecutionStatus,
     pub transaction_index: TransactionIndex,
 }
 
-// TODO probably much better in pathfinder_common
+// TODO(validator) probably much better in pathfinder_common
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BlockInfo {
     pub number: BlockNumber,
@@ -91,10 +91,10 @@ impl BlockInfo {
         l2_gas_price_fri: u128,
         l1_gas_price_wei: u128,
         l1_data_gas_price_wei: u128,
-        // TODO ignored for the time being, see comment below
+        // TODO(validator) ignored for the time being, see comment below
         eth_to_fri_rate: u128,
         starknet_version: StarknetVersion,
-        // TODO
+        // TODO(validator)
         // one eth_to_fri_rate is not suitable for current sepolia or integration data
         // where there are 3 pairs of gas prices in both wei & fri and they give
         // 2 different ethfri rates, often due to one of the prices in wei saturated at 1
@@ -109,14 +109,14 @@ impl BlockInfo {
         let timestamp =
             BlockTimestamp::new(timestamp).context("Proposal timestamp exceeds i64::MAX")?;
         let eth_l1_gas_price = GasPrice(l1_gas_price_wei);
-        // TODO
+        // TODO(validator)
         // let strk_l1_gas_price = GasPrice(wei_to_fri(l1_gas_price_wei));
         let strk_l1_gas_price = GasPrice(workaround_l1_gas_price_fri);
         let eth_l1_data_gas_price = GasPrice(l1_data_gas_price_wei);
-        // TODO
+        // TODO(validator)
         // let strk_l1_data_gas_price = GasPrice(wei_to_fri(l1_data_gas_price_wei));
         let strk_l1_data_gas_price = GasPrice(workaround_l1_data_gas_price_fri);
-        // TODO
+        // TODO(validator)
         // let eth_l2_gas_price = GasPrice(fri_to_wei(l2_gas_price_fri));
         let eth_l2_gas_price = GasPrice(workaround_l2_gas_price_wei);
         let strk_l2_gas_price = GasPrice(l2_gas_price_fri);
@@ -472,7 +472,7 @@ impl TryFrom<&ExecutionResources> for pathfinder_common::receipt::ExecutionResou
     fn try_from(x: &ExecutionResources) -> Result<Self, Self::Error> {
         Ok(Self {
             builtins: pathfinder_common::receipt::BuiltinCounters {
-                output: 0, // TODO
+                output: 0, // TODO(validator)
                 pedersen: x
                     .computation_resources
                     .poseidon_builtin_applications
@@ -502,9 +502,9 @@ impl TryFrom<&ExecutionResources> for pathfinder_common::receipt::ExecutionResou
                     .poseidon_builtin_applications
                     .try_into()?,
                 segment_arena: x.computation_resources.segment_arena_builtin.try_into()?,
-                add_mod: 0,       // TODO
-                mul_mod: 0,       // TODO
-                range_check96: 0, // TODO
+                add_mod: 0,       // TODO(validator)
+                mul_mod: 0,       // TODO(validator)
+                range_check96: 0, // TODO(validator)
             },
             n_steps: x.computation_resources.steps.try_into()?,
             n_memory_holes: x.computation_resources.memory_holes.try_into()?,

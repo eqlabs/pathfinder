@@ -199,7 +199,7 @@ fn get_classes_for_block(
             }
             ClassDefinition::Sierra {
                 sierra,
-                _casm: _, /* TODO */
+                _casm: _, // TODO
             } => {
                 let sierra_class = serde_json::from_slice::<class_definition::Sierra<'_>>(&sierra)?;
 

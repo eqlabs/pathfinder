@@ -87,8 +87,8 @@ impl<'a> BlockExecutor<'a> {
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
 
-                // TODO use executor::execute_txs instead (concurrency can then be enabled via
-                // configuration)
+                // TODO(validator) use executor::execute_txs instead (concurrency can then be
+                // enabled via configuration)
                 let ((tx_info, _), _) = execute_transaction(
                     &tx,
                     tx_index,

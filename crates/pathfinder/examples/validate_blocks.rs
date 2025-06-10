@@ -97,8 +97,8 @@ fn main() -> anyhow::Result<()> {
             .execute_transactions(tnxs)
             .context("Validating transaction batch")?;
 
-        // TODO for now it carries the block hash because we don't know how to calculate
-        // the proposal commitment
+        // TODO(validator) for now it carries the block hash because we don't know how
+        // to calculate the proposal commitment
         let Some(ProposalPart::ProposalFin(proposal_fin)) = proposal.pop_front() else {
             panic!("Expected proposal fin");
         };
@@ -203,7 +203,8 @@ fn create_proposal(
     proposal_parts.push_back(ProposalPart::TransactionBatch(consensus_txns));
 
     proposal_parts.push_back(ProposalPart::ProposalFin(ProposalFin {
-        // TODO using block hash for now, as we don't know how to calculate the proposal commitment
+        // TODO(validator) using block hash for now, as we don't know how to calculate the proposal
+        // commitment
         proposal_commitment: Hash(header.hash.0),
     }));
 
