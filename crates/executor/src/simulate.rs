@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
@@ -7,9 +6,6 @@ use blockifier::blockifier::transaction_executor::{
     BLOCK_STATE_ACCESS_ERR,
 };
 use blockifier::blockifier_versioned_constants::VersionedConstants;
-use blockifier::state::cached_state::StateMaps;
-use blockifier::state::errors::StateError;
-use blockifier::state::state_api::StateReader;
 use blockifier::transaction::transaction_execution::Transaction;
 use cached::{Cached, SizedCache};
 use pathfinder_common::prelude::*;
@@ -20,7 +16,7 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::{TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
-use crate::execution_state::{create_executor, PathfinderExecutionState};
+use crate::execution_state::create_executor;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -28,20 +24,18 @@ use crate::transaction::{
     ExecutionBehaviorOnRevert,
 };
 use crate::types::{
-    DataAvailabilityResources,
+    to_execution_info,
+    to_state_diff,
+    transaction_declared_deprecated_class,
+    transaction_type,
     DeclareTransactionTrace,
-    DeclaredSierraClass,
     DeployAccountTransactionTrace,
-    DeployedContract,
-    ExecuteInvocation,
-    ExecutionResources,
     FeeEstimate,
-    FunctionInvocation,
     InvokeTransactionTrace,
     L1HandlerTransactionTrace,
-    ReplacedClass,
     StateDiff,
-    StorageDiff,
+    TransactionExecutionInfo,
+    TransactionType,
 };
 use crate::IntoFelt;
 
@@ -105,7 +99,7 @@ pub fn simulate(
     transactions: Vec<Transaction>,
     epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
-    let block_number = execution_state.header.number;
+    let block_number = execution_state.block_info.number;
     let mut tx_executor = create_executor(db_tx, execution_state)?;
 
     transactions
@@ -145,7 +139,7 @@ pub fn simulate(
             } else {
                 execute_transaction(&tx, tx_index, &mut tx_executor, ExecutionBehaviorOnRevert::Continue)?
             };
-            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)?;
+            let state_diff = to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash.into_iter())?;
 
             tracing::trace!(actual_fee=%tx_info.receipt.fee.0, actual_resources=?tx_info.receipt.resources, "Transaction simulation finished");
 
@@ -245,13 +239,16 @@ pub fn trace(
                 return Err(error.into());
             }
         };
-        let state_diff =
-            to_state_diff(state_maps, initial_state, tx_declared_deprecated_class_hash)
-                .inspect_err(|_| {
-                    // Remove the cache entry so it's no longer inflight.
-                    let mut cache = cache.0.lock().unwrap();
-                    cache.cache_remove(&block_hash);
-                })?;
+        let state_diff = to_state_diff(
+            state_maps,
+            initial_state,
+            tx_declared_deprecated_class_hash.into_iter(),
+        )
+        .inspect_err(|_| {
+            // Remove the cache entry so it's no longer inflight.
+            let mut cache = cache.0.lock().unwrap();
+            cache.cache_remove(&block_hash);
+        })?;
 
         tracing::trace!("Transaction tracing finished");
 
@@ -273,221 +270,44 @@ pub fn trace(
     Ok(traces)
 }
 
-enum TransactionType {
-    Declare,
-    DeployAccount,
-    Invoke,
-    L1Handler,
-}
-
-fn transaction_type(transaction: &Transaction) -> TransactionType {
-    match transaction {
-        Transaction::Account(tx) => match tx.tx {
-            starknet_api::executable_transaction::AccountTransaction::Declare(_) => {
-                TransactionType::Declare
-            }
-            starknet_api::executable_transaction::AccountTransaction::DeployAccount(_) => {
-                TransactionType::DeployAccount
-            }
-            starknet_api::executable_transaction::AccountTransaction::Invoke(_) => {
-                TransactionType::Invoke
-            }
-        },
-        Transaction::L1Handler(_) => TransactionType::L1Handler,
-    }
-}
-
-fn transaction_declared_deprecated_class(transaction: &Transaction) -> Option<ClassHash> {
-    match transaction {
-        Transaction::Account(outer) => match &outer.tx {
-            starknet_api::executable_transaction::AccountTransaction::Declare(inner) => {
-                match inner.tx {
-                    starknet_api::transaction::DeclareTransaction::V0(_)
-                    | starknet_api::transaction::DeclareTransaction::V1(_) => {
-                        Some(ClassHash(inner.class_hash().0.into_felt()))
-                    }
-                    starknet_api::transaction::DeclareTransaction::V2(_)
-                    | starknet_api::transaction::DeclareTransaction::V3(_) => None,
-                }
-            }
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn to_state_diff(
-    state_maps: StateMaps,
-    initial_state: PathfinderExecutionState<'_>,
-    old_declared_contract: Option<ClassHash>,
-) -> Result<StateDiff, StateError> {
-    let mut deployed_contracts = Vec::new();
-    let mut replaced_classes = Vec::new();
-
-    // We need to check the previous class hash for a contract to decide if it's a
-    // deployed contract or a replaced class.
-    for (address, class_hash) in state_maps.class_hashes {
-        let is_deployed = initial_state
-            .get_class_hash_at(address)?
-            .0
-            .into_felt()
-            .is_zero();
-        if is_deployed {
-            deployed_contracts.push(DeployedContract {
-                address: ContractAddress::new_or_panic(address.0.key().into_felt()),
-                class_hash: ClassHash(class_hash.0.into_felt()),
-            });
-        } else {
-            replaced_classes.push(ReplacedClass {
-                contract_address: ContractAddress::new_or_panic(address.0.key().into_felt()),
-                class_hash: ClassHash(class_hash.0.into_felt()),
-            });
-        }
-    }
-
-    let mut storage_diffs: BTreeMap<_, _> = Default::default();
-    for ((address, key), value) in state_maps.storage {
-        storage_diffs
-            .entry(ContractAddress::new_or_panic(address.0.key().into_felt()))
-            .and_modify(|map: &mut BTreeMap<StorageAddress, StorageValue>| {
-                map.insert(
-                    StorageAddress::new_or_panic(key.0.key().into_felt()),
-                    StorageValue(value.into_felt()),
-                );
-            })
-            .or_insert_with(|| {
-                let mut map = BTreeMap::new();
-                map.insert(
-                    StorageAddress::new_or_panic(key.0.key().into_felt()),
-                    StorageValue(value.into_felt()),
-                );
-                map
-            });
-    }
-    let storage_diffs: BTreeMap<_, Vec<StorageDiff>> = storage_diffs
-        .into_iter()
-        .map(|(address, diffs)| {
-            (
-                address,
-                diffs
-                    .into_iter()
-                    .map(|(key, value)| StorageDiff { key, value })
-                    .collect(),
-            )
-        })
-        .collect();
-
-    Ok(StateDiff {
-        storage_diffs,
-        deployed_contracts,
-        // This info is not present in the state diff, so we need to pass it separately.
-        deprecated_declared_classes: old_declared_contract.into_iter().collect(),
-        declared_classes: state_maps
-            .compiled_class_hashes
-            .into_iter()
-            .map(|(class_hash, compiled_class_hash)| DeclaredSierraClass {
-                class_hash: SierraHash(class_hash.0.into_felt()),
-                compiled_class_hash: CasmHash(compiled_class_hash.0.into_felt()),
-            })
-            .collect(),
-        nonces: state_maps
-            .nonces
-            .into_iter()
-            .map(|(address, nonce)| {
-                (
-                    ContractAddress::new_or_panic(address.0.key().into_felt()),
-                    ContractNonce(nonce.0.into_felt()),
-                )
-            })
-            .collect(),
-        replaced_classes,
-    })
-}
-
-fn to_trace(
+pub(crate) fn to_trace(
     transaction_type: TransactionType,
     execution_info: blockifier::transaction::objects::TransactionExecutionInfo,
     state_diff: StateDiff,
     versioned_constants: &VersionedConstants,
     gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> TransactionTrace {
-    let validate_invocation = execution_info.validate_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
-    let maybe_function_invocation = execution_info.execute_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
-    let fee_transfer_invocation = execution_info.fee_transfer_call_info.map(|call_info| {
-        FunctionInvocation::from_call_info(
-            call_info,
-            versioned_constants,
-            gas_vector_computation_mode,
-        )
-    });
+    let execution_info = to_execution_info(
+        transaction_type,
+        execution_info,
+        versioned_constants,
+        gas_vector_computation_mode,
+    );
 
-    let computation_resources = validate_invocation
-        .as_ref()
-        .map(|i: &FunctionInvocation| i.computation_resources.clone())
-        .unwrap_or_default()
-        + maybe_function_invocation
-            .as_ref()
-            .map(|i: &FunctionInvocation| i.computation_resources.clone())
-            .unwrap_or_default()
-        + fee_transfer_invocation
-            .as_ref()
-            .map(|i: &FunctionInvocation| i.computation_resources.clone())
-            .unwrap_or_default();
-    let data_availability = DataAvailabilityResources {
-        l1_gas: execution_info.receipt.da_gas.l1_gas.0.into(),
-        l1_data_gas: execution_info.receipt.da_gas.l1_data_gas.0.into(),
-    };
-    let execution_resources = ExecutionResources {
-        computation_resources,
-        data_availability,
-        l1_gas: execution_info.receipt.gas.l1_gas.0.into(),
-        l1_data_gas: execution_info.receipt.gas.l1_data_gas.0.into(),
-        l2_gas: execution_info.receipt.gas.l2_gas.0.into(),
-    };
-
-    match transaction_type {
-        TransactionType::Declare => TransactionTrace::Declare(DeclareTransactionTrace {
-            validate_invocation,
-            fee_transfer_invocation,
-            state_diff,
-            execution_resources,
-        }),
-        TransactionType::DeployAccount => {
-            TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
-                validate_invocation,
-                constructor_invocation: maybe_function_invocation,
-                fee_transfer_invocation,
+    match execution_info {
+        TransactionExecutionInfo::Declare(execution_info) => {
+            TransactionTrace::Declare(DeclareTransactionTrace {
+                execution_info,
                 state_diff,
-                execution_resources,
             })
         }
-        TransactionType::Invoke => TransactionTrace::Invoke(InvokeTransactionTrace {
-            validate_invocation,
-            execute_invocation: if let Some(reason) = execution_info.revert_error {
-                ExecuteInvocation::RevertedReason(reason.to_string())
-            } else {
-                ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
-            },
-            fee_transfer_invocation,
-            state_diff,
-            execution_resources,
-        }),
-        TransactionType::L1Handler => TransactionTrace::L1Handler(L1HandlerTransactionTrace {
-            function_invocation: maybe_function_invocation,
-            state_diff,
-            execution_resources,
-        }),
+        crate::types::TransactionExecutionInfo::DeployAccount(execution_info) => {
+            TransactionTrace::DeployAccount(DeployAccountTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
+        crate::types::TransactionExecutionInfo::Invoke(execution_info) => {
+            TransactionTrace::Invoke(InvokeTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
+        crate::types::TransactionExecutionInfo::L1Handler(execution_info) => {
+            TransactionTrace::L1Handler(L1HandlerTransactionTrace {
+                execution_info,
+                state_diff,
+            })
+        }
     }
 }

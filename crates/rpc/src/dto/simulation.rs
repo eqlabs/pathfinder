@@ -20,76 +20,100 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
         match &self.trace {
             pathfinder_executor::types::TransactionTrace::Declare(trace) => {
                 serializer.serialize_field("type", &"DECLARE")?;
-                if let Some(fee_transfer_invocation) = &trace.fee_transfer_invocation {
+                if let Some(fee_transfer_invocation) = &trace.execution_info.fee_transfer_invocation
+                {
                     serializer
                         .serialize_field("fee_transfer_invocation", &fee_transfer_invocation)?;
                 }
-                if let Some(validate_invocation) = &trace.validate_invocation {
+                if let Some(validate_invocation) = &trace.execution_info.validate_invocation {
                     serializer.serialize_field("validate_invocation", &validate_invocation)?;
                 }
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
                 if serializer.version > RpcVersion::V06 {
-                    serializer
-                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                    serializer.serialize_field(
+                        "execution_resources",
+                        &trace.execution_info.execution_resources,
+                    )?;
                 }
             }
             pathfinder_executor::types::TransactionTrace::DeployAccount(trace) => {
                 serializer.serialize_field("type", &"DEPLOY_ACCOUNT")?;
                 serializer.serialize_field(
                     "constructor_invocation",
-                    &trace.constructor_invocation.as_ref().ok_or_else(|| {
-                        serde_json::error::Error::custom("Missing constructor_invocation in trace")
-                    })?,
+                    &trace
+                        .execution_info
+                        .constructor_invocation
+                        .as_ref()
+                        .ok_or_else(|| {
+                            serde_json::error::Error::custom(
+                                "Missing constructor_invocation in trace",
+                            )
+                        })?,
                 )?;
-                if let Some(fee_transfer_invocation) = &trace.fee_transfer_invocation {
+                if let Some(fee_transfer_invocation) = &trace.execution_info.fee_transfer_invocation
+                {
                     serializer
                         .serialize_field("fee_transfer_invocation", &fee_transfer_invocation)?;
                 }
-                if let Some(validate_invocation) = &trace.validate_invocation {
+                if let Some(validate_invocation) = &trace.execution_info.validate_invocation {
                     serializer.serialize_field("validate_invocation", &validate_invocation)?;
                 }
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
                 if serializer.version > RpcVersion::V06 {
-                    serializer
-                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                    serializer.serialize_field(
+                        "execution_resources",
+                        &trace.execution_info.execution_resources,
+                    )?;
                 }
             }
             pathfinder_executor::types::TransactionTrace::Invoke(trace) => {
                 serializer.serialize_field("type", &"INVOKE")?;
-                serializer.serialize_field("execute_invocation", &trace.execute_invocation)?;
-                if let Some(fee_transfer_invocation) = &trace.fee_transfer_invocation {
+                serializer.serialize_field(
+                    "execute_invocation",
+                    &trace.execution_info.execute_invocation,
+                )?;
+                if let Some(fee_transfer_invocation) = &trace.execution_info.fee_transfer_invocation
+                {
                     serializer
                         .serialize_field("fee_transfer_invocation", &fee_transfer_invocation)?;
                 }
-                if let Some(validate_invocation) = &trace.validate_invocation {
+                if let Some(validate_invocation) = &trace.execution_info.validate_invocation {
                     serializer.serialize_field("validate_invocation", &validate_invocation)?;
                 }
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
                 if serializer.version > RpcVersion::V06 {
-                    serializer
-                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                    serializer.serialize_field(
+                        "execution_resources",
+                        &trace.execution_info.execution_resources,
+                    )?;
                 }
             }
             pathfinder_executor::types::TransactionTrace::L1Handler(trace) => {
                 serializer.serialize_field("type", &"L1_HANDLER")?;
                 serializer.serialize_field(
                     "function_invocation",
-                    &trace.function_invocation.as_ref().ok_or_else(|| {
-                        serde_json::error::Error::custom("Missing function_invocation in trace")
-                    })?,
+                    &trace
+                        .execution_info
+                        .function_invocation
+                        .as_ref()
+                        .ok_or_else(|| {
+                            serde_json::error::Error::custom("Missing function_invocation in trace")
+                        })?,
                 )?;
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
                 if serializer.version > RpcVersion::V06 {
-                    serializer
-                        .serialize_field("execution_resources", &trace.execution_resources)?;
+                    serializer.serialize_field(
+                        "execution_resources",
+                        &trace.execution_info.execution_resources,
+                    )?;
                 }
             }
         }

@@ -5,6 +5,7 @@ fn main() -> Result<()> {
         &[
             "proto/class.proto",
             "proto/common.proto",
+            "proto/consensus.proto",
             "proto/event.proto",
             "proto/header.proto",
             "proto/receipt.proto",

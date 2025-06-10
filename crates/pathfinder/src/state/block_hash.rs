@@ -95,7 +95,8 @@ pub fn verify_gateway_block_commitments_and_hash(
     verify_block_hash(bhd, chain, chain_id)
 }
 
-#[derive(Clone, Debug, Default)]
+// TODO remove, it's the same as pathfinder_common::header::BlockHeader
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct BlockHeaderData {
     pub hash: BlockHash,
     pub parent_hash: BlockHash,
