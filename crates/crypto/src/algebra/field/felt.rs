@@ -231,6 +231,12 @@ impl From<u64> for Felt {
     }
 }
 
+impl From<usize> for Felt {
+    fn from(value: usize) -> Self {
+        Self::from_u64(value.try_into().expect("ptr size is 64 bits"))
+    }
+}
+
 impl From<u128> for Felt {
     fn from(value: u128) -> Self {
         Self::from_u128(value)

@@ -8,7 +8,6 @@ use pathfinder_lib::state::block_hash::{
     calculate_receipt_commitment,
     calculate_transaction_commitment,
     compute_final_hash,
-    BlockHeaderData,
 };
 
 const VERSION_CUTOFF: StarknetVersion = StarknetVersion::V_0_13_2;
@@ -114,8 +113,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         // Compute the block hash in the 0.13.2 style
-        let header_data = get_header_data(&header);
-        let new_block_hash = compute_final_hash(&header_data);
+        let new_block_hash = compute_final_hash(&header);
 
         // Write to the CSV file
         writeln!(csv_file, "{},{}", block_number, new_block_hash)?;
@@ -129,32 +127,4 @@ fn main() -> anyhow::Result<()> {
     println!("\nResults are in `block_hashes.csv` and `block_hashes.bin`");
 
     Ok(())
-}
-
-/// Converts from [BlockHeader] to [BlockHeaderData]
-fn get_header_data(header: &BlockHeader) -> BlockHeaderData {
-    BlockHeaderData {
-        hash: header.hash,
-        parent_hash: header.parent_hash,
-        number: header.number,
-        timestamp: header.timestamp,
-        sequencer_address: header.sequencer_address,
-        state_commitment: header.state_commitment,
-        state_diff_commitment: header.state_diff_commitment,
-        transaction_commitment: header.transaction_commitment,
-        transaction_count: header.transaction_count as u64,
-        event_commitment: header.event_commitment,
-        event_count: header.event_count as u64,
-        state_diff_length: header.state_diff_length,
-        starknet_version: header.starknet_version,
-        starknet_version_str: header.starknet_version.to_string(),
-        eth_l1_gas_price: header.eth_l1_gas_price,
-        strk_l1_gas_price: header.strk_l1_gas_price,
-        eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-        strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-        eth_l2_gas_price: header.eth_l2_gas_price,
-        strk_l2_gas_price: header.strk_l2_gas_price,
-        receipt_commitment: header.receipt_commitment,
-        l1_da_mode: header.l1_da_mode,
-    }
 }

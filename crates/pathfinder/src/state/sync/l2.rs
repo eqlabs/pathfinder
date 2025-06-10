@@ -17,8 +17,8 @@ use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
+    header_from_gateway_block,
     verify_block_hash,
-    BlockHeaderData,
 };
 use crate::state::sync::class::{download_class, DownloadedClass};
 use crate::state::sync::SyncEvent;
@@ -1011,8 +1011,7 @@ fn verify_gateway_block_commitments_and_hash(
     chain: Chain,
     chain_id: ChainId,
 ) -> anyhow::Result<VerifyResult> {
-    let mut bhd =
-        BlockHeaderData::from_gateway_block(block, state_diff_commitment, state_diff_length)?;
+    let mut header = header_from_gateway_block(block, state_diff_commitment, state_diff_length)?;
 
     let computed_transaction_commitment =
         calculate_transaction_commitment(&block.transactions, block.starknet_version)?;
@@ -1021,9 +1020,9 @@ fn verify_gateway_block_commitments_and_hash(
     if block.transaction_commitment == TransactionCommitment::ZERO {
         // Update with the computed transaction commitment, verification is not
         // possible.
-        bhd.transaction_commitment = computed_transaction_commitment;
-    } else if computed_transaction_commitment != bhd.transaction_commitment {
-        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%bhd.transaction_commitment, "Transaction commitment mismatch");
+        header.transaction_commitment = computed_transaction_commitment;
+    } else if computed_transaction_commitment != header.transaction_commitment {
+        tracing::debug!(%computed_transaction_commitment, actual_transaction_commitment=%header.transaction_commitment, "Transaction commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
@@ -1043,7 +1042,7 @@ fn verify_gateway_block_commitments_and_hash(
     } else {
         // Update with the computed transaction commitment, verification is not
         // possible.
-        bhd.receipt_commitment = computed_receipt_commitment;
+        header.receipt_commitment = computed_receipt_commitment;
     }
 
     let events_with_tx_hashes = block
@@ -1059,13 +1058,13 @@ fn verify_gateway_block_commitments_and_hash(
     if block.event_commitment == EventCommitment::ZERO {
         // Update with the computed transaction commitment, verification is not
         // possible.
-        bhd.event_commitment = event_commitment;
+        header.event_commitment = event_commitment;
     } else if event_commitment != block.event_commitment {
         tracing::debug!(computed_event_commitment=%event_commitment, actual_event_commitment=%block.event_commitment, "Event commitment mismatch");
         return Ok(VerifyResult::Mismatch);
     }
 
-    Ok(match verify_block_hash(bhd, chain, chain_id)? {
+    Ok(match verify_block_hash(header, chain, chain_id)? {
         crate::state::block_hash::VerifyResult::Match => {
             // For pre-0.13.2 blocks we actually have to re-compute some commitments: after
             // we've verified that the block hash is correct we no longer need

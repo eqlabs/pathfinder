@@ -5,7 +5,6 @@ use pathfinder_common::{BlockNumber, Chain, ChainId, ReceiptCommitment};
 use pathfinder_lib::state::block_hash::{
     calculate_receipt_commitment,
     verify_block_hash,
-    BlockHeaderData,
     VerifyResult,
 };
 
@@ -72,17 +71,13 @@ fn main() -> anyhow::Result<()> {
             eprintln!("Receipt commitment mismatch at block number {block_number}");
         }
 
-        let bhd = BlockHeaderData::from_header(&header);
-
-        let result = verify_block_hash(bhd, chain, chain_id)?;
+        let block_header = header.hash;
+        let result = verify_block_hash(header, chain, chain_id)?;
 
         match result {
             VerifyResult::Match => {}
             VerifyResult::Mismatch => {
-                println!(
-                    "Block hash mismatch at block number {block_number} hash {}",
-                    header.hash
-                )
+                println!("Block hash mismatch at block number {block_number} hash {block_header}")
             }
         }
     }

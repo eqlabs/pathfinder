@@ -7,7 +7,7 @@ use p2p_proto::header;
 use pathfinder_common::prelude::*;
 use pathfinder_storage::Storage;
 
-use crate::state::block_hash::{BlockHeaderData, VerifyResult};
+use crate::state::block_hash::VerifyResult;
 use crate::sync::error::SyncError;
 use crate::sync::stream::{ProcessStage, SyncReceiver};
 
@@ -233,33 +233,7 @@ impl VerifyHashAndSignature {
             .as_ref()
             .and_then(|db| db.block_hash(header.number))
             .unwrap_or(header.hash);
-        let computed_hash = crate::state::block_hash::compute_final_hash(&BlockHeaderData {
-            hash: header.hash,
-            parent_hash: header.parent_hash,
-            number: header.number,
-            timestamp: header.timestamp,
-            sequencer_address: header.sequencer_address,
-            state_commitment: header.state_commitment,
-            transaction_commitment: header.transaction_commitment,
-            transaction_count: header
-                .transaction_count
-                .try_into()
-                .expect("ptr size is 64 bits"),
-            event_commitment: header.event_commitment,
-            event_count: header.event_count.try_into().expect("ptr size is 64 bits"),
-            state_diff_commitment: header.state_diff_commitment,
-            state_diff_length: header.state_diff_length,
-            starknet_version: header.starknet_version,
-            starknet_version_str: header.starknet_version.to_string(),
-            eth_l1_gas_price: header.eth_l1_gas_price,
-            strk_l1_gas_price: header.strk_l1_gas_price,
-            eth_l1_data_gas_price: header.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: header.strk_l1_data_gas_price,
-            eth_l2_gas_price: header.eth_l2_gas_price,
-            strk_l2_gas_price: header.strk_l2_gas_price,
-            receipt_commitment: header.receipt_commitment,
-            l1_da_mode: header.l1_da_mode,
-        });
+        let computed_hash = crate::state::block_hash::compute_final_hash(header);
         {
             if computed_hash == expected_hash {
                 true

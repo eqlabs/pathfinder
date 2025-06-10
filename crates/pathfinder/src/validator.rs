@@ -19,6 +19,7 @@ use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
     BlockHash,
+    BlockHeader,
     BlockNumber,
     ChainId,
     EntryPoint,
@@ -41,7 +42,6 @@ use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
-    BlockHeaderData,
 };
 
 pub fn new(
@@ -278,7 +278,7 @@ impl ValidatorTransactionBatchStage<'_> {
             calculate_event_commitment(&events_ref_by_txn, self.block_info.starknet_version)?;
 
         let state_update = StateUpdateData::from(state_diff);
-        let state_update_commitment = state_update.compute_state_diff_commitment();
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let mut db_conn = storage.connection().context("Create database connection")?;
         let db_txn = db_conn
@@ -295,46 +295,32 @@ impl ValidatorTransactionBatchStage<'_> {
 
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-        let bhd = BlockHeaderData {
+        let header = BlockHeader {
             // TODO(validator) we need a BlockHeader type, without the block hash
             hash: BlockHash::ZERO, // UNUSED
             parent_hash: workaround_parent_hash,
             number: self.block_info.number,
             timestamp: self.block_info.timestamp,
-            sequencer_address: self.block_info.sequencer_address,
-            state_commitment,
-            state_diff_commitment: state_update_commitment,
-            transaction_commitment,
-            transaction_count: self
-                .transactions
-                .len()
-                .try_into()
-                .expect("Txn count is small enough"),
-            event_commitment,
-            event_count: self
-                .events
-                .iter()
-                .flatten()
-                .count()
-                .try_into()
-                .expect("ptr size is 64bits"),
-            state_diff_length: state_update
-                .state_diff_length()
-                .try_into()
-                .expect("State diff length is small enough"),
-            starknet_version: self.block_info.starknet_version,
-            starknet_version_str: self.block_info.starknet_version.to_string(),
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
             strk_l1_gas_price: self.block_info.strk_l1_gas_price,
             eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
             strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
             eth_l2_gas_price: self.block_info.eth_l2_gas_price,
             strk_l2_gas_price: self.block_info.strk_l2_gas_price,
-            receipt_commitment,
+            sequencer_address: self.block_info.sequencer_address,
+            starknet_version: self.block_info.starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: self.transactions.len(),
+            event_count: self.events.iter().flatten().count(),
             l1_da_mode: self.block_info.l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length: state_update.state_diff_length(),
         };
 
-        let computed_block_hash = block_hash::compute_final_hash(&bhd);
+        let computed_block_hash = block_hash::compute_final_hash(&header);
         let expected_block_hash =
             BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
 
