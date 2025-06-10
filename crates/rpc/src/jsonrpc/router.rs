@@ -190,10 +190,16 @@ pub async fn rpc_handler(
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
     match ws {
-        Some(ws) => ws.on_upgrade(|ws| async move {
-            let (ws_tx, ws_rx) = split_ws(ws, state.version);
-            handle_json_rpc_socket(state, ws_tx, ws_rx);
-        }),
+        Some(ws) => {
+            if state.context.websocket.is_none() {
+                return StatusCode::FORBIDDEN.into_response();
+            }
+
+            ws.on_upgrade(|ws| async move {
+                let (ws_tx, ws_rx) = split_ws(ws, state.version);
+                handle_json_rpc_socket(state, ws_tx, ws_rx);
+            })
+        }
         None => {
             if method != http::Method::POST {
                 return StatusCode::METHOD_NOT_ALLOWED.into_response();
@@ -438,9 +444,11 @@ mod tests {
         use pretty_assertions_sorted::assert_eq;
         use rstest::rstest;
         use serde_json::json;
+        use tokio::sync::watch;
 
         use super::*;
         use crate::dto::DeserializeForVersion;
+        use crate::jsonrpc::websocket::WebsocketContext;
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
@@ -500,11 +508,17 @@ mod tests {
                 }
             }
 
+            let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
+            let ws_ctx = WebsocketContext::new(
+                NonZeroUsize::new(100).unwrap(),
+                NonZeroUsize::new(100).unwrap(),
+                pending_data_rx,
+            );
             RpcRouter::builder(RpcVersion::default())
                 .register("subtract", subtract)
                 .register("sum", sum)
                 .register("get_data", get_data)
-                .build(RpcContext::for_tests())
+                .build(RpcContext::for_tests().with_websockets(ws_ctx))
         }
 
         #[rstest]
@@ -668,7 +682,10 @@ mod tests {
     }
 
     mod panic_handling {
+        use tokio::sync::watch;
+
         use super::*;
+        use crate::jsonrpc::websocket::WebsocketContext;
 
         fn panic_router() -> RpcRouter {
             fn always_panic() -> &'static str {
@@ -679,10 +696,16 @@ mod tests {
                 "Success"
             }
 
+            let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
+            let ws_ctx = WebsocketContext::new(
+                NonZeroUsize::new(100).unwrap(),
+                NonZeroUsize::new(100).unwrap(),
+                pending_data_rx,
+            );
             RpcRouter::builder(Default::default())
                 .register("panic", always_panic)
                 .register("success", always_success)
-                .build(RpcContext::for_tests())
+                .build(RpcContext::for_tests().with_websockets(ws_ctx))
         }
 
         #[tokio::test]
