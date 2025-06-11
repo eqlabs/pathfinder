@@ -66,6 +66,7 @@ fn main() -> anyhow::Result<()> {
             .transaction()
             .context("Create database transaction")?;
         let (mut proposal, header) = create_proposal(&db_tx, block_number)?;
+        drop(db_tx);
 
         let Some(ProposalPart::ProposalInit(proposal_init)) = proposal.pop_front() else {
             panic!("Expected proposal init");
@@ -82,7 +83,8 @@ fn main() -> anyhow::Result<()> {
             .validate_block_info(
                 block_info,
                 header.starknet_version,
-                db_tx,
+                // db_tx,
+                db_conn,
                 header.eth_l2_gas_price.0,
                 header.strk_l1_gas_price.0,
                 header.strk_l1_data_gas_price.0,

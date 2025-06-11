@@ -20,6 +20,7 @@ use starknet_api::core::PatriciaKey;
 use super::error::CallError;
 use super::execution_state::ExecutionState;
 use super::felt::{IntoFelt, IntoStarkFelt};
+use crate::state_reader::RcStorageAdapter;
 
 pub fn call(
     db_tx: pathfinder_storage::Transaction<'_>,
@@ -28,7 +29,8 @@ pub fn call(
     entry_point_selector: EntryPoint,
     calldata: Vec<CallParam>,
 ) -> Result<Vec<CallResultValue>, CallError> {
-    let (mut state, block_context) = execution_state.starknet_state(db_tx)?;
+    let storage_adapter = RcStorageAdapter::new(db_tx);
+    let (mut state, block_context) = execution_state.starknet_state(storage_adapter)?;
 
     let starknet_api_contract_address = starknet_api::core::ContractAddress(PatriciaKey::try_from(
         contract_address.0.into_starkfelt(),

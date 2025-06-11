@@ -25,5 +25,6 @@ serde_json = { workspace = true }
 starknet-types-core = { workspace = true }
 starknet_api = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 util = { path = "../util" }

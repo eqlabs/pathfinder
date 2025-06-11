@@ -17,6 +17,7 @@ use super::execution_state::ExecutionState;
 use super::types::{TransactionSimulation, TransactionTrace};
 use crate::error_stack::ErrorStack;
 use crate::execution_state::create_executor;
+use crate::state_reader::RcStorageAdapter;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -100,7 +101,7 @@ pub fn simulate(
     epsilon: Percentage,
 ) -> Result<Vec<TransactionSimulation>, TransactionExecutionError> {
     let block_number = execution_state.block_info.number;
-    let mut tx_executor = create_executor(db_tx, execution_state)?;
+    let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
 
     transactions
         .into_iter()
@@ -169,7 +170,7 @@ pub fn trace(
     block_hash: BlockHash,
     transactions: Vec<Transaction>,
 ) -> Result<Vec<(TransactionHash, TransactionTrace)>, TransactionExecutionError> {
-    let mut tx_executor = create_executor(db_tx, execution_state)?;
+    let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
 
     let sender = {
         let mut cache = cache.0.lock().unwrap();

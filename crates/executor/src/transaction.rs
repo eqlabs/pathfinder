@@ -19,6 +19,7 @@ use util::percentage::Percentage;
 
 use crate::error::TransactionExecutorError;
 use crate::execution_state::{PathfinderExecutionState, PathfinderExecutor};
+use crate::state_reader::RcStorageAdapter;
 use crate::TransactionExecutionError;
 
 pub enum ExecutionBehaviorOnRevert {
@@ -78,7 +79,7 @@ pub(crate) fn gas_vector_computation_mode(transaction: &Transaction) -> GasVecto
 /// accounting or not.
 pub(crate) fn l2_gas_accounting_enabled(
     tx: &Transaction,
-    state: &PathfinderExecutionState<'_>,
+    state: &PathfinderExecutionState<RcStorageAdapter<'_>>,
     block_context: &blockifier::context::BlockContext,
     gas_vector_computation_mode: &GasVectorComputationMode,
 ) -> blockifier::state::state_api::StateResult<bool> {
@@ -145,7 +146,7 @@ const L2_GAS_SEARCH_MARGIN: GasAmount = GasAmount(1_000_000);
 pub(crate) fn find_l2_gas_limit_and_execute_transaction(
     tx: &mut Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor<'_>,
+    tx_executor: &mut PathfinderExecutor<RcStorageAdapter<'_>>,
     revert_behavior: ExecutionBehaviorOnRevert,
     epsilon: Percentage,
 ) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
@@ -296,7 +297,7 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
 pub(crate) fn execute_transaction(
     tx: &Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor<'_>,
+    tx_executor: &mut PathfinderExecutor<RcStorageAdapter<'_>>,
     revert_behavior: ExecutionBehaviorOnRevert,
 ) -> Result<(TransactionExecutionOutput, GasVector), TransactionExecutionError> {
     match tx_executor.execute(tx) {
@@ -353,10 +354,13 @@ fn search_done(lower_bound: GasAmount, upper_bound: GasAmount, search_margin: Ga
 fn simulate_transaction<'tx>(
     tx: &Transaction,
     tx_index: usize,
-    tx_executor: &mut PathfinderExecutor<'tx>,
+    tx_executor: &mut PathfinderExecutor<RcStorageAdapter<'tx>>,
     revert_behavior: &ExecutionBehaviorOnRevert,
 ) -> Result<
-    (TransactionExecutionOutput, PathfinderExecutionState<'tx>),
+    (
+        TransactionExecutionOutput,
+        PathfinderExecutionState<RcStorageAdapter<'tx>>,
+    ),
     TransactionSimulationError<'tx>,
 > {
     let initial_state = tx_executor
@@ -395,7 +399,7 @@ fn simulate_transaction<'tx>(
 
 #[allow(clippy::large_enum_variant)]
 enum TransactionSimulationError<'tx> {
-    OutOfGas(PathfinderExecutionState<'tx>),
+    OutOfGas(PathfinderExecutionState<RcStorageAdapter<'tx>>),
     ExecutionError(TransactionExecutionError),
 }
 
@@ -579,7 +583,7 @@ fn get_execution_flags(tx: &Transaction) -> ExecutionFlags {
 fn get_max_l2_gas_amount_covered_by_balance(
     tx: &Transaction,
     block_context: &blockifier::context::BlockContext,
-    state: &mut PathfinderExecutionState<'_>,
+    state: &mut PathfinderExecutionState<RcStorageAdapter<'_>>,
 ) -> Result<GasAmount, TransactionExecutionError> {
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let resource_bounds_without_l2_gas = AllResourceBounds {

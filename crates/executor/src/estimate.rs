@@ -11,6 +11,7 @@ use super::error::TransactionExecutionError;
 use super::execution_state::ExecutionState;
 use super::types::FeeEstimate;
 use crate::execution_state::create_executor;
+use crate::state_reader::RcStorageAdapter;
 use crate::transaction::{
     execute_transaction,
     find_l2_gas_limit_and_execute_transaction,
@@ -26,7 +27,7 @@ pub fn estimate(
     epsilon: Percentage,
 ) -> Result<Vec<FeeEstimate>, TransactionExecutionError> {
     let block_number = execution_state.block_info.number;
-    let mut tx_executor = create_executor(db_tx, execution_state)?;
+    let mut tx_executor = create_executor(RcStorageAdapter::new(db_tx), execution_state)?;
 
     transactions
         .into_iter()

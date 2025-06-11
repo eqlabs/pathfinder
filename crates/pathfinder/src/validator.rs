@@ -66,13 +66,13 @@ impl<'a> ValidatorBlockInfoStage {
         self,
         block_info: BlockInfo,
         workaround_starknet_version: StarknetVersion,
-        db_tx: pathfinder_storage::Transaction<'a>,
-        // TODO(validator) eth_to_fri_rate is not suitable for current L2 data where there are 3
-        // pairs of gas prices in both wei & fri and they give 2 different ethfri rates
+        db_conn: pathfinder_storage::Connection,
+        // TODO eth_to_fri_rate is not suitable for current L2 data where there are 3 pairs of gas
+        // prices in both wei & fri and they give 2 different ethfri rates
         workaround_l2_gas_price_wei: u128,
         workaround_l1_gas_price_fri: u128,
         workaround_l1_data_gas_price_fri: u128,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage<'a>> {
+    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
             height = %block_info.height,
@@ -132,7 +132,7 @@ impl<'a> ValidatorBlockInfoStage {
             block_info,
             ETH_FEE_TOKEN_ADDRESS,
             STRK_FEE_TOKEN_ADDRESS,
-            db_tx,
+            db_conn,
         )
         .context("Creating BlockExecutor")?;
 
@@ -147,16 +147,17 @@ impl<'a> ValidatorBlockInfoStage {
     }
 }
 
-pub struct ValidatorTransactionBatchStage<'a> {
+// pub struct ValidatorTransactionBatchStage<'a> {
+pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
-    block_executor: BlockExecutor<'a>,
+    block_executor: BlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
 }
 
-impl ValidatorTransactionBatchStage<'_> {
+impl ValidatorTransactionBatchStage {
     pub fn execute_transactions(
         &mut self,
         transactions: Vec<p2p_proto::consensus::Transaction>,
