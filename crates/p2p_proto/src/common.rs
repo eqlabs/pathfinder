@@ -9,7 +9,7 @@ use rand::Rng;
 
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, std::hash::Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Dummy, std::hash::Hash, Default)]
 pub struct Hash(pub Felt);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, std::hash::Hash, Default)]
@@ -27,7 +27,7 @@ pub struct Hashes {
     pub items: Vec<Hash>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Dummy, Default)]
 pub struct Address(pub Felt);
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]

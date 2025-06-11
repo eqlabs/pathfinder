@@ -1,0 +1,26 @@
+[package]
+name = "pathfinder-consensus"
+description = "Pathfinder Consensus"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+rust-version = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+ed25519-consensus = "2.1.0"
+malachite-consensus = { package = "informalsystems-malachitebft-core-consensus", version = "0.2" }
+malachite-metrics = { package = "informalsystems-malachitebft-metrics", version = "0.2" }
+malachite-signing-ed25519 = { package = "informalsystems-malachitebft-signing-ed25519", version = "0.2" }
+malachite-types = { package = "informalsystems-malachitebft-core-types", version = "0.2" }
+p2p_proto = { path = "../p2p_proto" }
+pathfinder-common = { version = "0.17.0-beta.1", path = "../common" }
+pathfinder-crypto = { version = "0.17.0-beta.1", path = "../crypto" }
+rand = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "test-util"] }

@@ -89,7 +89,7 @@ pub fn create_outgoing_proposal_message(
         });
 
         // If this is the last message, send the Fin signal
-        if matches!(proposal, ProposalPart::ProposalFin(_)) {
+        if matches!(proposal, ProposalPart::Fin(_)) {
             let message_id = state.last_sent_message_id.unwrap();
 
             // Track the Fin message
@@ -354,7 +354,7 @@ mod tests {
                 proposal_parts.push(received_proposal.clone());
 
                 // If we received a Fin message, verify the complete proposal
-                if let ProposalPart::ProposalFin(_) = received_proposal {
+                if let ProposalPart::Fin(_) = received_proposal {
                     // Find the matching proposal by height/round
                     let (_, expected_stream) = proposals
                         .iter()
@@ -429,6 +429,7 @@ mod tests {
                 round: 1,
                 block_hash: Some(Hash(Felt::from_hex_str("0x123").unwrap())),
                 voter: Address(Felt::from_hex_str("0x456").unwrap()),
+                extension: None,
             },
             Vote {
                 vote_type: VoteType::Precommit,
@@ -436,6 +437,7 @@ mod tests {
                 round: 1,
                 block_hash: Some(Hash(Felt::from_hex_str("0x789").unwrap())),
                 voter: Address(Felt::from_hex_str("0xabc").unwrap()),
+                extension: None,
             },
             Vote {
                 vote_type: VoteType::Prevote,
@@ -443,6 +445,7 @@ mod tests {
                 round: 2,
                 block_hash: None, // NIL vote
                 voter: Address(Felt::from_hex_str("0xdef").unwrap()),
+                extension: None,
             },
         ];
 
@@ -502,7 +505,7 @@ mod tests {
         let mut stream = Vec::new();
 
         // ProposalInit
-        stream.push(ProposalPart::ProposalInit(ProposalInit {
+        stream.push(ProposalPart::Init(ProposalInit {
             height,
             round,
             proposer: p2p_proto::common::Address(Felt::from_hex_str("0x123").unwrap()),
@@ -539,7 +542,7 @@ mod tests {
         }
 
         // ProposalFin
-        stream.push(ProposalPart::ProposalFin(ProposalFin {
+        stream.push(ProposalPart::Fin(ProposalFin {
             proposal_commitment: p2p_proto::common::Hash(Felt::from_hex_str("0x69420abc").unwrap()),
         }));
 
