@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.17.0-beta.2] - 2025-06-04
 
+### Added
+
+- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://eqlabs.github.io/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
+
+  - Accepted values are:
+
+    - "unlimited" - All historical messages will be streamed.
+    - "N" - An integer specifying the number of historical messages to be streamed.
+
+  - This option defaults to N = 1024 if not specified.
+
 ### Fixed
 
 - `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.

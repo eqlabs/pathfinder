@@ -415,6 +415,7 @@ impl FinalityStatus {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -428,8 +429,9 @@ mod tests {
     use starknet_gateway_types::reply::{Block, PendingBlock};
     use tokio::sync::mpsc;
 
-    use crate::context::RpcContext;
+    use crate::context::{RpcContext, WebsocketContext};
     use crate::dto::{SerializeForVersion, Serializer};
+    use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::{v08, PendingData, Reorg, RpcVersion, SubscriptionId};
 
@@ -1125,7 +1127,13 @@ mod tests {
         let (pending_data_sender, pending_data) = tokio::sync::watch::channel(Default::default());
         let ctx = RpcContext::for_tests()
             .with_storage(storage)
-            .with_pending_data(pending_data);
+            .with_pending_data(pending_data.clone())
+            .with_websockets(WebsocketContext::new(
+                WebsocketHistory::Unlimited,
+                NonZeroUsize::new(1024).unwrap(),
+                NonZeroUsize::new(1024).unwrap(),
+                pending_data,
+            ));
         (v08::register_routes().build(ctx), pending_data_sender)
     }
 }

@@ -4,7 +4,7 @@ mod dto;
 mod error;
 mod executor;
 mod felt;
-mod jsonrpc;
+pub mod jsonrpc;
 pub(crate) mod method;
 pub mod middleware;
 mod pathfinder;
@@ -1085,6 +1085,8 @@ mod tests {
         #[case] exclude: &[&'static str],
         #[case] api: Api,
     ) {
+        use crate::jsonrpc::websocket::WebsocketHistory;
+
         let specification = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")
@@ -1116,6 +1118,7 @@ mod tests {
             let (_, rx_pending) = tokio::sync::watch::channel(Default::default());
 
             context = context.with_websockets(context::WebsocketContext::new(
+                WebsocketHistory::Unlimited,
                 std::num::NonZeroUsize::new(10).unwrap(),
                 std::num::NonZeroUsize::new(10).unwrap(),
                 rx_pending,

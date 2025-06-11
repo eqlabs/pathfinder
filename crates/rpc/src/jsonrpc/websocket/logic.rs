@@ -40,21 +40,30 @@ use crate::{BlockHeader, PendingData, RpcVersion};
 const SUBSCRIBE_METHOD: &str = "pathfinder_subscribe";
 const UNSUBSCRIBE_METHOD: &str = "pathfinder_unsubscribe";
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WebsocketHistory {
+    Limited(u64),
+    Unlimited,
+}
+
 #[derive(Clone)]
 pub struct WebsocketContext {
-    socket_buffer_capacity: NonZeroUsize,
     pub broadcasters: TopicBroadcasters,
+    pub max_history: WebsocketHistory,
+    socket_buffer_capacity: NonZeroUsize,
 }
 
 impl WebsocketContext {
     pub fn new(
+        max_history: WebsocketHistory,
         socket_buffer_capacity: NonZeroUsize,
         topic_sender_capacity: NonZeroUsize,
         pending_data: watch::Receiver<PendingData>,
     ) -> Self {
         Self {
-            socket_buffer_capacity,
             broadcasters: TopicBroadcasters::new(topic_sender_capacity, pending_data),
+            max_history,
+            socket_buffer_capacity,
         }
     }
 }
@@ -1630,6 +1639,7 @@ mod tests {
                 state_update: Default::default(),
             });
             let context = RpcContext::for_tests().with_websockets(WebsocketContext::new(
+                WebsocketHistory::Unlimited,
                 100.try_into().unwrap(),
                 100.try_into().unwrap(),
                 pending_data_rx.clone(),

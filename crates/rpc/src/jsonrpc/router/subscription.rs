@@ -14,6 +14,7 @@ use super::{run_concurrently, RpcRouter};
 use crate::context::RpcContext;
 use crate::dto::{DeserializeForVersion, SerializeForVersion};
 use crate::error::ApplicationError;
+use crate::jsonrpc::websocket::WebsocketHistory;
 use crate::jsonrpc::{RpcError, RpcRequest, RpcResponse};
 use crate::types::request::SubscriptionBlockId;
 use crate::{RpcVersion, SubscriptionId};
@@ -197,8 +198,15 @@ where
             _phantom: Default::default(),
         };
 
-        let starting_block = T::starting_block(&params);
+        let max_history = router
+            .context
+            .websocket
+            .as_ref()
+            .map(|ws_ctx| ws_ctx.max_history)
+            .expect("Subscription methods should not be called when websockets are disabled");
         let storage = router.context.storage.clone();
+        let starting_block = T::starting_block(&params);
+
         let mut current_block = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
@@ -220,6 +228,22 @@ where
 
             db.block_number(starting_block)
                 .map_err(RpcError::InternalError)?
+                .map(|starting_block| -> Result<_, RpcError> {
+                    match max_history {
+                        WebsocketHistory::Limited(limit) => {
+                            let latest = db
+                                .block_number(pathfinder_storage::BlockId::Latest)
+                                .map_err(RpcError::InternalError)?
+                                .unwrap_or(BlockNumber::GENESIS);
+                            let starting_block_limited = latest.saturating_sub(limit);
+
+                            // Pick the one closer to the latest block.
+                            Ok(std::cmp::max(starting_block, starting_block_limited))
+                        }
+                        WebsocketHistory::Unlimited => Ok(starting_block),
+                    }
+                })
+                .transpose()?
                 .ok_or_else(|| ApplicationError::BlockNotFound.into())
         })
         .await
@@ -855,6 +879,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
+
     use axum::async_trait;
     use axum::extract::ws::Message;
     use pathfinder_common::{BlockHash, BlockHeader, BlockNumber};
@@ -863,8 +889,9 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::RpcSubscriptionEndpoint;
-    use crate::context::RpcContext;
+    use crate::context::{RpcContext, WebsocketContext};
     use crate::dto::DeserializeForVersion;
+    use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{
         handle_json_rpc_socket,
         CatchUp,
@@ -908,7 +935,7 @@ mod tests {
             }
         }
 
-        let router = setup(5, ErrorFromCatchUp).await;
+        let router = setup(5, WebsocketHistory::Unlimited, ErrorFromCatchUp).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -985,7 +1012,7 @@ mod tests {
             }
         }
 
-        let router = setup(5, ErrorFromSubscribe).await;
+        let router = setup(5, WebsocketHistory::Unlimited, ErrorFromSubscribe).await;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -1029,6 +1056,205 @@ mod tests {
         )
     }
 
+    #[tokio::test]
+    async fn test_max_history_unlimited() {
+        struct SubscribeUnlimitedHistory;
+
+        #[async_trait]
+        impl RpcSubscriptionFlow for SubscribeUnlimitedHistory {
+            type Params = Params;
+            type Notification = BlockNumber;
+
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
+            }
+
+            async fn catch_up(
+                _state: &RpcContext,
+                _params: &Self::Params,
+                from: BlockNumber,
+                to: BlockNumber,
+            ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
+                let messages: Vec<_> = (from.get()..=to.get())
+                    .map(BlockNumber::new_or_panic)
+                    .map(|block| SubscriptionMessage {
+                        notification: block,
+                        block_number: block,
+                        subscription_name: "pathfinder_unlimitedMaxHistory",
+                    })
+                    .collect();
+                Ok(CatchUp {
+                    messages,
+                    // Stop the catch-up after one batch.
+                    last_block: Some(to.checked_sub(1).unwrap()),
+                })
+            }
+
+            async fn subscribe(
+                _state: RpcContext,
+                _params: Self::Params,
+                tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+            ) -> Result<(), crate::jsonrpc::RpcError> {
+                drop(tx);
+                Ok(())
+            }
+        }
+
+        let router = setup(
+            // We'll send one catch-up batch and then stop sending.
+            SubscribeUnlimitedHistory::CATCH_UP_BATCH_SIZE,
+            WebsocketHistory::Unlimited,
+            SubscribeUnlimitedHistory,
+        )
+        .await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "test",
+                    "params": {}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id: u64 = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let msg = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match msg {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        // Unlimited max history so messages start from GENESIS.
+        const FIRST_BLOCK: u64 = 0;
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_unlimitedMaxHistory",
+                "params": {
+                    "result": FIRST_BLOCK,
+                    "subscription_id": subscription_id.to_string()
+                }
+            })
+        )
+    }
+
+    #[tokio::test]
+    async fn test_max_history_limited() {
+        struct SubscribeLimitedHistory;
+
+        #[async_trait]
+        impl RpcSubscriptionFlow for SubscribeLimitedHistory {
+            type Params = Params;
+            type Notification = BlockNumber;
+
+            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
+                SubscriptionBlockId::Number(BlockNumber::GENESIS)
+            }
+
+            async fn catch_up(
+                _state: &RpcContext,
+                _params: &Self::Params,
+                from: BlockNumber,
+                to: BlockNumber,
+            ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
+                eprintln!("limited history catch-up: {from} to {to}");
+                let messages: Vec<_> = (from.get()..=to.get())
+                    .map(BlockNumber::new_or_panic)
+                    .map(|block| SubscriptionMessage {
+                        notification: block,
+                        block_number: block,
+                        subscription_name: "pathfinder_limitedMaxHistory",
+                    })
+                    .collect();
+                Ok(CatchUp {
+                    messages,
+                    // Stop the catch-up after one batch.
+                    last_block: Some(to.checked_sub(1).unwrap()),
+                })
+            }
+
+            async fn subscribe(
+                _state: RpcContext,
+                _params: Self::Params,
+                tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+            ) -> Result<(), crate::jsonrpc::RpcError> {
+                drop(tx);
+                Ok(())
+            }
+        }
+
+        const WEBSOCKET_HISTORY_LIMIT: u64 = 10;
+
+        let router = setup(
+            // We'll send one catch-up batch and then stop sending.
+            SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE,
+            WebsocketHistory::Limited(WEBSOCKET_HISTORY_LIMIT),
+            SubscribeLimitedHistory,
+        )
+        .await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "test",
+                    "params": {}
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id: u64 = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let msg = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match msg {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        // Limited max history so messages start from:
+        // CATCH_UP_BATCH_SIZE (we inserted that many blocks)
+        //  - 1 (block numbers are zero based)
+        //  - WEBSOCKET_HISTORY_LIMIT
+        const FIRST_BLOCK: u64 =
+            SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE - 1 - WEBSOCKET_HISTORY_LIMIT;
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "pathfinder_limitedMaxHistory",
+                "params": {
+                    "result": FIRST_BLOCK,
+                    "subscription_id": subscription_id.to_string()
+                }
+            })
+        )
+    }
+
     #[derive(Debug, Clone)]
     struct Params;
 
@@ -1038,21 +1264,38 @@ mod tests {
         }
     }
 
-    async fn setup(num_blocks: u64, endpoint: impl RpcSubscriptionEndpoint + 'static) -> RpcRouter {
+    async fn setup(
+        num_blocks: u64,
+        webscoket_history: WebsocketHistory,
+        endpoint: impl RpcSubscriptionEndpoint + 'static,
+    ) -> RpcRouter {
         let storage = StorageBuilder::in_memory().unwrap();
         tokio::task::spawn_blocking({
             let storage = storage.clone();
             move || {
                 let mut conn = storage.connection().unwrap();
                 let db = conn.transaction().unwrap();
-                for i in 0..num_blocks {
+
+                let genesis_hash = BlockHash(Felt::from_u64(0));
+                db.insert_block_header(&BlockHeader {
+                    hash: genesis_hash,
+                    number: BlockNumber::GENESIS,
+                    parent_hash: BlockHash::ZERO,
+                    ..Default::default()
+                })
+                .unwrap();
+
+                let mut parent_hash = genesis_hash;
+                for i in 1..num_blocks {
+                    let hash = BlockHash(Felt::from_u64(i));
                     let header = BlockHeader {
-                        hash: BlockHash(Felt::from_u64(i)),
+                        hash,
                         number: BlockNumber::new_or_panic(i),
-                        parent_hash: BlockHash::ZERO,
+                        parent_hash,
                         ..Default::default()
                     };
                     db.insert_block_header(&header).unwrap();
+                    parent_hash = hash;
                 }
                 db.commit().unwrap();
             }
@@ -1062,8 +1305,15 @@ mod tests {
         let (_, pending_data) = tokio::sync::watch::channel(Default::default());
         let notifications = Notifications::default();
         let ctx = RpcContext::for_tests()
+            .with_storage(storage)
             .with_notifications(notifications)
-            .with_pending_data(pending_data);
+            .with_pending_data(pending_data.clone())
+            .with_websockets(WebsocketContext::new(
+                webscoket_history,
+                NonZeroUsize::new(1024).unwrap(),
+                NonZeroUsize::new(1024).unwrap(),
+                pending_data,
+            ));
 
         RpcRouter::builder(crate::RpcVersion::V08)
             .register("test", endpoint)
