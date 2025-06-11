@@ -448,7 +448,7 @@ mod tests {
 
         use super::*;
         use crate::dto::DeserializeForVersion;
-        use crate::jsonrpc::websocket::WebsocketContext;
+        use crate::jsonrpc::websocket::{WebsocketContext, WebsocketHistory};
 
         fn spec_router() -> RpcRouter {
             crate::error::generate_rpc_error_subset!(ExampleError:);
@@ -510,6 +510,7 @@ mod tests {
 
             let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
             let ws_ctx = WebsocketContext::new(
+                WebsocketHistory::Unlimited,
                 NonZeroUsize::new(100).unwrap(),
                 NonZeroUsize::new(100).unwrap(),
                 pending_data_rx,
@@ -685,7 +686,7 @@ mod tests {
         use tokio::sync::watch;
 
         use super::*;
-        use crate::jsonrpc::websocket::WebsocketContext;
+        use crate::jsonrpc::websocket::{WebsocketContext, WebsocketHistory};
 
         fn panic_router() -> RpcRouter {
             fn always_panic() -> &'static str {
@@ -698,6 +699,7 @@ mod tests {
 
             let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
             let ws_ctx = WebsocketContext::new(
+                WebsocketHistory::Unlimited,
                 NonZeroUsize::new(100).unwrap(),
                 NonZeroUsize::new(100).unwrap(),
                 pending_data_rx,
