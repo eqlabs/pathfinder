@@ -235,10 +235,25 @@ where
                                 .block_number(pathfinder_storage::BlockId::Latest)
                                 .map_err(RpcError::InternalError)?
                                 .unwrap_or(BlockNumber::GENESIS);
-                            let starting_block_limited = latest.saturating_sub(limit);
+                            // + 1 because `starting_block` also counts as one block.
+                            let requested_history = (latest + 1)
+                                .checked_sub(starting_block.get())
+                                .map(|requested| requested.get())
+                                .expect("Starting block should be behind latest");
 
-                            // Pick the one closer to the latest block.
-                            Ok(std::cmp::max(starting_block, starting_block_limited))
+                            if requested_history > limit {
+                                let requested_history = usize::try_from(requested_history)
+                                    .expect("Requested history conversion error");
+                                let limit =
+                                    usize::try_from(limit).expect("Max history conversion error");
+                                return Err(ApplicationError::TooManyBlocksBack {
+                                    limit,
+                                    requested: requested_history,
+                                }
+                                .into());
+                            }
+
+                            Ok(starting_block)
                         }
                         WebsocketHistory::Unlimited => Ok(starting_block),
                     }
@@ -890,7 +905,8 @@ mod tests {
 
     use super::RpcSubscriptionEndpoint;
     use crate::context::{RpcContext, WebsocketContext};
-    use crate::dto::DeserializeForVersion;
+    use crate::dto::{DeserializeForVersion, SerializeForVersion};
+    use crate::error::ApplicationError;
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{
         handle_json_rpc_socket,
@@ -1153,16 +1169,146 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_max_history_limited() {
+    async fn test_max_history_limited_error() {
         struct SubscribeLimitedHistory;
+        #[derive(Debug, Clone)]
+        struct ParamsLimitedHistory {
+            from_block: u64,
+        }
+
+        impl DeserializeForVersion for ParamsLimitedHistory {
+            fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                value.deserialize_map(|value| {
+                    Ok(Self {
+                        from_block: value.deserialize("from_block")?,
+                    })
+                })
+            }
+        }
 
         #[async_trait]
         impl RpcSubscriptionFlow for SubscribeLimitedHistory {
-            type Params = Params;
+            type Params = ParamsLimitedHistory;
+            type Notification = serde_json::Value;
+
+            fn starting_block(params: &Self::Params) -> SubscriptionBlockId {
+                let starting_block = BlockNumber::new_or_panic(params.from_block);
+                SubscriptionBlockId::Number(starting_block)
+            }
+
+            async fn catch_up(
+                _state: &RpcContext,
+                _params: &Self::Params,
+                _from: BlockNumber,
+                _to: BlockNumber,
+            ) -> Result<CatchUp<Self::Notification>, crate::jsonrpc::RpcError> {
+                Ok(Default::default())
+            }
+
+            async fn subscribe(
+                _state: RpcContext,
+                _params: Self::Params,
+                tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
+            ) -> Result<(), crate::jsonrpc::RpcError> {
+                drop(tx);
+                Ok(())
+            }
+        }
+
+        const WEBSOCKET_HISTORY_LIMIT: u64 = 10;
+        // We'll send one catch-up batch and then stop sending.
+        const NUM_BLOCKS: u64 = SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE;
+
+        let router = setup(
+            NUM_BLOCKS,
+            WebsocketHistory::Limited(WEBSOCKET_HISTORY_LIMIT),
+            SubscribeLimitedHistory,
+        )
+        .await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        // Request one block more than the allowed limit.
+        let bad_starting_block = NUM_BLOCKS - WEBSOCKET_HISTORY_LIMIT - 1;
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "test",
+                    "params": {
+                        "from_block": bad_starting_block,
+                    }
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let error: serde_json::Value = match res {
+            Message::Text(json) => {
+                let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["error"].take()
+            }
+            _ => panic!("Expected text message"),
+        };
+        let expected_error = ApplicationError::TooManyBlocksBack {
+            limit: WEBSOCKET_HISTORY_LIMIT as usize,
+            requested: WEBSOCKET_HISTORY_LIMIT as usize + 1,
+        };
+        let error_code = error["code"].as_i64().unwrap() as i32;
+        let error_message = error["message"].as_str().unwrap();
+        let requested_history = error["data"]["requested"].as_u64().unwrap() as usize;
+        assert_eq!(error_code, expected_error.code(router.version));
+        assert_eq!(
+            error_message,
+            format!("Cannot go back more than {WEBSOCKET_HISTORY_LIMIT} blocks")
+        );
+        assert_eq!(requested_history, WEBSOCKET_HISTORY_LIMIT as usize + 1);
+    }
+
+    #[tokio::test]
+    async fn test_max_history_limited_ok() {
+        struct SubscribeLimitedHistory;
+        #[derive(Debug, Clone)]
+        struct ParamsLimitedHistory {
+            from_block: u64,
+        }
+        type SubscriptionMessage_ = SubscriptionMessage<BlockNumber>;
+
+        impl SerializeForVersion for SubscriptionMessage_ {
+            fn serialize(
+                &self,
+                serializer: crate::dto::Serializer,
+            ) -> Result<crate::dto::Ok, crate::dto::Error> {
+                let mut serializer = serializer.serialize_struct()?;
+                serializer.serialize_field("notification", &self.notification)?;
+                serializer.serialize_field("block_number", &self.block_number)?;
+                serializer.serialize_field("subscription_name", &self.subscription_name)?;
+                serializer.end()
+            }
+        }
+
+        impl DeserializeForVersion for ParamsLimitedHistory {
+            fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+                value.deserialize_map(|value| {
+                    Ok(Self {
+                        from_block: value.deserialize("from_block")?,
+                    })
+                })
+            }
+        }
+
+        #[async_trait]
+        impl RpcSubscriptionFlow for SubscribeLimitedHistory {
+            type Params = ParamsLimitedHistory;
             type Notification = BlockNumber;
 
-            fn starting_block(_params: &Self::Params) -> SubscriptionBlockId {
-                SubscriptionBlockId::Number(BlockNumber::GENESIS)
+            fn starting_block(params: &Self::Params) -> SubscriptionBlockId {
+                let starting_block = BlockNumber::new_or_panic(params.from_block);
+                SubscriptionBlockId::Number(starting_block)
             }
 
             async fn catch_up(
@@ -1176,7 +1322,7 @@ mod tests {
                     .map(|block| SubscriptionMessage {
                         notification: block,
                         block_number: block,
-                        subscription_name: "pathfinder_limitedMaxHistory",
+                        subscription_name: "pathfinder_limitedMaxHistoryOk",
                     })
                     .collect();
                 Ok(CatchUp {
@@ -1197,10 +1343,11 @@ mod tests {
         }
 
         const WEBSOCKET_HISTORY_LIMIT: u64 = 10;
+        // We'll send one catch-up batch and then stop sending.
+        const NUM_BLOCKS: u64 = SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE;
 
         let router = setup(
-            // We'll send one catch-up batch and then stop sending.
-            SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE,
+            NUM_BLOCKS,
             WebsocketHistory::Limited(WEBSOCKET_HISTORY_LIMIT),
             SubscribeLimitedHistory,
         )
@@ -1208,13 +1355,17 @@ mod tests {
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        // Request the minimum valid starting block.
+        let valid_starting_block = NUM_BLOCKS - WEBSOCKET_HISTORY_LIMIT;
         receiver_tx
             .send(Ok(Message::Text(
                 serde_json::json!({
                     "jsonrpc": "2.0",
                     "id": 1,
                     "method": "test",
-                    "params": {}
+                    "params": {
+                        "from_block": valid_starting_block,
+                    }
                 })
                 .to_string(),
             )))
@@ -1236,16 +1387,12 @@ mod tests {
             _ => panic!("Expected text message"),
         };
         // Limited max history so messages start from:
-        // CATCH_UP_BATCH_SIZE (we inserted that many blocks)
-        //  - 1 (block numbers are zero based)
-        //  - WEBSOCKET_HISTORY_LIMIT
-        const FIRST_BLOCK: u64 =
-            SubscribeLimitedHistory::CATCH_UP_BATCH_SIZE - 1 - WEBSOCKET_HISTORY_LIMIT;
+        const FIRST_BLOCK: u64 = NUM_BLOCKS - WEBSOCKET_HISTORY_LIMIT;
         assert_eq!(
             json,
             serde_json::json!({
                 "jsonrpc": "2.0",
-                "method": "pathfinder_limitedMaxHistory",
+                "method": "pathfinder_limitedMaxHistoryOk",
                 "params": {
                     "result": FIRST_BLOCK,
                     "subscription_id": subscription_id.to_string()
