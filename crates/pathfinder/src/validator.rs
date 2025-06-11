@@ -296,7 +296,8 @@ impl ValidatorTransactionBatchStage<'_> {
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
         let header = BlockHeader {
-            // TODO(validator) we need a BlockHeader type, without the block hash
+            // TODO(validator) depending on what the proposal commitment is we could need a
+            // BlockHeader type without the block hash
             hash: BlockHash::ZERO, // UNUSED
             parent_hash: workaround_parent_hash,
             number: self.block_info.number,

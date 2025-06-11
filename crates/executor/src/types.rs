@@ -36,18 +36,17 @@ use crate::IntoStarkFelt as _;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
 
-// TODO(validator) should probably go to pathfinder_common
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Receipt {
     pub actual_fee: Fee,
-    // TODO(validator) currently there's a mismatch between reexecution and historical receipts
+    // TODO(validator) currently there's a mismatch between reexecution and historical receipts but
+    // it does not impact the commitment
     pub execution_resources: pathfinder_common::receipt::ExecutionResources,
     pub l2_to_l1_messages: Vec<pathfinder_common::receipt::L2ToL1Message>,
     pub execution_status: pathfinder_common::receipt::ExecutionStatus,
     pub transaction_index: TransactionIndex,
 }
 
-// TODO(validator) probably much better in pathfinder_common
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct BlockInfo {
     pub number: BlockNumber,
