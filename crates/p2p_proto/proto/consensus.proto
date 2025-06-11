@@ -31,6 +31,7 @@ message Vote {
     // This is optional since a vote can be NIL.
     optional starknet.common.Hash block_hash = 5;
     starknet.common.Address       voter      = 6;
+    optional bytes                extension  = 7;
 }
 
 message StreamMessage {
