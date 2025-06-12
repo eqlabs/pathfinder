@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ::p2p::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
-use config::BlockchainHistory;
+use config::{BlockchainHistory, WebsocketHistory};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
@@ -247,6 +247,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let context = if config.websocket.enabled {
         context.with_websockets(WebsocketContext::new(
+            config.websocket.max_history.into(),
             config.websocket.socket_buffer_capacity,
             config.websocket.topic_sender_capacity,
             rx_pending,
@@ -923,6 +924,19 @@ impl From<BlockchainHistory> for pathfinder_storage::pruning::BlockchainHistoryM
             }
             BlockchainHistory::Archive => {
                 pathfinder_storage::pruning::BlockchainHistoryMode::Archive
+            }
+        }
+    }
+}
+
+impl From<WebsocketHistory> for pathfinder_rpc::jsonrpc::websocket::WebsocketHistory {
+    fn from(val: WebsocketHistory) -> Self {
+        match val {
+            WebsocketHistory::Limited(limit) => {
+                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Limited(limit)
+            }
+            WebsocketHistory::Unlimited => {
+                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Unlimited
             }
         }
     }

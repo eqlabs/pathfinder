@@ -302,6 +302,10 @@ impl BlockNumber {
     pub fn checked_sub(&self, rhs: u64) -> Option<Self> {
         self.0.checked_sub(rhs).map(Self)
     }
+
+    pub fn saturating_sub(&self, rhs: u64) -> Self {
+        Self(self.0.saturating_sub(rhs))
+    }
 }
 
 impl std::ops::Add<u64> for BlockNumber {

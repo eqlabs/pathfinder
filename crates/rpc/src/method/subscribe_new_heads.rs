@@ -156,6 +156,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroUsize;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -165,7 +166,8 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::context::RpcContext;
+    use crate::context::{RpcContext, WebsocketContext};
+    use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::{v08, Notifications, Reorg, SubscriptionId};
 
@@ -537,7 +539,13 @@ mod tests {
         let ctx = RpcContext::for_tests()
             .with_storage(storage)
             .with_notifications(notifications)
-            .with_pending_data(pending_data);
+            .with_pending_data(pending_data.clone())
+            .with_websockets(WebsocketContext::new(
+                WebsocketHistory::Unlimited,
+                NonZeroUsize::new(1024).unwrap(),
+                NonZeroUsize::new(1024).unwrap(),
+                pending_data,
+            ));
         v08::register_routes().build(ctx)
     }
 
