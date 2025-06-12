@@ -604,7 +604,7 @@ fn get_max_l2_gas_amount_covered_by_balance(
                     )?;
                     let balance = (balance.1.to_biguint() << 128) + balance.0.to_biguint();
 
-                    tracing::warn!(%balance, "Balance");
+                    tracing::trace!(%balance, "Balance");
 
                     if balance > max_possible_fee_without_l2_gas.0.into() {
                         // The maximum amount of L2 gas that can be bought with the balance.
