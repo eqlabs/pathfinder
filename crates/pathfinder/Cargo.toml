@@ -14,6 +14,7 @@ path = "src/lib.rs"
 cairo-native = ["pathfinder-executor/cairo-native"]
 tokio-console = ["console-subscriber", "tokio/tracing"]
 p2p = []
+small_aggregate_filters = ["pathfinder-storage/small_aggregate_filters"]
 
 [dependencies]
 anyhow = { workspace = true }
