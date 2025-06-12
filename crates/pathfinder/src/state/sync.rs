@@ -20,7 +20,7 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{BlockId, Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{Block, PendingBlock};
+use starknet_gateway_types::reply::{Block, PendingBlock, PreConfirmedBlock};
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
@@ -65,7 +65,9 @@ pub enum SyncEvent {
         casm_hash: CasmHash,
     },
     /// A new L2 pending update was polled.
-    Pending((Arc<PendingBlock>, Arc<StateUpdate>)),
+    Pending((Box<PendingBlock>, Box<StateUpdate>)),
+    /// A new L2 pre-confirmed update was polled.
+    PreConfirmed((BlockNumber, Box<PreConfirmedBlock>)),
 }
 
 pub struct SyncContext<G, E> {
@@ -627,22 +629,33 @@ async fn consumer(
 
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
                 }
-                Pending(pending) => {
+                Pending((pending_block, pending_state_update)) => {
                     tracing::trace!("Updating pending data");
                     let (number, hash) = tx
                         .block_id(pathfinder_storage::BlockId::Latest)
                         .context("Fetching latest block hash")?
                         .unwrap_or_default();
 
-                    if pending.0.parent_hash == hash {
-                        let data = PendingData {
-                            block: pending.0,
-                            state_update: pending.1,
-                            number: number + 1,
-                        };
+                    if pending_block.parent_hash == hash {
+                        let data = PendingData::from_pending_block(
+                            *pending_block,
+                            *pending_state_update,
+                            number + 1,
+                        );
                         pending_data.send_replace(data);
                         tracing::debug!("Updated pending data");
                     }
+                }
+                PreConfirmed((block_number, pre_confirmed_block)) => {
+                    // Note that there's no check here to ensure that the pre-confirmed block
+                    // is a child of the latest block. This is because all users of this data
+                    // will get a reference to the data via `PendingWatcher::get()`, which _does_
+                    // this check at the point of use.
+                    let pending =
+                        PendingData::from_pre_confirmed_block(*pre_confirmed_block, block_number);
+                    let number_of_transactions = pending.transactions().len();
+                    pending_data.send_replace(pending);
+                    tracing::debug!(%block_number, %number_of_transactions, "Updated pre-confirmed data");
                 }
             }
 

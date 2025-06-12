@@ -93,6 +93,13 @@ pub mod v0_13_4 {
     }
 }
 
+pub mod v0_14_0 {
+    pub mod preconfirmed_block {
+        pub const SEPOLIA_INTEGRATION_955821: &str =
+            str_fixture!("0.14.0/preconfirmed_block/sepolia_integration_955821.json");
+    }
+}
+
 pub mod add_transaction {
     pub const INVOKE_CONTRACT_WITH_SIGNATURE: &str =
         str_fixture!("add-transaction/invoke-contract-with-signature.json");

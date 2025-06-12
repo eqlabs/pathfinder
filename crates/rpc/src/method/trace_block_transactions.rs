@@ -60,7 +60,7 @@ pub async fn trace_block_transactions(
                     .context("Querying pending data")?;
 
                 let header = pending.header();
-                let transactions = pending.block.transactions.clone();
+                let transactions = pending.transactions().to_vec();
 
                 (
                     header,
@@ -926,11 +926,11 @@ pub(crate) mod tests {
             pending_block
         };
 
-        let pending_data = crate::pending::PendingData {
-            block: pending_block.into(),
-            state_update: Default::default(),
-            number: last_block_header.number + 1,
-        };
+        let pending_data = crate::pending::PendingData::from_pending_block(
+            pending_block,
+            Default::default(),
+            last_block_header.number + 1,
+        );
 
         let (tx, rx) = tokio::sync::watch::channel(Default::default());
         tx.send(pending_data).unwrap();

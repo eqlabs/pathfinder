@@ -133,6 +133,70 @@ impl crate::dto::SerializeForVersion for starknet_gateway_types::reply::PendingB
     }
 }
 
+impl crate::dto::SerializeForVersion for crate::pending::PreConfirmedBlock {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("timestamp", &self.timestamp.get())?;
+        serializer.serialize_field("sequencer_address", &self.sequencer_address)?;
+        serializer.serialize_field(
+            "l1_gas_price",
+            &ResourcePrice {
+                price_in_wei: self.l1_gas_price.price_in_wei,
+                price_in_fri: self.l1_gas_price.price_in_fri,
+            },
+        )?;
+        serializer.serialize_field("starknet_version", &self.starknet_version.to_string())?;
+
+        if serializer.version >= RpcVersion::V07 {
+            serializer.serialize_field(
+                "l1_data_gas_price",
+                &ResourcePrice {
+                    price_in_wei: self.l1_data_gas_price.price_in_wei,
+                    price_in_fri: self.l1_data_gas_price.price_in_fri,
+                },
+            )?;
+            serializer.serialize_field(
+                "l1_da_mode",
+                &match self.l1_da_mode {
+                    L1DataAvailabilityMode::Blob => "BLOB",
+                    L1DataAvailabilityMode::Calldata => "CALLDATA",
+                },
+            )?;
+        }
+
+        if serializer.version >= RpcVersion::V08 {
+            serializer.serialize_field(
+                "l2_gas_price",
+                &ResourcePrice {
+                    price_in_wei: self.l2_gas_price.price_in_wei,
+                    price_in_fri: self.l2_gas_price.price_in_fri,
+                },
+            )?;
+        }
+
+        serializer.end()
+    }
+}
+
+impl crate::dto::SerializeForVersion for crate::pending::PendingBlockVariant {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        match self {
+            crate::pending::PendingBlockVariant::Pending(pending_block) => {
+                pending_block.serialize(serializer)
+            }
+            crate::pending::PendingBlockVariant::PreConfirmed(pre_confirmed_block) => {
+                pre_confirmed_block.serialize(serializer)
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ResourcePrice {
     pub price_in_wei: GasPrice,

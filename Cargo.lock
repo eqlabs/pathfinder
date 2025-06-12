@@ -10801,6 +10801,7 @@ dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
  "pathfinder-serde",
+ "pretty_assertions_sorted",
  "primitive-types",
  "rand 0.8.5",
  "reqwest",

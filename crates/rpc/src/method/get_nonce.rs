@@ -40,7 +40,7 @@ pub async fn get_nonce(context: RpcContext, input: Input) -> Result<Output, Erro
                 .pending_data
                 .get(&tx)
                 .context("Querying pending data")?
-                .state_update
+                .state_update()
                 .contract_nonce(input.contract_address)
             {
                 return Ok(Output(nonce));

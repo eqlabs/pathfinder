@@ -79,11 +79,11 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
         let mut sent_txs = HashSet::new();
         loop {
             let pending = pending_data.borrow_and_update().clone();
-            if pending.number != last_block {
-                last_block = pending.number;
+            if pending.block_number() != last_block {
+                last_block = pending.block_number();
                 sent_txs.clear();
             }
-            for transaction in pending.block.transactions.iter() {
+            for transaction in pending.transactions().iter() {
                 if sent_txs.contains(&transaction.hash) {
                     continue;
                 }
@@ -116,7 +116,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                 if tx
                     .send(SubscriptionMessage {
                         notification,
-                        block_number: pending.number,
+                        block_number: pending.block_number(),
                         subscription_name: SUBSCRIPTION_NAME,
                     })
                     .await
@@ -406,8 +406,8 @@ mod tests {
         block_number: BlockNumber,
         txs: Vec<(ContractAddress, TransactionHash)>,
     ) -> PendingData {
-        PendingData {
-            block: PendingBlock {
+        PendingData::from_pending_block(
+            PendingBlock {
                 transactions: txs
                     .into_iter()
                     .map(|(sender_address, hash)| Transaction {
@@ -419,11 +419,10 @@ mod tests {
                     })
                     .collect(),
                 ..Default::default()
-            }
-            .into(),
-            number: block_number,
-            ..Default::default()
-        }
+            },
+            StateUpdate::default(),
+            block_number,
+        )
     }
 
     fn sample_message_no_details(hash: &str, subscription_id: u64) -> serde_json::Value {

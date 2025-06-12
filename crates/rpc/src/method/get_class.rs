@@ -56,7 +56,7 @@ pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Erro
                 .pending_data
                 .get(&tx)
                 .context("Querying pending data")?
-                .state_update
+                .state_update()
                 .class_is_declared(input.class_hash)
         } else {
             false

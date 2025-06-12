@@ -44,7 +44,7 @@ pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output,
                 .pending_data
                 .get(&tx)
                 .context("Querying pending data")?
-                .state_update
+                .state_update()
                 .storage_value(input.contract_address, input.key)
             {
                 return Ok(Output(value));

@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::BlockId;
-use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
+use crate::pending::PendingBlockVariant;
 
 pub enum Output {
     Full {
@@ -16,7 +16,7 @@ pub enum Output {
         )>,
         is_l1_accepted: bool,
     },
-    Pending(Arc<PendingBlock>),
+    Pending(Arc<PendingBlockVariant>),
 }
 
 pub struct Input {
@@ -53,7 +53,7 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
                     .get(&db)
                     .context("Querying pending data")?;
 
-                return Ok(Output::Pending(pending.block));
+                return Ok(Output::Pending(pending.block()));
             }
             other => other.try_into().expect("Only pending cast should fail"),
         };
@@ -123,18 +123,19 @@ impl crate::dto::SerializeForVersion for Output {
             }
             Output::Pending(block) => {
                 serializer.flatten(block.as_ref())?;
+                let transactions = block.transactions();
                 serializer.serialize_iter(
                     "transactions",
-                    block.transactions.len(),
+                    transactions.len(),
                     &mut block
-                        .transactions
+                        .transactions()
                         .iter()
-                        .zip(block.transaction_receipts.iter())
+                        .zip(block.transaction_receipts_and_events().iter())
                         .map(|(transaction, (receipt, events))| TransactionWithReceipt {
                             transaction,
                             receipt,
                             events,
-                            finality: crate::dto::TxnFinalityStatus::AcceptedOnL2,
+                            finality: block.finality_status(),
                         }),
                 )?;
             }

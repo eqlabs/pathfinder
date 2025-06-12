@@ -288,8 +288,8 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         break;
                     }
                     let pending = pending_data.borrow_and_update().clone();
-                    tracing::trace!(block_number=%pending.number, "Received pending block update");
-                    let block_number = pending.number;
+                    tracing::trace!(block_number=%pending.block_number(), "Received pending block update");
+                    let block_number = pending.block_number();
                     if block_number != current_block {
                         tracing::trace!(
                             %block_number,
@@ -299,7 +299,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         sent_txs.clear();
                         current_block = block_number;
                     }
-                    for (receipt, events) in pending.block.transaction_receipts.iter() {
+                    for (receipt, events) in pending.transaction_receipts_and_events().iter() {
                         if sent_txs.contains(&receipt.transaction_hash) {
                             tracing::trace!(
                                 transaction_hash=%receipt.transaction_hash,
@@ -343,7 +343,6 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroUsize;
-    use std::sync::Arc;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -670,11 +669,11 @@ mod tests {
 
         let next_block_number = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
         pending_data_tx
-            .send(crate::PendingData {
-                block: Arc::new(sample_pending_block(next_block_number)),
-                state_update: Arc::new(Default::default()),
-                number: BlockNumber::new_or_panic(next_block_number),
-            })
+            .send(crate::PendingData::from_pending_block(
+                sample_pending_block(next_block_number),
+                StateUpdate::default(),
+                BlockNumber::new_or_panic(next_block_number),
+            ))
             .unwrap();
         let expected = sample_event_message_without_block_hash(next_block_number, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();

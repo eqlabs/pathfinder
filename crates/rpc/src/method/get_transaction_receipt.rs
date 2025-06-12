@@ -95,10 +95,9 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
             .context("Querying pending data")?;
 
         if let Some((transaction, (receipt, events))) = pending
-            .block
-            .transactions
+            .transactions()
             .iter()
-            .zip(pending.block.transaction_receipts.iter())
+            .zip(pending.transaction_receipts_and_events().iter())
             .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
         {
             return Ok(Output::Pending {

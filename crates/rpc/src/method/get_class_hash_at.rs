@@ -41,7 +41,7 @@ pub async fn get_class_hash_at(context: RpcContext, input: Input) -> Result<Outp
                 .pending_data
                 .get(&tx)
                 .context("Querying pending data")?
-                .state_update
+                .state_update()
                 .contract_class(input.contract_address);
 
             if let Some(pending) = pending {

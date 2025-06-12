@@ -1,8 +1,9 @@
 use anyhow::Context;
 use pathfinder_common::TransactionHash;
-use starknet_gateway_types::reply::PendingBlock;
 
 use crate::context::RpcContext;
+use crate::dto::TxnFinalityStatus;
+use crate::pending::PendingBlockVariant;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
@@ -40,7 +41,7 @@ pub async fn get_transaction_status(
             .pending_data
             .get(&db_tx)
             .context("Querying pending data")?;
-        if let Some(status) = pending_status(&pending.block, &input.transaction_hash) {
+        if let Some(status) = pending_status(pending.block().as_ref(), &input.transaction_hash) {
             return Ok(Some(status));
         }
 
@@ -83,18 +84,28 @@ pub async fn get_transaction_status(
         .map_err(GetGatewayTransactionError::Internal)
 }
 
-fn pending_status(pending: &PendingBlock, tx_hash: &TransactionHash) -> Option<TransactionStatus> {
-    pending.transaction_receipts.iter().find_map(|(rx, _)| {
-        if &rx.transaction_hash == tx_hash {
-            if rx.is_reverted() {
-                Some(TransactionStatus::Reverted)
+fn pending_status(
+    pending: &PendingBlockVariant,
+    tx_hash: &TransactionHash,
+) -> Option<TransactionStatus> {
+    pending
+        .transaction_receipts_and_events()
+        .iter()
+        .find_map(|(rx, _)| {
+            if &rx.transaction_hash == tx_hash {
+                if rx.is_reverted() {
+                    Some(TransactionStatus::Reverted)
+                } else {
+                    Some(match pending.finality_status() {
+                        TxnFinalityStatus::PreConfirmed => TransactionStatus::Preconfirmed,
+                        TxnFinalityStatus::AcceptedOnL2 => TransactionStatus::AcceptedOnL2,
+                        TxnFinalityStatus::AcceptedOnL1 => TransactionStatus::AcceptedOnL1,
+                    })
+                }
             } else {
-                Some(TransactionStatus::AcceptedOnL2)
+                None
             }
-        } else {
-            None
-        }
-    })
+        })
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -107,6 +118,8 @@ pub enum TransactionStatus {
     AcceptedOnL2,
     Reverted,
     Aborted,
+    Candidate,
+    Preconfirmed,
 }
 
 impl crate::dto::SerializeForVersion for TransactionStatus {
@@ -123,6 +136,8 @@ impl crate::dto::SerializeForVersion for TransactionStatus {
             TransactionStatus::AcceptedOnL2 => serializer.serialize_str("ACCEPTED_ON_L2"),
             TransactionStatus::Reverted => serializer.serialize_str("REVERTED"),
             TransactionStatus::Aborted => serializer.serialize_str("ABORTED"),
+            TransactionStatus::Candidate => serializer.serialize_str("CANDIDATE"),
+            TransactionStatus::Preconfirmed => serializer.serialize_str("PRE_CONFIRMED"),
         }
     }
 }
@@ -139,6 +154,8 @@ impl From<starknet_gateway_types::reply::Status> for TransactionStatus {
             Status::AcceptedOnL2 => Self::AcceptedOnL2,
             Status::Reverted => Self::Reverted,
             Status::Aborted => Self::Aborted,
+            Status::Candidate => Self::Candidate,
+            Status::PreConfirmed => Self::Preconfirmed,
         }
     }
 }

@@ -70,8 +70,7 @@ pub async fn trace_transaction(
                 .context("Querying pending data")?;
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
-                .block
-                .transactions
+                .transactions()
                 .iter()
                 .find(|tx| tx.hash == input.transaction_hash)
             {
@@ -85,7 +84,7 @@ pub async fn trace_transaction(
 
                 (
                     header,
-                    pending.block.transactions.clone(),
+                    pending.transactions().to_vec(),
                     // Can't use the cache for pending blocks since they have no block hash.
                     pathfinder_executor::TraceCache::default(),
                 )

@@ -12,6 +12,8 @@ use crate::{dto, RpcVersion};
 pub enum TxnStatus {
     Received,
     Rejected,
+    Candidate,
+    PreConfirmed,
     AcceptedOnL2,
     AcceptedOnL1,
 }
@@ -41,6 +43,7 @@ struct TxnExecutionStatusWithRevertReason<'a>(pub &'a pathfinder_common::receipt
 
 #[derive(Copy, Clone)]
 pub enum TxnFinalityStatus {
+    PreConfirmed,
     AcceptedOnL2,
     AcceptedOnL1,
 }
@@ -85,6 +88,8 @@ impl SerializeForVersion for TxnStatus {
         match self {
             TxnStatus::Received => "RECEIVED",
             TxnStatus::Rejected => "REJECTED",
+            TxnStatus::Candidate => "CANDIDATE",
+            TxnStatus::PreConfirmed => "PRE_CONFIRMED",
             TxnStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
             TxnStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
         }
@@ -130,6 +135,7 @@ impl SerializeForVersion for TxnExecutionStatusWithRevertReason<'_> {
 impl SerializeForVersion for TxnFinalityStatus {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
+            TxnFinalityStatus::PreConfirmed => "PRE_CONFIRMED",
             TxnFinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
             TxnFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
         }
