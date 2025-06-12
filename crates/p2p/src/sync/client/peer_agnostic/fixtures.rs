@@ -277,7 +277,10 @@ pub fn state_diff(tag: i32) -> StateUpdateData {
 }
 
 pub fn len(tag: i32) -> usize {
-    state_diff(tag).state_diff_length()
+    state_diff(tag)
+        .state_diff_length()
+        .try_into()
+        .expect("ptr size is 64 bits")
 }
 
 pub fn surplus_storage() -> StateDiffsResponse {

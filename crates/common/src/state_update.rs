@@ -338,7 +338,7 @@ impl StateUpdateData {
         }
     }
 
-    pub fn state_diff_length(&self) -> usize {
+    pub fn state_diff_length(&self) -> u64 {
         let mut len = 0;
         self.contract_updates.iter().for_each(|(_, update)| {
             len += update.storage.len();
@@ -349,7 +349,7 @@ impl StateUpdateData {
             len += update.storage.len();
         });
         len += self.declared_cairo_classes.len() + self.declared_sierra_classes.len();
-        len
+        len.try_into().expect("ptr size is 64bits")
     }
 }
 

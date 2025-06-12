@@ -331,7 +331,6 @@ mod tests {
         calculate_receipt_commitment,
         calculate_transaction_commitment,
         compute_final_hash,
-        BlockHeaderData,
     };
 
     const TIMEOUT: Duration = Duration::from_secs(10);
@@ -350,9 +349,7 @@ mod tests {
         let blocks = generate::with_config(
             num_blocks,
             Config {
-                calculate_block_hash: Box::new(|header: &BlockHeader| {
-                    compute_final_hash(&BlockHeaderData::from_header(header))
-                }),
+                calculate_block_hash: Box::new(compute_final_hash),
                 sign_block_hash: Box::new(move |block_hash| ecdsa_sign(private_key, block_hash.0)),
                 calculate_transaction_commitment: Box::new(calculate_transaction_commitment),
                 calculate_receipt_commitment: Box::new(calculate_receipt_commitment),
@@ -970,7 +967,7 @@ mod tests {
                 .unwrap()
                 .into();
 
-            assert_eq!(sd.state_diff_length() as u64, state_diff_length);
+            assert_eq!(sd.state_diff_length(), state_diff_length);
 
             if self.error_trigger.recoverable(block, 7) {
                 tracing::debug!(%block,

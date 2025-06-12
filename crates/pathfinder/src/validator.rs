@@ -19,6 +19,7 @@ use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
     BlockHash,
+    BlockHeader,
     BlockNumber,
     ChainId,
     EntryPoint,
@@ -41,14 +42,13 @@ use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
-    BlockHeaderData,
 };
 
 pub fn new(
     chain_id: ChainId,
     proposal_init: ProposalInit,
 ) -> anyhow::Result<ValidatorBlockInfoStage> {
-    // TODO how can we validate the proposal init?
+    // TODO(validator) how can we validate the proposal init?
     Ok(ValidatorBlockInfoStage {
         chain_id,
         proposal_height: BlockNumber::new(proposal_init.height)
@@ -67,8 +67,8 @@ impl<'a> ValidatorBlockInfoStage {
         block_info: BlockInfo,
         workaround_starknet_version: StarknetVersion,
         db_tx: pathfinder_storage::Transaction<'a>,
-        // TODO eth_to_fri_rate is not suitable for current L2 data where there are 3 pairs of gas
-        // prices in both wei & fri and they give 2 different ethfri rates
+        // TODO(validator) eth_to_fri_rate is not suitable for current L2 data where there are 3
+        // pairs of gas prices in both wei & fri and they give 2 different ethfri rates
         workaround_l2_gas_price_wei: u128,
         workaround_l1_gas_price_fri: u128,
         workaround_l1_data_gas_price_fri: u128,
@@ -93,7 +93,7 @@ impl<'a> ValidatorBlockInfoStage {
             block_info.height,
         );
 
-        // TODO validate block info (timestamp, gas prices)
+        // TODO(validator) validate block info (timestamp, gas prices)
 
         let BlockInfo {
             height,
@@ -169,7 +169,7 @@ impl ValidatorTransactionBatchStage<'_> {
         .entered();
 
         if transactions.is_empty() {
-            // TODO is an empty batch valid?
+            // TODO(validator) is an empty batch valid?
             return Ok(());
         }
 
@@ -240,8 +240,9 @@ impl ValidatorTransactionBatchStage<'_> {
         Ok(())
     }
 
-    // TODO we're using the block hash instead of the proposal commitment here,
-    // which is incorrect but we don't have the proposal commitment formula yet.
+    // TODO(validator) we're using the block hash instead of the proposal commitment
+    // here, which is incorrect but we don't have the proposal commitment
+    // formula yet.
     pub fn finalize(
         self,
         workaround_block_hash_in_proposal_fin: ProposalFin,
@@ -277,7 +278,7 @@ impl ValidatorTransactionBatchStage<'_> {
             calculate_event_commitment(&events_ref_by_txn, self.block_info.starknet_version)?;
 
         let state_update = StateUpdateData::from(state_diff);
-        let state_update_commitment = state_update.compute_state_diff_commitment();
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let mut db_conn = storage.connection().context("Create database connection")?;
         let db_txn = db_conn
@@ -294,46 +295,33 @@ impl ValidatorTransactionBatchStage<'_> {
 
         let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-        let bhd = BlockHeaderData {
-            // TODO we need a BlockHeader type, without the block hash
+        let header = BlockHeader {
+            // TODO(validator) depending on what the proposal commitment is we could need a
+            // BlockHeader type without the block hash
             hash: BlockHash::ZERO, // UNUSED
             parent_hash: workaround_parent_hash,
             number: self.block_info.number,
             timestamp: self.block_info.timestamp,
-            sequencer_address: self.block_info.sequencer_address,
-            state_commitment,
-            state_diff_commitment: state_update_commitment,
-            transaction_commitment,
-            transaction_count: self
-                .transactions
-                .len()
-                .try_into()
-                .expect("Txn count is small enough"),
-            event_commitment,
-            event_count: self
-                .events
-                .iter()
-                .flatten()
-                .count()
-                .try_into()
-                .expect("ptr size is 64bits"),
-            state_diff_length: state_update
-                .state_diff_length()
-                .try_into()
-                .expect("State diff length is small enough"),
-            starknet_version: self.block_info.starknet_version,
-            starknet_version_str: self.block_info.starknet_version.to_string(),
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
             strk_l1_gas_price: self.block_info.strk_l1_gas_price,
             eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
             strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
             eth_l2_gas_price: self.block_info.eth_l2_gas_price,
             strk_l2_gas_price: self.block_info.strk_l2_gas_price,
-            receipt_commitment,
+            sequencer_address: self.block_info.sequencer_address,
+            starknet_version: self.block_info.starknet_version,
+            event_commitment,
+            state_commitment,
+            transaction_commitment,
+            transaction_count: self.transactions.len(),
+            event_count: self.events.iter().flatten().count(),
             l1_da_mode: self.block_info.l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length: state_update.state_diff_length(),
         };
 
-        let computed_block_hash = block_hash::compute_final_hash(&bhd);
+        let computed_block_hash = block_hash::compute_final_hash(&header);
         let expected_block_hash =
             BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
 
@@ -373,7 +361,7 @@ fn try_map_transaction(
 
     let deployed_address = deployed_address(&common_txn_variant);
 
-    // TODO why 10^12?
+    // TODO(validator) why 10^12?
     let paid_fee_on_l1 = match &common_txn_variant {
         TransactionVariant::L1Handler(_) => {
             Some(starknet_api::transaction::fields::Fee(1_000_000_000_000))
@@ -444,11 +432,12 @@ fn class_info(class: Cairo1Class) -> anyhow::Result<ClassInfo> {
                 .collect(),
         },
     };
-    // TODO this is suboptimal, the same surplus serialization happens in the
-    // broadcasted transactions case
+    // TODO(validator) this is suboptimal, the same surplus serialization happens in
+    // the broadcasted transactions case
     let class_definition =
         serde_json::to_vec(&class_definition).context("Serializing Sierra class definition")?;
-    // TODO compile_to_casm should also accept a deserialized class definition
+    // TODO(validator) compile_to_casm should also accept a deserialized class
+    // definition
     let casm_contract_definition = pathfinder_compiler::compile_to_casm(&class_definition)
         .context("Compiling Sierra class definition to CASM")?;
 

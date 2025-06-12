@@ -3277,9 +3277,7 @@ pub(crate) mod old_dto {
     impl<T> Dummy<T> for L1HandlerTransaction {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
             Self {
-                // TODO verify this is the only realistic value
                 version: TransactionVersion::ZERO,
-
                 contract_address: Faker.fake_with_rng(rng),
                 entry_point_selector: Faker.fake_with_rng(rng),
                 nonce: Faker.fake_with_rng(rng),
