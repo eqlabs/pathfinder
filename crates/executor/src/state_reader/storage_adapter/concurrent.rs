@@ -15,19 +15,26 @@ use pathfinder_common::{
 use pathfinder_storage::{BlockId, Connection};
 use tokio_util::sync::CancellationToken;
 
-use crate::state_reader::storage_adapter::{map_anyhow_to_state_err, StorageAdapter};
+use crate::state_reader::storage_adapter::{
+    map_anyhow_to_state_err,
+    ClassDefinitionWithBlockNumber,
+    StorageAdapter,
+};
 
 #[derive(Clone)]
 pub struct ConcurrentStorageAdapter {
     tx: Sender<Command>,
 }
 
+// Keep clippy happy
+type ClassDefinitionAtWithBlockNumber = Option<(BlockNumber, Vec<u8>)>;
+
 enum Command {
     BlockHash(BlockId, SyncSender<anyhow::Result<Option<BlockHash>>>),
     CasmDefinition(ClassHash, SyncSender<Result<Option<Vec<u8>>, StateError>>),
     ClassDefinitionWithBlockNumber(
         ClassHash,
-        SyncSender<Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError>>,
+        SyncSender<Result<ClassDefinitionWithBlockNumber, StateError>>,
     ),
     CasmDefinitionAt(
         BlockId,
@@ -37,7 +44,7 @@ enum Command {
     ClassDefinitionAtWithBlockNumber(
         BlockId,
         ClassHash,
-        SyncSender<Result<Option<(BlockNumber, Vec<u8>)>, StateError>>,
+        SyncSender<Result<ClassDefinitionAtWithBlockNumber, StateError>>,
     ),
     StorageValue(
         BlockId,

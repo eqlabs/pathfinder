@@ -15,6 +15,9 @@ use pathfinder_storage::BlockId;
 pub mod concurrent;
 pub mod rc;
 
+// Keep clippy happy
+type ClassDefinitionWithBlockNumber = Option<(Option<BlockNumber>, Vec<u8>)>;
+
 pub trait StorageAdapter {
     fn transaction_executor_config(&self) -> TransactionExecutorConfig;
 
@@ -25,7 +28,7 @@ pub trait StorageAdapter {
     fn class_definition_with_block_number(
         &self,
         class_hash: ClassHash,
-    ) -> Result<Option<(Option<BlockNumber>, Vec<u8>)>, StateError>;
+    ) -> Result<ClassDefinitionWithBlockNumber, StateError>;
 
     fn casm_definition_at(
         &self,

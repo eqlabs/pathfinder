@@ -61,7 +61,7 @@ pub struct ValidatorBlockInfoStage {
     proposal_height: BlockNumber,
 }
 
-impl<'a> ValidatorBlockInfoStage {
+impl ValidatorBlockInfoStage {
     pub fn validate_block_info(
         self,
         block_info: BlockInfo,
@@ -147,7 +147,6 @@ impl<'a> ValidatorBlockInfoStage {
     }
 }
 
-// pub struct ValidatorTransactionBatchStage<'a> {
 pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,

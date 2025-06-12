@@ -83,7 +83,6 @@ fn main() -> anyhow::Result<()> {
             .validate_block_info(
                 block_info,
                 header.starknet_version,
-                // db_tx,
                 db_conn,
                 header.eth_l2_gas_price.0,
                 header.strk_l1_gas_price.0,
