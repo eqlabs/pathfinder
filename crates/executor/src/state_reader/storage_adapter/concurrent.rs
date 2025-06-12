@@ -86,12 +86,18 @@ impl StorageAdapter for ConcurrentStorageAdapter {
             .map(|p| p.get())
             .unwrap_or(1);
 
-        TransactionExecutorConfig {
-            concurrency_config: ConcurrencyConfig {
+        let concurrency_config = if n_workers == 1 {
+            ConcurrencyConfig::default()
+        } else {
+            ConcurrencyConfig {
                 enabled: true,
                 n_workers,
                 chunk_size: 4, // TODO(validator) make it configurable or pick a reasonable default
-            },
+            }
+        };
+
+        TransactionExecutorConfig {
+            concurrency_config,
             ..Default::default()
         }
     }
