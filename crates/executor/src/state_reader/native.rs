@@ -8,6 +8,7 @@ use cairo_native::executor::AotContractExecutor;
 use cairo_vm::types::errors::program_errors::ProgramError;
 use pathfinder_common::ClassHash;
 use starknet_api::contract_class::SierraVersion;
+use tokio_util::sync::CancellationToken;
 
 struct CompilerInput {
     class_hash: ClassHash,
@@ -35,9 +36,9 @@ impl NativeClassCache {
 
         let cache = Arc::new(Mutex::new(SizedCache::with_size(cache_size.get())));
 
-        std::thread::spawn({
+        util::task::spawn_std({
             let cache = Arc::clone(&cache);
-            move || compiler_thread(cache, rx)
+            move |cancellation_token| compiler_thread(cache, rx, cancellation_token)
         });
 
         NativeClassCache {
@@ -79,8 +80,20 @@ impl NativeClassCache {
     }
 }
 
-fn compiler_thread(cache: Arc<Cache>, rx: std::sync::mpsc::Receiver<CompilerInput>) {
-    while let Ok(input) = rx.recv() {
+fn compiler_thread(
+    cache: Arc<Cache>,
+    rx: std::sync::mpsc::Receiver<CompilerInput>,
+    cancellation_token: CancellationToken,
+) {
+    loop {
+        if cancellation_token.is_cancelled() {
+            return;
+        }
+
+        let Ok(input) = rx.recv() else {
+            return;
+        };
+
         let class_hash = input.class_hash;
 
         let _span =

@@ -32,6 +32,7 @@ use starknet_api::transaction::fields::{
 
 use super::felt::IntoFelt;
 use crate::execution_state::PathfinderExecutionState;
+use crate::state_reader::StorageAdapter;
 use crate::IntoStarkFelt as _;
 
 pub const ETH_TO_WEI_RATE: u128 = 1_000_000_000_000_000_000;
@@ -988,9 +989,9 @@ pub(crate) fn transaction_declared_deprecated_class(
     }
 }
 
-pub(crate) fn to_state_diff(
+pub(crate) fn to_state_diff<S: StorageAdapter + Clone>(
     state_maps: StateMaps,
-    initial_state: PathfinderExecutionState<'_>,
+    initial_state: PathfinderExecutionState<S>,
     old_declared_contracts: impl Iterator<Item = ClassHash>,
 ) -> Result<StateDiff, StateError> {
     let mut deployed_contracts = Vec::new();

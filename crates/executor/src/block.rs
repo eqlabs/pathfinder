@@ -1,10 +1,12 @@
 use anyhow::Context;
 use blockifier::blockifier::transaction_executor::BLOCK_STATE_ACCESS_ERR;
 use blockifier::state::cached_state::StateChanges;
-use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionHash, TransactionIndex};
+use blockifier::transaction::objects::TransactionExecutionInfo;
+use pathfinder_common::{ChainId, ClassHash, ContractAddress, TransactionIndex};
 
+use crate::error::TransactionExecutorError;
 use crate::execution_state::{create_executor, PathfinderExecutionState, PathfinderExecutor};
-use crate::transaction::{execute_transaction, ExecutionBehaviorOnRevert};
+use crate::state_reader::ConcurrentStorageAdapter;
 use crate::types::{
     to_receipt_and_events,
     to_state_diff,
@@ -14,26 +16,26 @@ use crate::types::{
     Receipt,
     StateDiff,
 };
-use crate::{ExecutionState, IntoFelt, Transaction, TransactionExecutionError};
+use crate::{ExecutionState, Transaction, TransactionExecutionError};
 
 /// Executes transactions from a single block. Produces transactions receipts,
 /// events, and the final state diff for the entire block.
-pub struct BlockExecutor<'a> {
-    executor: PathfinderExecutor<'a>,
-    initial_state: PathfinderExecutionState<'a>,
+pub struct BlockExecutor {
+    executor: PathfinderExecutor<ConcurrentStorageAdapter>,
+    initial_state: PathfinderExecutionState<ConcurrentStorageAdapter>,
     declared_deprecated_classes: Vec<ClassHash>,
     next_txn_idx: usize,
 }
 
 type ReceiptAndEvents = (Receipt, Vec<pathfinder_common::event::Event>);
 
-impl<'a> BlockExecutor<'a> {
+impl BlockExecutor {
     pub fn new(
         chain_id: ChainId,
         block_info: BlockInfo,
         eth_fee_address: ContractAddress,
         strk_fee_address: ContractAddress,
-        db_tx: pathfinder_storage::Transaction<'a>,
+        db_conn: pathfinder_storage::Connection,
     ) -> anyhow::Result<Self> {
         let execution_state = ExecutionState::validation(
             chain_id,
@@ -44,7 +46,8 @@ impl<'a> BlockExecutor<'a> {
             strk_fee_address,
             None,
         );
-        let executor = create_executor(db_tx, execution_state)?;
+        let storage_adapter = ConcurrentStorageAdapter::new(db_conn);
+        let executor = create_executor(storage_adapter, execution_state)?;
         let initial_state = executor
             .block_state
             .as_ref()
@@ -67,40 +70,40 @@ impl<'a> BlockExecutor<'a> {
         let start_tx_index = self.next_txn_idx;
         self.next_txn_idx += txns.len();
         let block_number = self.executor.block_context.block_info().block_number;
-        let receipts_events = txns
+
+        let _span = tracing::debug_span!(
+            "BlockExecutor::execute",
+            block_number = %block_number,
+            from_tx_index = %start_tx_index,
+            to_tx_index = %(self.next_txn_idx - 1),
+        )
+        .entered();
+
+        // TODO(validator) specify execution_deadline as an additional safeguard
+        let results = self
+            .executor
+            .execute_txs(&txns, None)
             .into_iter()
             .enumerate()
-            .map(|(tx_index, tx)| {
-                let tx_index = start_tx_index + tx_index;
-                let _span = tracing::debug_span!(
-                    "BlockExecutor::execute",
-                    block_number = %block_number,
-                    transaction_hash = %TransactionHash(Transaction::tx_hash(&tx).0.into_felt()),
-                    transaction_index = %tx_index
-                )
-                .entered();
-
+            .map(|(i, result)| {
+                let tx_index = start_tx_index + i;
+                match result {
+                    Ok((tx_info, _)) => Ok((tx_index, tx_info)),
+                    Err(error) => Err(TransactionExecutorError::new(tx_index, error)),
+                }
+            })
+            .collect::<Result<Vec<(usize, TransactionExecutionInfo)>, TransactionExecutorError>>(
+            )?;
+        let receipts_events = results
+            .into_iter()
+            .zip(txns.into_iter())
+            .map(|((tx_index, tx_info), tx)| {
                 let tx_type = transaction_type(&tx);
                 if let Some(class) = transaction_declared_deprecated_class(&tx) {
                     self.declared_deprecated_classes.push(class)
                 }
                 let gas_vector_computation_mode =
                     crate::transaction::gas_vector_computation_mode(&tx);
-
-                // TODO(validator) use executor::execute_txs instead (concurrency can then be
-                // enabled via configuration)
-                let ((tx_info, _), _) = execute_transaction(
-                    &tx,
-                    tx_index,
-                    &mut self.executor,
-                    ExecutionBehaviorOnRevert::Continue,
-                )?;
-
-                tracing::trace!(
-                    "Transaction execution finished, actual_fee: {}, actual_resources: {:?}",
-                    tx_info.receipt.fee.0,
-                    tx_info.receipt.resources
-                );
 
                 to_receipt_and_events(
                     tx_type,

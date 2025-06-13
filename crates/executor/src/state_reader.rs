@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use blockifier::execution::contract_class::RunnableCompiledClass;
 use blockifier::state::errors::StateError;
 use blockifier::state::state_api::StateReader;
@@ -11,11 +9,16 @@ use starknet_types_core::felt::Felt as CoreFelt;
 
 use super::felt::{IntoFelt, IntoStarkFelt};
 use crate::lru_cache::GLOBAL_CACHE;
+pub(crate) use crate::state_reader::storage_adapter::StorageAdapter;
 
 #[cfg(feature = "cairo-native")]
 mod native;
 #[cfg(feature = "cairo-native")]
 pub use native::NativeClassCache;
+mod storage_adapter;
+
+pub(crate) use storage_adapter::concurrent::ConcurrentStorageAdapter;
+pub(crate) use storage_adapter::rc::RcStorageAdapter;
 
 #[cfg(not(feature = "cairo-native"))]
 #[derive(Clone)]
@@ -29,8 +32,8 @@ impl NativeClassCache {
 }
 
 #[derive(Clone)]
-pub(super) struct PathfinderStateReader<'tx> {
-    db_tx: Rc<pathfinder_storage::Transaction<'tx>>,
+pub(super) struct PathfinderStateReader<S> {
+    storage_adapter: S,
     pub block_number: Option<BlockNumber>,
     // Classes in pending state have already been downloaded and added to the database.
     // This flag makes it possible to find these classes -- essentially makes the state
@@ -40,15 +43,15 @@ pub(super) struct PathfinderStateReader<'tx> {
     native_class_cache: Option<NativeClassCache>,
 }
 
-impl<'tx> PathfinderStateReader<'tx> {
+impl<S: StorageAdapter> PathfinderStateReader<S> {
     pub fn new(
-        db_tx: pathfinder_storage::Transaction<'tx>,
+        storage_adapter: S,
         block_number: Option<BlockNumber>,
         ignore_block_number_for_classes: bool,
         native_class_cache: Option<NativeClassCache>,
     ) -> Self {
         Self {
-            db_tx: Rc::new(db_tx),
+            storage_adapter,
             block_number,
             ignore_block_number_for_classes,
             native_class_cache,
@@ -75,13 +78,11 @@ impl<'tx> PathfinderStateReader<'tx> {
         let (definition_block_number, class_definition, casm_definition) =
             if self.ignore_block_number_for_classes {
                 let casm_definition = self
-                    .db_tx
-                    .casm_definition(pathfinder_class_hash)
-                    .map_err(map_anyhow_to_state_err)?;
+                    .storage_adapter
+                    .casm_definition(pathfinder_class_hash)?;
                 let (definition_block_number, class_definition) = self
-                    .db_tx
-                    .class_definition_with_block_number(pathfinder_class_hash)
-                    .map_err(map_anyhow_to_state_err)?
+                    .storage_adapter
+                    .class_definition_with_block_number(pathfinder_class_hash)?
                     .ok_or_else(|| {
                         tracing::trace!("Class definition not found");
                         StateError::UndeclaredClassHash(*class_hash)
@@ -89,13 +90,11 @@ impl<'tx> PathfinderStateReader<'tx> {
                 (definition_block_number, class_definition, casm_definition)
             } else {
                 let casm_definition = self
-                    .db_tx
-                    .casm_definition_at(block_id, pathfinder_class_hash)
-                    .map_err(map_anyhow_to_state_err)?;
+                    .storage_adapter
+                    .casm_definition_at(block_id, pathfinder_class_hash)?;
                 let (definition_block_number, class_definition) = self
-                    .db_tx
-                    .class_definition_at_with_block_number(block_id, pathfinder_class_hash)
-                    .map_err(map_anyhow_to_state_err)?
+                    .storage_adapter
+                    .class_definition_at_with_block_number(block_id, pathfinder_class_hash)?
                     .ok_or_else(|| {
                         tracing::trace!("Class definition not found");
                         StateError::UndeclaredClassHash(*class_hash)
@@ -195,7 +194,7 @@ fn sierra_class_as_casm(
     Ok(RunnableCompiledClass::V1(casm_class))
 }
 
-impl StateReader for PathfinderStateReader<'_> {
+impl<S: StorageAdapter> StateReader for PathfinderStateReader<S> {
     fn get_storage_at(
         &self,
         contract_address: starknet_api::core::ContractAddress,
@@ -222,9 +221,8 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let storage_val = self
-            .db_tx
-            .storage_value(block_id, pathfinder_contract_address, storage_key)
-            .map_err(map_anyhow_to_state_err)?
+            .storage_adapter
+            .storage_value(block_id, pathfinder_contract_address, storage_key)?
             .unwrap_or(StorageValue(Felt::ZERO));
 
         tracing::trace!(storage_value=%storage_val, "Got storage value");
@@ -252,9 +250,8 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let nonce = self
-            .db_tx
-            .contract_nonce(pathfinder_contract_address, block_id)
-            .map_err(map_anyhow_to_state_err)?
+            .storage_adapter
+            .contract_nonce(pathfinder_contract_address, block_id)?
             .unwrap_or(pathfinder_common::ContractNonce::ZERO);
 
         Ok(starknet_api::core::Nonce(nonce.0.into_starkfelt()))
@@ -278,9 +275,8 @@ impl StateReader for PathfinderStateReader<'_> {
         };
 
         let class_hash = self
-            .db_tx
-            .contract_class_hash(block_id, pathfinder_contract_address)
-            .map_err(map_anyhow_to_state_err)?;
+            .storage_adapter
+            .contract_class_hash(block_id, pathfinder_contract_address)?;
 
         let Some(class_hash) = class_hash else {
             return Ok(starknet_api::core::ClassHash(
@@ -335,12 +331,12 @@ impl StateReader for PathfinderStateReader<'_> {
         })?;
 
         let casm_hash = if self.ignore_block_number_for_classes {
-            self.db_tx.casm_hash(class_hash)
+            self.storage_adapter.casm_hash(class_hash)
         } else {
-            self.db_tx.casm_hash_at(block_id, class_hash)
+            self.storage_adapter.casm_hash_at(block_id, class_hash)
         };
 
-        let casm_hash = casm_hash.map_err(map_anyhow_to_state_err)?.ok_or_else(|| {
+        let casm_hash = casm_hash?.ok_or_else(|| {
             StateError::StateReadError("Error getting compiled class hash".to_owned())
         })?;
 
@@ -348,9 +344,4 @@ impl StateReader for PathfinderStateReader<'_> {
             casm_hash.0.into_starkfelt(),
         ))
     }
-}
-
-fn map_anyhow_to_state_err(error: anyhow::Error) -> StateError {
-    tracing::error!(%error, "Internal error in execution state reader");
-    StateError::StateReadError(error.to_string())
 }

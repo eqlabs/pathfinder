@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use blockifier::blockifier::block::pre_process_block;
-use blockifier::blockifier::config::TransactionExecutorConfig;
 use blockifier::blockifier::transaction_executor::TransactionExecutor;
 use blockifier::blockifier_versioned_constants::VersionedConstants;
 use blockifier::bouncer::BouncerConfig;
@@ -17,7 +16,7 @@ use starknet_api::core::PatriciaKey;
 
 use super::pending::PendingStateReader;
 use super::state_reader::PathfinderStateReader;
-use crate::state_reader::NativeClassCache;
+use crate::state_reader::{NativeClassCache, StorageAdapter};
 use crate::types::BlockInfo;
 use crate::IntoStarkFelt;
 
@@ -146,10 +145,8 @@ impl Default for VersionedConstantsMap {
     }
 }
 
-pub type PathfinderExecutor<'tx> =
-    TransactionExecutor<PendingStateReader<PathfinderStateReader<'tx>>>;
-pub type PathfinderExecutionState<'tx> =
-    CachedState<PendingStateReader<PathfinderStateReader<'tx>>>;
+pub type PathfinderExecutor<S> = TransactionExecutor<PendingStateReader<PathfinderStateReader<S>>>;
+pub type PathfinderExecutionState<S> = CachedState<PendingStateReader<PathfinderStateReader<S>>>;
 
 pub struct ExecutionState {
     pub chain_id: ChainId,
@@ -163,79 +160,66 @@ pub struct ExecutionState {
     native_class_cache: Option<NativeClassCache>,
 }
 
-pub fn create_executor(
-    db_tx: pathfinder_storage::Transaction<'_>,
+pub fn create_executor<S: StorageAdapter + Clone>(
+    storage_adapter: S,
     execution_state: ExecutionState,
-) -> anyhow::Result<PathfinderExecutor<'_>> {
-    let block_number = if execution_state.execute_on_parent_state {
-        execution_state.block_info.number.parent()
-    } else {
-        Some(execution_state.block_info.number)
-    };
+) -> anyhow::Result<PathfinderExecutor<S>> {
+    let config = storage_adapter.transaction_executor_config();
 
-    let chain_info = execution_state.chain_info()?;
-    let block_info = execution_state.block_info()?;
-
-    // Perform system contract updates if we are executing ontop of a parent block.
-    // Currently this is only the block hash from 10 blocks ago.
-    let old_block_number_and_hash = if execution_state.block_info.number.get() >= 10 {
-        let block_number_whose_hash_becomes_available =
-            pathfinder_common::BlockNumber::new_or_panic(
-                execution_state.block_info.number.get() - 10,
-            );
-        let block_hash = db_tx
-            .block_hash(block_number_whose_hash_becomes_available.into())?
-            .context("Getting historical block hash")?;
-
-        tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
-
-        Some(BlockHashAndNumber {
-            number: starknet_api::block::BlockNumber(
-                block_number_whose_hash_becomes_available.get(),
-            ),
-            hash: starknet_api::block::BlockHash(block_hash.0.into_starkfelt()),
-        })
-    } else {
-        None
-    };
-
-    let versioned_constants = execution_state
-        .versioned_constants_map
-        .for_version(&execution_state.block_info.starknet_version);
-
-    let block_context = BlockContext::new(
-        block_info,
-        chain_info,
-        versioned_constants.into_owned(),
-        BouncerConfig::max(),
-    );
-
-    let raw_reader = PathfinderStateReader::new(
-        db_tx,
-        block_number,
-        execution_state.pending_state.is_some(),
-        execution_state.native_class_cache,
-    );
-    let pending_state_reader =
-        PendingStateReader::new(raw_reader, execution_state.pending_state.clone());
+    let StateReaderStage {
+        block_context,
+        pending_state_reader,
+        old_block_number_and_hash,
+        ..
+    } = execution_state.create_state_reader(storage_adapter)?;
 
     PathfinderExecutor::pre_process_and_create(
         pending_state_reader,
         block_context,
         old_block_number_and_hash,
-        TransactionExecutorConfig::default(),
+        config,
     )
     .context("Preprocessing state and transaction executor")
 }
 
+struct StateReaderStage<S: StorageAdapter + Clone> {
+    next_block_number: starknet_api::block::BlockNumber,
+    block_context: BlockContext,
+    pending_state_reader: PendingStateReader<PathfinderStateReader<S>>,
+    old_block_number_and_hash: Option<BlockHashAndNumber>,
+}
+
 impl ExecutionState {
-    pub(super) fn starknet_state(
+    pub(super) fn starknet_state<S: StorageAdapter + Clone>(
         self,
-        db_tx: pathfinder_storage::Transaction<'_>,
+        storage_adapter: S,
     ) -> anyhow::Result<(
-        CachedState<PendingStateReader<PathfinderStateReader<'_>>>,
+        CachedState<PendingStateReader<PathfinderStateReader<S>>>,
         BlockContext,
     )> {
+        let StateReaderStage {
+            next_block_number,
+            block_context,
+            pending_state_reader,
+            old_block_number_and_hash,
+        } = self.create_state_reader(storage_adapter)?;
+
+        let mut cached_state = CachedState::new(pending_state_reader);
+
+        pre_process_block(
+            &mut cached_state,
+            old_block_number_and_hash,
+            next_block_number,
+            &block_context.versioned_constants().os_constants,
+        )?;
+
+        Ok((cached_state, block_context))
+    }
+
+    fn create_state_reader<S: StorageAdapter + Clone>(
+        self,
+        storage_adapter: S,
+    ) -> anyhow::Result<StateReaderStage<S>> {
         let block_number = if self.execute_on_parent_state {
             self.block_info.number.parent()
         } else {
@@ -250,7 +234,7 @@ impl ExecutionState {
         let old_block_number_and_hash = if self.block_info.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.block_info.number.get() - 10);
-            let block_hash = db_tx
+            let block_hash = storage_adapter
                 .block_hash(block_number_whose_hash_becomes_available.into())?
                 .context("Getting historical block hash")?;
 
@@ -271,21 +255,14 @@ impl ExecutionState {
             .for_version(&self.block_info.starknet_version);
 
         let raw_reader = PathfinderStateReader::new(
-            db_tx,
+            storage_adapter,
             block_number,
             self.pending_state.is_some(),
             self.native_class_cache,
         );
         let pending_state_reader = PendingStateReader::new(raw_reader, self.pending_state.clone());
-        let mut cached_state = CachedState::new(pending_state_reader);
 
-        pre_process_block(
-            &mut cached_state,
-            old_block_number_and_hash,
-            block_info.block_number,
-            &versioned_constants.os_constants,
-        )?;
-
+        let next_block_number = block_info.block_number;
         let block_context = BlockContext::new(
             block_info,
             chain_info,
@@ -293,7 +270,12 @@ impl ExecutionState {
             BouncerConfig::max(),
         );
 
-        Ok((cached_state, block_context))
+        Ok(StateReaderStage {
+            next_block_number,
+            block_context,
+            pending_state_reader,
+            old_block_number_and_hash,
+        })
     }
 
     fn chain_info(&self) -> anyhow::Result<ChainInfo> {
