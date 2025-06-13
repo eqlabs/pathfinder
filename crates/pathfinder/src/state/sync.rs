@@ -2574,7 +2574,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
             }
         }
 
-        #[cfg(feature = "small_aggregate_filters")]
         #[tokio::test(flavor = "multi_thread")]
         async fn event_filter_pruning() {
             use pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;

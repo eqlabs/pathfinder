@@ -1711,7 +1711,7 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         }
 
-        let n_blocks = 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+        let n_blocks = 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN + 10;
         let n_blocks = usize::try_from(n_blocks).unwrap();
 
         let (storage, test_data) = test_utils::setup_custom_test_storage(n_blocks, 1);
@@ -1732,10 +1732,6 @@ mod tests {
             (
                 BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
                 BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
-            ),
-            (
-                BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
-                BlockNumber::GENESIS + 4 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
             ),
         ];
 
