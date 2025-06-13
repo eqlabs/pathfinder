@@ -491,6 +491,27 @@ impl Transaction<'_> {
     pub fn next_block_without_events(&self) -> BlockNumber {
         self.running_event_filter.lock().unwrap().next_block
     }
+
+    #[cfg(feature = "small_aggregate_filters")]
+    pub fn event_filter_exists(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<bool> {
+        self.inner()
+            .query_row(
+                r"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM event_filters
+                    WHERE from_block = ? AND to_block = ?
+                )
+                ",
+                params![&from_block, &to_block],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.into())
+    }
 }
 
 impl AggregateBloom {
@@ -1690,7 +1711,7 @@ mod tests {
                 .collect::<BTreeSet<_>>()
         }
 
-        let n_blocks = 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+        let n_blocks = 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN + 10;
         let n_blocks = usize::try_from(n_blocks).unwrap();
 
         let (storage, test_data) = test_utils::setup_custom_test_storage(n_blocks, 1);
@@ -1711,10 +1732,6 @@ mod tests {
             (
                 BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
                 BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
-            ),
-            (
-                BlockNumber::GENESIS + 3 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
-                BlockNumber::GENESIS + 4 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
             ),
         ];
 

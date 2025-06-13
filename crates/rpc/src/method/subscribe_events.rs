@@ -434,7 +434,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x46",
+                "from_address": "0x16",
             }
         );
         receiver_tx
@@ -459,7 +459,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -479,9 +479,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x46).into())
+            .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -500,7 +500,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "keys": [["0x46"], [], ["0x47", "0x48"]],
+                "keys": [["0x16"], [], ["0x17", "0x18"]],
             }
         );
         receiver_tx
@@ -525,7 +525,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -545,9 +545,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x46).into())
+            .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -566,8 +566,8 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x46",
-                "keys": [["0x46"], [], ["0x47", "0x48"]],
+                "from_address": "0x16",
+                "keys": [["0x16"], [], ["0x17", "0x18"]],
             }
         );
         receiver_tx
@@ -592,7 +592,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -612,9 +612,9 @@ mod tests {
             .context
             .notifications
             .l2_blocks
-            .send(sample_block(0x46).into())
+            .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -634,7 +634,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "keys": [["0x46", format!("{:x}", num_blocks), format!("{:x}", num_blocks + 1)]],
+                "keys": [["0x16", format!("{:x}", num_blocks), format!("{:x}", num_blocks + 1)]],
             }
         );
         receiver_tx
@@ -660,7 +660,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
 
-        let expected = sample_event_message(0x46, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -721,25 +721,25 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x46",
+                "from_address": "0x10",
                 "keys": [
-                    ["0x46"],
-                    ["0x47"],
-                    ["0x48"],
-                    ["0x49"],
-                    ["0x4a"],
-                    ["0x4b"],
-                    ["0x4c"],
-                    ["0x4d"],
-                    ["0x4e"],
-                    ["0x4f"],
-                    ["0x50"],
-                    ["0x51"],
-                    ["0x52"],
-                    ["0x53"],
-                    ["0x54"],
-                    ["0x55"],
-                    ["0x56"],
+                    ["0x10"],
+                    ["0x10"],
+                    ["0x11"],
+                    ["0x13"],
+                    ["0x14"],
+                    ["0x15"],
+                    ["0x16"],
+                    ["0x17"],
+                    ["0x18"],
+                    ["0x19"],
+                    ["0x1a"],
+                    ["0x1b"],
+                    ["0x1c"],
+                    ["0x1d"],
+                    ["0x1e"],
+                    ["0x1f"],
+                    ["0x20"],
                 ],
             }
         );

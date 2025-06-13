@@ -66,6 +66,9 @@ flate2 = { workspace = true }
 gateway-test-utils = { path = "../gateway-test-utils" }
 hex = { workspace = true }
 pathfinder-crypto = { path = "../crypto" }
+pathfinder-storage = { path = "../storage", features = [
+    "small_aggregate_filters",
+] }
 pretty_assertions_sorted = { workspace = true }
 rayon = { workspace = true }
 rstest = { workspace = true }
