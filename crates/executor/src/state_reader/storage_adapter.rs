@@ -16,6 +16,7 @@ pub mod concurrent;
 pub mod rc;
 
 // Keep clippy happy
+type ClassDefinitionAtWithBlockNumber = Option<(BlockNumber, Vec<u8>)>;
 type ClassDefinitionWithBlockNumber = Option<(Option<BlockNumber>, Vec<u8>)>;
 
 pub trait StorageAdapter {

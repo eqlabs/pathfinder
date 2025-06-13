@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::state_reader::storage_adapter::{
     map_anyhow_to_state_err,
+    ClassDefinitionAtWithBlockNumber,
     ClassDefinitionWithBlockNumber,
     StorageAdapter,
 };
@@ -25,9 +26,6 @@ use crate::state_reader::storage_adapter::{
 pub struct ConcurrentStorageAdapter {
     tx: Sender<Command>,
 }
-
-// Keep clippy happy
-type ClassDefinitionAtWithBlockNumber = Option<(BlockNumber, Vec<u8>)>;
 
 enum Command {
     BlockHash(BlockId, SyncSender<anyhow::Result<Option<BlockHash>>>),
