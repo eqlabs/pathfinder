@@ -2969,9 +2969,9 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
- "rand 0.8.5",
+ "rand 0.9.0",
  "sha2 0.10.8",
- "smol_str 0.2.2",
+ "smol_str 0.3.2",
  "starknet-types-core",
  "thiserror 2.0.11",
 ]
@@ -3903,7 +3903,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.8",
- "starknet-curve 0.5.1",
+ "starknet-curve",
  "starknet-types-core",
  "stats_alloc",
  "tempfile",
@@ -4680,7 +4680,7 @@ checksum = "e73f2692d4bd3cac41dca28934a39894200c9fabf49586d77d0e5954af1d7902"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.99",
+ "syn 2.0.101",
 ]
 
 [[package]]
@@ -8553,7 +8553,7 @@ dependencies = [
 
 [[package]]
 name = "pathfinder-consensus"
-version = "0.17.0-beta.1"
+version = "0.17.0-beta.2"
 dependencies = [
  "anyhow",
  "ed25519-consensus",
@@ -8795,18 +8795,6 @@ name = "pathfinder-version"
 version = "0.17.0-beta.2"
 dependencies = [
  "vergen",
-]
-
-[[package]]
-name = "pbkdf2"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83a0692ec44e4cf1ef28ca317f14f8f07da2d95ec3fa01f86e4467b725e60917"
-dependencies = [
- "digest 0.10.7",
- "hmac",
- "password-hash",
- "sha2 0.10.8",
 ]
 
 [[package]]
@@ -10736,26 +10724,6 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "starknet-crypto"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e2c30c01e8eb0fc913c4ee3cf676389fffc1d1182bfe5bb9670e4e72e968064"
-dependencies = [
- "crypto-bigint",
- "hex",
- "hmac",
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "rfc6979",
- "sha2 0.10.8",
- "starknet-crypto-codegen",
- "starknet-curve 0.4.2",
- "starknet-ff",
- "zeroize",
-]
-
-[[package]]
-name = "starknet-crypto"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ded22ccf4cb9e572ce3f77de6066af53560cd2520d508876c83bb1e6b29d5cbc"
@@ -10768,7 +10736,7 @@ dependencies = [
  "num-traits",
  "rfc6979",
  "sha2 0.10.8",
- "starknet-curve 0.5.1",
+ "starknet-curve",
  "starknet-types-core",
  "zeroize",
 ]
