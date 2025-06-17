@@ -130,7 +130,7 @@ Examples:
     #[arg(
         long = "sync.poll-interval",
         long_help = "New block poll interval in seconds",
-        default_value = "2",
+        default_value = "1",
         env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
     )]
     poll_interval: std::num::NonZeroU64,

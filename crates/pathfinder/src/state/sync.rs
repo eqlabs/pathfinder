@@ -252,7 +252,7 @@ where
     let mut pending_handle = util::task::spawn(pending::poll_pending(
         event_sender.clone(),
         sequencer.clone(),
-        Duration::from_secs(2),
+        head_poll_interval,
         storage.clone(),
         rx_latest.clone(),
         rx_current.clone(),
