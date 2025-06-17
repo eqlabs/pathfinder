@@ -130,10 +130,10 @@ pub enum ProposalPart {
 impl std::fmt::Display for ProposalPart {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Init(_) => write!(f, "ProposalInit"),
+            Self::Init(_) => write!(f, "Init"),
             Self::BlockInfo(_) => write!(f, "BlockInfo"),
             Self::TransactionBatch(_) => write!(f, "TransactionBatch"),
-            Self::Fin(_) => write!(f, "ProposalFin"),
+            Self::Fin(_) => write!(f, "Fin"),
         }
     }
 }
