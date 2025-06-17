@@ -81,14 +81,15 @@ async fn consensus_simulation() {
 
             while current_height <= NUM_HEIGHTS {
                 let height = Height::new(current_height);
-                let mut engine = Consensus::new(addr);
-                engine.handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
+                let mut consensus = Consensus::new(Config::new(addr));
+                consensus
+                    .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
 
                 sleep(Duration::from_millis(100)).await;
 
                 loop {
                     // Poll event from consensus engine
-                    while let Some(event) = engine.next_event().await {
+                    while let Some(event) = consensus.next_event().await {
                         match event {
                             ConsensusEvent::RequestProposal {
                                 height: h,
@@ -108,7 +109,7 @@ async fn consensus_simulation() {
                                     value_id: consensus_value.clone(),
                                 };
 
-                                engine.handle_command(ConsensusCommand::Propose(proposal));
+                                consensus.handle_command(ConsensusCommand::Propose(proposal));
                             }
 
                             ConsensusEvent::Gossip(msg) => {
@@ -146,7 +147,7 @@ async fn consensus_simulation() {
                             NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                             NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
                         };
-                        engine.handle_command(cmd);
+                        consensus.handle_command(cmd);
                     }
 
                     // Break if all validators have decided for current height
