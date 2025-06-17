@@ -11,6 +11,7 @@ pub struct ValidatorSet {
 impl ValidatorSet {
     pub fn new(validators: impl IntoIterator<Item = Validator>) -> Self {
         let mut validators: Vec<_> = validators.into_iter().collect();
+        validators.sort();
         validators.dedup();
 
         assert!(!validators.is_empty());
