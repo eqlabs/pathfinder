@@ -20,14 +20,16 @@ pub struct Transaction {
     pub transaction_hash: Hash,
 }
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Dummy)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Dummy)]
 pub enum VoteType {
     Prevote,
     #[default]
     Precommit,
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq, ToProtobuf, TryFromProtobuf, Dummy)]
+#[derive(
+    Debug, Default, Clone, Eq, PartialEq, PartialOrd, Ord, ToProtobuf, TryFromProtobuf, Dummy,
+)]
 #[protobuf(name = "crate::proto::consensus::Vote")]
 pub struct Vote {
     pub vote_type: VoteType,
@@ -36,6 +38,8 @@ pub struct Vote {
     #[optional]
     pub block_hash: Option<Hash>,
     pub voter: Address,
+    #[optional]
+    pub extension: Option<Vec<u8>>,
 }
 
 impl ProtobufSerializable for Vote {
@@ -117,19 +121,19 @@ pub struct ProposalFin {
 
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ProposalPart {
-    ProposalInit(ProposalInit),
+    Init(ProposalInit),
     BlockInfo(BlockInfo),
     TransactionBatch(Vec<Transaction>),
-    ProposalFin(ProposalFin),
+    Fin(ProposalFin),
 }
 
 impl std::fmt::Display for ProposalPart {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ProposalInit(_) => write!(f, "ProposalInit"),
+            Self::Init(_) => write!(f, "Init"),
             Self::BlockInfo(_) => write!(f, "BlockInfo"),
             Self::TransactionBatch(_) => write!(f, "TransactionBatch"),
-            Self::ProposalFin(_) => write!(f, "ProposalFin"),
+            Self::Fin(_) => write!(f, "Fin"),
         }
     }
 }
@@ -233,7 +237,7 @@ impl ToProtobuf<proto::consensus::ProposalPart> for ProposalPart {
         use proto::consensus::TransactionBatch;
         proto::consensus::ProposalPart {
             message: Some(match self {
-                Self::ProposalInit(init) => Init(init.to_protobuf()),
+                Self::Init(init) => Init(init.to_protobuf()),
                 Self::BlockInfo(bi) => BlockInfo(bi.to_protobuf()),
                 Self::TransactionBatch(transactions) => Transactions(TransactionBatch {
                     transactions: transactions
@@ -241,7 +245,7 @@ impl ToProtobuf<proto::consensus::ProposalPart> for ProposalPart {
                         .map(|txn| txn.to_protobuf())
                         .collect(),
                 }),
-                Self::ProposalFin(fin) => Fin(fin.to_protobuf()),
+                Self::Fin(fin) => Fin(fin.to_protobuf()),
             }),
         }
     }
@@ -254,9 +258,7 @@ impl TryFromProtobuf<proto::consensus::ProposalPart> for ProposalPart {
     ) -> Result<Self, std::io::Error> {
         use proto::consensus::proposal_part::Message::{BlockInfo, Fin, Init, Transactions};
         match proto_field(input.message, field_name)? {
-            Init(init) => {
-                TryFromProtobuf::try_from_protobuf(init, field_name).map(Self::ProposalInit)
-            }
+            Init(init) => TryFromProtobuf::try_from_protobuf(init, field_name).map(Self::Init),
             BlockInfo(bi) => {
                 TryFromProtobuf::try_from_protobuf(bi, field_name).map(Self::BlockInfo)
             }
@@ -266,7 +268,7 @@ impl TryFromProtobuf<proto::consensus::ProposalPart> for ProposalPart {
                 .map(|txn| TryFromProtobuf::try_from_protobuf(txn, field_name))
                 .collect::<Result<Vec<_>, _>>()
                 .map(Self::TransactionBatch),
-            Fin(fin) => TryFromProtobuf::try_from_protobuf(fin, field_name).map(Self::ProposalFin),
+            Fin(fin) => TryFromProtobuf::try_from_protobuf(fin, field_name).map(Self::Fin),
         }
     }
 }
@@ -325,7 +327,7 @@ mod tests {
             valid_round: Some(4),
             proposer: Address(Felt::from_hex_str("0x123").unwrap()),
         };
-        let proposal_init = ProposalPart::ProposalInit(init.clone());
+        let proposal_init = ProposalPart::Init(init.clone());
 
         // Serialize, deserialize, and verify
         let proto = proposal_init.clone().to_protobuf();
@@ -371,7 +373,7 @@ mod tests {
         let fin = ProposalFin {
             proposal_commitment: Hash(Felt::from_hex_str("0xdef").unwrap()),
         };
-        let proposal_fin = ProposalPart::ProposalFin(fin.clone());
+        let proposal_fin = ProposalPart::Fin(fin.clone());
 
         // Serialize, deserialize, and verify
         let proto = proposal_fin.clone().to_protobuf();
@@ -420,7 +422,7 @@ mod tests {
             valid_round: Some(4),
             proposer: Address(Felt::from_hex_str("0x123").unwrap()),
         };
-        let proposal_init = ProposalPart::ProposalInit(init);
+        let proposal_init = ProposalPart::Init(init);
 
         // Test serialization and deserialization using ProtobufSerializable
         let bytes = proposal_init.to_protobuf_bytes();
@@ -466,7 +468,7 @@ mod tests {
         let fin = ProposalFin {
             proposal_commitment: Hash(Felt::from_hex_str("0xdef").unwrap()),
         };
-        let proposal_fin = ProposalPart::ProposalFin(fin);
+        let proposal_fin = ProposalPart::Fin(fin);
 
         // Test serialization and deserialization using ProtobufSerializable
         let bytes = proposal_fin.to_protobuf_bytes();
@@ -483,6 +485,7 @@ mod tests {
             round: 5,
             block_hash: None,
             voter: Address(Felt::from_hex_str("0x123").unwrap()),
+            extension: None,
         };
 
         // Test serialization and deserialization using ProtobufSerializable
@@ -497,6 +500,7 @@ mod tests {
             round: 6,
             block_hash: Some(Hash(Felt::from_hex_str("0x456").unwrap())),
             voter: Address(Felt::from_hex_str("0x789").unwrap()),
+            extension: None,
         };
 
         // Test serialization and deserialization using ProtobufSerializable

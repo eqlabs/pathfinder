@@ -4,6 +4,7 @@ members = [
     "crates/class-hash",
     "crates/common",
     "crates/compiler",
+    "crates/consensus",
     "crates/crypto",
     "crates/ethereum",
     "crates/executor",

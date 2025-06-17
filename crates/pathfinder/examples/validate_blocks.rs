@@ -68,7 +68,7 @@ fn main() -> anyhow::Result<()> {
         let (mut proposal, header) = create_proposal(&db_tx, block_number)?;
         drop(db_tx);
 
-        let Some(ProposalPart::ProposalInit(proposal_init)) = proposal.pop_front() else {
+        let Some(ProposalPart::Init(proposal_init)) = proposal.pop_front() else {
             panic!("Expected proposal init");
         };
 
@@ -100,7 +100,7 @@ fn main() -> anyhow::Result<()> {
 
         // TODO(validator) for now it carries the block hash because we don't know how
         // to calculate the proposal commitment
-        let Some(ProposalPart::ProposalFin(proposal_fin)) = proposal.pop_front() else {
+        let Some(ProposalPart::Fin(proposal_fin)) = proposal.pop_front() else {
             panic!("Expected proposal fin");
         };
 
@@ -132,7 +132,7 @@ fn create_proposal(
     let mut proposal_parts = VecDeque::new();
     let height = header.number.get();
 
-    proposal_parts.push_back(ProposalPart::ProposalInit(ProposalInit {
+    proposal_parts.push_back(ProposalPart::Init(ProposalInit {
         height,
         // Decent random value
         round: 42,
@@ -203,7 +203,7 @@ fn create_proposal(
 
     proposal_parts.push_back(ProposalPart::TransactionBatch(consensus_txns));
 
-    proposal_parts.push_back(ProposalPart::ProposalFin(ProposalFin {
+    proposal_parts.push_back(ProposalPart::Fin(ProposalFin {
         // TODO(validator) using block hash for now, as we don't know how to calculate the proposal
         // commitment
         proposal_commitment: Hash(header.hash.0),
