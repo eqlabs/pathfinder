@@ -249,7 +249,6 @@ impl ValidatorTransactionBatchStage {
         self,
         mut expected_block_header: BlockHeader,
     ) -> anyhow::Result<Result<ValidatorFinalizeStage, (BlockHeader, BlockHeader)>> {
-        // ) -> anyhow::Result<Option<(BlockHeader, BlockHeader)>> {
         let _span = tracing::debug_span!(
             "Validator::finalize0",
             height = %self.block_info.number,
