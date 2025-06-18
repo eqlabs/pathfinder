@@ -2573,5 +2573,112 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 assert!(tx.block_exists(block_id).unwrap());
             }
         }
+
+        #[cfg(feature = "small_aggregate_filters")]
+        #[tokio::test(flavor = "multi_thread")]
+        async fn event_filter_pruning() {
+            use pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
+
+            let storage = StorageBuilder::in_memory_with_blockchain_pruning_and_pool_size(
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept: 0 },
+                std::num::NonZeroU32::new(10).unwrap(),
+            )
+            .unwrap();
+            let mut conn = storage.connection().unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let first_filter_exists = tx
+                .event_filter_exists(
+                    BlockNumber::GENESIS,
+                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                )
+                .unwrap();
+            assert!(!first_filter_exists);
+            drop(tx);
+
+            let mut blocks = block_data_with_state_updates(vec![
+                    StateUpdate::default();
+                    // Insert a full aggregate filter range + 1 so that we store one filter.
+                    AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize + 1
+                ]);
+            let last_block = blocks.pop().unwrap();
+
+            let (event_tx, event_rx) =
+                tokio::sync::mpsc::channel(AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize + 1);
+            // Make sure L2 relative pruning starts immediately.
+            let l1_state_update = EthereumStateUpdate {
+                block_number: BlockNumber::GENESIS + 2 * AGGREGATE_BLOOM_BLOCK_RANGE_LEN,
+                ..Default::default()
+            };
+            event_tx
+                .send(SyncEvent::L1Update(l1_state_update))
+                .await
+                .unwrap();
+            // Send all but one block update.
+            for (a, b, c, d, e) in blocks.into_iter() {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let first_filter_exists = tx
+                .event_filter_exists(
+                    BlockNumber::GENESIS,
+                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                )
+                .unwrap();
+            assert!(first_filter_exists);
+            drop(tx);
+
+            let (event_tx, event_rx) =
+                tokio::sync::mpsc::channel(AGGREGATE_BLOOM_BLOCK_RANGE_LEN as usize);
+            // Send the last block update.
+            let (a, b, c, d, e) = last_block;
+            event_tx
+                .send(SyncEvent::Block(a, b, c, d, e))
+                .await
+                .unwrap();
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage: storage.clone(),
+                state: Arc::new(SyncState::default()),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                websocket_txs: None,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let tx = conn.transaction().unwrap();
+            let first_filter_exists = tx
+                .event_filter_exists(
+                    BlockNumber::GENESIS,
+                    BlockNumber::GENESIS + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1,
+                )
+                .unwrap();
+            assert!(!first_filter_exists);
+        }
     }
 }

@@ -68,11 +68,14 @@ use pathfinder_common::BlockNumber;
 use pathfinder_crypto::Felt;
 
 /// Maximum number of blocks to aggregate in a single `AggregateBloom`.
-#[cfg(not(test))]
+#[cfg(not(feature = "small_aggregate_filters"))]
 pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = 8192;
 
 /// Make testing faster and easier by using a smaller range.
-#[cfg(test)]
+///
+/// Integration level tests in `state/sync.rs` are also affected by this value
+/// so we use a custom feature instead of `#[cfg(test)]`
+#[cfg(feature = "small_aggregate_filters")]
 pub const AGGREGATE_BLOOM_BLOCK_RANGE_LEN: u64 = 16;
 
 /// An aggregate of all Bloom filters for a given range of blocks.

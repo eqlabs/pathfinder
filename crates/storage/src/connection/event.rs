@@ -491,6 +491,27 @@ impl Transaction<'_> {
     pub fn next_block_without_events(&self) -> BlockNumber {
         self.running_event_filter.lock().unwrap().next_block
     }
+
+    #[cfg(feature = "small_aggregate_filters")]
+    pub fn event_filter_exists(
+        &self,
+        from_block: BlockNumber,
+        to_block: BlockNumber,
+    ) -> anyhow::Result<bool> {
+        self.inner()
+            .query_row(
+                r"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM event_filters
+                    WHERE from_block = ? AND to_block = ?
+                )
+                ",
+                params![&from_block, &to_block],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.into())
+    }
 }
 
 impl AggregateBloom {
