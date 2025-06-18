@@ -7,6 +7,7 @@
 //! - `transaction_hashes`
 //! - `block_headers`
 //! - `block_signatures`
+//! - `event_filters`
 //! - `contract_updates` (a row can be pruned if there is another row with the
 //!   same `contract_address` and a higher `block_number`)
 //! - `nonce_updates` (a row can be pruned if there is another row with the same
@@ -66,7 +67,8 @@ pub(crate) fn prune_block(
         .context("Deleting block from block_headers")?;
 
     // Only run event filter pruning if the block to prune is the last block in an
-    // event filter range.
+    // event filter range, because now we know that all blocks covered by this
+    // filter will be gone.
     let is_to_block = (block.get() + 1) % AGGREGATE_BLOOM_BLOCK_RANGE_LEN == 0;
     if is_to_block {
         event_filters_delete_stmt
