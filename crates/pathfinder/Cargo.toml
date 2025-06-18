@@ -87,7 +87,9 @@ pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
-pathfinder-storage = { path = "../storage" }
+pathfinder-storage = { path = "../storage", features = [
+    "small_aggregate_filters",
+] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }
 rand_chacha = { workspace = true }

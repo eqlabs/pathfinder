@@ -7,6 +7,7 @@
 //! - `transaction_hashes`
 //! - `block_headers`
 //! - `block_signatures`
+//! - `event_filters`
 //! - `contract_updates` (a row can be pruned if there is another row with the
 //!   same `contract_address` and a higher `block_number`)
 //! - `nonce_updates` (a row can be pruned if there is another row with the same
@@ -24,6 +25,7 @@ use pathfinder_common::BlockNumber;
 
 use super::Transaction;
 use crate::prelude::{named_params, params, RowExt};
+use crate::AGGREGATE_BLOOM_BLOCK_RANGE_LEN;
 
 #[derive(Debug, Clone, Copy)]
 pub enum BlockchainHistoryMode {
@@ -48,13 +50,33 @@ pub(crate) fn prune_block(
     let mut block_headers_delete_stmt = db.prepare_cached(
         r"
         DELETE FROM block_headers
-        WHERE number = ?
+        WHERE number = :block_to_prune
+        ",
+    )?;
+    let mut event_filters_delete_stmt = db.prepare_cached(
+        r"
+        DELETE FROM event_filters
+        WHERE to_block = :block_to_prune
         ",
     )?;
 
     block_headers_delete_stmt
-        .execute(params![&block])
+        .execute(named_params!(
+            ":block_to_prune": &block,
+        ))
         .context("Deleting block from block_headers")?;
+
+    // Only run event filter pruning if the block to prune is the last block in an
+    // event filter range, because now we know that all blocks covered by this
+    // filter will be gone.
+    let is_to_block = (block.get() + 1) % AGGREGATE_BLOOM_BLOCK_RANGE_LEN == 0;
+    if is_to_block {
+        event_filters_delete_stmt
+            .execute(named_params!(
+                ":block_to_prune": &block,
+            ))
+            .context("Deleting filter from event_filters")?;
+    }
 
     // Prune state update data (where possible).
     let mut contract_updates_select_stmt = db.prepare_cached(
