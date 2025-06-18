@@ -2,7 +2,7 @@ default:
     just --summary --unsorted
 
 test $RUST_BACKTRACE="1" *args="":
-    cargo nextest run --no-fail-fast --all-targets --features p2p,small_aggregate_filters --workspace --locked \
+    cargo nextest run --no-fail-fast --all-targets --features p2p --workspace --locked \
     -E 'not test(/^p2p_network::sync_handlers::tests::prop/)' \
     {{args}}
 
