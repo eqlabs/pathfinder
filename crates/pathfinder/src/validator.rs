@@ -242,7 +242,7 @@ impl ValidatorTransactionBatchStage {
     }
 
     /// Does not compute the state commitment and block hash. Returns
-    /// `Ok(Ok(ValidatorFinalize0Stage))` if the expected block header
+    /// `Ok(Ok(ValidatorFinalizeStage))` if the expected block header
     /// matches the computed one, `Ok(Err((expected, actual)))` if they do
     /// not match, `Err` if there was an error during finalization.
     pub fn finalize(

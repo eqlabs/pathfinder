@@ -101,7 +101,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
                 // | 2          |  1.81
                 // | 4          |  1.24
                 // | 8          |  1.00
-                // | 16         |  0.08
+                // | 16         |  1.08
                 // | 32         |  1.21
                 // | 64         |  1.20
                 chunk_size: 8,
