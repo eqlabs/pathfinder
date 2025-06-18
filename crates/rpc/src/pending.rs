@@ -255,43 +255,55 @@ impl PendingWatcher {
             .unwrap_or_default();
 
         let data = self.0.borrow().clone();
-        // TODO: this should not be performed for pre-committed block, since those
-        // contain no parent hash.
-        if data.header().parent_hash == latest.hash {
-            Ok(data)
-        } else {
-            let data = PendingData {
-                block: PendingBlockVariant::Pending(PendingBlock {
-                    l1_gas_price: GasPrices {
-                        price_in_wei: latest.eth_l1_gas_price,
-                        price_in_fri: latest.strk_l1_gas_price,
-                    },
-                    l1_data_gas_price: GasPrices {
-                        price_in_wei: latest.eth_l1_data_gas_price,
-                        price_in_fri: latest.strk_l1_data_gas_price,
-                    },
-                    l2_gas_price: GasPrices {
-                        price_in_wei: latest.eth_l2_gas_price,
-                        price_in_fri: latest.strk_l2_gas_price,
-                    },
-                    timestamp: latest.timestamp,
-                    parent_hash: latest.hash,
-                    starknet_version: latest.starknet_version,
-                    l1_da_mode: latest.l1_da_mode.into(),
-                    // This shouldn't have an impact anywhere as the RPC methods should
-                    // know this is a pending block. But rather safe than sorry.
-                    status: Status::Pending,
-                    sequencer_address: latest.sequencer_address,
-                    transaction_receipts: vec![],
-                    transactions: vec![],
-                })
-                .into(),
-                state_update: StateUpdate::default().into(),
-                number: latest.number + 1,
-            };
 
-            Ok(data)
-        }
+        let (pending_data, status) = match data.block().as_ref() {
+            PendingBlockVariant::Pending(block) => {
+                if block.parent_hash == latest.hash {
+                    (Some(data), Status::Pending)
+                } else {
+                    (None, Status::Pending)
+                }
+            }
+            PendingBlockVariant::PreConfirmed(_) => {
+                if data.block_number() == latest.number + 1 {
+                    (Some(data), Status::PreConfirmed)
+                } else {
+                    (None, Status::PreConfirmed)
+                }
+            }
+        };
+
+        let pending_data = pending_data.unwrap_or_else(|| PendingData {
+            block: PendingBlockVariant::Pending(PendingBlock {
+                l1_gas_price: GasPrices {
+                    price_in_wei: latest.eth_l1_gas_price,
+                    price_in_fri: latest.strk_l1_gas_price,
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: latest.eth_l1_data_gas_price,
+                    price_in_fri: latest.strk_l1_data_gas_price,
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: latest.eth_l2_gas_price,
+                    price_in_fri: latest.strk_l2_gas_price,
+                },
+                timestamp: latest.timestamp,
+                parent_hash: latest.hash,
+                starknet_version: latest.starknet_version,
+                l1_da_mode: latest.l1_da_mode.into(),
+                // This shouldn't have an impact anywhere as the RPC methods should
+                // know this is a pending block. But rather safe than sorry.
+                status,
+                sequencer_address: latest.sequencer_address,
+                transaction_receipts: vec![],
+                transactions: vec![],
+            })
+            .into(),
+            state_update: StateUpdate::default().into(),
+            number: latest.number + 1,
+        });
+
+        Ok(pending_data)
     }
 
     #[cfg(test)]
