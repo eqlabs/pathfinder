@@ -193,7 +193,8 @@ impl ValidatorTransactionBatchStage {
                     ))
                 }
             })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+            .collect::<anyhow::Result<Vec<_>>>()
+            .context("Verifying transaction hashes")?;
 
         let (receipts, mut events): (Vec<_>, Vec<_>) = self
             .block_executor
@@ -240,22 +241,17 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
-    // TODO(validator) we're using the block hash instead of the proposal commitment
-    // here, which is incorrect but we don't have the proposal commitment
-    // formula yet.
+    /// Does not compute the state commitment and block hash. Returns
+    /// `Ok(Ok(ValidatorFinalize0Stage))` if the expected block header
+    /// matches the computed one, `Ok(Err((expected, actual)))` if they do
+    /// not match, `Err` if there was an error during finalization.
     pub fn finalize(
         self,
-        workaround_block_hash_in_proposal_fin: ProposalFin,
-        workaround_parent_hash: BlockHash,
-        storage: Storage,
-    ) -> anyhow::Result<bool> {
-        #[cfg(debug_assertions)]
-        const VERIFY_HASHES: bool = true;
-        #[cfg(not(debug_assertions))]
-        const VERIFY_HASHES: bool = false;
-
+        mut expected_block_header: BlockHeader,
+    ) -> anyhow::Result<Result<ValidatorFinalizeStage, (BlockHeader, BlockHeader)>> {
+        // ) -> anyhow::Result<Option<(BlockHeader, BlockHeader)>> {
         let _span = tracing::debug_span!(
-            "Validator::finalize",
+            "Validator::finalize0",
             height = %self.block_info.number,
             num_transactions = %self.transactions.len(),
         )
@@ -280,26 +276,13 @@ impl ValidatorTransactionBatchStage {
         let state_update = StateUpdateData::from(state_diff);
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
-        let mut db_conn = storage.connection().context("Create database connection")?;
-        let db_txn = db_conn
-            .transaction()
-            .context("Create database transaction")?;
-
-        let (storage_commitment, class_commitment) = update_starknet_state(
-            &db_txn,
-            (&state_update).into(),
-            VERIFY_HASHES,
-            self.block_info.number,
-            storage.clone(),
-        )?;
-
-        let state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
+        expected_block_header.hash = BlockHash::ZERO; // UNUSED
+        expected_block_header.parent_hash = BlockHash::ZERO; // UNUSED
+        expected_block_header.state_commitment = StateCommitment::ZERO; // UNUSED
 
         let header = BlockHeader {
-            // TODO(validator) depending on what the proposal commitment is we could need a
-            // BlockHeader type without the block hash
-            hash: BlockHash::ZERO, // UNUSED
-            parent_hash: workaround_parent_hash,
+            hash: BlockHash::ZERO,        // UNUSED
+            parent_hash: BlockHash::ZERO, // UNUSED
             number: self.block_info.number,
             timestamp: self.block_info.timestamp,
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
@@ -311,7 +294,7 @@ impl ValidatorTransactionBatchStage {
             sequencer_address: self.block_info.sequencer_address,
             starknet_version: self.block_info.starknet_version,
             event_commitment,
-            state_commitment,
+            state_commitment: StateCommitment::ZERO, // UNUSED
             transaction_commitment,
             transaction_count: self.transactions.len(),
             event_count: self.events.iter().flatten().count(),
@@ -321,13 +304,86 @@ impl ValidatorTransactionBatchStage {
             state_diff_length: state_update.state_diff_length(),
         };
 
-        let computed_block_hash = block_hash::compute_final_hash(&header);
+        debug!(
+            "Block {} finalized in {} ms",
+            self.block_info.number,
+            start.elapsed().as_millis()
+        );
+
+        if header == expected_block_header {
+            Ok(Ok(ValidatorFinalizeStage {
+                header,
+                state_update,
+            }))
+        } else {
+            Ok(Err((expected_block_header, header)))
+        }
+    }
+}
+
+pub struct ValidatorFinalizeStage {
+    header: BlockHeader,
+    state_update: StateUpdateData,
+}
+
+impl ValidatorFinalizeStage {
+    // TODO(validator) we're using the block hash instead of the proposal commitment
+    // here, which is incorrect but we don't have the proposal commitment
+    // formula yet.
+    /// Updates the tries, computes the state commitment and block hash, and
+    /// validates that the computed block hash matches the one in the proposal
+    /// fin.
+    pub fn validate_block_hash(
+        mut self,
+        workaround_block_hash_in_proposal_fin: ProposalFin,
+        workaround_parent_hash: BlockHash,
+        storage: Storage,
+    ) -> anyhow::Result<bool> {
+        #[cfg(debug_assertions)]
+        const VERIFY_HASHES: bool = true;
+        #[cfg(not(debug_assertions))]
+        const VERIFY_HASHES: bool = false;
+
+        let _span = tracing::debug_span!(
+            "Validator::finalize",
+            height = %self.header.number,
+            num_transactions = %self.header.transaction_count,
+        )
+        .entered();
+
+        let start = Instant::now();
+
+        let mut db_conn = storage.connection().context("Create database connection")?;
+        let db_txn = db_conn
+            .transaction()
+            .context("Create database transaction")?;
+
+        let (storage_commitment, class_commitment) = update_starknet_state(
+            &db_txn,
+            (&self.state_update).into(),
+            VERIFY_HASHES,
+            self.header.number,
+            storage.clone(),
+        )?;
+
+        debug!(
+            "Block {} tries updated in {} ms",
+            self.header.number,
+            start.elapsed().as_millis()
+        );
+
+        let start = Instant::now();
+        self.header.parent_hash = workaround_parent_hash;
+        self.header.state_commitment =
+            StateCommitment::calculate(storage_commitment, class_commitment);
+
+        let computed_block_hash = block_hash::compute_final_hash(&self.header);
         let expected_block_hash =
             BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
 
         debug!(
-            "Block {} finalized in {} ms",
-            self.block_info.number,
+            "Block {} state commitment and block hash computed in {} ms",
+            self.header.number,
             start.elapsed().as_millis()
         );
 

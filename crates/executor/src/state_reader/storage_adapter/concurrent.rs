@@ -90,7 +90,8 @@ impl StorageAdapter for ConcurrentStorageAdapter {
             ConcurrencyConfig {
                 enabled: true,
                 n_workers,
-                chunk_size: 4, // TODO(validator) make it configurable or pick a reasonable default
+                chunk_size: 16, /* TODO(validator) make it configurable or pick a reasonable
+                                 * default */
             }
         };
 
