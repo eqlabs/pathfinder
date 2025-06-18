@@ -40,10 +40,12 @@ pub struct PreConfirmedBlock {
     )>,
 }
 
+type CandidateTransactions = Vec<pathfinder_common::transaction::Transaction>;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum PendingBlockVariant {
     Pending(PendingBlock),
-    PreConfirmed(PreConfirmedBlock),
+    PreConfirmed(PreConfirmedBlock, CandidateTransactions),
 }
 
 impl Default for PendingBlockVariant {
@@ -56,7 +58,7 @@ impl PendingBlockVariant {
     pub fn transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
         match self {
             PendingBlockVariant::Pending(block) => &block.transactions,
-            PendingBlockVariant::PreConfirmed(block) => &block.transactions,
+            PendingBlockVariant::PreConfirmed(block, _) => &block.transactions,
         }
     }
 
@@ -68,14 +70,14 @@ impl PendingBlockVariant {
     )] {
         match self {
             PendingBlockVariant::Pending(block) => &block.transaction_receipts,
-            PendingBlockVariant::PreConfirmed(block) => &block.transaction_receipts,
+            PendingBlockVariant::PreConfirmed(block, _) => &block.transaction_receipts,
         }
     }
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
         match self {
             PendingBlockVariant::Pending(_) => crate::dto::TxnFinalityStatus::AcceptedOnL2,
-            PendingBlockVariant::PreConfirmed(_) => crate::dto::TxnFinalityStatus::PreConfirmed,
+            PendingBlockVariant::PreConfirmed(_, _) => crate::dto::TxnFinalityStatus::PreConfirmed,
         }
     }
 }
@@ -113,7 +115,7 @@ impl PendingData {
         let transaction_receipts: Vec<_> =
             block.transaction_receipts.into_iter().flatten().collect();
         let number_of_pre_confirmed_transactions = transaction_receipts.len();
-        let candiate_transactions = block
+        let candidate_transactions = block
             .transactions
             .split_off(number_of_pre_confirmed_transactions);
 
@@ -140,12 +142,15 @@ impl PendingData {
             timestamp: block.timestamp,
             starknet_version: block.starknet_version,
             l1_da_mode: block.l1_da_mode.into(),
-            transactions: candiate_transactions,
+            transactions: block.transactions,
             transaction_receipts,
         };
 
         Self {
-            block: Arc::new(PendingBlockVariant::PreConfirmed(block)),
+            block: Arc::new(PendingBlockVariant::PreConfirmed(
+                block,
+                candidate_transactions,
+            )),
             state_update: Arc::new(state_update),
             number,
         }
@@ -187,7 +192,7 @@ impl PendingData {
                 state_diff_commitment: Default::default(),
                 state_diff_length: Default::default(),
             },
-            PendingBlockVariant::PreConfirmed(block) => BlockHeader {
+            PendingBlockVariant::PreConfirmed(block, _) => BlockHeader {
                 parent_hash: pathfinder_common::BlockHash::ZERO, /* Pre-confirmed blocks do not
                                                                   * have a parent hash. */
                 number: self.number,
@@ -235,6 +240,15 @@ impl PendingData {
     )] {
         self.block.transaction_receipts_and_events()
     }
+
+    pub fn candidate_transactions(&self) -> Option<&CandidateTransactions> {
+        match self.block.as_ref() {
+            PendingBlockVariant::Pending(_) => None,
+            PendingBlockVariant::PreConfirmed(_, candidate_transactions) => {
+                Some(candidate_transactions)
+            }
+        }
+    }
 }
 
 impl PendingWatcher {
@@ -264,7 +278,7 @@ impl PendingWatcher {
                     (None, Status::Pending)
                 }
             }
-            PendingBlockVariant::PreConfirmed(_) => {
+            PendingBlockVariant::PreConfirmed(_, _) => {
                 if data.block_number() == latest.number + 1 {
                     (Some(data), Status::PreConfirmed)
                 } else {
@@ -385,18 +399,21 @@ mod tests {
         tx.insert_block_header(&latest).unwrap();
 
         let pending = PendingData {
-            block: PendingBlockVariant::PreConfirmed(PreConfirmedBlock {
-                l1_gas_price: Default::default(),
-                l1_data_gas_price: Default::default(),
-                l2_gas_price: Default::default(),
-                sequencer_address: sequencer_address!("0x1234"),
-                status: Status::PreConfirmed,
-                timestamp: BlockTimestamp::new_or_panic(112233),
-                starknet_version: StarknetVersion::new(0, 14, 0, 0),
-                l1_da_mode: L1DataAvailabilityMode::Blob,
-                transactions: vec![],
-                transaction_receipts: vec![],
-            })
+            block: PendingBlockVariant::PreConfirmed(
+                PreConfirmedBlock {
+                    l1_gas_price: Default::default(),
+                    l1_data_gas_price: Default::default(),
+                    l2_gas_price: Default::default(),
+                    sequencer_address: sequencer_address!("0x1234"),
+                    status: Status::PreConfirmed,
+                    timestamp: BlockTimestamp::new_or_panic(112233),
+                    starknet_version: StarknetVersion::new(0, 14, 0, 0),
+                    l1_da_mode: L1DataAvailabilityMode::Blob,
+                    transactions: vec![],
+                    transaction_receipts: vec![],
+                },
+                vec![],
+            )
             .into(),
             state_update: StateUpdate::default()
                 .with_contract_nonce(
@@ -478,9 +495,30 @@ mod tests {
     fn pre_confirmed_block_state_diff_conversion() {
         let json =
             starknet_gateway_test_fixtures::v0_14_0::preconfirmed_block::SEPOLIA_INTEGRATION_955821;
-        let pre_confirmed_block: starknet_gateway_types::reply::PreConfirmedBlock =
+        let mut pre_confirmed_block: starknet_gateway_types::reply::PreConfirmedBlock =
             serde_json::from_str(json).unwrap();
+        let number_of_pre_confirmed_transactions = pre_confirmed_block.transaction_receipts.len();
         let block_number = BlockNumber::new_or_panic(955821);
+
+        // Unfortunately that fixture does not contain a _candidate_ transaction, so
+        // just push one on to the end of the list.
+        let candidate_transaction = pathfinder_common::transaction::Transaction {
+            hash: transaction_hash!(
+                "0x352057331d5ad77465315d30b98135ddb815b86aa485d659dfeef59a904f88d"
+            ),
+            variant: pathfinder_common::transaction::TransactionVariant::InvokeV3(
+                pathfinder_common::transaction::InvokeTransactionV3 {
+                    ..Default::default()
+                },
+            ),
+        };
+        pre_confirmed_block
+            .transactions
+            .push(candidate_transaction.clone());
+        pre_confirmed_block.transaction_receipts.push(None);
+        pre_confirmed_block.transaction_state_diffs.push(None);
+
+        // Convert the pre-confirmed block into pending data.
         let pending_data = PendingData::from_pre_confirmed_block(pre_confirmed_block, block_number);
 
         assert_eq!(pending_data.block_number(), block_number);
@@ -534,6 +572,18 @@ mod tests {
         pretty_assertions_sorted::assert_eq_sorted!(
             &expected_state_update,
             pending_data.state_update().as_ref()
+        );
+
+        // We expect the transaction list to contain pre-confirmed transactions only.
+        assert_eq!(
+            number_of_pre_confirmed_transactions,
+            pending_data.transactions().len()
+        );
+
+        // And the single candidate transaction we've added.
+        assert_eq!(
+            &vec![candidate_transaction],
+            pending_data.candidate_transactions().unwrap()
         );
     }
 }

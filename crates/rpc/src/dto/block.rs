@@ -190,7 +190,7 @@ impl crate::dto::SerializeForVersion for crate::pending::PendingBlockVariant {
             crate::pending::PendingBlockVariant::Pending(pending_block) => {
                 pending_block.serialize(serializer)
             }
-            crate::pending::PendingBlockVariant::PreConfirmed(pre_confirmed_block) => {
+            crate::pending::PendingBlockVariant::PreConfirmed(pre_confirmed_block, _) => {
                 pre_confirmed_block.serialize(serializer)
             }
         }
