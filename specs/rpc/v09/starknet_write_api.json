@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.8.0",
+    "version": "0.9.0-rc.1",
     "title": "StarkNet Node Write API",
     "license": {}
   },
@@ -43,6 +43,12 @@
         },
         {
           "$ref": "#/components/errors/INVALID_TRANSACTION_NONCE"
+        },
+        {
+          "$ref": "#/components/errors/REPLACEMENT_TRANSACTION_UNDERPRICED"
+        },
+        {
+          "$ref": "#/components/errors/FEE_BELOW_MINIMUM"
         },
         {
           "$ref": "#/components/errors/VALIDATION_FAILURE"
@@ -113,6 +119,12 @@
           "$ref": "#/components/errors/INVALID_TRANSACTION_NONCE"
         },
         {
+          "$ref": "#/components/errors/REPLACEMENT_TRANSACTION_UNDERPRICED"
+        },
+        {
+          "$ref": "#/components/errors/FEE_BELOW_MINIMUM"
+        },
+        {
           "$ref": "#/components/errors/VALIDATION_FAILURE"
         },
         {
@@ -177,6 +189,12 @@
           "$ref": "#/components/errors/INVALID_TRANSACTION_NONCE"
         },
         {
+          "$ref": "#/components/errors/REPLACEMENT_TRANSACTION_UNDERPRICED"
+        },
+        {
+          "$ref": "#/components/errors/FEE_BELOW_MINIMUM"
+        },
+        {
           "$ref": "#/components/errors/VALIDATION_FAILURE"
         },
         {
@@ -232,7 +250,8 @@
       },
       "INVALID_TRANSACTION_NONCE": {
         "code": 52,
-        "message": "Invalid transaction nonce"
+        "message": "Invalid transaction nonce",
+        "data": "string"
       },
       "INSUFFICIENT_RESOURCES_FOR_VALIDATE": {
         "code": 53,
@@ -280,6 +299,14 @@
         "code": 63,
         "message": "An unexpected error occurred",
         "data": "string"
+      },
+      "REPLACEMENT_TRANSACTION_UNDERPRICED": {
+        "code": 64,
+        "message": "Replacement transaction is underpriced"
+      },
+      "FEE_BELOW_MINIMUM": {
+        "code": 65,
+        "message": "Transaction fee below minimum"
       }
     }
   }
