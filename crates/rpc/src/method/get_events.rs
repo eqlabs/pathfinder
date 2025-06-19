@@ -4,12 +4,11 @@ use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::BlockId;
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
-use starknet_gateway_types::reply::PendingBlock;
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
 use crate::dto::{self, SerializeForVersion, Serializer};
-use crate::pending::PendingData;
+use crate::pending::{PendingBlockVariant, PendingData};
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
 
@@ -179,7 +178,7 @@ pub async fn get_events(
                     .context("Querying pending data")?;
 
                 // `from_block` is larger than or equal to pending block's number
-                if from_block >= &pending.number {
+                if from_block >= &pending.block_number() {
                     return Ok(GetEventsResult {
                         events: Vec::new(),
                         continuation_token: None,
@@ -251,7 +250,7 @@ pub async fn get_events(
 
                 let current_offset = match continuation_token {
                     Some(continuation_token) => {
-                        continuation_token.offset_in_block(pending.number)?
+                        continuation_token.offset_in_block(pending.block_number())?
                     }
                     None => 0,
                 };
@@ -263,7 +262,7 @@ pub async fn get_events(
                     .collect();
 
                 let is_last_page = append_pending_events(
-                    &pending.block,
+                    pending.block().as_ref(),
                     &mut events.events,
                     current_offset,
                     amount,
@@ -275,7 +274,7 @@ pub async fn get_events(
                     None
                 } else {
                     let continuation_token = ContinuationToken {
-                        block_number: pending.number,
+                        block_number: pending.block_number(),
                         offset: current_offset + amount,
                     };
                     Some(continuation_token.to_string())
@@ -285,7 +284,7 @@ pub async fn get_events(
                 // events. Return a continuation token for the pending block.
                 events.continuation_token = Some(
                     ContinuationToken {
-                        block_number: pending.number,
+                        block_number: pending.block_number(),
                         offset: 0,
                     }
                     .to_string(),
@@ -309,7 +308,7 @@ fn get_pending_events(
     continuation_token: Option<ContinuationToken>,
 ) -> Result<GetEventsResult, GetEventsError> {
     let current_offset = match continuation_token {
-        Some(continuation_token) => continuation_token.offset_in_block(pending.number)?,
+        Some(continuation_token) => continuation_token.offset_in_block(pending.block_number())?,
         None => 0,
     };
 
@@ -322,7 +321,7 @@ fn get_pending_events(
     let mut events = Vec::new();
 
     let is_last_page = append_pending_events(
-        &pending.block,
+        pending.block().as_ref(),
         &mut events,
         current_offset,
         request.chunk_size,
@@ -335,7 +334,7 @@ fn get_pending_events(
     } else {
         Some(
             ContinuationToken {
-                block_number: pending.number,
+                block_number: pending.block_number(),
                 offset: current_offset + request.chunk_size,
             }
             .to_string(),
@@ -411,7 +410,7 @@ fn map_from_block_to_number(
 /// Append's pending events to `dst` based on the filter requirements and
 /// returns true if this was the last pending data i.e. `is_last_page`.
 fn append_pending_events(
-    pending_block: &PendingBlock,
+    pending_block: &PendingBlockVariant,
     dst: &mut Vec<EmittedEvent>,
     skip: usize,
     amount: usize,
@@ -423,7 +422,7 @@ fn append_pending_events(
     let key_filter_is_empty = keys.iter().flatten().count() == 0;
 
     let pending_events = pending_block
-        .transaction_receipts
+        .transaction_receipts_and_events()
         .iter()
         .flat_map(|(receipt, events)| {
             events

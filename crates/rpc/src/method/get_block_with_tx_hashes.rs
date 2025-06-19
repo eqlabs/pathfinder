@@ -4,6 +4,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockHeader, BlockId, TransactionHash};
 
 use crate::context::RpcContext;
+use crate::pending::PendingBlockVariant;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
@@ -24,7 +25,7 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug)]
 pub enum Output {
     Pending {
-        header: Arc<starknet_gateway_types::reply::PendingBlock>,
+        header: Arc<PendingBlockVariant>,
         transactions: Vec<TransactionHash>,
     },
     Full {
@@ -55,10 +56,10 @@ pub async fn get_block_with_tx_hashes(context: RpcContext, input: Input) -> Resu
                     .get(&transaction)
                     .context("Querying pending data")?;
 
-                let transactions = pending.block.transactions.iter().map(|t| t.hash).collect();
+                let transactions = pending.transactions().iter().map(|t| t.hash).collect();
 
                 return Ok(Output::Pending {
-                    header: pending.block,
+                    header: pending.block(),
                     transactions,
                 });
             }

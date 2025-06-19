@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- The default value of the `--sync.poll-interval` configuration parameter has been changed to 1 seconds. Pathfinder is now polling both the latest block information and the pending/pre-confirmed block every second by default.
+
 ## [0.17.0-beta.2] - 2025-06-04
 
 ### Added

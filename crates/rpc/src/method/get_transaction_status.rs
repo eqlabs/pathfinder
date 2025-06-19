@@ -55,8 +55,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
             .pending_data
             .get(&db_tx)
             .context("Querying pending data")?
-            .block
-            .transaction_receipts
+            .transaction_receipts_and_events()
             .iter()
             .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
         {

@@ -81,7 +81,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
                     .get(&db_tx)
                     .context("Querying pending data")?;
 
-                (pending.header(), Some(pending.state_update.clone()))
+                (pending.header(), Some(pending.state_update()))
             }
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");

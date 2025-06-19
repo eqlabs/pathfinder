@@ -197,14 +197,9 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                 }
             }
             let pending = pending_data.borrow_and_update().clone();
-            if pending
-                .block
-                .transactions
-                .iter()
-                .any(|tx| tx.hash == tx_hash)
-            {
+            if pending.transactions().iter().any(|tx| tx.hash == tx_hash) {
                 if sender
-                    .send(pending.number, FinalityStatus::Received, None)
+                    .send(pending.block_number(), FinalityStatus::Received, None)
                     .await
                     .is_err()
                 {
@@ -275,13 +270,12 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                         }
                         let pending = pending_data.borrow_and_update().clone();
                         if pending
-                            .block
-                            .transactions
+                            .transactions()
                             .iter()
                             .any(|tx| tx.hash == tx_hash)
                         {
                             if sender
-                                .send(pending.number, FinalityStatus::Received, None)
+                                .send(pending.block_number(), FinalityStatus::Received, None)
                                 .await
                                 .is_err()
                             {
@@ -479,7 +473,7 @@ mod tests {
 
         // Irrelevant pending update.
         pending_sender.send_modify(|pending| {
-            pending.number = BlockNumber::GENESIS + 1;
+            *pending.block_number_mut() = BlockNumber::GENESIS + 1;
         });
 
         // No message expected.
@@ -731,18 +725,17 @@ mod tests {
     async fn transaction_status_streaming() {
         test_transaction_status_streaming(|subscription_id| {
             vec![
-                TestEvent::Pending(PendingData {
-                    block: PendingBlock {
+                TestEvent::Pending(PendingData::from_pending_block(
+                    PendingBlock {
                         transactions: vec![Transaction {
                             hash: TransactionHash(Felt::from_u64(2)),
                             variant: Default::default(),
                         }],
                         ..Default::default()
-                    }
-                    .into(),
-                    state_update: Default::default(),
-                    number: BlockNumber::GENESIS + 1,
-                }),
+                    },
+                    StateUpdate::default(),
+                    BlockNumber::GENESIS + 1,
+                )),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 1,
@@ -751,18 +744,17 @@ mod tests {
                     }
                     .into(),
                 ),
-                TestEvent::Pending(PendingData {
-                    block: PendingBlock {
+                TestEvent::Pending(PendingData::from_pending_block(
+                    PendingBlock {
                         transactions: vec![Transaction {
                             hash: TransactionHash(Felt::from_u64(1)),
                             variant: Default::default(),
                         }],
                         ..Default::default()
-                    }
-                    .into(),
-                    state_update: Default::default(),
-                    number: BlockNumber::GENESIS + 2,
-                }),
+                    },
+                    StateUpdate::default(),
+                    BlockNumber::GENESIS + 2,
+                )),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 2,

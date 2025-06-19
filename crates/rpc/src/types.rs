@@ -1596,6 +1596,8 @@ pub mod reply {
                 Rejected => BlockStatus::Rejected,
                 Reverted => BlockStatus::Rejected,
                 Aborted => BlockStatus::Rejected,
+                Candidate => BlockStatus::Rejected,
+                PreConfirmed => BlockStatus::Rejected,
             }
         }
     }

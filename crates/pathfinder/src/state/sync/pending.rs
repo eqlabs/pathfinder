@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
 use tokio::sync::watch;
@@ -17,6 +15,31 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     storage: Storage,
     latest: watch::Receiver<(BlockNumber, BlockHash)>,
     current: watch::Receiver<(BlockNumber, BlockHash)>,
+    fetch_casm_from_fgw: bool,
+) {
+    poll_pre_starknet_0_14_0(
+        &tx_event,
+        &sequencer,
+        poll_interval,
+        &storage,
+        &latest,
+        &current,
+        fetch_casm_from_fgw,
+    )
+    .await;
+
+    poll_starknet_0_14_0(&tx_event, &sequencer, poll_interval, &latest, &current).await;
+}
+
+const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
+
+pub async fn poll_pre_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
+    tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
+    sequencer: &S,
+    poll_interval: std::time::Duration,
+    storage: &Storage,
+    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
+    current: &watch::Receiver<(BlockNumber, BlockHash)>,
     fetch_casm_from_fgw: bool,
 ) {
     let mut prev_tx_count = 0;
@@ -43,6 +66,13 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
             }
         };
 
+        // If we've reached Starknet 0.14.0, stop polling for pending blocks as we need
+        // to transition to polling the pre-confirmed block instead.
+        if block.starknet_version >= STARKNET_VERSION_0_14_0 {
+            tracing::debug!("Reached Starknet 0.14.0, stopping pending block polling");
+            break;
+        }
+
         // Use the transaction count as a proxy for freshness of the pending data.
         //
         // The sequencer has multiple feeder gateways which are not 100% in sync making
@@ -59,7 +89,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
         // is incomplete.
         match super::l2::download_new_classes(
             &state_update,
-            &sequencer,
+            sequencer,
             storage.clone(),
             fetch_casm_from_fgw,
         )
@@ -68,7 +98,7 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
             Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
             Ok(downloaded_classes) => {
                 if let Err(e) = super::l2::emit_events_for_downloaded_classes(
-                    &tx_event,
+                    tx_event,
                     downloaded_classes,
                     &state_update.declared_sierra_classes,
                 )
@@ -81,10 +111,8 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
                 prev_tx_count = block.transactions.len();
                 prev_hash = block.parent_hash;
                 tracing::trace!("Emitting a pending update");
-                let block = Arc::new(block);
-                let state_update = Arc::new(state_update);
                 if let Err(e) = tx_event
-                    .send(SyncEvent::Pending((block, state_update)))
+                    .send(SyncEvent::Pending((block.into(), state_update.into())))
                     .await
                 {
                     tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pending stream.");
@@ -97,21 +125,117 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     }
 }
 
+pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
+    tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
+    sequencer: &S,
+    poll_interval: std::time::Duration,
+    latest: &watch::Receiver<(BlockNumber, BlockHash)>,
+    current: &watch::Receiver<(BlockNumber, BlockHash)>,
+) {
+    #[derive(Default)]
+    struct State {
+        block_number: BlockNumber,
+        tx_count: usize,
+    }
+
+    impl State {
+        /// Returns `true` if the state was updated, `false` otherwise.
+        fn update(&mut self, block_number: BlockNumber, tx_count: usize) -> bool {
+            if self.block_number == block_number && self.tx_count >= tx_count {
+                return false;
+            }
+            self.block_number = block_number;
+            self.tx_count = tx_count;
+            true
+        }
+    }
+
+    let mut state = State::default();
+
+    loop {
+        let t_fetch = Instant::now();
+
+        let latest = latest.borrow().0.get();
+        let current = current.borrow().0.get();
+
+        if latest.abs_diff(current) > 6 {
+            tracing::debug!(%latest, %current, "Not in sync yet; skipping pre-confirmed block download");
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
+            continue;
+        }
+
+        let pre_confirmed_block_number = BlockNumber::new_or_panic(latest + 1);
+
+        let pre_confirmed_block = match sequencer
+            .preconfirmed_block(pre_confirmed_block_number.into())
+            .await
+        {
+            Ok(r) => r,
+            Err(err) => {
+                tracing::debug!(%err, "Failed to fetch pre-confirmed block");
+                tokio::time::sleep_until(t_fetch + poll_interval).await;
+                continue;
+            }
+        };
+
+        match state.update(
+            pre_confirmed_block_number,
+            pre_confirmed_block.transactions.len(),
+        ) {
+            false => {
+                tracing::trace!("No change in pre-confirmed block data");
+                tokio::time::sleep_until(t_fetch + poll_interval).await;
+                continue;
+            }
+            true => {
+                tracing::trace!("Emitting a pre-confirmed update");
+                if let Err(e) = tx_event
+                    .send(SyncEvent::PreConfirmed((
+                        pre_confirmed_block_number,
+                        pre_confirmed_block.into(),
+                    )))
+                    .await
+                {
+                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
+                    break;
+                }
+
+                tokio::time::sleep_until(t_fetch + poll_interval).await;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, LazyLock};
 
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::transaction::{L1HandlerTransaction, Transaction, TransactionVariant};
+    use pathfinder_common::transaction::{
+        DataAvailabilityMode,
+        InvokeTransactionV3,
+        L1HandlerTransaction,
+        Transaction,
+        TransactionVariant,
+    };
     use pathfinder_storage::StorageBuilder;
     use starknet_gateway_client::MockGatewayApi;
+    use starknet_gateway_types::reply::state_update::{
+        DeclaredSierraClass,
+        DeployedContract,
+        ReplacedClass,
+        StateDiff,
+        StorageDiff,
+    };
     use starknet_gateway_types::reply::{
         Block,
         GasPrices,
         L1DataAvailabilityMode,
         PendingBlock,
+        PreConfirmedBlock,
         Status,
     };
     use tokio::sync::watch;
@@ -173,6 +297,100 @@ mod tests {
         starknet_version: StarknetVersion::default(),
         l1_da_mode: L1DataAvailabilityMode::Calldata,
     });
+
+    pub static PRE_CONFIRMED_BLOCK: LazyLock<PreConfirmedBlock> =
+        LazyLock::new(|| PreConfirmedBlock {
+            l1_gas_price: Default::default(),
+            l1_data_gas_price: Default::default(),
+            l2_gas_price: Default::default(),
+            sequencer_address: sequencer_address_bytes!(b"seqeunecer address"),
+            status: Status::PreConfirmed,
+            timestamp: BlockTimestamp::new_or_panic(30),
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+            l1_da_mode: L1DataAvailabilityMode::Blob,
+            transactions: vec![
+                pathfinder_common::transaction::Transaction {
+                    hash: transaction_hash!("0x22"),
+                    variant: pathfinder_common::transaction::TransactionVariant::L1Handler(
+                        L1HandlerTransaction {
+                            contract_address: contract_address!("0x1"),
+                            entry_point_selector: entry_point!("0x55"),
+                            nonce: transaction_nonce!("0x2"),
+                            calldata: Vec::new(),
+                        },
+                    ),
+                },
+                pathfinder_common::transaction::Transaction {
+                    hash: transaction_hash!("0x33"),
+                    variant: pathfinder_common::transaction::TransactionVariant::InvokeV3(
+                        InvokeTransactionV3 {
+                            signature: vec![],
+                            nonce: transaction_nonce!("0x3"),
+                            nonce_data_availability_mode: DataAvailabilityMode::L1,
+                            fee_data_availability_mode: DataAvailabilityMode::L1,
+                            resource_bounds: Default::default(),
+                            tip: Default::default(),
+                            paymaster_data: vec![],
+                            account_deployment_data: vec![],
+                            calldata: vec![],
+                            sender_address: contract_address!("0x2"),
+                        },
+                    ),
+                },
+            ],
+            transaction_receipts: vec![
+                Some((
+                    pathfinder_common::receipt::Receipt {
+                        actual_fee: Default::default(),
+                        execution_resources: Default::default(),
+                        l2_to_l1_messages: vec![],
+                        execution_status: pathfinder_common::receipt::ExecutionStatus::Succeeded,
+                        transaction_hash: transaction_hash!("0x22"),
+                        transaction_index: TransactionIndex::new_or_panic(0),
+                    },
+                    vec![],
+                )),
+                None,
+            ],
+            transaction_state_diffs: vec![
+                Some(StateDiff {
+                    storage_diffs: HashMap::from([(
+                        contract_address_bytes!(b"contract 0"),
+                        vec![StorageDiff {
+                            key: storage_address_bytes!(b"storage key 0"),
+                            value: storage_value_bytes!(b"storage val 0"),
+                        }],
+                    )]),
+                    deployed_contracts: vec![DeployedContract {
+                        address: contract_address_bytes!(b"deployed contract"),
+                        class_hash: class_hash_bytes!(b"deployed class"),
+                    }],
+                    old_declared_contracts: HashSet::from([
+                        class_hash_bytes!(b"cairo 0 0"),
+                        class_hash_bytes!(b"cairo 0 1"),
+                    ]),
+                    declared_classes: vec![DeclaredSierraClass {
+                        class_hash: sierra_hash_bytes!(b"sierra class"),
+                        compiled_class_hash: casm_hash_bytes!(b"casm hash"),
+                    }],
+                    nonces: HashMap::from([
+                        (
+                            contract_address_bytes!(b"contract 0"),
+                            contract_nonce_bytes!(b"nonce 0"),
+                        ),
+                        (
+                            contract_address_bytes!(b"contract 10"),
+                            contract_nonce_bytes!(b"nonce 10"),
+                        ),
+                    ]),
+                    replaced_classes: vec![ReplacedClass {
+                        address: contract_address_bytes!(b"contract 0"),
+                        class_hash: class_hash_bytes!(b"replaced class"),
+                    }],
+                }),
+                None,
+            ],
+        });
 
     /// Arbitrary timeout for receiving emits on the tokio channel. Otherwise
     /// failing tests will need to timeout naturally which may be forever.
@@ -290,5 +508,49 @@ mod tests {
             .unwrap();
 
         assert_matches!(result2, SyncEvent::Pending(x) if *x.0 == b1 && *x.1 == *PENDING_UPDATE);
+    }
+
+    #[tokio::test]
+    async fn transition_to_polling_pre_confirmed() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let mut sequencer = MockGatewayApi::new();
+
+        // A pending block with Starknet version 0.14.0 should trigger the transition
+        // to polling the pre-confirmed block.
+        let pending_block = PendingBlock {
+            starknet_version: StarknetVersion::new(0, 14, 0, 0),
+            ..PENDING_BLOCK.clone()
+        };
+        let pending_block_copy = pending_block.clone();
+
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((pending_block_copy.clone(), PENDING_UPDATE.clone())));
+        sequencer
+            .expect_preconfirmed_block()
+            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
+
+        let sequencer = Arc::new(sequencer);
+        let (_, rx_latest) = watch::channel(Default::default());
+        let (_, rx_current) = watch::channel(Default::default());
+        let _jh = tokio::spawn(async move {
+            poll_pending(
+                tx,
+                sequencer,
+                std::time::Duration::ZERO,
+                StorageBuilder::in_memory().unwrap(),
+                rx_latest,
+                rx_current,
+                false,
+            )
+            .await
+        });
+
+        let result1 = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        assert_matches!(result1, SyncEvent::PreConfirmed((block_number, pre_confirmed_block)) if block_number == BlockNumber::new_or_panic(1) && *pre_confirmed_block == *PRE_CONFIRMED_BLOCK);
     }
 }

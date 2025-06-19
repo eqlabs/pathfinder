@@ -149,6 +149,7 @@ impl<'a> Request<'a, stage::Method> {
         get_transaction_trace,
         get_signature,
         get_public_key,
+        get_preconfirmed_block,
     );
 
     /// Appends the given method to the request url.

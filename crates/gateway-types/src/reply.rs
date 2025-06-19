@@ -84,6 +84,35 @@ pub struct PendingBlock {
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
+#[serde_as]
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(serde::Serialize))]
+pub struct PreConfirmedBlock {
+    pub l1_gas_price: GasPrices,
+    pub l1_data_gas_price: GasPrices,
+    pub l2_gas_price: GasPrices,
+
+    pub sequencer_address: SequencerAddress,
+    pub status: Status,
+    pub timestamp: BlockTimestamp,
+    #[serde_as(as = "DisplayFromStr")]
+    pub starknet_version: StarknetVersion,
+    pub l1_da_mode: L1DataAvailabilityMode,
+
+    #[serde_as(as = "Vec<transaction::Transaction>")]
+    pub transactions: Vec<pathfinder_common::transaction::Transaction>,
+
+    #[serde_as(as = "Vec<Option<transaction::Receipt>>")]
+    pub transaction_receipts: Vec<
+        Option<(
+            pathfinder_common::receipt::Receipt,
+            Vec<pathfinder_common::event::Event>,
+        )>,
+    >,
+
+    pub transaction_state_diffs: Vec<Option<state_update::StateDiff>>,
+}
+
 #[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum L1DataAvailabilityMode {
@@ -141,6 +170,10 @@ pub enum Status {
     Reverted,
     #[serde(rename = "ABORTED")]
     Aborted,
+    #[serde(rename = "CANDIDATE")]
+    Candidate,
+    #[serde(rename = "PRE_CONFIRMED")]
+    PreConfirmed,
 }
 
 impl std::fmt::Display for Status {
@@ -154,6 +187,8 @@ impl std::fmt::Display for Status {
             Status::AcceptedOnL2 => write!(f, "ACCEPTED_ON_L2"),
             Status::Reverted => write!(f, "REVERTED"),
             Status::Aborted => write!(f, "ABORTED"),
+            Status::Candidate => write!(f, "CANDIDATE"),
+            Status::PreConfirmed => write!(f, "PRE_CONFIRMED"),
         }
     }
 }
@@ -2095,6 +2130,50 @@ pub mod state_update {
         pub replaced_classes: Vec<ReplacedClass>,
     }
 
+    impl StateDiff {
+        /// Appends changes from another state diff to this one.
+        ///
+        /// Because we're storing storage diffs as a vector of diffs this
+        /// operation might end up with duplicate updates for the same
+        /// storage key. Users should be aware of this and call
+        /// `deduplicate()` afterwards if necessary.
+        pub fn extend(&mut self, other: StateDiff) {
+            for (contract_address, diffs) in other.storage_diffs {
+                self.storage_diffs
+                    .entry(contract_address)
+                    .or_default()
+                    .extend(diffs);
+            }
+            self.deployed_contracts.extend(other.deployed_contracts);
+            self.old_declared_contracts
+                .extend(other.old_declared_contracts);
+            self.declared_classes
+                .extend(other.declared_classes.iter().cloned());
+            self.nonces.extend(other.nonces);
+            self.replaced_classes.extend(other.replaced_classes);
+        }
+
+        /// Deduplicates storage diffs in this state diff.
+        pub fn deduplicate(&mut self) {
+            let storage_diffs = self
+                .storage_diffs
+                .iter()
+                .map(|(address, diffs)| {
+                    let diffs = diffs
+                        .iter()
+                        .map(|diff| (diff.key, diff.value))
+                        .collect::<HashMap<_, _>>();
+                    let diffs = diffs
+                        .into_iter()
+                        .map(|(key, value)| StorageDiff { key, value })
+                        .collect::<Vec<_>>();
+                    (*address, diffs)
+                })
+                .collect();
+            self.storage_diffs = storage_diffs;
+        }
+    }
+
     /// L2 storage diff.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
     #[serde(deny_unknown_fields)]
@@ -2427,6 +2506,17 @@ mod tests {
             let signature: BlockSignature = serde_json::from_str(json).unwrap();
 
             assert_eq!(signature, expected);
+        }
+    }
+
+    mod preconfirmed_block {
+        use super::super::PreConfirmedBlock;
+
+        #[test]
+        fn parse_starknet_0_14_0() {
+            let json = starknet_gateway_test_fixtures::v0_14_0::preconfirmed_block::SEPOLIA_INTEGRATION_955821;
+
+            let _pre_confirmed_block: PreConfirmedBlock = serde_json::from_str(json).unwrap();
         }
     }
 }

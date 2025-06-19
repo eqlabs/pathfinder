@@ -135,7 +135,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
                     .get(&db_tx)
                     .context("Querying pending data")?;
 
-                (pending.header(), Some(pending.state_update.clone()))
+                (pending.header(), Some(pending.state_update()))
             }
             other => {
                 let block_id = other.try_into().expect("Only pending cast should fail");
@@ -449,8 +449,8 @@ mod tests {
             last_block_header: BlockHeader,
             state_update: StateUpdate,
         ) -> PendingData {
-            PendingData {
-                block: PendingBlock {
+            PendingData::from_pending_block(
+                PendingBlock {
                     l1_gas_price: GasPrices {
                         price_in_wei: last_block_header.eth_l1_gas_price,
                         price_in_fri: Default::default(),
@@ -468,11 +468,10 @@ mod tests {
                     transactions: vec![],
                     starknet_version: last_block_header.starknet_version,
                     l1_da_mode: L1DataAvailabilityMode::Calldata,
-                }
-                .into(),
-                state_update: state_update.into(),
-                number: last_block_header.number + 1,
-            }
+                },
+                state_update,
+                last_block_header.number + 1,
+            )
         }
 
         #[tokio::test]

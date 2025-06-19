@@ -43,8 +43,7 @@ pub async fn get_block_transaction_count(
                     .pending_data
                     .get(&db)
                     .context("Querying pending data")?
-                    .block
-                    .transactions
+                    .transactions()
                     .len() as u64;
                 return Ok(Output(count));
             }

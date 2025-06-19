@@ -870,11 +870,7 @@ pub mod test_utils {
         .await
         .unwrap();
 
-        PendingData {
-            block: block.into(),
-            state_update: state_update.into(),
-            number: latest.number + 1,
-        }
+        PendingData::from_pending_block(block, state_update, latest.number + 1)
     }
 }
 

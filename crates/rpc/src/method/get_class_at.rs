@@ -66,7 +66,7 @@ pub async fn get_class_at(context: RpcContext, input: Input) -> Result<Output, E
                 .pending_data
                 .get(&tx)
                 .context("Querying pending data")?
-                .state_update
+                .state_update()
                 .contract_class(input.contract_address)
         } else {
             None

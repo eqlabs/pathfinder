@@ -7,7 +7,7 @@ use pathfinder_common::prelude::*;
 use pathfinder_common::BlockId;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
-use starknet_gateway_types::reply::PendingBlock;
+use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
 use starknet_gateway_types::trace::{BlockTrace, TransactionTrace};
 use starknet_gateway_types::{reply, request};
 
@@ -19,6 +19,13 @@ mod metrics;
 #[async_trait::async_trait]
 pub trait GatewayApi: Sync {
     async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
+        unimplemented!();
+    }
+
+    async fn preconfirmed_block(
+        &self,
+        block: BlockId,
+    ) -> Result<PreConfirmedBlock, SequencerError> {
         unimplemented!();
     }
 
@@ -114,6 +121,13 @@ pub trait GatewayApi: Sync {
 impl<T: GatewayApi + Sync + Send> GatewayApi for std::sync::Arc<T> {
     async fn pending_block(&self) -> Result<(PendingBlock, StateUpdate), SequencerError> {
         self.as_ref().pending_block().await
+    }
+
+    async fn preconfirmed_block(
+        &self,
+        block: BlockId,
+    ) -> Result<PreConfirmedBlock, SequencerError> {
+        self.as_ref().preconfirmed_block(block).await
     }
 
     async fn block_header(
@@ -330,6 +344,26 @@ impl GatewayApi for Client {
         Ok((result.block, result.state_update.into()))
     }
 
+    #[tracing::instrument(skip(self))]
+    async fn preconfirmed_block(
+        &self,
+        block: BlockId,
+    ) -> Result<PreConfirmedBlock, SequencerError> {
+        // Note that we don't do retries here.
+        // The pre-confirmed block is polled continuously by the sync logic,
+        // so retries are not needed.
+        let result = self
+            .feeder_gateway_request()
+            .get_preconfirmed_block()
+            .block(block)
+            .retry(false)
+            .get()
+            .await?;
+
+        Ok(result)
+    }
+
+    #[tracing::instrument(skip(self))]
     async fn block_header(
         &self,
         block: BlockId,

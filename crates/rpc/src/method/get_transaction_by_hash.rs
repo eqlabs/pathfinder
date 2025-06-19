@@ -43,8 +43,7 @@ pub async fn get_transaction_by_hash(
             .pending_data
             .get(&db_tx)
             .context("Querying pending data")?
-            .block
-            .transactions
+            .transactions()
             .iter()
             .find(|tx| tx.hash == input.transaction_hash)
             .cloned()

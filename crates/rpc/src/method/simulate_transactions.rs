@@ -86,7 +86,7 @@ pub async fn simulate_transactions(
                     .get(&db_tx)
                     .context("Querying pending data")?;
 
-                (pending.header(), Some(pending.state_update.clone()))
+                (pending.header(), Some(pending.state_update()))
             }
             other => {
                 let block_id = other.try_into().expect("Only pending should fail");

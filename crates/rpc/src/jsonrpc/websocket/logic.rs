@@ -396,18 +396,19 @@ async fn event_subscription(
                     match result {
                         Ok(()) => {
                             let data = pending_data.borrow();
-                            if data.number.get() == 0 || last_block.map(|b| b.get()) != Some(data.number.get() - 1) {
+                            if data.block_number().get() == 0 || last_block.map(|b| b.get()) != Some(data.block_number().get() - 1) {
                                 // This pending update comes too early, ignore it for now. The
                                 // same block will be received from the l2_blocks stream.
                                 continue;
                             }
-                            if data.block.transaction_receipts.len() <= next_receipt_idx {
+                            let transaction_receipts_and_events = data.transaction_receipts_and_events();
+                            if transaction_receipts_and_events.len() <= next_receipt_idx {
                                 // No new receipts in this update, ignore it.
                                 continue;
                             }
-                            let receipts = data.block.transaction_receipts[next_receipt_idx..].to_vec();
-                            next_receipt_idx = data.block.transaction_receipts.len();
-                            break (receipts, data.number);
+                            let receipts = transaction_receipts_and_events[next_receipt_idx..].to_vec();
+                            next_receipt_idx = transaction_receipts_and_events.len();
+                            break (receipts, data.block_number());
                         }
                         Err(_) => {
                             tracing::debug!(%subscription_id, kind="event", "Unable to fetch pending data, closing.");
@@ -979,24 +980,25 @@ mod tests {
             .await;
 
         // Receive next pending block.
-        client.pending_data_sender.send_replace(PendingData {
-            block: PendingBlock {
-                l1_gas_price: block.l1_gas_price,
-                l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
-                parent_hash: block.block_hash,
-                sequencer_address: SequencerAddress::ZERO,
-                status: Status::Pending,
-                timestamp: Default::default(),
-                transaction_receipts: block.transaction_receipts.clone(),
-                transactions: block.transactions.clone(),
-                starknet_version: block.starknet_version,
-                l1_da_mode: block.l1_da_mode,
-            }
-            .into(),
-            number: BlockNumber::new_or_panic(block.block_number.get() + 1),
-            state_update: Default::default(),
-        });
+        client
+            .pending_data_sender
+            .send_replace(PendingData::from_pending_block(
+                PendingBlock {
+                    l1_gas_price: block.l1_gas_price,
+                    l1_data_gas_price: block.l1_data_gas_price,
+                    l2_gas_price: block.l2_gas_price.unwrap_or_default(),
+                    parent_hash: block.block_hash,
+                    sequencer_address: SequencerAddress::ZERO,
+                    status: Status::Pending,
+                    timestamp: Default::default(),
+                    transaction_receipts: block.transaction_receipts.clone(),
+                    transactions: block.transactions.clone(),
+                    starknet_version: block.starknet_version,
+                    l1_da_mode: block.l1_da_mode,
+                },
+                Default::default(),
+                BlockNumber::new_or_panic(block.block_number.get() + 1),
+            ));
 
         client
             .expect_response(&SubscriptionItem {
@@ -1031,24 +1033,25 @@ mod tests {
                 ],
             }],
         ));
-        client.pending_data_sender.send_replace(PendingData {
-            block: PendingBlock {
-                l1_gas_price: block.l1_gas_price,
-                l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
-                parent_hash: block.block_hash,
-                sequencer_address: SequencerAddress::ZERO,
-                status: Status::Pending,
-                timestamp: Default::default(),
-                transaction_receipts: receipts,
-                transactions: block.transactions.clone(),
-                starknet_version: block.starknet_version,
-                l1_da_mode: block.l1_da_mode,
-            }
-            .into(),
-            number: BlockNumber::new_or_panic(block.block_number.get() + 1),
-            state_update: Default::default(),
-        });
+        client
+            .pending_data_sender
+            .send_replace(PendingData::from_pending_block(
+                PendingBlock {
+                    l1_gas_price: block.l1_gas_price,
+                    l1_data_gas_price: block.l1_data_gas_price,
+                    l2_gas_price: block.l2_gas_price.unwrap_or_default(),
+                    parent_hash: block.block_hash,
+                    sequencer_address: SequencerAddress::ZERO,
+                    status: Status::Pending,
+                    timestamp: Default::default(),
+                    transaction_receipts: receipts,
+                    transactions: block.transactions.clone(),
+                    starknet_version: block.starknet_version,
+                    l1_da_mode: block.l1_da_mode,
+                },
+                Default::default(),
+                BlockNumber::new_or_panic(block.block_number.get() + 1),
+            ));
 
         client
             .expect_response(&SubscriptionItem {
@@ -1084,24 +1087,25 @@ mod tests {
         client.expect_no_response().await;
 
         // Pending data comes too early.
-        client.pending_data_sender.send_replace(PendingData {
-            block: PendingBlock {
-                l1_gas_price: block.l1_gas_price,
-                l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
-                parent_hash: block.block_hash,
-                sequencer_address: SequencerAddress::ZERO,
-                status: Status::Pending,
-                timestamp: Default::default(),
-                transaction_receipts: block.transaction_receipts.clone(),
-                transactions: block.transactions.clone(),
-                starknet_version: block.starknet_version,
-                l1_da_mode: block.l1_da_mode,
-            }
-            .into(),
-            number: BlockNumber::new_or_panic(block.block_number.get() + 3),
-            state_update: Default::default(),
-        });
+        client
+            .pending_data_sender
+            .send_replace(PendingData::from_pending_block(
+                PendingBlock {
+                    l1_gas_price: block.l1_gas_price,
+                    l1_data_gas_price: block.l1_data_gas_price,
+                    l2_gas_price: block.l2_gas_price.unwrap_or_default(),
+                    parent_hash: block.block_hash,
+                    sequencer_address: SequencerAddress::ZERO,
+                    status: Status::Pending,
+                    timestamp: Default::default(),
+                    transaction_receipts: block.transaction_receipts.clone(),
+                    transactions: block.transactions.clone(),
+                    starknet_version: block.starknet_version,
+                    l1_da_mode: block.l1_da_mode,
+                },
+                StateUpdate::default(),
+                BlockNumber::new_or_panic(block.block_number.get() + 3),
+            ));
 
         client.expect_no_response().await;
 
@@ -1133,24 +1137,25 @@ mod tests {
                 },
             })
             .await;
-        client.pending_data_sender.send_replace(PendingData {
-            block: PendingBlock {
-                l1_gas_price: block.l1_gas_price,
-                l1_data_gas_price: block.l1_data_gas_price,
-                l2_gas_price: block.l2_gas_price.unwrap_or_default(),
-                parent_hash: block.block_hash,
-                sequencer_address: SequencerAddress::ZERO,
-                status: Status::Pending,
-                timestamp: Default::default(),
-                transaction_receipts: block.transaction_receipts.clone(),
-                transactions: block.transactions.clone(),
-                starknet_version: block.starknet_version,
-                l1_da_mode: block.l1_da_mode,
-            }
-            .into(),
-            number: BlockNumber::new_or_panic(block.block_number.get() + 2),
-            state_update: Default::default(),
-        });
+        client
+            .pending_data_sender
+            .send_replace(PendingData::from_pending_block(
+                PendingBlock {
+                    l1_gas_price: block.l1_gas_price,
+                    l1_data_gas_price: block.l1_data_gas_price,
+                    l2_gas_price: block.l2_gas_price.unwrap_or_default(),
+                    parent_hash: block.block_hash,
+                    sequencer_address: SequencerAddress::ZERO,
+                    status: Status::Pending,
+                    timestamp: Default::default(),
+                    transaction_receipts: block.transaction_receipts.clone(),
+                    transactions: block.transactions.clone(),
+                    starknet_version: block.starknet_version,
+                    l1_da_mode: block.l1_da_mode,
+                },
+                StateUpdate::default(),
+                BlockNumber::new_or_panic(block.block_number.get() + 2),
+            ));
         client.expect_no_response().await;
 
         client.destroy().await;
@@ -1633,11 +1638,12 @@ mod tests {
 
     impl Client {
         async fn new() -> Client {
-            let (pending_data_tx, pending_data_rx) = watch::channel(PendingData {
-                block: Default::default(),
-                number: BlockNumber::new_or_panic(0),
-                state_update: Default::default(),
-            });
+            let (pending_data_tx, pending_data_rx) =
+                watch::channel(PendingData::from_pending_block(
+                    Default::default(),
+                    Default::default(),
+                    BlockNumber::new_or_panic(0),
+                ));
             let context = RpcContext::for_tests().with_websockets(WebsocketContext::new(
                 WebsocketHistory::Unlimited,
                 100.try_into().unwrap(),
