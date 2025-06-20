@@ -391,9 +391,11 @@ pub(crate) fn map_gateway_trace(
             pathfinder_executor::types::InvokeTransactionTrace {
                 execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
                     execute_invocation: if let Some(revert_reason) = trace.revert_error {
-                        pathfinder_executor::types::ExecuteInvocation::RevertedReason(revert_reason)
+                        pathfinder_executor::types::RevertibleFunctionInvocation::RevertedReason(
+                            revert_reason,
+                        )
                     } else {
-                        pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(
+                        pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(
                             trace
                                 .function_invocation
                                 .map(map_gateway_function_invocation)
@@ -417,10 +419,18 @@ pub(crate) fn map_gateway_trace(
             pathfinder_executor::types::TransactionTrace::L1Handler(
                 pathfinder_executor::types::L1HandlerTransactionTrace {
                     execution_info: pathfinder_executor::types::L1HandlerTransactionExecutionInfo {
-                        function_invocation: trace
-                            .function_invocation
-                            .map(map_gateway_function_invocation)
-                            .transpose()?,
+                        function_invocation: if let Some(revert_reason) = trace.revert_error {
+                            pathfinder_executor::types::RevertibleFunctionInvocation::RevertedReason(
+                                revert_reason,
+                            )
+                        } else {
+                            pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(
+                                trace
+                                    .function_invocation
+                                    .map(map_gateway_function_invocation)
+                                    .transpose()?,
+                            )
+                        },
                         execution_resources,
                     },
                     state_diff: Default::default(),
