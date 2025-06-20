@@ -156,6 +156,7 @@ where
                 chain_id,
                 head_meta.map(|h| h.1),
                 &sequencer,
+                storage.clone(),
                 block_validation_mode,
             )
             .await?
@@ -163,7 +164,7 @@ where
                 DownloadBlock::Block(block, commitments, state_update, state_diff_commitment) => {
                     break (block, commitments, state_update, state_diff_commitment)
                 }
-                DownloadBlock::AtHead => {
+                DownloadBlock::Wait => {
                     // Wait for the latest block to change.
                     if latest
                         .wait_for(|(_, hash)| hash != &head.unwrap_or_default().1)
@@ -174,6 +175,7 @@ where
                         return Ok(());
                     }
                 }
+                DownloadBlock::Retry => {}
                 DownloadBlock::Reorg => {
                     head = match head {
                         Some(some_head) => reorg(
@@ -182,6 +184,7 @@ where
                             chain_id,
                             &tx_event,
                             &sequencer,
+                            storage.clone(),
                             block_validation_mode,
                             &blocks,
                         )
@@ -211,6 +214,7 @@ where
                     chain_id,
                     &tx_event,
                     &sequencer,
+                    storage.clone(),
                     block_validation_mode,
                     &blocks,
                 )
@@ -446,7 +450,8 @@ enum DownloadBlock {
         Box<StateUpdate>,
         StateDiffCommitment,
     ),
-    AtHead,
+    Wait,
+    Retry,
     Reorg,
 }
 
@@ -465,6 +470,7 @@ async fn download_block(
     chain_id: ChainId,
     prev_block_hash: Option<BlockHash>,
     sequencer: &impl GatewayApi,
+    storage: Storage,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
     use rayon::prelude::*;
@@ -550,33 +556,44 @@ async fn download_block(
             }
         }
         Err(SequencerError::StarknetError(err)) if err.code == BlockNotFound.into() => {
-            // This would occur if we queried past the head of the chain. We now need to
-            // check that a reorg hasn't put us too far in the future. This does
-            // run into race conditions with the sequencer but this is the best
-            // we can do I think.
-            let (latest_block_number, latest_block_hash) = sequencer
+            // We've queried past the head of the chain.
+            let (seq_head_number, seq_head_hash) = sequencer
                 .head()
                 .await
                 .context("Query sequencer for latest block")?;
 
-            if latest_block_number + 1 == block_number {
-                match prev_block_hash {
-                    // We are definitely still at the head and it's just that a new block
-                    // has not been published yet
-                    Some(parent_block_hash) if parent_block_hash == latest_block_hash => {
-                        Ok(DownloadBlock::AtHead)
+            if seq_head_number >= block_number {
+                // We were ahead of the sequencer but in the meantime it has caught up to us. We
+                // can proceed with the sync.
+                Ok(DownloadBlock::Retry)
+            } else {
+                // The sequencer is still behind us, check if there has been a reorg or it is
+                // just serving us its latest data (which we are ahead of).
+                let our_block_hash = if seq_head_number + 1 == block_number {
+                    prev_block_hash
+                } else {
+                    let mut conn = storage
+                        .connection()
+                        .context("Creating database connection")?;
+                    let tx = conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    tx.block_hash(pathfinder_storage::BlockId::Number(block_number))
+                        .context("Query block hash")?
+                };
+                match our_block_hash {
+                    // Our chain is still valid, it's just that a new block has not been
+                    // published yet.
+                    Some(our_block_hash) if our_block_hash == seq_head_hash => {
+                        Ok(DownloadBlock::Wait)
                     }
-                    // Our head is not valid anymore so there must have been a reorg only at this
-                    // height
+                    // Our chain is not valid anymore so there must have been a reorg.
                     Some(_) => Ok(DownloadBlock::Reorg),
                     // There is something wrong with the sequencer, as we are attempting to get the
-                    // genesis block Let's retry in a while
-                    None => Ok(DownloadBlock::AtHead),
+                    // genesis block - let's retry in a while.
+                    // TODO: That pesky pruning man
+                    None => Ok(DownloadBlock::Wait),
                 }
-            } else {
-                // The new head is at lower height than our head which means there must have
-                // been a reorg
-                Ok(DownloadBlock::Reorg)
             }
         }
         Err(other) => Err(other).context("Download block from sequencer"),
@@ -1100,12 +1117,14 @@ fn verify_gateway_block_commitments_and_hash(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn reorg(
     head: &(BlockNumber, BlockHash, StateCommitment),
     chain: Chain,
     chain_id: ChainId,
     tx_event: &mpsc::Sender<SyncEvent>,
     sequencer: &impl GatewayApi,
+    storage: Storage,
     mode: BlockValidationMode,
     blocks: &BlockChain,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
@@ -1129,6 +1148,7 @@ async fn reorg(
             chain_id,
             Some(previous.0),
             sequencer,
+            storage.clone(),
             mode,
         )
         .await
