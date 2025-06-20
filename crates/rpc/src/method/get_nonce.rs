@@ -2,8 +2,9 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
     contract_address: ContractAddress,
@@ -25,7 +26,11 @@ pub struct Output(ContractNonce);
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
 
-pub async fn get_nonce(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_nonce(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| -> Result<_, Error> {
         let _g = span.enter();
@@ -38,7 +43,7 @@ pub async fn get_nonce(context: RpcContext, input: Input) -> Result<Output, Erro
         if input.block_id.is_pending() {
             if let Some(nonce) = context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Querying pending data")?
                 .state_update()
                 .contract_nonce(input.contract_address)
@@ -100,6 +105,9 @@ mod tests {
 
     use super::{get_nonce, Error, Input};
     use crate::context::RpcContext;
+    use crate::RpcVersion;
+
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     #[tokio::test]
     async fn contract_not_found() {
@@ -110,7 +118,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"invalid"),
         };
 
-        let result = get_nonce(context, input).await;
+        let result = get_nonce(context, input, RPC_VERSION).await;
 
         assert_matches!(result, Err(Error::ContractNotFound));
     }
@@ -125,7 +133,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 0"),
         };
 
-        let result = get_nonce(context, input).await;
+        let result = get_nonce(context, input, RPC_VERSION).await;
 
         assert_matches!(result, Err(Error::BlockNotFound));
     }
@@ -139,7 +147,7 @@ mod tests {
             block_id: BlockId::Latest,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(nonce.0, contract_nonce!("0x1"));
     }
 
@@ -153,7 +161,7 @@ mod tests {
             block_id: BlockNumber::new_or_panic(2).into(),
             contract_address: contract_address_bytes!(b"contract 1"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(nonce.0, contract_nonce!("0x10"));
     }
 
@@ -167,7 +175,7 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 1"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(nonce.0, contract_nonce_bytes!(b"pending nonce"));
     }
 
@@ -182,8 +190,30 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(nonce.0, contract_nonce!("0x1"));
+    }
+
+    #[tokio::test]
+    async fn pre_confirmed() {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+
+        // This contract is created in `setup_storage` and has a nonce set in the
+        // pending block.
+        let input = Input {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
+        let nonce = get_nonce(context.clone(), input.clone(), RpcVersion::V09)
+            .await
+            .unwrap();
+        assert_eq!(nonce.0, contract_nonce_bytes!(b"preconfirmed nonce"));
+
+        // JSON-RPC version before 0.9 are expected to ignore the pre-confirmed block.
+        let nonce = get_nonce(context, input.clone(), RpcVersion::V08)
+            .await
+            .unwrap();
+        assert_eq!(nonce.0, contract_nonce!("0x10"));
     }
 
     #[tokio::test]
@@ -196,7 +226,7 @@ mod tests {
             block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: contract_address_bytes!(b"contract 1"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
 
         assert_eq!(nonce.0, ContractNonce::ZERO);
     }
@@ -211,7 +241,7 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
-        let nonce = get_nonce(context, input).await.unwrap();
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(nonce.0, ContractNonce::ZERO);
     }
 }

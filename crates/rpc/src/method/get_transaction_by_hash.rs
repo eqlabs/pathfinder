@@ -5,6 +5,7 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::TransactionHash;
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -27,6 +28,7 @@ pub struct Output(Transaction);
 pub async fn get_transaction_by_hash(
     context: RpcContext,
     input: Input,
+    rpc_version: RpcVersion,
 ) -> Result<Output, GetTransactionByHashError> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
@@ -41,7 +43,7 @@ pub async fn get_transaction_by_hash(
         // Check pending transactions.
         if let Some(tx) = context
             .pending_data
-            .get(&db_tx)
+            .get(&db_tx, rpc_version)
             .context("Querying pending data")?
             .transactions()
             .iter()
@@ -134,7 +136,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let output = get_transaction_by_hash(context, input).await.unwrap();
+        let output = get_transaction_by_hash(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 
@@ -153,7 +157,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let output = get_transaction_by_hash(context, input).await.unwrap();
+        let output = get_transaction_by_hash(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 
@@ -175,7 +181,7 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
-        let output = get_transaction_by_hash(context.clone(), input)
+        let output = get_transaction_by_hash(context.clone(), input, version)
             .await
             .unwrap();
 
@@ -186,7 +192,9 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"pending reverted"),
         };
-        let output = get_transaction_by_hash(context, input).await.unwrap();
+        let output = get_transaction_by_hash(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 

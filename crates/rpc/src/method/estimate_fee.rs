@@ -12,6 +12,7 @@ use crate::executor::{
     SIGNATURE_ELEMENT_LIMIT,
 };
 use crate::types::request::BroadcastedTransaction;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -51,7 +52,11 @@ impl crate::dto::DeserializeForVersion for SimulationFlag {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output(Vec<pathfinder_executor::types::FeeEstimate>);
 
-pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, EstimateFeeError> {
+pub async fn estimate_fee(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, EstimateFeeError> {
     let span = tracing::Span::current();
     if let Some(bad_tx_idx) = input.request.iter().position(calldata_limit_exceeded) {
         return Err(EstimateFeeError::Custom(anyhow::anyhow!(
@@ -78,7 +83,7 @@ pub async fn estimate_fee(context: RpcContext, input: Input) -> Result<Output, E
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update()))
@@ -239,6 +244,8 @@ mod tests {
     };
     use crate::types::{ContractClass, SierraContractClass};
     use crate::RpcVersion;
+
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     fn declare_transaction(account_contract_address: ContractAddress) -> BroadcastedTransaction {
         let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
@@ -420,7 +427,7 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = estimate_fee(context, input).await.unwrap();
+        let result = estimate_fee(context, input, RPC_VERSION).await.unwrap();
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
@@ -466,7 +473,7 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = estimate_fee(context, input).await.unwrap();
+        let result = estimate_fee(context, input, RPC_VERSION).await.unwrap();
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
@@ -512,7 +519,9 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
@@ -558,7 +567,9 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
@@ -735,7 +746,9 @@ mod tests {
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         let output_json = result.serialize(Serializer { version }).unwrap();
         crate::assert_json_matches_fixture!(
@@ -819,7 +832,9 @@ mod tests {
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let error = super::estimate_fee(context, input).await.unwrap_err();
+        let error = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         assert_matches::assert_matches!(error, EstimateFeeError::TransactionExecutionError { transaction_index, error, error_stack } => {
             assert_eq!(transaction_index, 2);
@@ -878,7 +893,7 @@ mod tests {
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await;
+        let result = super::estimate_fee(context, input, RPC_VERSION).await;
         let expected_err = anyhow::anyhow!("Fee estimation failed, maximum gas limit exceeded");
         assert_matches::assert_matches!(result, Err(EstimateFeeError::Internal(err)) if err.to_string() == expected_err.to_string());
     }
@@ -909,7 +924,9 @@ mod tests {
             simulation_flags: vec![SimulationFlag::SkipValidate],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         let declare_expected = FeeEstimate {
             l1_gas_consumed: 1736.into(),
             l1_gas_price: 2.into(),
@@ -986,7 +1003,9 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         let output_json = result
             .serialize(Serializer {
@@ -1045,7 +1064,9 @@ mod tests {
             simulation_flags: vec![],
             block_id: BlockId::Number(last_block_header.number),
         };
-        let result = super::estimate_fee(context, input).await.unwrap();
+        let result = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         let output_json = result
             .serialize(Serializer {
@@ -1097,7 +1118,9 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
 
-        let err = super::estimate_fee(context, input).await.unwrap_err();
+        let err = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         let error_cause = "Calldata limit (10000) exceeded by transaction at index 0";
         assert_matches!(err, EstimateFeeError::Custom(e) if e.root_cause().to_string() == error_cause);
@@ -1133,7 +1156,9 @@ mod tests {
             block_id: BlockId::Number(last_block_header.number),
         };
 
-        let err = super::estimate_fee(context, input).await.unwrap_err();
+        let err = super::estimate_fee(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         let error_cause = "Signature element limit (10000) exceeded by transaction at index 0";
         assert_matches!(err, EstimateFeeError::Custom(e) if e.root_cause().to_string() == error_cause);

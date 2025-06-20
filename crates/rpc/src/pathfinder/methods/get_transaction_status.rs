@@ -4,6 +4,7 @@ use pathfinder_common::TransactionHash;
 use crate::context::RpcContext;
 use crate::dto::TxnFinalityStatus;
 use crate::pending::PendingBlockVariant;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct GetGatewayTransactionInput {
@@ -25,6 +26,7 @@ impl crate::dto::DeserializeForVersion for GetGatewayTransactionInput {
 pub async fn get_transaction_status(
     context: RpcContext,
     input: GetGatewayTransactionInput,
+    rpc_version: RpcVersion,
 ) -> Result<TransactionStatus, GetGatewayTransactionError> {
     let span = tracing::Span::current();
     let db_status = util::task::spawn_blocking(move |_| {
@@ -39,7 +41,7 @@ pub async fn get_transaction_status(
         // Check pending transactions first.
         let pending = context
             .pending_data
-            .get(&db_tx)
+            .get(&db_tx, rpc_version)
             .context("Querying pending data")?;
         if let Some(status) = pending_status(pending.block().as_ref(), &input.transaction_hash) {
             return Ok(Some(status));
@@ -167,6 +169,8 @@ mod tests {
 
     use super::*;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
@@ -175,7 +179,9 @@ mod tests {
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(status, TransactionStatus::AcceptedOnL1);
     }
@@ -188,7 +194,9 @@ mod tests {
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
@@ -200,7 +208,9 @@ mod tests {
         let input = GetGatewayTransactionInput {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(status, TransactionStatus::AcceptedOnL2);
     }
@@ -214,7 +224,9 @@ mod tests {
             ),
         };
         let context = RpcContext::for_tests();
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(status, TransactionStatus::Rejected);
     }
@@ -225,7 +237,7 @@ mod tests {
         let input = GetGatewayTransactionInput {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
-        let status = get_transaction_status(context.clone(), input)
+        let status = get_transaction_status(context.clone(), input, RPC_VERSION)
             .await
             .unwrap();
         assert_eq!(status, TransactionStatus::Reverted);
@@ -233,7 +245,9 @@ mod tests {
         let input = GetGatewayTransactionInput {
             transaction_hash: transaction_hash_bytes!(b"pending reverted"),
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(status, TransactionStatus::Reverted);
     }
 }

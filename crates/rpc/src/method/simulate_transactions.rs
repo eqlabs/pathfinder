@@ -11,6 +11,7 @@ use crate::executor::{
     SIGNATURE_ELEMENT_LIMIT,
 };
 use crate::types::request::BroadcastedTransaction;
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub struct SimulateTransactionInput {
@@ -39,6 +40,7 @@ pub struct Output(Vec<pathfinder_executor::types::TransactionSimulation>);
 pub async fn simulate_transactions(
     context: RpcContext,
     input: SimulateTransactionInput,
+    rpc_version: RpcVersion,
 ) -> Result<Output, SimulateTransactionError> {
     let span = tracing::Span::current();
     if let Some(bad_tx_idx) = input.transactions.iter().position(calldata_limit_exceeded) {
@@ -83,7 +85,7 @@ pub async fn simulate_transactions(
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update()))
@@ -453,7 +455,9 @@ pub(crate) mod tests {
             version: RpcVersion::V07,
         }).unwrap();
 
-        let result = simulate_transactions(context, input).await.expect("result");
+        let result = simulate_transactions(context, input, RpcVersion::V07)
+            .await
+            .expect("result");
         let result = result
             .serialize(Serializer {
                 version: RpcVersion::V07,
@@ -623,7 +627,9 @@ pub(crate) mod tests {
             version: RpcVersion::V07,
         }).unwrap();
 
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, RpcVersion::V07)
+            .await
+            .unwrap();
 
         pretty_assertions_sorted::assert_eq!(
             result
@@ -1641,7 +1647,9 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, version)
+            .await
+            .unwrap();
 
         let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -1686,7 +1694,9 @@ pub(crate) mod tests {
                 crate::dto::SimulationFlag::SkipFeeCharge,
             ]),
         };
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, version)
+            .await
+            .unwrap();
 
         let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -1732,7 +1742,9 @@ pub(crate) mod tests {
             ]),
         };
 
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, version)
+            .await
+            .unwrap();
 
         let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -1773,7 +1785,9 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, version)
+            .await
+            .unwrap();
 
         let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -1814,7 +1828,9 @@ pub(crate) mod tests {
             block_id: BlockId::Number(last_block_header.number),
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
-        let result = simulate_transactions(context, input).await.unwrap();
+        let result = simulate_transactions(context, input, version)
+            .await
+            .unwrap();
 
         let serializer = crate::dto::Serializer { version };
         let result_serializable = result.0.into_iter().collect::<Vec<_>>();
@@ -1831,6 +1847,8 @@ pub(crate) mod tests {
             "simulations/declare_deploy_and_invoke_sierra_class_starknet_0_14_0.json"
         );
     }
+
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     #[test_log::test(tokio::test)]
     async fn calldata_limit_exceeded() {
@@ -1857,7 +1875,9 @@ pub(crate) mod tests {
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
 
-        let err = simulate_transactions(context, input).await.unwrap_err();
+        let err = simulate_transactions(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         let error_cause = "Calldata limit (10000) exceeded by transaction at index 0";
         assert_matches!(err, SimulateTransactionError::Custom(e) if e.root_cause().to_string() == error_cause);
@@ -1891,7 +1911,9 @@ pub(crate) mod tests {
             simulation_flags: crate::dto::SimulationFlags(vec![]),
         };
 
-        let err = simulate_transactions(context, input).await.unwrap_err();
+        let err = simulate_transactions(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         let error_cause = "Signature element limit (10000) exceeded by transaction at index 0";
         assert_matches!(err, SimulateTransactionError::Custom(e) if e.root_cause().to_string() == error_cause);

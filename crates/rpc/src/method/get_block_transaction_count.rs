@@ -2,6 +2,7 @@ use anyhow::Context;
 use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -27,6 +28,7 @@ pub struct Output(u64);
 pub async fn get_block_transaction_count(
     context: RpcContext,
     input: Input,
+    rpc_version: RpcVersion,
 ) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
@@ -41,7 +43,7 @@ pub async fn get_block_transaction_count(
             BlockId::Pending => {
                 let count = context
                     .pending_data
-                    .get(&db)
+                    .get(&db, rpc_version)
                     .context("Querying pending data")?
                     .transactions()
                     .len() as u64;
@@ -82,6 +84,8 @@ mod tests {
 
     use super::*;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[rstest::rstest]
     #[case::latest(BlockId::Latest, 5)]
     #[case::pending(BlockId::Pending, 3)]
@@ -89,7 +93,9 @@ mod tests {
     async fn ok(#[case] input: BlockId, #[case] expected: u64) {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input { block_id: input };
-        let result = get_block_transaction_count(context, input).await.unwrap();
+        let result = get_block_transaction_count(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(result.0, expected);
     }
@@ -100,7 +106,7 @@ mod tests {
             block_id: block_hash_bytes!(b"invalid").into(),
         };
         let context = RpcContext::for_tests_with_pending().await;
-        let result = get_block_transaction_count(context, input).await;
+        let result = get_block_transaction_count(context, input, RPC_VERSION).await;
 
         assert_matches::assert_matches!(result, Err(Error::BlockNotFound));
     }
