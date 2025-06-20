@@ -3,7 +3,6 @@ use pathfinder_common::TransactionHash;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
-use crate::compose_executor_transaction;
 use crate::context::RpcContext;
 use crate::dto::TransactionTrace;
 use crate::error::{ApplicationError, TraceError};
@@ -12,6 +11,7 @@ use crate::executor::{
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::method::trace_block_transactions::map_gateway_trace;
+use crate::{compose_executor_transaction, RpcVersion};
 
 #[derive(Debug)]
 pub struct Input {
@@ -43,6 +43,7 @@ impl crate::dto::SerializeForVersion for Output {
 pub async fn trace_transaction(
     context: RpcContext,
     input: Input,
+    rpc_version: RpcVersion,
 ) -> Result<Output, TraceTransactionError> {
     #[allow(clippy::large_enum_variant)]
     enum LocalExecution {
@@ -66,7 +67,7 @@ pub async fn trace_transaction(
             // Find the transaction's block.
             let pending = context
                 .pending_data
-                .get(&db_tx)
+                .get(&db_tx, rpc_version)
                 .context("Querying pending data")?;
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
@@ -262,6 +263,8 @@ pub mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn test_multiple_transactions() -> anyhow::Result<()> {
         let (context, _, traces) = setup_multi_tx_trace_test().await?;
@@ -270,7 +273,9 @@ pub mod tests {
             let input = Input {
                 transaction_hash: trace.transaction_hash,
             };
-            let output = trace_transaction(context.clone(), input).await.unwrap();
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
             let expected = Output(crate::dto::TransactionTrace {
                 trace: trace.trace_root,
                 include_state_diff: false,
@@ -278,12 +283,12 @@ pub mod tests {
             pretty_assertions_sorted::assert_eq!(
                 output
                     .serialize(Serializer {
-                        version: RpcVersion::V07
+                        version: RPC_VERSION
                     })
                     .unwrap(),
                 expected
                     .serialize(Serializer {
-                        version: RpcVersion::V07
+                        version: RPC_VERSION
                     })
                     .unwrap()
             );
@@ -300,7 +305,9 @@ pub mod tests {
             let input = Input {
                 transaction_hash: trace.transaction_hash,
             };
-            let output = trace_transaction(context.clone(), input).await.unwrap();
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
             let expected = Output(crate::dto::TransactionTrace {
                 trace: trace.trace_root,
                 include_state_diff: false,
@@ -308,12 +315,12 @@ pub mod tests {
             pretty_assertions_sorted::assert_eq!(
                 output
                     .serialize(Serializer {
-                        version: RpcVersion::V07
+                        version: RPC_VERSION
                     })
                     .unwrap(),
                 expected
                     .serialize(Serializer {
-                        version: RpcVersion::V07
+                        version: RPC_VERSION
                     })
                     .unwrap()
             );

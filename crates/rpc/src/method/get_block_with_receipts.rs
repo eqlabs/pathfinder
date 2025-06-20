@@ -5,6 +5,7 @@ use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::RpcVersion;
 
 pub enum Output {
     Full {
@@ -35,7 +36,11 @@ impl crate::dto::DeserializeForVersion for Input {
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
-pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_block_with_receipts(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -50,7 +55,7 @@ pub async fn get_block_with_receipts(context: RpcContext, input: Input) -> Resul
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db)
+                    .get(&db, rpc_version)
                     .context("Querying pending data")?;
 
                 return Ok(Output::Pending(pending.block()));
@@ -188,6 +193,8 @@ mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -200,7 +207,7 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let output = get_block_with_receipts(context.clone(), input)
+        let output = get_block_with_receipts(context.clone(), input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -221,7 +228,7 @@ mod tests {
             block_id: BlockId::Latest,
         };
 
-        let output = get_block_with_receipts(context.clone(), input)
+        let output = get_block_with_receipts(context.clone(), input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })

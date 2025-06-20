@@ -2,9 +2,9 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress};
 
 use crate::context::RpcContext;
-use crate::dto;
 use crate::dto::SerializeForVersion;
 use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::{dto, RpcVersion};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
 
@@ -50,7 +50,11 @@ impl SerializeForVersion for Output {
 }
 
 /// Get a contract class.
-pub async fn get_class_at(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_class_at(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -64,7 +68,7 @@ pub async fn get_class_at(context: RpcContext, input: Input) -> Result<Output, E
         let pending_class_hash = if input.block_id == BlockId::Pending {
             context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Querying pending data")?
                 .state_update()
                 .contract_class(input.contract_address)
@@ -153,6 +157,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -166,7 +172,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 1"),
         };
 
-        let output = get_class_at(context, input)
+        let output = get_class_at(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -188,7 +194,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 2 (sierra)"),
         };
 
-        let output = get_class_at(context, input)
+        let output = get_class_at(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -205,7 +211,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"invalid"),
         };
 
-        let error = get_class_at(context, input).await.unwrap_err();
+        let error = get_class_at(context, input, RPC_VERSION).await.unwrap_err();
         assert_matches!(error, Error::ContractNotFound);
     }
 
@@ -217,7 +223,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 1"),
         };
 
-        let error = get_class_at(context, input).await.unwrap_err();
+        let error = get_class_at(context, input, RPC_VERSION).await.unwrap_err();
         assert_matches!(error, Error::BlockNotFound);
     }
 }

@@ -6,6 +6,7 @@ use pathfinder_common::{BlockHeader, BlockId};
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
 
@@ -37,7 +38,11 @@ pub enum Output {
 }
 
 /// Get block information with full transactions given the block id
-pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_block_with_txs(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -54,7 +59,7 @@ pub async fn get_block_with_txs(context: RpcContext, input: Input) -> Result<Out
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&transaction)
+                    .get(&transaction, rpc_version)
                     .context("Querying pending data")?;
 
                 let transactions = pending.transactions().to_vec();
@@ -142,6 +147,8 @@ mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -155,7 +162,9 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let output = get_block_with_txs(context, input).await.unwrap();
+        let output = get_block_with_txs(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         let output_json = output.serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(output_json, version, "blocks/pending_with_txs.json");
@@ -174,7 +183,9 @@ mod tests {
             block_id: BlockId::Latest,
         };
 
-        let output = get_block_with_txs(context, input).await.unwrap();
+        let output = get_block_with_txs(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         let output_json = output.serialize(Serializer { version }).unwrap();
 
         crate::assert_json_matches_fixture!(output_json, version, "blocks/latest_with_txs.json");

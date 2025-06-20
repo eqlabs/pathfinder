@@ -3,9 +3,9 @@ use std::sync::Arc;
 use anyhow::Context;
 use pathfinder_common::{BlockId, StateUpdate};
 
-use crate::{dto, RpcContext};
+use crate::{dto, RpcContext, RpcVersion};
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     block_id: BlockId,
 }
@@ -37,7 +37,11 @@ impl dto::SerializeForVersion for Output {
     }
 }
 
-pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_state_update(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let storage = context.storage.clone();
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
@@ -51,7 +55,7 @@ pub async fn get_state_update(context: RpcContext, input: Input) -> Result<Outpu
         if input.block_id.is_pending() {
             let state_update = context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Query pending data")?
                 .state_update();
 
@@ -666,6 +670,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn latest() {
         let (mut in_storage, ctx) = context_with_state_updates();
@@ -675,6 +681,7 @@ mod tests {
             Input {
                 block_id: BlockId::Latest,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap()
@@ -692,6 +699,7 @@ mod tests {
             Input {
                 block_id: BlockId::Number(BlockNumber::GENESIS),
             },
+            RPC_VERSION,
         )
         .await
         .unwrap()
@@ -709,6 +717,7 @@ mod tests {
             Input {
                 block_id: BlockId::Hash(in_storage[1].block_hash),
             },
+            RPC_VERSION,
         )
         .await
         .unwrap()
@@ -726,6 +735,7 @@ mod tests {
             Input {
                 block_id: BlockId::Number(BlockNumber::MAX),
             },
+            RPC_VERSION,
         )
         .await;
 
@@ -741,6 +751,7 @@ mod tests {
             Input {
                 block_id: BlockId::Hash(block_hash_bytes!(b"non-existent")),
             },
+            RPC_VERSION,
         )
         .await;
 
@@ -756,11 +767,33 @@ mod tests {
 
         let expected = context.pending_data.get_unchecked().state_update();
 
-        let result = get_state_update(context, input)
+        let result = get_state_update(context, input, RPC_VERSION)
             .await
             .unwrap()
             .unwrap_pending();
 
         assert_eq!(result, expected);
+    }
+
+    #[tokio::test]
+    async fn pre_confirmed() {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+        let input = Input {
+            block_id: BlockId::Pending,
+        };
+
+        let expected = context.pending_data.get_unchecked().state_update();
+
+        let result = get_state_update(context.clone(), input.clone(), RpcVersion::V09)
+            .await
+            .unwrap()
+            .unwrap_pending();
+        assert_eq!(result, expected);
+
+        let result = get_state_update(context.clone(), input.clone(), RpcVersion::V08)
+            .await
+            .unwrap()
+            .unwrap_pending();
+        assert_eq!(result, StateUpdate::default().into());
     }
 }

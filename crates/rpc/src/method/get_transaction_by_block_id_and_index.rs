@@ -3,6 +3,7 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockId, TransactionIndex};
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -32,6 +33,7 @@ crate::error::generate_rpc_error_subset!(
 pub async fn get_transaction_by_block_id_and_index(
     context: RpcContext,
     input: Input,
+    rpc_version: RpcVersion,
 ) -> Result<Output, GetTransactionByBlockIdAndIndexError> {
     let index: usize = input
         .index
@@ -53,7 +55,7 @@ pub async fn get_transaction_by_block_id_and_index(
             BlockId::Pending => {
                 let result = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending dat")?
                     .transactions()
                     .get(index)

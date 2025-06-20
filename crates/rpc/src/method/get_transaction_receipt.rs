@@ -5,7 +5,7 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
 
 use crate::context::RpcContext;
-use crate::dto;
+use crate::{dto, RpcVersion};
 
 pub struct Input {
     pub transaction_hash: TransactionHash,
@@ -77,7 +77,11 @@ impl crate::dto::SerializeForVersion for Output {
 
 crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 
-pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_transaction_receipt(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -91,7 +95,7 @@ pub async fn get_transaction_receipt(context: RpcContext, input: Input) -> Resul
         // Check pending transactions.
         let pending = context
             .pending_data
-            .get(&db_tx)
+            .get(&db_tx, rpc_version)
             .context("Querying pending data")?;
 
         if let Some((transaction, (receipt, events))) = pending
@@ -161,7 +165,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let output = get_transaction_receipt(context, input).await.unwrap();
+        let output = get_transaction_receipt(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 
@@ -184,7 +190,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let output = get_transaction_receipt(context, input).await.unwrap();
+        let output = get_transaction_receipt(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 
@@ -206,7 +214,7 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
-        let output = get_transaction_receipt(context.clone(), input)
+        let output = get_transaction_receipt(context.clone(), input, version)
             .await
             .unwrap();
 
@@ -221,7 +229,9 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"pending reverted"),
         };
-        let output = get_transaction_receipt(context, input).await.unwrap();
+        let output = get_transaction_receipt(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = output.serialize(Serializer { version }).unwrap();
 

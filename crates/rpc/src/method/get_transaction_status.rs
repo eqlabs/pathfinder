@@ -39,7 +39,11 @@ pub enum Output {
 
 crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 
-pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_transaction_status(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     // Check database.
     let span = tracing::Span::current();
     let db_status = util::task::spawn_blocking(move |_| {
@@ -53,7 +57,7 @@ pub async fn get_transaction_status(context: RpcContext, input: Input) -> Result
 
         if let Some((receipt, _)) = context
             .pending_data
-            .get(&db_tx)
+            .get(&db_tx, rpc_version)
             .context("Querying pending data")?
             .transaction_receipts_and_events()
             .iter()
@@ -213,6 +217,8 @@ mod tests {
         assert_eq!(encoded, expected);
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
@@ -221,7 +227,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(status, Output::AcceptedOnL1(TxnExecutionStatus::Succeeded));
     }
@@ -239,7 +247,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
@@ -262,7 +272,9 @@ mod tests {
         let input = Input {
             transaction_hash: tx_hash,
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
@@ -280,7 +292,7 @@ mod tests {
             transaction_hash: transaction_hash!("0x6e6f6e2d6578697374656e74"),
         };
         let context = RpcContext::for_tests();
-        let status = get_transaction_status(context, input).await;
+        let status = get_transaction_status(context, input, RPC_VERSION).await;
 
         assert_matches!(status, Err(Error::TxnHashNotFound));
     }
@@ -294,7 +306,9 @@ mod tests {
             ),
         };
         let context = RpcContext::for_tests();
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, RPC_VERSION)
+            .await
+            .unwrap();
 
         assert_eq!(
             status,
@@ -319,7 +333,7 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"txn reverted"),
         };
-        let status = get_transaction_status(context.clone(), input)
+        let status = get_transaction_status(context.clone(), input, version)
             .await
             .unwrap();
 
@@ -334,7 +348,9 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"pending reverted"),
         };
-        let status = get_transaction_status(context, input).await.unwrap();
+        let status = get_transaction_status(context, input, version)
+            .await
+            .unwrap();
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
@@ -351,7 +367,7 @@ mod tests {
         let input = Input {
             transaction_hash: transaction_hash_bytes!(b"non-existent"),
         };
-        let err = get_transaction_status(context.clone(), input)
+        let err = get_transaction_status(context.clone(), input, RPC_VERSION)
             .await
             .unwrap_err();
 

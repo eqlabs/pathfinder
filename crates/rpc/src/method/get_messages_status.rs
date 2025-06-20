@@ -4,6 +4,7 @@ use pathfinder_ethereum::EthereumApi;
 
 use crate::context::RpcContext;
 use crate::method::get_transaction_status;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -70,7 +71,11 @@ pub struct Output(Vec<L1HandlerTransactionStatus>);
 
 crate::error::generate_rpc_error_subset!(Error: TxnHashNotFound);
 
-pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_messages_status(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
 
     let _g = span.enter();
@@ -92,7 +97,7 @@ pub async fn get_messages_status(context: RpcContext, input: Input) -> Result<Ou
         let tx_hash = tx.calculate_hash(context.chain_id);
 
         let input = get_transaction_status::Input::new(tx_hash);
-        let status = get_transaction_status(context.clone(), input)
+        let status = get_transaction_status(context.clone(), input, rpc_version)
             .await
             .map_err(|_| Error::TxnHashNotFound)?;
 

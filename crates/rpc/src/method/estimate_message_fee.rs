@@ -11,6 +11,7 @@ use starknet_api::transaction::fields::{Calldata, Fee};
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EstimateMessageFeeInput {
@@ -57,6 +58,7 @@ pub struct Output(pathfinder_executor::types::FeeEstimate);
 pub async fn estimate_message_fee(
     context: RpcContext,
     input: EstimateMessageFeeInput,
+    rpc_version: RpcVersion,
 ) -> Result<Output, EstimateMessageFeeError> {
     let span = tracing::Span::current();
     if input.message.payload.len() > CALLDATA_LIMIT {
@@ -78,7 +80,7 @@ pub async fn estimate_message_fee(
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update()))
@@ -357,6 +359,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -365,7 +369,7 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee(#[case] version: RpcVersion) {
         let rpc = setup(Setup::Full).await.expect("RPC context");
-        let result = super::estimate_message_fee(rpc, input())
+        let result = super::estimate_message_fee(rpc, input(), RPC_VERSION)
             .await
             .expect("result");
 
@@ -388,7 +392,9 @@ mod tests {
             block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
         };
 
-        let err = super::estimate_message_fee(rpc, input).await.unwrap_err();
+        let err = super::estimate_message_fee(rpc, input, RPC_VERSION)
+            .await
+            .unwrap_err();
 
         let error_cause = "Calldata limit (10000) exceeded";
         assert_matches!(err, EstimateMessageFeeError::Custom(e) if e.root_cause().to_string() == error_cause);

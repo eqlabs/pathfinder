@@ -5,6 +5,7 @@ use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::RpcVersion;
 
 #[derive(Debug)]
 pub enum CallError {
@@ -70,13 +71,13 @@ impl From<CallError> for ApplicationError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     pub request: FunctionCall,
     pub block_id: BlockId,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionCall {
     pub contract_address: ContractAddress,
     pub entry_point_selector: EntryPoint,
@@ -110,7 +111,11 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Output(pub Vec<CallResultValue>);
 
-pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError> {
+pub async fn call(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, CallError> {
     let span = tracing::Span::current();
     if input.request.calldata.len() > CALLDATA_LIMIT {
         return Err(CallError::Custom(anyhow::anyhow!(
@@ -132,7 +137,7 @@ pub async fn call(context: RpcContext, input: Input) -> Result<Output, CallError
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
                 (pending.header(), Some(pending.state_update()))
@@ -253,6 +258,8 @@ mod tests {
         use super::*;
         use crate::pending::PendingData;
 
+        const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
         async fn test_context() -> (
             RpcContext,
             BlockHeader,
@@ -329,7 +336,7 @@ mod tests {
                 },
                 block_id: BlockId::Latest,
             };
-            let result = call(context, input).await.unwrap();
+            let result = call(context, input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(test_value.0)]));
         }
 
@@ -356,7 +363,7 @@ mod tests {
                 },
                 block_id: BlockId::Latest,
             };
-            let result = call(context.clone(), input).await.unwrap();
+            let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(test_value.0)]));
 
             // updated on pending
@@ -368,7 +375,7 @@ mod tests {
                 },
                 block_id: BlockId::Pending,
             };
-            let result = call(context, input).await.unwrap();
+            let result = call(context, input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
         }
 
@@ -396,7 +403,7 @@ mod tests {
                 },
                 block_id: BlockId::Pending,
             };
-            let result = call(context.clone(), input).await.unwrap();
+            let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(new_value.0)]));
         }
 
@@ -441,7 +448,7 @@ mod tests {
                 },
                 block_id: BlockId::Pending,
             };
-            let result = call(context.clone(), input).await.unwrap();
+            let result = call(context.clone(), input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
         }
 
@@ -469,6 +476,93 @@ mod tests {
                     starknet_version: last_block_header.starknet_version,
                     l1_da_mode: L1DataAvailabilityMode::Calldata,
                 },
+                state_update,
+                last_block_header.number + 1,
+            )
+        }
+
+        #[test_log::test(tokio::test)]
+        async fn contract_declared_and_deployed_in_pre_confirmed() {
+            let (context, last_block_header, _contract_address, _test_key, _test_value) =
+                test_context().await;
+
+            let sierra_definition = include_bytes!("../../fixtures/contracts/storage_access.json");
+            let sierra_hash =
+                sierra_hash!("0x0544b92d358447cb9e50b65092b7169f931d29e05c1404a2cd08c6fd7e32ba90");
+            let casm_definition = include_bytes!("../../fixtures/contracts/storage_access.casm");
+            let casm_hash =
+                casm_hash!("0x069032ff71f77284e1a0864a573007108ca5cc08089416af50f03260f5d6d4d8");
+
+            let mut connection = context.storage.connection().unwrap();
+            let tx = connection.transaction().unwrap();
+            tx.insert_sierra_class(&sierra_hash, sierra_definition, &casm_hash, casm_definition)
+                .unwrap();
+            tx.commit().unwrap();
+
+            drop(connection);
+
+            let storage_key = StorageAddress::from_name(b"my_storage_var");
+            let storage_value = storage_value!("0x09");
+            let new_contract_address = contract_address!("0xdeadbeef");
+            let pending_data = pre_confirmed_data_with_update(
+                last_block_header,
+                StateUpdate::default()
+                    .with_declared_sierra_class(sierra_hash, casm_hash)
+                    .with_deployed_contract(new_contract_address, ClassHash(sierra_hash.0))
+                    .with_storage_update(new_contract_address, storage_key, storage_value),
+            );
+            let (_tx, rx) = tokio::sync::watch::channel(pending_data);
+            let context = context.with_pending_data(rx);
+
+            let input = Input {
+                request: FunctionCall {
+                    contract_address: new_contract_address,
+                    entry_point_selector: EntryPoint::hashed(b"get_data"),
+                    calldata: vec![],
+                },
+                block_id: BlockId::Pending,
+            };
+            let result = call(context.clone(), input.clone(), RpcVersion::V09)
+                .await
+                .unwrap();
+            assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
+
+            // We expect that JSON-RPC versions older than 0.9 do _not_ use the
+            // pre-committed block.
+            let error = call(context.clone(), input.clone(), RpcVersion::V08)
+                .await
+                .unwrap_err();
+            assert_matches!(error, CallError::ContractNotFound);
+        }
+
+        fn pre_confirmed_data_with_update(
+            last_block_header: BlockHeader,
+            state_update: StateUpdate,
+        ) -> PendingData {
+            PendingData::from_parts(
+                crate::pending::PendingBlockVariant::PreConfirmed(
+                    crate::pending::PreConfirmedBlock {
+                        l1_gas_price: GasPrices {
+                            price_in_wei: last_block_header.eth_l1_gas_price,
+                            price_in_fri: Default::default(),
+                        },
+                        l2_gas_price: GasPrices {
+                            price_in_wei: last_block_header.eth_l2_gas_price,
+                            price_in_fri: last_block_header.strk_l2_gas_price,
+                        },
+                        l1_data_gas_price: Default::default(),
+                        sequencer_address: last_block_header.sequencer_address,
+                        status: starknet_gateway_types::reply::Status::PreConfirmed,
+                        timestamp: BlockTimestamp::new_or_panic(
+                            last_block_header.timestamp.get() + 1,
+                        ),
+                        transaction_receipts: vec![],
+                        transactions: vec![],
+                        starknet_version: last_block_header.starknet_version,
+                        l1_da_mode: L1DataAvailabilityMode::Blob.into(),
+                    },
+                    vec![],
+                ),
                 state_update,
                 last_block_header.number + 1,
             )
@@ -519,7 +613,7 @@ mod tests {
                 },
                 block_id: BlockId::Latest,
             };
-            let result = call(context, input).await.unwrap();
+            let result = call(context, input, RPC_VERSION).await.unwrap();
             assert_eq!(result, Output(vec![CallResultValue(storage_value.0)]));
         }
 
@@ -547,7 +641,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
 
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
             assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
         }
 
@@ -576,7 +670,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
 
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
             assert_matches::assert_matches!(error, Err(CallError::ContractError { revert_error, revert_error_stack }) => {
                 assert_eq!(revert_error, Some("Execution error: Execution failed. Failure reason:\nError in contract (contract address: 0x0000000000000000000000000000000000000000000000000000000000000c01, class hash: 0x019cabebe31b9fb6bf5e7ce9a971bd7d06e9999e0b97eee943869141a46fd978, selector: 0x0162da33a4585851fe8d3af3c2a9c60b557814e221e0d4f30ff0b2189d9c7775):\n0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1').\n".to_owned()));
                 assert_eq!(revert_error_stack.0.len(), 2);
@@ -698,7 +792,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
 
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
 
             assert_matches::assert_matches!(error, Err(CallError::ContractError { revert_error, revert_error_stack }) => {
                 assert_eq!(revert_error, Some("Execution error: Execution failed. Failure reason:\nError in contract (contract address: 0x00000000000000000000000000000000000000000000000000000000000ccccc, class hash: 0x050d4827b118b6bef606c6e0ad4f33738b726e387de81b5ce045eb62d161bf9b, selector: 0x031a75a0d711dfe3639aae96eb8f9facc2fd74df5aa611067f2511cc9fefc229):\nError in contract (contract address: 0x00000000000000000000000000000000000000000000000000000000000ccccc, class hash: 0x050d4827b118b6bef606c6e0ad4f33738b726e387de81b5ce045eb62d161bf9b, selector: 0x031a75a0d711dfe3639aae96eb8f9facc2fd74df5aa611067f2511cc9fefc229):\n0x4661696c656420746f20646573657269616c697a6520706172616d202331 ('Failed to deserialize param #1').\n".to_owned()));
@@ -742,7 +836,7 @@ mod tests {
                 block_id: BlockId::Latest,
             };
 
-            let err = call(context, input).await.unwrap_err();
+            let err = call(context, input, RPC_VERSION).await.unwrap_err();
 
             let error_cause = "Calldata limit (10000) exceeded";
             assert_matches!(err, CallError::Custom(e) if e.root_cause().to_string() == error_cause);
@@ -754,6 +848,8 @@ mod tests {
         use std::path::PathBuf;
 
         use super::*;
+
+        const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
         // Mainnet block number 5
         const BLOCK_5: BlockId = BlockId::Hash(block_hash!(
@@ -807,7 +903,7 @@ mod tests {
                 request: valid_mainnet_call(),
                 block_id: BlockId::Hash(block_hash_bytes!(b"nonexistent")),
             };
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
             assert_matches::assert_matches!(error, Err(CallError::BlockNotFound));
         }
 
@@ -822,7 +918,7 @@ mod tests {
                 },
                 block_id: BLOCK_5,
             };
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
             assert_matches::assert_matches!(error, Err(CallError::ContractNotFound));
         }
 
@@ -837,7 +933,7 @@ mod tests {
                 },
                 block_id: BLOCK_5,
             };
-            let error = call(context, input).await;
+            let error = call(context, input, RPC_VERSION).await;
             assert_matches::assert_matches!(error, Err(CallError::EntrypointNotFound));
         }
 
@@ -850,7 +946,7 @@ mod tests {
                 block_id: BLOCK_5,
             };
 
-            let result = call(context, input).await.unwrap();
+            let result = call(context, input, RPC_VERSION).await.unwrap();
             assert_eq!(result.0, vec![]);
         }
     }

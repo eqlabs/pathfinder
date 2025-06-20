@@ -2,6 +2,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
@@ -28,7 +29,11 @@ pub struct Output(StorageValue);
 crate::error::generate_rpc_error_subset!(Error: ContractNotFound, BlockNotFound);
 
 /// Get the value of the storage at the given address and key.
-pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_storage_at(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -42,7 +47,7 @@ pub async fn get_storage_at(context: RpcContext, input: Input) -> Result<Output,
         if input.block_id.is_pending() {
             if let Some(value) = context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Querying pending data")?
                 .state_update()
                 .storage_value(input.contract_address, input.key)
@@ -120,6 +125,8 @@ mod tests {
         assert_eq!(input, expected);
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn pending() {
         let ctx = RpcContext::for_tests_with_pending().await;
@@ -134,6 +141,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -155,6 +163,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -177,6 +186,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -198,6 +208,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -219,6 +230,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -240,6 +252,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -261,6 +274,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -282,6 +296,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await;
 
@@ -302,6 +317,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await;
 
@@ -322,6 +338,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await;
 
@@ -342,6 +359,7 @@ mod tests {
                 key,
                 block_id,
             },
+            RPC_VERSION,
         )
         .await;
 
