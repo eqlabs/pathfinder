@@ -24,14 +24,27 @@ use pathfinder_crypto::Felt;
 use pathfinder_executor::types::ETH_TO_WEI_RATE;
 use pathfinder_lib::validator;
 use pathfinder_storage::StorageBuilder;
-use tracing::{info, warn};
+use pretty_assertions_sorted::Comparison;
+use tracing::{error, info};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let database_path = std::env::args()
+    let network = std::env::args()
         .nth(1)
-        .context("Please provide the database path as the first argument")?;
+        .context("Please provide network: sepolia or mainnet as the first argument")?;
+
+    let database_path = std::env::args()
+        .nth(2)
+        .context("Please provide the database path as the second argument")?;
+
+    let chain_id = match network.as_str() {
+        "sepolia" => ChainId::SEPOLIA_TESTNET,
+        "mainnet" => ChainId::MAINNET,
+        other => {
+            anyhow::bail!("Unknown network: {}. Use 'sepolia' or 'mainnet'.", other);
+        }
+    };
 
     // A wild guess based on pathfiner's `main()`
     let connection_pool_capacity = std::thread::available_parallelism()
@@ -72,8 +85,7 @@ fn main() -> anyhow::Result<()> {
             panic!("Expected proposal init");
         };
 
-        let validator = validator::new(ChainId::SEPOLIA_TESTNET, proposal_init)
-            .context("Validator creation")?;
+        let validator = validator::new(chain_id, proposal_init).context("Validator creation")?;
 
         let Some(ProposalPart::BlockInfo(block_info)) = proposal.pop_front() else {
             panic!("Expected block info");
@@ -94,26 +106,40 @@ fn main() -> anyhow::Result<()> {
             panic!("Expected transaction batch");
         };
 
-        validator
+        if let Err(error) = validator
             .execute_transactions(tnxs)
-            .context("Validating transaction batch")?;
+            .context("Validating transaction batch")
+        {
+            error!("{} execution FAILED: {:?}", block_number, error);
+            continue;
+        };
 
         // TODO(validator) for now it carries the block hash because we don't know how
         // to calculate the proposal commitment
-        let Some(ProposalPart::Fin(proposal_fin)) = proposal.pop_front() else {
+        let Some(ProposalPart::Fin(_)) = proposal.pop_front() else {
             panic!("Expected proposal fin");
         };
 
-        let success = validator
-            .finalize(proposal_fin, header.parent_hash, storage.clone())
+        let delta = validator
+            .finalize(header)
             .context("Finalizing validation")?;
 
-        if success {
-            info!("{} validation succeeded", block_number);
-        } else {
-            warn!("{} validation FAILED", block_number);
+        match delta {
+            Err((expected, actual)) => {
+                error!("{}", Comparison::new(&expected, &actual));
+                error!("{} validation FAILED", block_number)
+            }
+            Ok(_) => info!("{} validation succeeded", block_number),
         }
     }
+
+    let mut db_conn = storage.connection().context("Create database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Create database transaction")?;
+    db_txn
+        .store_in_memory_state()
+        .context("Storing in-memory state")?;
 
     Ok(())
 }
