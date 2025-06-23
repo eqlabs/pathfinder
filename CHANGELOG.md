@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- JSON-RPC v0.8.1 `starknet_estimateFee` method call fails if the account balance is zero.
+
 ### Changed
 
 - The default value of the `--sync.poll-interval` configuration parameter has been changed to 1 seconds. Pathfinder is now polling both the latest block information and the pending/pre-confirmed block every second by default.
