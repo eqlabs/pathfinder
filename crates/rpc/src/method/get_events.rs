@@ -9,6 +9,7 @@ use tokio::task::JoinHandle;
 use crate::context::RpcContext;
 use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::{PendingBlockVariant, PendingData};
+use crate::RpcVersion;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
 
@@ -93,6 +94,7 @@ impl crate::dto::DeserializeForVersion for EventFilter {
 pub async fn get_events(
     context: RpcContext,
     input: GetEventsInput,
+    rpc_version: RpcVersion,
 ) -> Result<GetEventsResult, GetEventsError> {
     // The [Block::Pending] in ranges makes things quite complicated. This
     // implementation splits the ranges into the following buckets:
@@ -167,14 +169,14 @@ pub async fn get_events(
             (Some(Pending), Some(Pending) | None) => {
                 let pending = context
                     .pending_data
-                    .get(&transaction)
+                    .get(&transaction, rpc_version)
                     .context("Querying pending data")?;
                 return get_pending_events(&request, &pending, continuation_token);
             }
             (Some(BlockId::Number(from_block)), Some(BlockId::Pending)) => {
                 let pending = context
                     .pending_data
-                    .get(&transaction)
+                    .get(&transaction, rpc_version)
                     .context("Querying pending data")?;
 
                 // `from_block` is larger than or equal to pending block's number
@@ -242,7 +244,7 @@ pub async fn get_events(
         if events.continuation_token.is_none() && matches!(request.to_block, Some(Pending)) {
             let pending = context
                 .pending_data
-                .get(&transaction)
+                .get(&transaction, rpc_version)
                 .context("Querying pending data")?;
 
             if events.events.len() < request.chunk_size {
@@ -706,6 +708,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn get_events_with_empty_filter() {
         let (context, events) = setup();
@@ -716,7 +720,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context, input, RPC_VERSION).await.unwrap();
 
         assert_eq!(
             result,
@@ -747,7 +751,9 @@ mod tests {
                 continuation_token: None,
             },
         };
-        let result = get_events(context.clone(), input.clone()).await.unwrap();
+        let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result, expected_result);
     }
 
@@ -765,7 +771,7 @@ mod tests {
             },
         };
 
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context, input, RPC_VERSION).await.unwrap();
 
         let expected_events = &events[test_utils::EVENTS_PER_BLOCK * BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (BLOCK_NUMBER + 1)];
@@ -792,7 +798,7 @@ mod tests {
             },
         };
 
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context, input, RPC_VERSION).await.unwrap();
 
         let expected_events = &events[test_utils::EVENTS_PER_BLOCK * LATEST_BLOCK_NUMBER
             ..test_utils::EVENTS_PER_BLOCK * (LATEST_BLOCK_NUMBER + 1)];
@@ -815,7 +821,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let error = get_events(context, input).await.unwrap_err();
+        let error = get_events(context, input, RPC_VERSION).await.unwrap_err();
 
         assert_eq!(GetEventsError::PageSizeTooBig, error);
     }
@@ -840,7 +846,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let error = get_events(context, input).await.unwrap_err();
+        let error = get_events(context, input, RPC_VERSION).await.unwrap_err();
 
         assert_eq!(
             GetEventsError::TooManyKeysInFilter {
@@ -862,7 +868,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context, input, RPC_VERSION).await.unwrap();
 
         assert_eq!(
             GetEventsResult {
@@ -888,7 +894,9 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context.clone(), input).await.unwrap();
+        let result = get_events(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(
             result,
             GetEventsResult {
@@ -905,7 +913,9 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context.clone(), input).await.unwrap();
+        let result = get_events(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(
             result,
             GetEventsResult {
@@ -922,7 +932,9 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context.clone(), input).await.unwrap();
+        let result = get_events(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(
             result,
             GetEventsResult {
@@ -941,7 +953,7 @@ mod tests {
                 ..Default::default()
             },
         };
-        let result = get_events(context, input).await.unwrap();
+        let result = get_events(context, input, RPC_VERSION).await.unwrap();
         assert_eq!(result.events, &[]);
         assert_eq!(result.continuation_token, None);
     }
@@ -963,7 +975,7 @@ mod tests {
                     ..Default::default()
                 },
             };
-            let result = get_events(context, input).await.unwrap();
+            let result = get_events(context, input, RPC_VERSION).await.unwrap();
             assert!(result.events.is_empty());
         }
 
@@ -979,16 +991,22 @@ mod tests {
                 },
             };
 
-            let events = get_events(context.clone(), input.clone()).await.unwrap();
+            let events = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(events.events.len(), 1);
 
             input.filter.from_block = Some(BlockId::Pending);
             input.filter.to_block = Some(BlockId::Pending);
-            let pending_events = get_events(context.clone(), input.clone()).await.unwrap();
+            let pending_events = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(pending_events.events.len(), 3);
 
             input.filter.from_block = None;
-            let all_events = get_events(context.clone(), input.clone()).await.unwrap();
+            let all_events = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
 
             let expected = events
                 .events
@@ -1012,7 +1030,7 @@ mod tests {
                 },
             };
 
-            let all = get_events(context.clone(), input.clone())
+            let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
@@ -1022,7 +1040,9 @@ mod tests {
             // pending block next time
             input.filter.chunk_size = 1;
             input.filter.continuation_token = None;
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, Some("3-0".to_string()));
 
@@ -1030,19 +1050,25 @@ mod tests {
             // more pending events for the next page
             input.filter.chunk_size = 2;
             input.filter.continuation_token = None;
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &all[0..2]);
             assert_eq!(result.continuation_token, Some("3-1".to_string()));
 
             input.filter.chunk_size = 1;
             input.filter.continuation_token = result.continuation_token;
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &all[2..3]);
             assert_eq!(result.continuation_token, Some("3-2".to_string()));
 
             input.filter.chunk_size = 100; // Only a single event remains though
             input.filter.continuation_token = result.continuation_token;
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &all[3..4]);
             assert_eq!(result.continuation_token, None);
 
@@ -1050,21 +1076,27 @@ mod tests {
             // pending)
             input.filter.chunk_size = 123;
             input.filter.continuation_token = Some("0-0".to_string());
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, all);
             assert_eq!(result.continuation_token, None);
 
             // nonexistent page: offset too large
             input.filter.chunk_size = 123; // Does not matter
             input.filter.continuation_token = Some("3-3".to_string()); // Points to after the last event
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &[]);
             assert_eq!(result.continuation_token, None);
 
             // nonexistent page: block number
             input.filter.chunk_size = 123; // Does not matter
             input.filter.continuation_token = Some("4-1".to_string()); // Points to after the last event
-            let error = get_events(context.clone(), input).await.unwrap_err();
+            let error = get_events(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap_err();
             assert_eq!(error, GetEventsError::InvalidContinuationToken);
         }
 
@@ -1086,7 +1118,7 @@ mod tests {
                 },
             };
 
-            let all = get_events(context.clone(), input.clone())
+            let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
@@ -1094,7 +1126,9 @@ mod tests {
 
             // returns a continuation token if there are more matches in pending
             input.filter.chunk_size = 1;
-            let result = get_events(context.clone(), input.clone()).await.unwrap();
+            let result = get_events(context.clone(), input.clone(), RPC_VERSION)
+                .await
+                .unwrap();
             assert_eq!(result.events, &all[0..1]);
             assert_eq!(result.continuation_token, Some("3-0".to_string()));
         }
@@ -1114,21 +1148,21 @@ mod tests {
                 },
             };
 
-            let all = get_events(context.clone(), input.clone())
+            let all = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
             assert_eq!(all.len(), 3);
 
             input.filter.keys = vec![vec![event_key_bytes!(b"pending key 2")]];
-            let events = get_events(context.clone(), input.clone())
+            let events = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
             assert_eq!(events, &all[2..3]);
 
             input.filter.keys = vec![vec![], vec![event_key_bytes!(b"second pending key")]];
-            let events = get_events(context.clone(), input.clone())
+            let events = get_events(context.clone(), input.clone(), RPC_VERSION)
                 .await
                 .unwrap()
                 .events;
@@ -1147,7 +1181,7 @@ mod tests {
                     ..Default::default()
                 },
             };
-            let result = get_events(context, input).await.unwrap();
+            let result = get_events(context, input, RPC_VERSION).await.unwrap();
             assert!(result.events.is_empty());
         }
 
@@ -1163,7 +1197,7 @@ mod tests {
                     ..Default::default()
                 },
             };
-            let result = get_events(context, input).await.unwrap();
+            let result = get_events(context, input, RPC_VERSION).await.unwrap();
             assert!(!result.events.is_empty());
         }
     }

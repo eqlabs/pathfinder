@@ -4,12 +4,12 @@ use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
-use crate::compose_executor_transaction;
 use crate::context::RpcContext;
 use crate::executor::{
     ExecutionStateError,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
+use crate::{compose_executor_transaction, RpcVersion};
 
 #[derive(Debug, Clone)]
 pub struct TraceBlockTransactionsInput {
@@ -37,6 +37,7 @@ pub struct TraceBlockTransactionsOutput {
 pub async fn trace_block_transactions(
     context: RpcContext,
     input: TraceBlockTransactionsInput,
+    rpc_version: RpcVersion,
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     enum LocalExecution {
         Success(TraceBlockTransactionsOutput),
@@ -56,7 +57,7 @@ pub async fn trace_block_transactions(
             BlockId::Pending => {
                 let pending = context
                     .pending_data
-                    .get(&db_tx)
+                    .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
                 let header = pending.header();
@@ -785,7 +786,7 @@ pub(crate) mod tests {
         let input = TraceBlockTransactionsInput {
             block_id: next_block_header.hash.into(),
         };
-        let output = trace_block_transactions(context, input)
+        let output = trace_block_transactions(context, input, version)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -795,6 +796,8 @@ pub(crate) mod tests {
 
         Ok(())
     }
+
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
 
     /// Test that multiple requests for the same block return correctly. This
     /// checks that the trace request coalescing doesn't do anything
@@ -812,7 +815,11 @@ pub(crate) mod tests {
         for _ in 0..NUM_REQUESTS {
             let input = input.clone();
             let context = context.clone();
-            joins.spawn(async move { trace_block_transactions(context, input).await.unwrap() });
+            joins.spawn(async move {
+                trace_block_transactions(context, input, RPC_VERSION)
+                    .await
+                    .unwrap()
+            });
         }
         let mut outputs = Vec::new();
         while let Some(output) = joins.join_next().await {
@@ -977,7 +984,7 @@ pub(crate) mod tests {
             block_id: next_block_header.hash.into(),
         };
 
-        let output = trace_block_transactions(context, input)
+        let output = trace_block_transactions(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -1073,6 +1080,7 @@ pub(crate) mod tests {
             TraceBlockTransactionsInput {
                 block_id: BlockId::Number(block.block_number),
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -1163,6 +1171,7 @@ pub(crate) mod tests {
             TraceBlockTransactionsInput {
                 block_id: BlockId::Number(block.block_number),
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();

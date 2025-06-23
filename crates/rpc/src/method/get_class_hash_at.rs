@@ -2,6 +2,7 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash, ContractAddress};
 
 use crate::context::RpcContext;
+use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
 
@@ -25,7 +26,11 @@ impl crate::dto::DeserializeForVersion for Input {
 #[derive(Debug)]
 pub struct Output(ClassHash);
 
-pub async fn get_class_hash_at(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_class_hash_at(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -39,7 +44,7 @@ pub async fn get_class_hash_at(context: RpcContext, input: Input) -> Result<Outp
         if input.block_id == BlockId::Pending {
             let pending = context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Querying pending data")?
                 .state_update()
                 .contract_class(input.contract_address);
@@ -125,6 +130,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     mod errors {
         use super::*;
 
@@ -136,7 +143,7 @@ mod tests {
                 block_id: BlockId::Latest,
                 contract_address: contract_address_bytes!(b"invalid"),
             };
-            let result = get_class_hash_at(context, input).await;
+            let result = get_class_hash_at(context, input, RPC_VERSION).await;
             assert_matches!(result, Err(Error::ContractNotFound));
         }
 
@@ -149,7 +156,7 @@ mod tests {
                 // This contract does exist and is added in block 0.
                 contract_address: contract_address_bytes!(b"contract 0"),
             };
-            let result = get_class_hash_at(context, input).await;
+            let result = get_class_hash_at(context, input, RPC_VERSION).await;
             assert_matches!(result, Err(Error::BlockNotFound));
         }
     }
@@ -163,7 +170,9 @@ mod tests {
             block_id: BlockId::Latest,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
-        let result = get_class_hash_at(context, input).await.unwrap();
+        let result = get_class_hash_at(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
     }
 
@@ -179,7 +188,7 @@ mod tests {
             block_id: BlockNumber::new_or_panic(0).into(),
             contract_address: address,
         };
-        let result = get_class_hash_at(context.clone(), input).await;
+        let result = get_class_hash_at(context.clone(), input, RPC_VERSION).await;
         assert_matches!(result, Err(Error::ContractNotFound));
 
         let expected = class_hash_bytes!(b"class 1 hash");
@@ -187,14 +196,18 @@ mod tests {
             block_id: BlockNumber::new_or_panic(1).into(),
             contract_address: address,
         };
-        let result = get_class_hash_at(context.clone(), input).await.unwrap();
+        let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
 
         let input = Input {
             block_id: BlockNumber::new_or_panic(2).into(),
             contract_address: address,
         };
-        let result = get_class_hash_at(context, input).await.unwrap();
+        let result = get_class_hash_at(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
     }
 
@@ -207,7 +220,9 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
-        let result = get_class_hash_at(context, input).await.unwrap();
+        let result = get_class_hash_at(context, input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
     }
 
@@ -221,7 +236,9 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"contract 0"),
         };
-        let result = get_class_hash_at(context.clone(), input).await.unwrap();
+        let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
 
         // This is an actual pending deployed contract.
@@ -230,7 +247,9 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
-        let result = get_class_hash_at(context.clone(), input).await.unwrap();
+        let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
 
         // Replaced class in pending should also work.
@@ -239,7 +258,9 @@ mod tests {
             block_id: BlockId::Pending,
             contract_address: contract_address_bytes!(b"pending contract 2 (replaced)"),
         };
-        let result = get_class_hash_at(context.clone(), input).await.unwrap();
+        let result = get_class_hash_at(context.clone(), input, RPC_VERSION)
+            .await
+            .unwrap();
         assert_eq!(result.0, expected);
 
         // This one remains missing.
@@ -247,7 +268,7 @@ mod tests {
             block_id: BlockId::Latest,
             contract_address: contract_address_bytes!(b"invalid"),
         };
-        let result = get_class_hash_at(context, input).await;
+        let result = get_class_hash_at(context, input, RPC_VERSION).await;
         assert_matches!(result, Err(Error::ContractNotFound));
     }
     use crate::dto::{SerializeForVersion, Serializer};
@@ -265,7 +286,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 0"),
         };
 
-        let output = get_class_hash_at(context, input)
+        let output = get_class_hash_at(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -287,7 +308,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"pending contract 0 address"),
         };
 
-        let output = get_class_hash_at(context, input)
+        let output = get_class_hash_at(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -311,7 +332,7 @@ mod tests {
             contract_address: contract_address_bytes!(b"contract 1"),
         };
 
-        let output = get_class_hash_at(context, input)
+        let output = get_class_hash_at(context, input, RPC_VERSION)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -328,7 +349,9 @@ mod tests {
             contract_address: contract_address_bytes!(b"invalid"),
         };
 
-        let error = get_class_hash_at(context, input).await.unwrap_err();
+        let error = get_class_hash_at(context, input, RPC_VERSION)
+            .await
+            .unwrap_err();
         assert_matches!(error, Error::ContractNotFound);
     }
 }

@@ -2,9 +2,9 @@ use anyhow::Context;
 use pathfinder_common::{BlockId, ClassHash};
 
 use crate::context::RpcContext;
-use crate::dto;
 use crate::dto::SerializeForVersion;
 use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::{dto, RpcVersion};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
 
@@ -41,7 +41,11 @@ impl From<ContractClass> for Output {
 }
 
 /// Get a contract class.
-pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Error> {
+pub async fn get_class(
+    context: RpcContext,
+    input: Input,
+    rpc_version: RpcVersion,
+) -> Result<Output, Error> {
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| -> Result<Output, Error> {
         let _g = span.enter();
@@ -54,7 +58,7 @@ pub async fn get_class(context: RpcContext, input: Input) -> Result<Output, Erro
         let is_pending = if input.block_id.is_pending() {
             context
                 .pending_data
-                .get(&tx)
+                .get(&tx, rpc_version)
                 .context("Querying pending data")?
                 .state_update()
                 .class_is_declared(input.class_hash)
@@ -152,6 +156,8 @@ mod tests {
         }
     }
 
+    const RPC_VERSION: RpcVersion = RpcVersion::V09;
+
     #[tokio::test]
     async fn pending() {
         let context = RpcContext::for_tests();
@@ -164,6 +170,7 @@ mod tests {
                 block_id: BlockId::Pending,
                 class_hash: valid_v0,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -175,6 +182,7 @@ mod tests {
                 block_id: BlockId::Pending,
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -186,6 +194,7 @@ mod tests {
                 block_id: BlockId::Pending,
                 class_hash: invalid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -205,6 +214,7 @@ mod tests {
                 block_id: BlockId::Latest,
                 class_hash: valid_v0,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -217,6 +227,7 @@ mod tests {
                 block_id: BlockId::Latest,
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -228,6 +239,7 @@ mod tests {
                 block_id: BlockId::Latest,
                 class_hash: invalid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -242,6 +254,7 @@ mod tests {
                 block_id: BlockId::Latest,
                 class_hash: undeclared,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -263,6 +276,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
                 class_hash: valid_v0,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -276,6 +290,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -286,6 +301,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::GENESIS),
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -298,6 +314,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: invalid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -312,6 +329,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::new_or_panic(2)),
                 class_hash: undeclared,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -325,6 +343,7 @@ mod tests {
                 block_id: BlockId::Number(BlockNumber::MAX),
                 class_hash: valid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -345,6 +364,7 @@ mod tests {
                 block_id: BlockId::Hash(block1_hash),
                 class_hash: valid_v0,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -359,6 +379,7 @@ mod tests {
                 block_id: BlockId::Hash(block2_hash),
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap();
@@ -370,6 +391,7 @@ mod tests {
                 block_id: BlockId::Hash(block0_hash),
                 class_hash: valid_v1,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -383,6 +405,7 @@ mod tests {
                 block_id: BlockId::Hash(latest_hash),
                 class_hash: invalid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -397,6 +420,7 @@ mod tests {
                 block_id: BlockId::Hash(latest_hash),
                 class_hash: undeclared,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
@@ -411,6 +435,7 @@ mod tests {
                 block_id: BlockId::Hash(invalid_block),
                 class_hash: valid,
             },
+            RPC_VERSION,
         )
         .await
         .unwrap_err();
