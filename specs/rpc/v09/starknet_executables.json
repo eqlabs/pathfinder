@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0",
   "info": {
-    "version": "0.8.0",
+    "version": "0.9.0-rc.1",
     "title": "API for getting Starknet executables from nodes that store compiled artifacts",
     "license": {}
   },
@@ -93,7 +93,8 @@
               "items": {
                 "oneOf": [
                   {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0
                   },
                   {
                     "type": "array",
@@ -111,7 +112,8 @@
             "type": "array",
             "description": "a list of sizes of segments in the bytecode, each segment is hashed individually when computing the bytecode hash",
             "items": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 0
             }
           }
         },
@@ -129,7 +131,8 @@
           "offset": {
             "title": "Offset",
             "description": "The offset of the entry point in the program",
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           },
           "selector": {
             "title": "Selector",
@@ -154,7 +157,8 @@
             "enum": ["AP", "FP"]
           },
           "offset": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0
           }
         },
         "required": ["register", "offset"]
@@ -182,7 +186,8 @@
                   "$ref": "#/components/schemas/CellRef"
                 },
                 {
-                  "type": "integer"
+                  "type": "integer",
+                  "minimum": 0
                 }
               ]
             },
