@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use pathfinder_common::{ContractAddress, ContractNonce};
+use pathfinder_executor::types::RevertibleFunctionInvocation;
 use serde::ser::Error;
 
 use super::SerializeStruct;
@@ -96,16 +97,22 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
             }
             pathfinder_executor::types::TransactionTrace::L1Handler(trace) => {
                 serializer.serialize_field("type", &"L1_HANDLER")?;
-                serializer.serialize_field(
-                    "function_invocation",
-                    &trace
-                        .execution_info
-                        .function_invocation
-                        .as_ref()
-                        .ok_or_else(|| {
-                            serde_json::error::Error::custom("Missing function_invocation in trace")
-                        })?,
-                )?;
+                if serializer.version < RpcVersion::V09 {
+                    if let RevertibleFunctionInvocation::FunctionInvocation(Some(fi)) =
+                        &trace.execution_info.function_invocation
+                    {
+                        serializer.serialize_field("function_invocation", &fi)?;
+                    } else {
+                        return Err(serde_json::error::Error::custom(
+                            "Missing function_invocation in trace",
+                        ));
+                    }
+                } else {
+                    serializer.serialize_field(
+                        "function_invocation",
+                        &trace.execution_info.function_invocation,
+                    )?;
+                }
                 if self.include_state_diff {
                     serializer.serialize_field("state_diff", &trace.state_diff)?;
                 }
@@ -441,20 +448,20 @@ impl crate::dto::SerializeForVersion for pathfinder_executor::types::DataAvailab
     }
 }
 
-impl crate::dto::SerializeForVersion for pathfinder_executor::types::ExecuteInvocation {
+impl crate::dto::SerializeForVersion for pathfinder_executor::types::RevertibleFunctionInvocation {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(invocation)) => {
-                invocation.serialize(serializer)
-            }
-            pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(None) => {
+            pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(Some(
+                invocation,
+            )) => invocation.serialize(serializer),
+            pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(None) => {
                 let mut serializer = serializer.serialize_struct()?;
                 serializer.end()
             }
-            pathfinder_executor::types::ExecuteInvocation::RevertedReason(reason) => {
+            pathfinder_executor::types::RevertibleFunctionInvocation::RevertedReason(reason) => {
                 let mut serializer = serializer.serialize_struct()?;
                 serializer.serialize_field("revert_reason", reason)?;
                 serializer.end()

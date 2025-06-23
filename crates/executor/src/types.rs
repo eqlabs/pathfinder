@@ -271,10 +271,16 @@ impl TransactionExecutionInfo {
     pub fn execution_status(&self) -> pathfinder_common::receipt::ExecutionStatus {
         use pathfinder_common::receipt::ExecutionStatus::{Reverted, Succeeded};
         match self {
-            Self::Declare(_) | Self::DeployAccount(_) | Self::L1Handler(_) => Succeeded,
+            Self::Declare(_) | Self::DeployAccount(_) => Succeeded,
             Self::Invoke(ref i) => match &i.execute_invocation {
-                ExecuteInvocation::FunctionInvocation(_) => Succeeded,
-                ExecuteInvocation::RevertedReason(reason) => Reverted {
+                RevertibleFunctionInvocation::FunctionInvocation(_) => Succeeded,
+                RevertibleFunctionInvocation::RevertedReason(reason) => Reverted {
+                    reason: reason.clone(),
+                },
+            },
+            Self::L1Handler(ref h) => match &h.function_invocation {
+                RevertibleFunctionInvocation::FunctionInvocation(_) => Succeeded,
+                RevertibleFunctionInvocation::RevertedReason(reason) => Reverted {
                     reason: reason.clone(),
                 },
             },
@@ -311,7 +317,7 @@ pub struct DeployAccountTransactionExecutionInfo {
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub enum ExecuteInvocation {
+pub enum RevertibleFunctionInvocation {
     FunctionInvocation(Option<FunctionInvocation>),
     RevertedReason(String),
 }
@@ -319,14 +325,14 @@ pub enum ExecuteInvocation {
 #[derive(Debug, Clone)]
 pub struct InvokeTransactionExecutionInfo {
     pub validate_invocation: Option<FunctionInvocation>,
-    pub execute_invocation: ExecuteInvocation,
+    pub execute_invocation: RevertibleFunctionInvocation,
     pub fee_transfer_invocation: Option<FunctionInvocation>,
     pub execution_resources: ExecutionResources,
 }
 
 #[derive(Debug, Clone)]
 pub struct L1HandlerTransactionExecutionInfo {
-    pub function_invocation: Option<FunctionInvocation>,
+    pub function_invocation: RevertibleFunctionInvocation,
     pub execution_resources: ExecutionResources,
 }
 
@@ -344,7 +350,17 @@ impl TransactionTrace {
             TransactionTrace::Invoke(InvokeTransactionTrace {
                 execution_info:
                     InvokeTransactionExecutionInfo {
-                        execute_invocation: ExecuteInvocation::RevertedReason(revert_reason),
+                        execute_invocation:
+                            RevertibleFunctionInvocation::RevertedReason(revert_reason),
+                        ..
+                    },
+                ..
+            }) => Some(revert_reason.as_str()),
+            TransactionTrace::L1Handler(L1HandlerTransactionTrace {
+                execution_info:
+                    L1HandlerTransactionExecutionInfo {
+                        function_invocation:
+                            RevertibleFunctionInvocation::RevertedReason(revert_reason),
                         ..
                     },
                 ..
@@ -859,7 +875,8 @@ pub(crate) fn to_receipt_and_events(
             if let Some(fi) = i.validate_invocation {
                 collect_events_and_messages(fi, &mut events, &mut messages);
             }
-            if let ExecuteInvocation::FunctionInvocation(Some(fi)) = i.execute_invocation {
+            if let RevertibleFunctionInvocation::FunctionInvocation(Some(fi)) = i.execute_invocation
+            {
                 collect_events_and_messages(fi, &mut events, &mut messages);
             }
             if let Some(fi) = i.fee_transfer_invocation {
@@ -867,7 +884,9 @@ pub(crate) fn to_receipt_and_events(
             }
         }
         TransactionExecutionInfo::L1Handler(i) => {
-            if let Some(fi) = i.function_invocation {
+            if let RevertibleFunctionInvocation::FunctionInvocation(Some(fi)) =
+                i.function_invocation
+            {
                 collect_events_and_messages(fi, &mut events, &mut messages);
             }
         }
@@ -1149,9 +1168,9 @@ pub(crate) fn to_execution_info(
             TransactionExecutionInfo::Invoke(InvokeTransactionExecutionInfo {
                 validate_invocation,
                 execute_invocation: if let Some(reason) = execution_info.revert_error {
-                    ExecuteInvocation::RevertedReason(reason.to_string())
+                    RevertibleFunctionInvocation::RevertedReason(reason.to_string())
                 } else {
-                    ExecuteInvocation::FunctionInvocation(maybe_function_invocation)
+                    RevertibleFunctionInvocation::FunctionInvocation(maybe_function_invocation)
                 },
                 fee_transfer_invocation,
                 execution_resources,
@@ -1159,7 +1178,11 @@ pub(crate) fn to_execution_info(
         }
         TransactionType::L1Handler => {
             TransactionExecutionInfo::L1Handler(L1HandlerTransactionExecutionInfo {
-                function_invocation: maybe_function_invocation,
+                function_invocation: if let Some(reason) = execution_info.revert_error {
+                    RevertibleFunctionInvocation::RevertedReason(reason.to_string())
+                } else {
+                    RevertibleFunctionInvocation::FunctionInvocation(maybe_function_invocation)
+                },
                 execution_resources,
             })
         }

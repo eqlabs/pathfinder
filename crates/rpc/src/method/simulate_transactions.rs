@@ -1053,7 +1053,7 @@ pub(crate) mod tests {
                                     universal_deployer_address,
                                 )),
                                 execute_invocation:
-                                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(
+                                    pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(Some(
                                         universal_deployer_execute(
                                             account_contract_address,
                                             universal_deployer_address,
@@ -1382,7 +1382,7 @@ pub(crate) mod tests {
                             execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
                                 validate_invocation: Some(invoke_validate(account_contract_address)),
                                 execute_invocation:
-                                    pathfinder_executor::types::ExecuteInvocation::FunctionInvocation(Some(
+                                    pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(Some(
                                         invoke_execute(account_contract_address, test_storage_value),
                                     )),
                                 fee_transfer_invocation: Some(invoke_fee_transfer(
