@@ -1,7 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use super::{ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress};
 
 /// A proposal for a value in a round
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Proposal {
     pub height: Height,
     pub round: Round,
@@ -15,8 +17,8 @@ impl malachite_types::Proposal<MalachiteContext> for Proposal {
         self.height
     }
 
-    fn round(&self) -> Round {
-        self.round
+    fn round(&self) -> malachite_types::Round {
+        self.round.inner()
     }
 
     fn value(&self) -> &ConsensusValue {
@@ -27,8 +29,8 @@ impl malachite_types::Proposal<MalachiteContext> for Proposal {
         self.value_id
     }
 
-    fn pol_round(&self) -> Round {
-        self.pol_round
+    fn pol_round(&self) -> malachite_types::Round {
+        self.pol_round.inner()
     }
 
     fn validator_address(&self) -> &ValidatorAddress {

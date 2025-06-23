@@ -6,10 +6,24 @@ use libp2p_identity::PeerId;
 use pathfinder_crypto::Felt;
 use primitive_types::H256;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 
 use crate::{proto, ToProtobuf, TryFromProtobuf};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Dummy, std::hash::Hash, Default)]
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Dummy,
+    std::hash::Hash,
+    Default,
+    Serialize,
+    Deserialize,
+)]
 pub struct Hash(pub Felt);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, std::hash::Hash, Default)]

@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 /// A validator address for the malachite context.
 ///
 /// This is a wrapper around the `ContractAddress` type from the
 /// `pathfinder_common` crate which implements the `Address` trait for the
 /// malachite context.
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Default, Hash)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Default, Hash, Serialize, Deserialize)]
 pub struct ValidatorAddress(pathfinder_common::ContractAddress);
 
 impl From<p2p_proto::common::Address> for ValidatorAddress {

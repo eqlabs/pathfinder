@@ -17,6 +17,8 @@ pub struct Config {
     pub vote_sync_mode: VoteSyncMode,
     /// The timeout configuration.
     pub timeout_values: TimeoutValues,
+    /// The number of completed heights to keep in memory.
+    pub history_depth: u64,
 }
 
 impl Config {
@@ -25,6 +27,7 @@ impl Config {
     pub fn new(address: ValidatorAddress) -> Self {
         Self {
             address,
+            history_depth: 10,
             ..Default::default()
         }
     }
@@ -50,6 +53,12 @@ impl Config {
     /// Set the timeout values.
     pub fn with_timeout_values(mut self, timeout_values: TimeoutValues) -> Self {
         self.timeout_values = timeout_values;
+        self
+    }
+
+    /// Set the number of completed heights to keep in memory.
+    pub fn with_history_depth(mut self, history_depth: u64) -> Self {
+        self.history_depth = history_depth;
         self
     }
 }

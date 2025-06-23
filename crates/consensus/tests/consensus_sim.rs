@@ -105,7 +105,7 @@ async fn consensus_simulation() {
                                     height: h,
                                     round: r,
                                     proposer: addr,
-                                    pol_round: Round::new(0),
+                                    pol_round: Round::from(0),
                                     value_id: consensus_value.clone(),
                                 };
 
