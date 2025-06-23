@@ -154,15 +154,27 @@ pub(crate) fn find_l2_gas_limit_and_execute_transaction(
     let initial_resource_bounds = get_resource_bounds(tx)?;
     let initial_l2_gas_limit = initial_resource_bounds.l2_gas.max_amount;
 
-    let max_l2_gas_limit = get_max_l2_gas_amount_covered_by_balance(
-        tx,
-        &tx_executor.block_context,
+    let max_l2_gas_limit = if execution_flags.charge_fee {
+        // If charge_fee is set, blockifier will enforce that the account balance covers
+        // the committed bounds, including the L2 gas limit. If it doesn't, the
+        // transaction will be rejected.
+        get_max_l2_gas_amount_covered_by_balance(
+            tx,
+            &tx_executor.block_context,
+            tx_executor
+                .block_state
+                .as_mut()
+                .expect(BLOCK_STATE_ACCESS_ERR),
+        )?
+    } else {
         tx_executor
-            .block_state
-            .as_mut()
-            .expect(BLOCK_STATE_ACCESS_ERR),
-    )?;
+            .block_context
+            .versioned_constants()
+            .os_constants
+            .execute_max_sierra_gas
+    };
     set_l2_gas_limit(tx, max_l2_gas_limit);
+
     let (output, saved_state) =
         match simulate_transaction(tx, tx_index, tx_executor, &revert_behavior) {
             Ok(output) => output,

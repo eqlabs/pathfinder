@@ -935,9 +935,9 @@ mod tests {
             l1_gas_price: 2.into(),
             l1_data_gas_consumed: 128.into(),
             l1_data_gas_price: 2.into(),
-            l2_gas_consumed: 15596094.into(),
+            l2_gas_consumed: 15624585.into(),
             l2_gas_price: 1.into(),
-            overall_fee: 15596350.into(),
+            overall_fee: 15624841.into(),
             unit: PriceUnit::Fri,
         };
         self::assert_eq!(
