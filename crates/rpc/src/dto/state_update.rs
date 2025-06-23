@@ -35,7 +35,7 @@ impl SerializeForVersion for PendingStateUpdate<'_> {
     fn serialize(&self, serializer: Serializer) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("old_root", &self.0.state_commitment.0)?;
+        serializer.serialize_field("old_root", &self.0.parent_state_commitment.0)?;
         serializer.serialize_field("state_diff", &StateDiff(self.0))?;
 
         serializer.end()
