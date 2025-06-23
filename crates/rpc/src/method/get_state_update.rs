@@ -794,6 +794,11 @@ mod tests {
             .await
             .unwrap()
             .unwrap_pending();
-        assert_eq!(result, StateUpdate::default().into());
+        assert_eq!(
+            result,
+            StateUpdate::default()
+                .with_parent_state_commitment(expected.parent_state_commitment)
+                .into()
+        );
     }
 }
