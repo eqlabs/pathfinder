@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BinaryHeap, VecDeque};
 
 use malachite_consensus::{
     process,
@@ -13,8 +13,10 @@ use malachite_consensus::{
     State as ConsensusState,
 };
 use malachite_signing_ed25519::Signature;
-use malachite_types::{SignedMessage, ValidatorSet as _, VoteType};
+use malachite_types::{SignedMessage, Timeout, ValidatorSet as _, VoteType};
+use tokio::time::Instant;
 
+use crate::config::TimeoutValues;
 use crate::malachite::MalachiteContext;
 use crate::{ConsensusCommand, ConsensusEvent, SignedVote, ValidatorSet};
 
@@ -28,16 +30,21 @@ pub struct InternalConsensus {
     metrics: malachite_metrics::Metrics,
     input_queue: VecDeque<ConsensusCommand>,
     output_queue: VecDeque<ConsensusEvent>,
+    timeout_manager: TimeoutManager,
 }
 
 impl InternalConsensus {
-    pub fn new(params: Params<MalachiteContext>) -> Self {
+    pub fn new(params: Params<MalachiteContext>, timeout_values: TimeoutValues) -> Self {
         let state = ConsensusState::new(MalachiteContext, params);
         Self {
             state,
             metrics: Default::default(),
             input_queue: VecDeque::new(),
             output_queue: VecDeque::new(),
+            timeout_manager: TimeoutManager {
+                timeouts: BinaryHeap::new(),
+                timeout_values,
+            },
         }
     }
 
@@ -46,6 +53,29 @@ impl InternalConsensus {
     }
 
     pub async fn poll_internal(&mut self) -> Option<ConsensusEvent> {
+        // Process any timeouts that are due.
+        let now = Instant::now();
+        while let Some(next) = self.timeout_manager.timeouts.peek() {
+            if now < next.due {
+                break;
+            }
+            let ScheduledTimeout { timeout, .. } = self
+                .timeout_manager
+                .timeouts
+                .pop()
+                .expect("No timeout to pop");
+            let input = Input::TimeoutElapsed(timeout);
+            tracing::debug!(
+                validator = %self.state.address(),
+                timeout = ?timeout,
+                "Timeout elapsed"
+            );
+            if let Err(e) = self.process_input(input) {
+                self.output_queue.push_back(ConsensusEvent::Error(e.into()));
+            }
+        }
+
+        // Process any commands that are waiting in the input queue.
         if let Some(cmd) = self.input_queue.pop_front() {
             let input = match cmd {
                 ConsensusCommand::Vote(vote) => {
@@ -117,7 +147,7 @@ impl InternalConsensus {
             input: input,
             state: &mut self.state,
             metrics: &mut self.metrics,
-            with: effect => handle_effect(effect, &validator_set, output)
+            with: effect => handle_effect(effect, &validator_set, &mut self.timeout_manager, output)
         )
     }
 }
@@ -126,6 +156,7 @@ impl InternalConsensus {
 fn handle_effect(
     effect: Effect<MalachiteContext>,
     validator_set: &ValidatorSet,
+    timeout_manager: &mut TimeoutManager,
     output_queue: &mut VecDeque<ConsensusEvent>,
 ) -> Result<Resume<MalachiteContext>, Error<MalachiteContext>> {
     match effect {
@@ -242,11 +273,6 @@ fn handle_effect(
             );
             Ok(resume.resume_with(Ok(())))
         }
-        // Reset timeouts.
-        Effect::ResetTimeouts(resume) => {
-            tracing::debug!("Resetting timeouts");
-            Ok(resume.resume_with(()))
-        }
         // Extend a vote.
         Effect::ExtendVote(height, round, value_id, resume) => {
             tracing::debug!(
@@ -274,11 +300,20 @@ fn handle_effect(
             );
             Ok(resume.resume_with(Ok(())))
         }
+        Effect::ScheduleTimeout(timeout, resume) => {
+            timeout_manager.schedule_timeout(timeout);
+            Ok(resume.resume_with(()))
+        }
+        Effect::CancelTimeout(timeout, resume) => {
+            timeout_manager.cancel_timeout(timeout);
+            Ok(resume.resume_with(()))
+        }
+        Effect::CancelAllTimeouts(resume) => {
+            timeout_manager.cancel_all_timeouts();
+            Ok(resume.resume_with(()))
+        }
         // Internally handled effects.
-        Effect::ScheduleTimeout(_, resume)
-        | Effect::CancelTimeout(_, resume)
-        | Effect::CancelAllTimeouts(resume)
-        | Effect::RequestVoteSet(_, _, resume)
+        Effect::RequestVoteSet(_, _, resume)
         | Effect::RestreamProposal(_, _, _, _, _, resume)
         | Effect::SendVoteSetResponse(_, _, _, _, _, resume) => Ok(resume.resume_with(())),
 
@@ -317,5 +352,76 @@ fn convert_vote_out(vote: malachite_types::SignedVote<MalachiteContext>) -> Sign
     SignedVote {
         vote: vote.message,
         signature: vote.signature,
+    }
+}
+
+/// A scheduled timeout.
+struct ScheduledTimeout {
+    timeout: Timeout,
+    due: Instant,
+}
+
+impl PartialEq for ScheduledTimeout {
+    fn eq(&self, other: &Self) -> bool {
+        self.timeout == other.timeout && self.due == other.due
+    }
+}
+
+impl Eq for ScheduledTimeout {}
+
+impl Ord for ScheduledTimeout {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // We want a min-heap, so reverse ordering by due.
+        other.due.cmp(&self.due)
+    }
+}
+
+impl PartialOrd for ScheduledTimeout {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// A manager for consensus timeouts.
+///
+/// Keeps track of all the scheduled timeouts, as well as the timeout values for
+/// each timeout kind.
+struct TimeoutManager {
+    timeouts: BinaryHeap<ScheduledTimeout>,
+    timeout_values: TimeoutValues,
+}
+
+impl TimeoutManager {
+    /// Schedule a new timeout.
+    pub fn schedule_timeout(&mut self, timeout: Timeout) {
+        let due = Instant::now() + self.timeout_values.get(timeout.kind);
+        self.timeouts.push(ScheduledTimeout { timeout, due });
+
+        tracing::debug!(
+            timeout = ?timeout,
+            due = ?due,
+            "Scheduled timeout"
+        );
+    }
+
+    /// Cancel a timeout.
+    pub fn cancel_timeout(&mut self, timeout: Timeout) {
+        self.timeouts = self
+            .timeouts
+            .drain()
+            .filter(|st| st.timeout == timeout)
+            .collect();
+
+        tracing::debug!(
+            timeout = ?timeout,
+            "Cancelled timeout"
+        );
+    }
+
+    /// Cancel all timeouts.
+    pub fn cancel_all_timeouts(&mut self) {
+        self.timeouts.clear();
+
+        tracing::debug!("Cancelled all timeouts");
     }
 }

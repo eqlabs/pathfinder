@@ -2,9 +2,10 @@ use std::collections::{HashMap, VecDeque};
 
 use malachite_consensus::{Params, VoteSyncMode};
 pub use malachite_types::VoteType;
-use malachite_types::{ThresholdParams, Timeout, ValuePayload};
+use malachite_types::{Timeout, ValuePayload};
 use p2p_proto::common::Hash;
 
+pub use crate::config::Config;
 use crate::internal::InternalConsensus;
 // Re-export malachite types needed by the public API
 pub use crate::malachite::{
@@ -19,6 +20,7 @@ pub use crate::malachite::{
     Vote,
 };
 
+mod config;
 mod internal;
 mod malachite;
 
@@ -32,17 +34,17 @@ pub type Signature = malachite_signing_ed25519::Signature;
 pub struct Consensus {
     internal: HashMap<Height, InternalConsensus>,
     event_queue: VecDeque<ConsensusEvent>,
-    address: ValidatorAddress,
+    config: Config,
     min_kept_height: Option<Height>,
 }
 
 impl Consensus {
     /// Create a new consensus engine for the current validator.
-    pub fn new(address: ValidatorAddress) -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             internal: HashMap::new(),
             event_queue: VecDeque::new(),
-            address,
+            config,
             min_kept_height: None,
         }
     }
@@ -55,19 +57,20 @@ impl Consensus {
                 let params = Params {
                     initial_height: height,
                     initial_validator_set: validator_set.clone(),
-                    address: self.address,
-                    threshold_params: ThresholdParams::default(),
+                    address: self.config.address,
+                    threshold_params: self.config.threshold_params,
                     value_payload: ValuePayload::ProposalOnly,
-                    vote_sync_mode: VoteSyncMode::Rebroadcast,
+                    vote_sync_mode: self.config.vote_sync_mode,
                 };
-                // A new engine is created for every new height.
-                let mut engine = InternalConsensus::new(params);
-                engine.handle_command(ConsensusCommand::StartHeight(height, validator_set));
-                self.internal.insert(height, engine);
+                // A new consensus is created for every new height.
+                let mut consensus =
+                    InternalConsensus::new(params, self.config.timeout_values.clone());
+                consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+                self.internal.insert(height, consensus);
                 tracing::debug!(
-                    validator = %self.address,
+                    validator = %self.config.address,
                     height = %height,
-                    "Started new consensus engine"
+                    "Started new consensus"
                 );
             }
             other => {
@@ -76,7 +79,7 @@ impl Consensus {
                     engine.handle_command(other);
                 } else {
                     tracing::warn!(
-                        validator = %self.address,
+                        validator = %self.config.address,
                         height = %height,
                         command = ?other,
                         "Received command for unknown height"
@@ -93,7 +96,7 @@ impl Consensus {
         for (height, engine) in self.internal.iter_mut() {
             if let Some(event) = engine.poll_internal().await {
                 tracing::trace!(
-                    validator = %self.address,
+                    validator = %self.config.address,
                     height = %height,
                     event = ?event,
                     "Engine returned event"
@@ -128,7 +131,7 @@ impl Consensus {
                 self.internal.retain(|height, _| *height >= new_min);
 
                 tracing::debug!(
-                    validator = %self.address,
+                    validator = %self.config.address,
                     min_height = %new_min,
                     max_height = %max_height,
                     "Pruned old consensus engines"
