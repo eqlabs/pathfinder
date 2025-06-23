@@ -90,7 +90,21 @@ impl StorageAdapter for ConcurrentStorageAdapter {
             ConcurrencyConfig {
                 enabled: true,
                 n_workers,
-                chunk_size: 4, // TODO(validator) make it configurable or pick a reasonable default
+                // Based on a very limited benchmark, 8 seems to be a good chunk size.
+                //
+                // Sample: 617 validation compatible blocks from mainnet, from within the
+                // (23173..=1473516) block range, 16 workers, 16 cores.
+                //
+                // | Chunk size | Total execution time (normalized)
+                // +------------+-----------------------------------
+                // | 1          |  2.86
+                // | 2          |  1.81
+                // | 4          |  1.24
+                // | 8          |  1.00
+                // | 16         |  1.08
+                // | 32         |  1.21
+                // | 64         |  1.20
+                chunk_size: 8,
             }
         };
 
