@@ -3,6 +3,7 @@ use pathfinder_common::{L1TransactionHash, TransactionHash};
 use pathfinder_ethereum::EthereumApi;
 
 use crate::context::RpcContext;
+use crate::dto::TxnExecutionStatus;
 use crate::method::get_transaction_status;
 use crate::RpcVersion;
 
@@ -65,6 +66,7 @@ impl crate::dto::DeserializeForVersion for FinalityStatus {
 pub struct L1HandlerTransactionStatus {
     transaction_hash: TransactionHash,
     finality_status: FinalityStatus,
+    execution_status: Option<TxnExecutionStatus>,
     failure_reason: Option<String>,
 }
 
@@ -104,12 +106,23 @@ pub async fn get_messages_status(
             .map_err(|_| Error::TxnHashNotFound)?;
 
         use get_transaction_status::Output as TxStatus;
-        let finality_status = match status {
-            TxStatus::Received => FinalityStatus::Received,
-            TxStatus::Rejected { .. } => FinalityStatus::Rejected,
-            TxStatus::PreConfirmed(_) => FinalityStatus::PreConfirmed,
-            TxStatus::AcceptedOnL1(_) => FinalityStatus::AcceptedOnL1,
-            TxStatus::AcceptedOnL2(_) => FinalityStatus::AcceptedOnL2,
+        let (finality_status, execution_status) = match status {
+            // Since Starknet 0.14, get_transaction_status isn't
+            // supposed to return Received or Rejected for L1 handler
+            // transactions; the cases are kept for backwards
+            // compatibility - more explicit error handling can be
+            // added if/when they actually happen.
+            TxStatus::Received => (FinalityStatus::Received, None),
+            TxStatus::Rejected { .. } => (FinalityStatus::Rejected, None),
+            TxStatus::PreConfirmed(ref exec_status) => {
+                (FinalityStatus::PreConfirmed, Some(exec_status.clone()))
+            }
+            TxStatus::AcceptedOnL1(ref exec_status) => {
+                (FinalityStatus::AcceptedOnL1, Some(exec_status.clone()))
+            }
+            TxStatus::AcceptedOnL2(ref exec_status) => {
+                (FinalityStatus::AcceptedOnL2, Some(exec_status.clone()))
+            }
         };
 
         let failure_reason = match status {
@@ -120,6 +133,7 @@ pub async fn get_messages_status(
         res.push(L1HandlerTransactionStatus {
             transaction_hash: tx.calculate_hash(context.chain_id),
             finality_status,
+            execution_status,
             failure_reason,
         });
     }
@@ -144,6 +158,9 @@ impl crate::dto::SerializeForVersion for L1HandlerTransactionStatus {
         let mut serializer = serializer.serialize_struct()?;
         serializer.serialize_field("transaction_hash", &self.transaction_hash)?;
         serializer.serialize_field("finality_status", &self.finality_status)?;
+        if serializer.version >= RpcVersion::V09 {
+            serializer.serialize_optional("execution_status", self.execution_status.clone())?;
+        }
         serializer.serialize_optional("failure_reason", self.failure_reason.as_deref())?;
         serializer.end()
     }
