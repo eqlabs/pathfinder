@@ -99,7 +99,7 @@ pub async fn get_messages_status(
             // transactions; the cases are kept for backwards
             // compatibility - more explicit error handling can be
             // added if/when they actually happen.
-            TxStatus::Received => (FinalityStatus::Received, None),
+            TxStatus::Received | TxStatus::Candidate => (FinalityStatus::Received, None),
             TxStatus::Rejected { .. } => (FinalityStatus::Rejected, None),
             TxStatus::PreConfirmed(ref exec_status) => {
                 (FinalityStatus::PreConfirmed, Some(exec_status.clone()))
@@ -116,6 +116,11 @@ pub async fn get_messages_status(
             TxStatus::Rejected { error_message, .. } => error_message,
             _ => None,
         };
+
+        if rpc_version >= RpcVersion::V09 && execution_status.is_none() {
+            continue; // Skip if execution status is not available, since it's
+                      // required for V09+
+        }
 
         res.push(L1HandlerTransactionStatus {
             transaction_hash: tx.calculate_hash(context.chain_id),
