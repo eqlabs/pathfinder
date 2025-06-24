@@ -33,6 +33,7 @@ pub enum Output {
         // Reject error message optional for backward compatibility with gateway.
         error_message: Option<String>,
     },
+    PreConfirmed(TxnExecutionStatus),
     AcceptedOnL1(TxnExecutionStatus),
     AcceptedOnL2(TxnExecutionStatus),
 }
@@ -63,9 +64,12 @@ pub async fn get_transaction_status(
             .iter()
             .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
         {
-            return Ok(Some(Output::AcceptedOnL2(
-                (&receipt.execution_status).into(),
-            )));
+            let output = if rpc_version < RpcVersion::V09 {
+                Output::AcceptedOnL2((&receipt.execution_status).into())
+            } else {
+                Output::PreConfirmed((&receipt.execution_status).into())
+            };
+            return Ok(Some(output));
         }
 
         let Some((_, receipt, _, block_hash)) = db_tx
@@ -151,6 +155,7 @@ impl Output {
         match self {
             Output::Received => TxnStatus::Received,
             Output::Rejected { .. } => TxnStatus::Rejected,
+            Output::PreConfirmed(_) => TxnStatus::PreConfirmed,
             Output::AcceptedOnL1(_) => TxnStatus::AcceptedOnL1,
             Output::AcceptedOnL2(_) => TxnStatus::AcceptedOnL2,
         }
@@ -159,6 +164,7 @@ impl Output {
     fn execution_status(&self) -> Option<TxnExecutionStatus> {
         match self {
             Output::Received | Output::Rejected { .. } => None,
+            Output::PreConfirmed(x) => Some(x.clone()),
             Output::AcceptedOnL1(x) => Some(x.clone()),
             Output::AcceptedOnL2(x) => Some(x.clone()),
         }
@@ -278,11 +284,11 @@ mod tests {
 
         let output_json = status.serialize(Serializer { version }).unwrap();
 
-        let expected_status = include_str!("../../fixtures/status/pending.json");
-        let expected_json: serde_json::Value =
-            serde_json::from_str(expected_status).expect("Failed to parse fixture as JSON");
-
-        pretty_assertions_sorted::assert_eq!(output_json, expected_json);
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "transactions/status_pending.json"
+        );
     }
 
     #[tokio::test]
