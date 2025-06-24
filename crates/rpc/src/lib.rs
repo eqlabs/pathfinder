@@ -920,6 +920,16 @@ pub mod test_utils {
             },
         ];
 
+        let candidate_transactions = vec![Transaction {
+            hash: transaction_hash_bytes!(b"candidate tx hash 0"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract_address_bytes!(b"candidate contract addr 0"),
+                entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                entry_point_type: Some(EntryPointType::External),
+                ..Default::default()
+            }),
+        }];
+
         let transaction_receipts = vec![
             (
                 Receipt {
@@ -1029,8 +1039,7 @@ pub mod test_utils {
                 starknet_version: StarknetVersion::new(0, 11, 0, 0),
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
             },
-            // candidate transactions
-            vec![],
+            candidate_transactions,
         );
 
         // The class definitions must be inserted into the database.
