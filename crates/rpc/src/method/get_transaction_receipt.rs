@@ -21,6 +21,7 @@ impl crate::dto::DeserializeForVersion for Input {
     }
 }
 
+#[derive(Debug)]
 pub enum Output {
     Full {
         block_hash: BlockHash,
@@ -34,6 +35,7 @@ pub enum Output {
         receipt: Receipt,
         transaction: Transaction,
         events: Vec<Event>,
+        finality: dto::TxnFinalityStatus,
     },
 }
 
@@ -62,13 +64,14 @@ impl crate::dto::SerializeForVersion for Output {
                 receipt,
                 transaction,
                 events,
+                finality,
             } => dto::TxnReceiptWithBlockInfo {
                 block_hash: None,
                 block_number: None,
                 receipt,
                 transaction,
                 events,
-                finality: dto::TxnFinalityStatus::AcceptedOnL2,
+                finality: *finality,
             },
         }
         .serialize(serializer)
@@ -108,6 +111,7 @@ pub async fn get_transaction_receipt(
                 receipt,
                 transaction,
                 events,
+                finality: pending.block().finality_status(),
             });
         }
 
@@ -201,6 +205,36 @@ mod tests {
             version,
             "transactions/receipt_pending.json"
         );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"preconfirmed tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_receipt(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/receipt_pre_confirmed.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[rstest::rstest]
