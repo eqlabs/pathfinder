@@ -41,7 +41,7 @@ impl From<&pathfinder_common::receipt::ExecutionStatus> for TxnExecutionStatus {
 
 struct TxnExecutionStatusWithRevertReason<'a>(pub &'a pathfinder_common::receipt::ExecutionStatus);
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum TxnFinalityStatus {
     PreConfirmed,
     AcceptedOnL2,
