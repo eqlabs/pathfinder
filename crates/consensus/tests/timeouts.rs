@@ -92,7 +92,7 @@ async fn single_node_propose_timeout_advances_round() {
             ..
         }) => {
             assert_eq!(h, height);
-            assert_eq!(r, Round::new(0));
+            assert_eq!(r, Round::from(0));
         }
         other => panic!("Expected RequestProposal for round 0, got: {:?}", other),
     }
@@ -102,7 +102,7 @@ async fn single_node_propose_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(1)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
     ).await;
 
     assert!(result.is_some(), "Timeout did not trigger expected round 1");
@@ -136,16 +136,16 @@ async fn single_node_prevote_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(1),
         5,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(0)),
     ).await;
 
     // Send a proposal (to enter prevote step)
     let value_id = ValueId::new(Hash(Felt::from_hex_str("0x123456789").unwrap()));
     let proposal = Proposal {
         height,
-        round: Round::new(0),
+        round: Round::from(0),
         value_id: ConsensusValue::new(value_id),
-        pol_round: Round::ZERO,
+        pol_round: Round::from(0),
         proposer: addr,
     };
     let signature: Signature = Signature::from_bytes([0; 64]);
@@ -160,7 +160,7 @@ async fn single_node_prevote_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(1)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
     ).await;
 
     assert!(
@@ -197,7 +197,7 @@ async fn single_node_precommit_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(1),
         5,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(0)),
     )
     .await;
 
@@ -205,9 +205,9 @@ async fn single_node_precommit_timeout_advances_round() {
     let value_id = ValueId::new(Hash(Felt::from_hex_str("0x123456789").unwrap()));
     let proposal = Proposal {
         height,
-        round: Round::new(0),
+        round: Round::from(0),
         value_id: ConsensusValue::new(value_id.clone()),
-        pol_round: Round::ZERO,
+        pol_round: Round::from(0),
         proposer: addr,
     };
     let signature: Signature = Signature::from_bytes([0; 64]);
@@ -221,7 +221,7 @@ async fn single_node_precommit_timeout_advances_round() {
     let vote = Vote {
         r#type: VoteType::Prevote,
         height,
-        round: Round::new(0),
+        round: Round::from(0),
         validator_address: addr,
         value: NilOrVal::Val(value_id),
         extension: None,
@@ -239,7 +239,7 @@ async fn single_node_precommit_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(1)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
     )
     .await;
 

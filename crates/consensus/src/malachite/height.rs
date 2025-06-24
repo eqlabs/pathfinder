@@ -1,8 +1,12 @@
+use serde::{Deserialize, Serialize};
+
 /// A block number for the malachite context.
 ///
 /// This is a wrapper around the `BlockNumber` type from the `pathfinder_common`
 /// crate which implements the `Height` trait for the malachite context.
-#[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug, Default, Hash)]
+#[derive(
+    Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Debug, Default, Hash, Serialize, Deserialize,
+)]
 pub struct Height(pathfinder_common::BlockNumber);
 
 impl Height {

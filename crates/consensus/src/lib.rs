@@ -4,6 +4,7 @@ use malachite_consensus::{Params, VoteSyncMode};
 pub use malachite_types::VoteType;
 use malachite_types::{Timeout, ValuePayload};
 use p2p_proto::common::Hash;
+use serde::{Deserialize, Serialize};
 
 pub use crate::config::Config;
 use crate::internal::InternalConsensus;
@@ -19,13 +20,12 @@ pub use crate::malachite::{
     ValueId,
     Vote,
 };
+use crate::wal::{FileWalSink, NoopWal, WalSink};
 
 mod config;
 mod internal;
 mod malachite;
-
-/// The number of heights to keep in the internal engine map.
-const MAX_HEIGHT_HISTORY: u64 = 5;
+mod wal;
 
 /// A signature for the malachite context.
 pub type Signature = malachite_signing_ed25519::Signature;
@@ -62,9 +62,24 @@ impl Consensus {
                     value_payload: ValuePayload::ProposalOnly,
                     vote_sync_mode: self.config.vote_sync_mode,
                 };
+
+                // Create a WAL for the height. If we fail, use a NoopWal.
+                let wal = match FileWalSink::new(&self.config.address, &height) {
+                    Ok(wal) => Box::new(wal) as Box<dyn WalSink>,
+                    Err(e) => {
+                        tracing::error!(
+                            validator = %self.config.address,
+                            height = %height,
+                            error = %e,
+                            "Failed to create wal for height"
+                        );
+                        Box::new(NoopWal)
+                    }
+                };
+
                 // A new consensus is created for every new height.
                 let mut consensus =
-                    InternalConsensus::new(params, self.config.timeout_values.clone());
+                    InternalConsensus::new(params, self.config.timeout_values.clone(), wal);
                 consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
                 self.internal.insert(height, consensus);
                 tracing::debug!(
@@ -124,7 +139,7 @@ impl Consensus {
         use malachite_types::Height;
         let max_height = self.internal.keys().max().copied();
         if let Some(max_height) = max_height {
-            let new_min_height = max_height.decrement_by(MAX_HEIGHT_HISTORY);
+            let new_min_height = max_height.decrement_by(self.config.history_depth);
 
             if let Some(new_min) = new_min_height {
                 self.min_kept_height = Some(new_min);
@@ -147,14 +162,14 @@ impl Consensus {
 }
 
 /// A fully validated, signed proposal ready to enter consensus.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedProposal {
     pub proposal: Proposal,
     pub signature: Signature,
 }
 
 /// A signed vote.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedVote {
     pub vote: Vote,
     pub signature: Signature,

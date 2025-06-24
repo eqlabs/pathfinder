@@ -18,6 +18,7 @@ use tokio::time::Instant;
 
 use crate::config::TimeoutValues;
 use crate::malachite::MalachiteContext;
+use crate::wal::WalSink;
 use crate::{ConsensusCommand, ConsensusEvent, SignedVote, ValidatorSet};
 
 /// The [InternalConsensus] acts as a driver for the Malachite core and allows
@@ -31,10 +32,15 @@ pub struct InternalConsensus {
     input_queue: VecDeque<ConsensusCommand>,
     output_queue: VecDeque<ConsensusEvent>,
     timeout_manager: TimeoutManager,
+    wal: Box<dyn WalSink>,
 }
 
 impl InternalConsensus {
-    pub fn new(params: Params<MalachiteContext>, timeout_values: TimeoutValues) -> Self {
+    pub fn new(
+        params: Params<MalachiteContext>,
+        timeout_values: TimeoutValues,
+        wal: Box<dyn WalSink>,
+    ) -> Self {
         let state = ConsensusState::new(MalachiteContext, params);
         Self {
             state,
@@ -45,6 +51,7 @@ impl InternalConsensus {
                 timeouts: BinaryHeap::new(),
                 timeout_values,
             },
+            wal,
         }
     }
 
@@ -112,7 +119,7 @@ impl InternalConsensus {
                     );
                     Input::Propose(LocallyProposedValue::new(
                         proposal.height,
-                        proposal.round,
+                        proposal.round.into_inner(),
                         proposal.value_id,
                     ))
                 }
@@ -147,7 +154,7 @@ impl InternalConsensus {
             input: input,
             state: &mut self.state,
             metrics: &mut self.metrics,
-            with: effect => handle_effect(effect, &validator_set, &mut self.timeout_manager, output)
+            with: effect => handle_effect(effect, &validator_set, &mut self.timeout_manager, &mut self.wal, output)
         )
     }
 }
@@ -157,6 +164,7 @@ fn handle_effect(
     effect: Effect<MalachiteContext>,
     validator_set: &ValidatorSet,
     timeout_manager: &mut TimeoutManager,
+    wal: &mut Box<dyn WalSink>,
     output_queue: &mut VecDeque<ConsensusEvent>,
 ) -> Result<Resume<MalachiteContext>, Error<MalachiteContext>> {
     match effect {
@@ -208,7 +216,7 @@ fn handle_effect(
             );
             output_queue.push_back(ConsensusEvent::RequestProposal {
                 height,
-                round,
+                round: round.into(),
                 timeout,
             });
             Ok(resume.resume_with(()))
@@ -310,6 +318,10 @@ fn handle_effect(
         }
         Effect::CancelAllTimeouts(resume) => {
             timeout_manager.cancel_all_timeouts();
+            Ok(resume.resume_with(()))
+        }
+        Effect::WalAppend(msg, resume) => {
+            wal.append(msg.into());
             Ok(resume.resume_with(()))
         }
         // Internally handled effects.

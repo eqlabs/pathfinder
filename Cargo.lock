@@ -6513,8 +6513,10 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98c6c3a026c52ad8c84bc9b4e80cd504728ea85caa61dce46f9a9fdda5e4cf0a"
 dependencies = [
+ "base64 0.22.1",
  "ed25519-consensus",
  "informalsystems-malachitebft-core-types",
+ "serde",
  "signature",
 ]
 
@@ -8276,6 +8278,7 @@ dependencies = [
  "prost-build",
  "prost-types 0.13.3",
  "rand 0.8.5",
+ "serde",
  "serde_json",
 ]
 
@@ -8556,6 +8559,7 @@ name = "pathfinder-consensus"
 version = "0.17.0-beta.2"
 dependencies = [
  "anyhow",
+ "base64 0.13.1",
  "ed25519-consensus",
  "informalsystems-malachitebft-core-consensus",
  "informalsystems-malachitebft-core-types",
@@ -8565,6 +8569,8 @@ dependencies = [
  "pathfinder-common",
  "pathfinder-crypto",
  "rand 0.8.5",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

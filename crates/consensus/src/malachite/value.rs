@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// A value id for the malachite context.
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct ValueId(p2p_proto::common::Hash);
 
 impl From<p2p_proto::common::Hash> for ValueId {
@@ -38,7 +40,7 @@ fn short_val(val: &p2p_proto::common::Hash) -> String {
 }
 
 /// The actual value being agreed upon.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct ConsensusValue(ValueId);
 
 impl ConsensusValue {

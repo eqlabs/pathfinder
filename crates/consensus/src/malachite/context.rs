@@ -74,10 +74,10 @@ impl malachite_types::Context for MalachiteContext {
         );
         Proposal {
             height,
-            round,
+            round: round.into(),
             value_id: value,
             proposer: address,
-            pol_round,
+            pol_round: pol_round.into(),
         }
     }
 
@@ -98,7 +98,7 @@ impl malachite_types::Context for MalachiteContext {
         Vote {
             r#type: VoteType::Prevote,
             height,
-            round,
+            round: round.into(),
             validator_address: address,
             value: value_id,
             extension: None,
@@ -122,7 +122,7 @@ impl malachite_types::Context for MalachiteContext {
         Vote {
             r#type: VoteType::Precommit,
             height,
-            round,
+            round: round.into(),
             validator_address: address,
             value: value_id,
             extension: None,
