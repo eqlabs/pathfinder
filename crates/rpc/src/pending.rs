@@ -307,7 +307,9 @@ impl PendingWatcher {
             };
             PendingData {
                 block: Arc::new(PendingBlockVariant::Pending(block)),
-                state_update: StateUpdate::default().into(),
+                state_update: StateUpdate::default()
+                    .with_parent_state_commitment(latest.state_commitment)
+                    .into(),
                 number: latest.number + 1,
             }
         }
@@ -336,7 +338,9 @@ impl PendingWatcher {
             };
             PendingData {
                 block: Arc::new(PendingBlockVariant::PreConfirmed(block, vec![])),
-                state_update: StateUpdate::default().into(),
+                state_update: StateUpdate::default()
+                    .with_parent_state_commitment(latest.state_commitment)
+                    .into(),
                 number: latest.number + 1,
             }
         }
@@ -346,11 +350,11 @@ impl PendingWatcher {
             .context("Querying latest block header")?
             .unwrap_or_default();
 
-        let data = self.0.borrow().clone();
+        let data = self.0.borrow();
         let pending_data = match data.block().as_ref() {
             PendingBlockVariant::Pending(block) => {
                 if block.parent_hash == latest.hash {
-                    data
+                    data.clone()
                 } else {
                     empty_pending_data(&latest)
                 }
@@ -361,7 +365,17 @@ impl PendingWatcher {
             // block.
             PendingBlockVariant::PreConfirmed(_, _) if rpc_version >= RpcVersion::V09 => {
                 if data.block_number() == latest.number + 1 {
-                    data
+                    // The parent state commitment is only available here. The task polling the
+                    // pre-confirmed block has no access to the parent block header, thus it
+                    // cannot properly set the parent state commitment.
+                    let state_update = StateUpdate::clone(&data.state_update);
+                    PendingData {
+                        block: data.block(),
+                        state_update: Arc::new(
+                            state_update.with_parent_state_commitment(latest.state_commitment),
+                        ),
+                        number: data.block_number(),
+                    }
                 } else {
                     empty_pre_confirmed_data(&latest)
                 }
