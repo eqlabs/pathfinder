@@ -55,7 +55,7 @@ pub enum ApplicationError {
     #[error("Class already declared")]
     ClassAlreadyDeclared,
     #[error("Invalid transaction nonce")]
-    InvalidTransactionNonce,
+    InvalidTransactionNonce { data: String },
     #[error("The transaction's resources don't cover validation or the minimal transaction fee")]
     InsufficientResourcesForValidate,
     #[error(
@@ -152,7 +152,7 @@ impl ApplicationError {
             ApplicationError::StorageProofNotSupported => 42,
             ApplicationError::InvalidContractClass => 50,
             ApplicationError::ClassAlreadyDeclared => 51,
-            ApplicationError::InvalidTransactionNonce => 52,
+            ApplicationError::InvalidTransactionNonce { .. } => 52,
             ApplicationError::InsufficientResourcesForValidate => 53,
             ApplicationError::InsufficientAccountBalance => 54,
             ApplicationError::ValidationFailure | ApplicationError::ValidationFailureV06(_) => 55,
@@ -219,7 +219,13 @@ impl ApplicationError {
             ApplicationError::InvalidContinuationToken => None,
             ApplicationError::InvalidContractClass => None,
             ApplicationError::ClassAlreadyDeclared => None,
-            ApplicationError::InvalidTransactionNonce => None,
+            ApplicationError::InvalidTransactionNonce { data } => {
+                if version >= RpcVersion::V09 {
+                    Some(json!(data))
+                } else {
+                    None
+                }
+            }
             ApplicationError::InsufficientResourcesForValidate => None,
             ApplicationError::InsufficientAccountBalance => None,
             ApplicationError::ValidationFailure => None,

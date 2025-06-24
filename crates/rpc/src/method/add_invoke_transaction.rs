@@ -107,7 +107,7 @@ pub struct Output {
 
 #[derive(Debug)]
 pub enum AddInvokeTransactionError {
-    InvalidTransactionNonce,
+    InvalidTransactionNonce(String),
     InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
@@ -120,7 +120,9 @@ pub enum AddInvokeTransactionError {
 impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     fn from(value: AddInvokeTransactionError) -> Self {
         match value {
-            AddInvokeTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
+            AddInvokeTransactionError::InvalidTransactionNonce(data) => {
+                Self::InvalidTransactionNonce { data }
+            }
             AddInvokeTransactionError::InsufficientResourcesForValidate => {
                 Self::InsufficientResourcesForValidate
             }
@@ -160,10 +162,14 @@ impl From<SequencerError> for AddInvokeTransactionError {
                 AddInvokeTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
-                AddInvokeTransactionError::InvalidTransactionNonce
+                AddInvokeTransactionError::InvalidTransactionNonce(e.message)
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
-                AddInvokeTransactionError::ValidationFailure(e.message)
+                if e.message.contains("Invalid transaction nonce") {
+                    AddInvokeTransactionError::InvalidTransactionNonce(e.message)
+                } else {
+                    AddInvokeTransactionError::ValidationFailure(e.message)
+                }
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
                 AddInvokeTransactionError::UnsupportedTransactionVersion

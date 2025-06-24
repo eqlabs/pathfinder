@@ -99,7 +99,7 @@ pub struct Output {
 #[derive(Debug)]
 pub enum AddDeployAccountTransactionError {
     ClassHashNotFound,
-    InvalidTransactionNonce,
+    InvalidTransactionNonce(String),
     InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
@@ -114,7 +114,7 @@ impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
         use AddDeployAccountTransactionError::*;
         match value {
             ClassHashNotFound => Self::ClassHashNotFound,
-            InvalidTransactionNonce => Self::InvalidTransactionNonce,
+            InvalidTransactionNonce(data) => Self::InvalidTransactionNonce { data },
             InsufficientResourcesForValidate => Self::InsufficientResourcesForValidate,
             InsufficientAccountBalance => Self::InsufficientAccountBalance,
             ValidationFailure(message) => Self::ValidationFailureV06(message),
@@ -152,10 +152,14 @@ impl From<SequencerError> for AddDeployAccountTransactionError {
                 AddDeployAccountTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
-                AddDeployAccountTransactionError::InvalidTransactionNonce
+                AddDeployAccountTransactionError::InvalidTransactionNonce(e.message)
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
-                AddDeployAccountTransactionError::ValidationFailure(e.message)
+                if e.message.contains("Invalid transaction nonce") {
+                    AddDeployAccountTransactionError::InvalidTransactionNonce(e.message)
+                } else {
+                    AddDeployAccountTransactionError::ValidationFailure(e.message)
+                }
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionVersion.into() => {
                 AddDeployAccountTransactionError::UnsupportedTransactionVersion

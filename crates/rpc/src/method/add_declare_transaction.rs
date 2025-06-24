@@ -13,7 +13,7 @@ use crate::types::request::BroadcastedDeclareTransaction;
 #[derive(Debug)]
 pub enum AddDeclareTransactionError {
     ClassAlreadyDeclared,
-    InvalidTransactionNonce,
+    InvalidTransactionNonce(String),
     InsufficientResourcesForValidate,
     InsufficientAccountBalance,
     ValidationFailure(String),
@@ -31,7 +31,9 @@ impl From<AddDeclareTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeclareTransactionError) -> Self {
         match value {
             AddDeclareTransactionError::ClassAlreadyDeclared => Self::ClassAlreadyDeclared,
-            AddDeclareTransactionError::InvalidTransactionNonce => Self::InvalidTransactionNonce,
+            AddDeclareTransactionError::InvalidTransactionNonce(data) => {
+                Self::InvalidTransactionNonce { data }
+            }
             AddDeclareTransactionError::InsufficientResourcesForValidate => {
                 Self::InsufficientResourcesForValidate
             }
@@ -105,10 +107,14 @@ impl From<SequencerError> for AddDeclareTransactionError {
                 AddDeclareTransactionError::InsufficientResourcesForValidate
             }
             SequencerError::StarknetError(e) if e.code == InvalidTransactionNonce.into() => {
-                AddDeclareTransactionError::InvalidTransactionNonce
+                AddDeclareTransactionError::InvalidTransactionNonce(e.message)
             }
             SequencerError::StarknetError(e) if e.code == ValidateFailure.into() => {
-                AddDeclareTransactionError::ValidationFailure(e.message)
+                if e.message.contains("Invalid transaction nonce") {
+                    AddDeclareTransactionError::InvalidTransactionNonce(e.message)
+                } else {
+                    AddDeclareTransactionError::ValidationFailure(e.message)
+                }
             }
             SequencerError::StarknetError(e) if e.code == InvalidCompiledClassHash.into() => {
                 AddDeclareTransactionError::CompiledClassHashMismatch
