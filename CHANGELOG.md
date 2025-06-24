@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The default value of the `--sync.poll-interval` configuration parameter has been changed to 1 seconds. Pathfinder is now polling both the latest block information and the pending/pre-confirmed block every second by default.
 
+### Removed
+
+- `pathfinder_getProof`, `pathfinder_getClassProof` and `pathfinder_getTransactionStatus` (obsoleted by standartized `starknet_*` APIs).
+
 ## [0.17.0-beta.2] - 2025-06-04
 
 ### Added

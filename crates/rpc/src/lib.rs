@@ -1152,9 +1152,8 @@ mod tests {
     #[case::root_trace_websocket("/ws", "v07/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
     #[case::root_write("/", "v07/starknet_write_api.json",         &[], Api::HttpOnly)]
     #[case::root_write_websocket("/ws", "v07/starknet_write_api.json",         &[], Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
-    #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+    #[case::root_pathfinder("/", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::HttpOnly)]
+    #[case::root_pathfinder_websocket("/ws", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::WebsocketOnly)]
 
     #[case::v0_9_api("/rpc/v0_9", "v09/starknet_api_openrpc.json", &[], Api::Both)]
     #[case::v0_9_executables("/rpc/v0_9", "v09/starknet_executables.json", &[], Api::Both)]
@@ -1189,8 +1188,7 @@ mod tests {
             "starknet_subscriptionReorg"
         ],
         Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_9_pathfinder("/rpc/v0_9", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::Both)]
+    #[case::v0_9_pathfinder("/rpc/v0_9", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::Both)]
 
     #[case::v0_8_api("/rpc/v0_8", "v08/starknet_api_openrpc.json", &[], Api::Both)]
     #[case::v0_8_executables("/rpc/v0_8", "v08/starknet_executables.json", &[], Api::Both)]
@@ -1225,8 +1223,7 @@ mod tests {
             "starknet_subscriptionReorg"
         ],
         Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_8_pathfinder("/rpc/v0_8", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::Both)]
+    #[case::v0_8_pathfinder("/rpc/v0_8", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::Both)]
 
     #[case::v0_7_api("/rpc/v0_7", "v07/starknet_api_openrpc.json", &[], Api::HttpOnly)]
     #[case::v0_7_api_websocket("/ws/rpc/v0_7", "v07/starknet_api_openrpc.json", &[], Api::WebsocketOnly)]
@@ -1234,9 +1231,8 @@ mod tests {
     #[case::v0_7_trace_websocket("/ws/rpc/v0_7", "v07/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
     #[case::v0_7_write("/rpc/v0_7", "v07/starknet_write_api.json", &[], Api::HttpOnly)]
     #[case::v0_7_write_websocket("/ws/rpc/v0_7", "v07/starknet_write_api.json", &[], Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
-    #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+    #[case::v0_7_pathfinder("/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::HttpOnly)]
+    #[case::v0_7_pathfinder_websocket("/ws/rpc/v0_7", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::WebsocketOnly)]
 
     #[case::v0_6_api(
         "/rpc/v0_6",
@@ -1252,9 +1248,8 @@ mod tests {
     #[case::v0_6_trace_websocket("/ws/rpc/v0_6", "v06/starknet_trace_api_openrpc.json", &[], Api::WebsocketOnly)]
     #[case::v0_6_write("/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::HttpOnly)]
     #[case::v0_6_write_websocket("/ws/rpc/v0_6", "v06/starknet_write_api.json", &[], Api::WebsocketOnly)]
-    // get_transaction_status is now part of the official spec, so we are phasing it out.
-    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::HttpOnly)]
-    #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version", "pathfinder_getTransactionStatus"], Api::WebsocketOnly)]
+    #[case::v0_6_pathfinder("/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::HttpOnly)]
+    #[case::v0_6_pathfinder_websocket("/ws/rpc/v0_6", "pathfinder_rpc_api.json", &["pathfinder_version"], Api::WebsocketOnly)]
 
     #[case::pathfinder("/rpc/pathfinder/v0.1", "pathfinder_rpc_api.json", &[], Api::HttpOnly)]
     #[case::pathfinder("/ws/rpc/pathfinder/v0_1", "pathfinder_rpc_api.json", &[], Api::WebsocketOnly)]

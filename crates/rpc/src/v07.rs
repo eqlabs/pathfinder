@@ -31,6 +31,5 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_traceBlockTransactions",              crate::method::trace_block_transactions)
         .register("starknet_traceTransaction",                    crate::method::trace_transaction)
         .register("starknet_getBlockWithReceipts",                crate::method::get_block_with_receipts)
-        .register("pathfinder_getProof",                          crate::pathfinder::methods::get_proof)
         .register("starknet_specVersion",                         || "0.7.1")
 }
