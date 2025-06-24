@@ -27,6 +27,7 @@ impl crate::dto::DeserializeForVersion for Input {
 enum FinalityStatus {
     Received,
     Rejected,
+    PreConfirmed,
     AcceptedOnL2,
     AcceptedOnL1,
 }
@@ -39,6 +40,7 @@ impl crate::dto::SerializeForVersion for FinalityStatus {
         let status_str = match self {
             FinalityStatus::Received => "RECEIVED",
             FinalityStatus::Rejected => "REJECTED",
+            FinalityStatus::PreConfirmed => "PRE_CONFIRMED",
             FinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
             FinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
         };
@@ -105,6 +107,7 @@ pub async fn get_messages_status(
         let finality_status = match status {
             TxStatus::Received => FinalityStatus::Received,
             TxStatus::Rejected { .. } => FinalityStatus::Rejected,
+            TxStatus::PreConfirmed(_) => FinalityStatus::PreConfirmed,
             TxStatus::AcceptedOnL1(_) => FinalityStatus::AcceptedOnL1,
             TxStatus::AcceptedOnL2(_) => FinalityStatus::AcceptedOnL2,
         };
