@@ -71,7 +71,10 @@ import Card from '@site/src/components/Card';
     description="Swiftly sync your node by importing pre-compressed snapshots of the Starknet state"
   />
 </div>
+<p/>
 ```
+
+If you are looking to use the Pathfinder full node as part of a validator setup, install the [attestation tool](https://github.com/eqlabs/starknet-validator-attestation) with the node.
 
 ## Community and Support
 
