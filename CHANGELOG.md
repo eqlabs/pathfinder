@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- `pathfinder_getProof`, `pathfinder_getClassProof` and `pathfinder_getTransactionStatus` (obsoleted by standartized `starknet_*` APIs).
+- `pathfinder_getProof`, `pathfinder_getClassProof` and `pathfinder_getTransactionStatus` (obsoleted by standardized `starknet_*` APIs).
 
 ## [0.17.0-beta.2] - 2025-06-04
 
