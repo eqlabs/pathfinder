@@ -49,19 +49,6 @@ impl crate::dto::SerializeForVersion for FinalityStatus {
     }
 }
 
-impl crate::dto::DeserializeForVersion for FinalityStatus {
-    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let status_str: String = value.deserialize()?;
-        match status_str.as_str() {
-            "RECEIVED" => Ok(Self::Received),
-            "REJECTED" => Ok(Self::Rejected),
-            "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
-            "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
-            _ => Err(serde::de::Error::custom("Invalid finality status")),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct L1HandlerTransactionStatus {
     transaction_hash: TransactionHash,
@@ -112,7 +99,7 @@ pub async fn get_messages_status(
             // transactions; the cases are kept for backwards
             // compatibility - more explicit error handling can be
             // added if/when they actually happen.
-            TxStatus::Received => (FinalityStatus::Received, None),
+            TxStatus::Received | TxStatus::Candidate => (FinalityStatus::Received, None),
             TxStatus::Rejected { .. } => (FinalityStatus::Rejected, None),
             TxStatus::PreConfirmed(ref exec_status) => {
                 (FinalityStatus::PreConfirmed, Some(exec_status.clone()))
@@ -129,6 +116,11 @@ pub async fn get_messages_status(
             TxStatus::Rejected { error_message, .. } => error_message,
             _ => None,
         };
+
+        if rpc_version >= RpcVersion::V09 && execution_status.is_none() {
+            continue; // Skip if execution status is not available, since it's
+                      // required for V09+
+        }
 
         res.push(L1HandlerTransactionStatus {
             transaction_hash: tx.calculate_hash(context.chain_id),

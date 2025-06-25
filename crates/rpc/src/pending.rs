@@ -256,7 +256,7 @@ impl PendingData {
         self.block.transaction_receipts_and_events()
     }
 
-    pub fn candidate_transactions(&self) -> Option<&CandidateTransactions> {
+    pub fn candidate_transactions(&self) -> Option<&[pathfinder_common::transaction::Transaction]> {
         match self.block.as_ref() {
             PendingBlockVariant::Pending(_) => None,
             PendingBlockVariant::PreConfirmed(_, candidate_transactions) => {

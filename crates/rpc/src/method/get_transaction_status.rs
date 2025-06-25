@@ -33,6 +33,7 @@ pub enum Output {
         // Reject error message optional for backward compatibility with gateway.
         error_message: Option<String>,
     },
+    Candidate,
     PreConfirmed(TxnExecutionStatus),
     AcceptedOnL1(TxnExecutionStatus),
     AcceptedOnL2(TxnExecutionStatus),
@@ -56,20 +57,39 @@ pub async fn get_transaction_status(
             .context("Opening database connection")?;
         let db_tx = db.transaction().context("Creating database transaction")?;
 
-        if let Some((receipt, _)) = context
+        let pending_data = context
             .pending_data
             .get(&db_tx, rpc_version)
-            .context("Querying pending data")?
+            .context("Querying pending data")?;
+
+        if let Some((receipt, _)) = pending_data
             .transaction_receipts_and_events()
             .iter()
             .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
         {
-            let output = if rpc_version < RpcVersion::V09 {
-                Output::AcceptedOnL2((&receipt.execution_status).into())
-            } else {
-                Output::PreConfirmed((&receipt.execution_status).into())
+            let output = match pending_data.block().finality_status() {
+                crate::dto::TxnFinalityStatus::PreConfirmed => {
+                    Output::PreConfirmed((&receipt.execution_status).into())
+                }
+                crate::dto::TxnFinalityStatus::AcceptedOnL2 => {
+                    Output::AcceptedOnL2((&receipt.execution_status).into())
+                }
+                // This is technically not possible: pending data is either PreConfirmed or
+                // AcceptedOnL2.
+                crate::dto::TxnFinalityStatus::AcceptedOnL1 => {
+                    Output::AcceptedOnL1((&receipt.execution_status).into())
+                }
             };
             return Ok(Some(output));
+        }
+
+        if pending_data
+            .candidate_transactions()
+            .iter()
+            .flat_map(|tx| tx.iter())
+            .any(|tx| tx.hash == input.transaction_hash)
+        {
+            return Ok(Some(Output::Candidate));
         }
 
         let Some((_, receipt, _, block_hash)) = db_tx
@@ -155,6 +175,7 @@ impl Output {
         match self {
             Output::Received => TxnStatus::Received,
             Output::Rejected { .. } => TxnStatus::Rejected,
+            Output::Candidate => TxnStatus::Candidate,
             Output::PreConfirmed(_) => TxnStatus::PreConfirmed,
             Output::AcceptedOnL1(_) => TxnStatus::AcceptedOnL1,
             Output::AcceptedOnL2(_) => TxnStatus::AcceptedOnL2,
@@ -163,7 +184,7 @@ impl Output {
 
     fn execution_status(&self) -> Option<TxnExecutionStatus> {
         match self {
-            Output::Received | Output::Rejected { .. } => None,
+            Output::Received | Output::Rejected { .. } | Output::Candidate => None,
             Output::PreConfirmed(x) => Some(x.clone()),
             Output::AcceptedOnL1(x) => Some(x.clone()),
             Output::AcceptedOnL2(x) => Some(x.clone()),
@@ -173,6 +194,7 @@ impl Output {
     fn failure_reason(&self) -> Option<String> {
         match self {
             Output::Rejected { error_message } => error_message.clone(),
+            Output::PreConfirmed(TxnExecutionStatus::Reverted { reason }) => reason.clone(),
             Output::AcceptedOnL1(TxnExecutionStatus::Reverted { reason }) => reason.clone(),
             Output::AcceptedOnL2(TxnExecutionStatus::Reverted { reason }) => reason.clone(),
             _ => None,
@@ -289,6 +311,66 @@ mod tests {
             version,
             "transactions/status_pending.json"
         );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"preconfirmed tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_status(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/status_pre_confirmed.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn candidate(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"candidate tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_status(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/status_candidate.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
     }
 
     #[tokio::test]
