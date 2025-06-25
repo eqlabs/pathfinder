@@ -24,6 +24,8 @@ pub struct PendingWatcher(pub WatchReceiver<PendingData>);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreConfirmedBlock {
+    pub number: BlockNumber,
+
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
     pub l2_gas_price: GasPrices,
@@ -149,6 +151,7 @@ impl PendingData {
         let state_update = StateUpdate::from(state_update);
 
         let block = PreConfirmedBlock {
+            number,
             l1_gas_price: block.l1_gas_price,
             l1_data_gas_price: block.l1_data_gas_price,
             l2_gas_price: block.l2_gas_price,
@@ -316,6 +319,7 @@ impl PendingWatcher {
 
         fn empty_pre_confirmed_data(latest: &BlockHeader) -> PendingData {
             let block = PreConfirmedBlock {
+                number: latest.number + 1,
                 l1_gas_price: GasPrices {
                     price_in_wei: latest.eth_l1_gas_price,
                     price_in_fri: latest.strk_l1_gas_price,
@@ -456,6 +460,7 @@ mod tests {
         PendingData {
             block: PendingBlockVariant::PreConfirmed(
                 PreConfirmedBlock {
+                    number: latest.number + 1,
                     l1_gas_price: Default::default(),
                     l1_data_gas_price: Default::default(),
                     l2_gas_price: Default::default(),
@@ -532,6 +537,7 @@ mod tests {
 
     fn empty_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
         let block = PreConfirmedBlock {
+            number: latest.number + 1,
             l1_gas_price: GasPrices {
                 price_in_wei: latest.eth_l1_gas_price,
                 price_in_fri: latest.strk_l1_gas_price,
