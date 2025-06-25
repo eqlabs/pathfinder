@@ -144,8 +144,6 @@ mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
-    const RPC_VERSION: RpcVersion = RpcVersion::V09;
-
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -159,7 +157,7 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let output = get_block_with_tx_hashes(context, input, RPC_VERSION)
+        let output = get_block_with_tx_hashes(context, input, version)
             .await
             .unwrap();
         let output_json = output.serialize(Serializer { version }).unwrap();
@@ -177,6 +175,31 @@ mod tests {
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
     #[tokio::test]
+    async fn pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+
+        let input = Input {
+            block_id: BlockId::Pending,
+        };
+
+        let output = get_block_with_tx_hashes(context, input, version)
+            .await
+            .unwrap();
+        let output_json = output.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "blocks/pre_confirmed_with_tx_hashes.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
     async fn latest(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
 
@@ -184,7 +207,7 @@ mod tests {
             block_id: BlockId::Latest,
         };
 
-        let output = get_block_with_tx_hashes(context, input, RPC_VERSION)
+        let output = get_block_with_tx_hashes(context, input, version)
             .await
             .unwrap();
         let output_json = output.serialize(Serializer { version }).unwrap();
