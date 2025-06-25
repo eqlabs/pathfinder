@@ -193,8 +193,6 @@ mod tests {
     use crate::dto::{SerializeForVersion, Serializer};
     use crate::RpcVersion;
 
-    const RPC_VERSION: RpcVersion = RpcVersion::V09;
-
     #[rstest::rstest]
     #[case::v06(RpcVersion::V06)]
     #[case::v07(RpcVersion::V07)]
@@ -207,7 +205,7 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let output = get_block_with_receipts(context.clone(), input, RPC_VERSION)
+        let output = get_block_with_receipts(context.clone(), input, version)
             .await
             .unwrap()
             .serialize(Serializer { version })
@@ -222,13 +220,34 @@ mod tests {
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
     #[tokio::test]
+    async fn pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_confirmed().await;
+        let input = Input {
+            block_id: BlockId::Pending,
+        };
+
+        let output = get_block_with_receipts(context.clone(), input, version)
+            .await
+            .unwrap()
+            .serialize(Serializer { version })
+            .unwrap();
+
+        crate::assert_json_matches_fixture!(output, version, "blocks/pre_confirmed.json");
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
     async fn latest(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pending().await;
         let input = Input {
             block_id: BlockId::Latest,
         };
 
-        let output = get_block_with_receipts(context.clone(), input, RPC_VERSION)
+        let output = get_block_with_receipts(context.clone(), input, version)
             .await
             .unwrap()
             .serialize(Serializer { version })
