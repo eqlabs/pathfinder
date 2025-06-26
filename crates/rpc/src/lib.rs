@@ -1019,6 +1019,7 @@ pub mod test_utils {
 
         let block = crate::pending::PendingBlockVariant::PreConfirmed(
             crate::pending::PreConfirmedBlock {
+                number: latest.number + 1,
                 l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
                     price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),

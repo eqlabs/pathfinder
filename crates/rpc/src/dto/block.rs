@@ -141,6 +141,7 @@ impl crate::dto::SerializeForVersion for crate::pending::PreConfirmedBlock {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
+        serializer.serialize_field("block_number", &self.number.get())?;
         serializer.serialize_field("timestamp", &self.timestamp.get())?;
         serializer.serialize_field("sequencer_address", &self.sequencer_address)?;
         serializer.serialize_field(

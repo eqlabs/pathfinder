@@ -542,6 +542,7 @@ mod tests {
             PendingData::from_parts(
                 crate::pending::PendingBlockVariant::PreConfirmed(
                     crate::pending::PreConfirmedBlock {
+                        number: last_block_header.number + 1,
                         l1_gas_price: GasPrices {
                             price_in_wei: last_block_header.eth_l1_gas_price,
                             price_in_fri: Default::default(),

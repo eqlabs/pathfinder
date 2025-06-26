@@ -24,6 +24,8 @@ pub struct PendingWatcher(pub WatchReceiver<PendingData>);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreConfirmedBlock {
+    pub number: BlockNumber,
+
     pub l1_gas_price: GasPrices,
     pub l1_data_gas_price: GasPrices,
     pub l2_gas_price: GasPrices,
@@ -149,6 +151,7 @@ impl PendingData {
         let state_update = StateUpdate::from(state_update);
 
         let block = PreConfirmedBlock {
+            number,
             l1_gas_price: block.l1_gas_price,
             l1_data_gas_price: block.l1_data_gas_price,
             l2_gas_price: block.l2_gas_price,
@@ -316,6 +319,7 @@ impl PendingWatcher {
 
         fn empty_pre_confirmed_data(latest: &BlockHeader) -> PendingData {
             let block = PreConfirmedBlock {
+                number: latest.number + 1,
                 l1_gas_price: GasPrices {
                     price_in_wei: latest.eth_l1_gas_price,
                     price_in_fri: latest.strk_l1_gas_price,
@@ -380,7 +384,7 @@ impl PendingWatcher {
                     empty_pre_confirmed_data(&latest)
                 }
             }
-            PendingBlockVariant::PreConfirmed(_, _) => empty_pre_confirmed_data(&latest),
+            PendingBlockVariant::PreConfirmed(_, _) => empty_pending_data(&latest),
         };
 
         Ok(pending_data)
@@ -456,6 +460,7 @@ mod tests {
         PendingData {
             block: PendingBlockVariant::PreConfirmed(
                 PreConfirmedBlock {
+                    number: latest.number + 1,
                     l1_gas_price: Default::default(),
                     l1_data_gas_price: Default::default(),
                     l2_gas_price: Default::default(),
@@ -520,7 +525,7 @@ mod tests {
         let pending = valid_pre_confirmed_block(&latest);
         sender.send(pending.clone()).unwrap();
 
-        let expected_empty_pending_data = empty_pre_confirmed_block(&latest);
+        let expected_empty_pending_data = empty_pending_block(&latest);
 
         let result = uut.get(&tx, RpcVersion::V06).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, expected_empty_pending_data);
@@ -530,37 +535,8 @@ mod tests {
         pretty_assertions_sorted::assert_eq_sorted!(result, expected_empty_pending_data);
     }
 
-    fn empty_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
-        let block = PreConfirmedBlock {
-            l1_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_gas_price,
-                price_in_fri: latest.strk_l1_gas_price,
-            },
-            l1_data_gas_price: GasPrices {
-                price_in_wei: latest.eth_l1_data_gas_price,
-                price_in_fri: latest.strk_l1_data_gas_price,
-            },
-            l2_gas_price: GasPrices {
-                price_in_wei: latest.eth_l2_gas_price,
-                price_in_fri: latest.strk_l2_gas_price,
-            },
-            sequencer_address: latest.sequencer_address,
-            status: Status::PreConfirmed,
-            timestamp: latest.timestamp,
-            starknet_version: latest.starknet_version,
-            l1_da_mode: latest.l1_da_mode,
-            transactions: vec![],
-            transaction_receipts: vec![],
-        };
-        PendingData {
-            block: Arc::new(PendingBlockVariant::PreConfirmed(block, vec![])),
-            state_update: StateUpdate::default().into(),
-            number: latest.number + 1,
-        }
-    }
-
     #[test]
-    fn invalid_defaults_to_latest_in_storage() {
+    fn invalid_pending_defaults_to_latest_in_storage() {
         // If the pending data isn't consistent with the latest data in storage,
         // then the result should be an empty block with the gas price, timestamp
         // and hash as parent hash of the latest block in storage.
@@ -620,6 +596,80 @@ mod tests {
                 ..Default::default()
             })
             .into(),
+            state_update: StateUpdate::default().into(),
+            number: latest.number + 1,
+        }
+    }
+
+    #[test]
+    fn invalid_pre_confirmed_defaults_to_latest_in_storage() {
+        // If the pending data isn't consistent with the latest data in storage,
+        // then the result should be an empty block with the gas price, timestamp
+        // and hash as parent hash of the latest block in storage.
+
+        let (sender, receiver) = tokio::sync::watch::channel(Default::default());
+        let uut = PendingWatcher::new(receiver);
+
+        let mut storage = pathfinder_storage::StorageBuilder::in_memory()
+            .unwrap()
+            .connection()
+            .unwrap();
+
+        // Required otherwise latest doesn't have a valid parent hash in storage.
+        let parent = BlockHeader::builder()
+            .number(BlockNumber::GENESIS + 12)
+            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+
+        let latest = parent
+            .child_builder()
+            .eth_l1_gas_price(GasPrice(1234))
+            .strk_l1_gas_price(GasPrice(3377))
+            .eth_l1_data_gas_price(GasPrice(9999))
+            .strk_l1_data_gas_price(GasPrice(8888))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .timestamp(BlockTimestamp::new_or_panic(6777))
+            .sequencer_address(sequencer_address!("0xffff"))
+            .finalize_with_hash(block_hash_bytes!(b"latest hash"));
+
+        let tx = storage.transaction().unwrap();
+        tx.insert_block_header(&parent).unwrap();
+        tx.insert_block_header(&latest).unwrap();
+
+        let pending = valid_pre_confirmed_block(&parent);
+        sender.send(pending.clone()).unwrap();
+
+        let result = uut.get(&tx, RpcVersion::V09).unwrap();
+
+        let expected = empty_pre_confirmed_block(&latest);
+
+        pretty_assertions_sorted::assert_eq_sorted!(result, expected);
+    }
+
+    fn empty_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
+        let block = PreConfirmedBlock {
+            number: latest.number + 1,
+            l1_gas_price: GasPrices {
+                price_in_wei: latest.eth_l1_gas_price,
+                price_in_fri: latest.strk_l1_gas_price,
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: latest.eth_l1_data_gas_price,
+                price_in_fri: latest.strk_l1_data_gas_price,
+            },
+            l2_gas_price: GasPrices {
+                price_in_wei: latest.eth_l2_gas_price,
+                price_in_fri: latest.strk_l2_gas_price,
+            },
+            sequencer_address: latest.sequencer_address,
+            status: Status::PreConfirmed,
+            timestamp: latest.timestamp,
+            starknet_version: latest.starknet_version,
+            l1_da_mode: latest.l1_da_mode,
+            transactions: vec![],
+            transaction_receipts: vec![],
+        };
+        PendingData {
+            block: Arc::new(PendingBlockVariant::PreConfirmed(block, vec![])),
             state_update: StateUpdate::default().into(),
             number: latest.number + 1,
         }

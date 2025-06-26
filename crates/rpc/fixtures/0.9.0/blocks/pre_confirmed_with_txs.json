@@ -1,0 +1,49 @@
+{
+    "block_number": 3,
+    "l1_da_mode": "CALLDATA",
+    "l1_data_gas_price": {
+        "price_in_fri": "0x7374726b206461746761737072696365",
+        "price_in_wei": "0x6461746761737072696365"
+    },
+    "l1_gas_price": {
+        "price_in_fri": "0x7374726b20676173207072696365",
+        "price_in_wei": "0x676173207072696365"
+    },
+    "l2_gas_price": {
+        "price_in_fri": "0x7374726b206c32676173207072696365",
+        "price_in_wei": "0x6c3220676173207072696365"
+    },
+    "sequencer_address": "0x707265636f6e6669726d65642073657175656e6365722061646472657373",
+    "starknet_version": "0.11.0",
+    "timestamp": 1234567,
+    "transactions": [
+        {
+            "calldata": [],
+            "contract_address": "0x707265636f6e6669726d656420636f6e747261637420616464722030",
+            "entry_point_selector": "0x656e74727920706f696e742030",
+            "max_fee": "0x0",
+            "signature": [],
+            "transaction_hash": "0x707265636f6e6669726d656420747820686173682030",
+            "type": "INVOKE",
+            "version": "0x0"
+        },
+        {
+            "class_hash": "0x707265636f6e6669726d656420636c61737320686173682031",
+            "constructor_calldata": [],
+            "contract_address_salt": "0x73616c7479",
+            "transaction_hash": "0x707265636f6e6669726d656420747820686173682031",
+            "type": "DEPLOY",
+            "version": "0x0"
+        },
+        {
+            "calldata": [],
+            "contract_address": "0x707265636f6e6669726d656420636f6e747261637420616464722030",
+            "entry_point_selector": "0x656e74727920706f696e742030",
+            "max_fee": "0x0",
+            "signature": [],
+            "transaction_hash": "0x707265636f6e6669726d6564207265766572746564",
+            "type": "INVOKE",
+            "version": "0x0"
+        }
+    ]
+}
