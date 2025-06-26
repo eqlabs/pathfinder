@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::time::Duration;
 
 use malachite_types::{ThresholdParams, TimeoutKind};
@@ -19,6 +20,8 @@ pub struct Config {
     pub timeout_values: TimeoutValues,
     /// The number of completed heights to keep in memory.
     pub history_depth: u64,
+    /// The directory to store the write-ahead log.
+    pub wal_dir: PathBuf,
 }
 
 impl Config {
@@ -28,6 +31,7 @@ impl Config {
         Self {
             address,
             history_depth: 10,
+            wal_dir: PathBuf::from("wal"),
             ..Default::default()
         }
     }
@@ -59,6 +63,12 @@ impl Config {
     /// Set the number of completed heights to keep in memory.
     pub fn with_history_depth(mut self, history_depth: u64) -> Self {
         self.history_depth = history_depth;
+        self
+    }
+
+    /// Set the WAL directory.
+    pub fn with_wal_dir(mut self, wal_dir: PathBuf) -> Self {
+        self.wal_dir = wal_dir;
         self
     }
 }

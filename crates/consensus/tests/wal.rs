@@ -7,9 +7,12 @@ use p2p_proto::common::{Address, Hash};
 use pathfinder_consensus::*;
 use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{pause, sleep, Duration};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+
+mod common;
+use common::drive_until;
 
 #[allow(dead_code)]
 fn setup_tracing_full() {
@@ -33,6 +36,10 @@ async fn wal_concurrent_heights_retention_test() {
     let value_hash = Hash(Felt::from_hex_str("0xabcdef").unwrap());
     let value_id = ValueId::new(value_hash);
     let consensus_value = ConsensusValue::new(value_id.clone());
+
+    // Create a temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let wal_dir = temp_dir.path();
 
     // Create validators and channels
     let mut validators = vec![];
@@ -73,9 +80,11 @@ async fn wal_concurrent_heights_retention_test() {
         let validator_set = validator_set.clone();
         let decisions = Arc::clone(&decisions);
         let consensus_value = consensus_value.clone();
+        let wal_dir = wal_dir.to_path_buf();
 
         let handle = tokio::spawn(async move {
-            let mut consensus = Consensus::new(Config::new(addr));
+            let config = Config::new(addr).with_wal_dir(wal_dir);
+            let mut consensus = Consensus::new(config);
             // Start all heights up front
             for current_height in 1..=NUM_HEIGHTS {
                 let height = Height::new(current_height);
@@ -160,14 +169,15 @@ async fn wal_concurrent_heights_retention_test() {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Check that at least config.history_depth WAL files exist
-    let files = std::fs::read_dir(".")
+    let files = std::fs::read_dir(wal_dir)
         .unwrap()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_name().to_string_lossy().starts_with("wal-"))
         .collect::<Vec<_>>();
     assert!(
         files.len() >= 10, // 10 is the default config.history_depth
-        "Expected at least 10 WAL files, found {}",
+        "Expected at least 10 WAL files in {}, found {}",
+        wal_dir.display(),
         files.len()
     );
 }
@@ -175,4 +185,101 @@ async fn wal_concurrent_heights_retention_test() {
 fn pretty_addr(addr: &ValidatorAddress) -> String {
     let addr_str = addr.to_string();
     addr_str.chars().skip(addr_str.len() - 4).collect()
+}
+
+#[tokio::test]
+async fn recover_from_wal_restores_and_continues() {
+    use std::sync::Arc;
+
+    use pathfinder_consensus::{
+        Config,
+        Consensus,
+        ConsensusCommand,
+        ConsensusEvent,
+        ConsensusValue,
+        Height,
+        Proposal,
+        Round,
+        ValidatorSetProvider,
+        ValueId,
+    };
+    use pathfinder_crypto::Felt;
+
+    //setup_tracing_full();
+    pause();
+
+    // Create a temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let wal_dir = temp_dir.path();
+
+    // Static validator
+    let addr = ValidatorAddress::from(Address(Felt::from_hex_str("0x1").unwrap()));
+    let sk = SigningKey::new(rand::rngs::OsRng);
+    let pk = sk.verification_key();
+    let pubkey = PublicKey::from_bytes(pk.to_bytes());
+    let validator = Validator {
+        address: addr,
+        public_key: pubkey,
+        voting_power: 1,
+    };
+    let validators = ValidatorSet::new(vec![validator.clone()]);
+
+    // Config with temporary WAL directory
+    let config = Config::new(addr).with_wal_dir(wal_dir.to_path_buf());
+
+    let height = Height::new(42);
+
+    // Create and run consensus to log data to WAL
+    {
+        let mut consensus = Consensus::new(config.clone());
+        consensus.handle_command(ConsensusCommand::StartHeight(height, validators.clone()));
+
+        // Expect RequestProposal for round 0
+        let _ = drive_until(
+            &mut consensus,
+            Duration::from_secs(1),
+            5,
+            |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::ZERO)),
+        ).await;
+
+        // Send a proposal to enter prevote
+        let value_id = ValueId::new(Hash(Felt::from_hex_str("0xabc123").unwrap()));
+        let proposal = Proposal {
+            height,
+            round: Round::new(malachite_types::Round::ZERO),
+            value_id: ConsensusValue::new(value_id),
+            pol_round: Round::new(malachite_types::Round::ZERO),
+            proposer: addr,
+        };
+        let signed = SignedProposal {
+            proposal,
+            signature: Signature::from_bytes([0u8; 64]),
+        };
+        consensus.handle_command(ConsensusCommand::Proposal(signed));
+    }
+
+    // Create a validator set provider
+    #[derive(Clone)]
+    struct StaticSet(ValidatorSet);
+    impl ValidatorSetProvider for StaticSet {
+        fn get_validator_set(&self, _height: &Height) -> ValidatorSet {
+            self.0.clone()
+        }
+    }
+
+    // Now recover from WAL
+    let mut consensus = Consensus::recover(config.clone(), Arc::new(StaticSet(validators)));
+
+    // Expect RequestProposal again for round 1
+    let event = drive_until(
+        &mut consensus,
+        Duration::from_secs(5),
+        10,
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::Some(1))),
+    ).await;
+
+    assert!(
+        event.is_some(),
+        "Recovered consensus should continue to operate and advance rounds"
+    );
 }

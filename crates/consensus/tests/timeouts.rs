@@ -23,8 +23,11 @@ use pathfinder_consensus::{
     Vote,
 };
 use pathfinder_crypto::Felt;
-use tokio::time::{advance, pause};
+use tokio::time::pause;
 use tracing_subscriber::EnvFilter;
+
+mod common;
+use common::drive_until;
 
 #[allow(dead_code)]
 fn setup_tracing_full() {
@@ -36,28 +39,6 @@ fn setup_tracing_full() {
         .with_target(true)
         .without_time()
         .try_init();
-}
-
-/// Advances simulated time and polls `Consensus` until a matching event is seen
-/// or max attempts are hit. Returns the matching event if found.
-async fn drive_until<F>(
-    consensus: &mut Consensus,
-    tick: Duration,
-    max_attempts: usize,
-    mut match_fn: F,
-) -> Option<ConsensusEvent>
-where
-    F: FnMut(&ConsensusEvent) -> bool,
-{
-    for _ in 0..max_attempts {
-        advance(tick).await;
-        if let Some(event) = consensus.next_event().await {
-            if match_fn(&event) {
-                return Some(event);
-            }
-        }
-    }
-    None
 }
 
 #[tokio::test]

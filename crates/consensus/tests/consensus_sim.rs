@@ -40,6 +40,10 @@ async fn consensus_simulation() {
     let mut senders = HashMap::new();
     let mut receivers = HashMap::new();
 
+    // Create a (single) temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let temp_dir = temp_dir.path().to_path_buf();
+
     for i in 1..=NUM_VALIDATORS {
         let sk = SigningKey::new(rand::rngs::OsRng);
         let pk = sk.verification_key();
@@ -76,12 +80,14 @@ async fn consensus_simulation() {
         let decisions = Arc::clone(&decisions);
         let consensus_value = consensus_value.clone();
 
+        let wal_dir = temp_dir.clone();
         let handle = tokio::spawn(async move {
             let mut current_height = 1;
 
             while current_height <= NUM_HEIGHTS {
                 let height = Height::new(current_height);
-                let mut consensus = Consensus::new(Config::new(addr));
+                let config = Config::new(addr).with_wal_dir(wal_dir.clone());
+                let mut consensus = Consensus::new(config);
                 consensus
                     .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
 
