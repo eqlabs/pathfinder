@@ -1,10 +1,41 @@
 use anyhow::anyhow;
-use pathfinder_common::{ContractAddress, ContractNonce};
-use pathfinder_executor::types::RevertibleFunctionInvocation;
+use pathfinder_common::{contract_address, entry_point, felt, ContractAddress, ContractNonce};
+use pathfinder_executor::types::{FunctionInvocation, RevertibleFunctionInvocation};
 use serde::ser::Error;
 
 use super::SerializeStruct;
 use crate::RpcVersion;
+
+const DUMMY_REVERTED_FUNCTION_INVOCATION: &FunctionInvocation = &FunctionInvocation {
+    call_type: Some(pathfinder_executor::types::CallType::Call),
+    calldata: vec![],
+    caller_address: felt!("0x0"),
+    class_hash: Some(felt!("0x0")),
+    entry_point_type: Some(pathfinder_executor::types::EntryPointType::L1Handler),
+    events: vec![],
+    contract_address: contract_address!("0x0"),
+    selector: Some(entry_point!("0x0").0),
+    messages: vec![],
+    result: vec![],
+    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+        l1_gas: 0,
+        l2_gas: 0,
+    },
+    internal_calls: vec![],
+    computation_resources: pathfinder_executor::types::ComputationResources {
+        steps: 0,
+        memory_holes: 0,
+        range_check_builtin_applications: 0,
+        pedersen_builtin_applications: 0,
+        poseidon_builtin_applications: 0,
+        ec_op_builtin_applications: 0,
+        ecdsa_builtin_applications: 0,
+        bitwise_builtin_applications: 0,
+        keccak_builtin_applications: 0,
+        segment_arena_builtin: 0,
+    },
+    is_reverted: true,
+};
 
 #[derive(Debug)]
 pub struct TransactionTrace {
@@ -103,9 +134,10 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
                     {
                         serializer.serialize_field("function_invocation", &fi)?;
                     } else {
-                        return Err(serde_json::error::Error::custom(
-                            "Missing function_invocation in trace",
-                        ));
+                        serializer.serialize_field(
+                            "function_invocation",
+                            &DUMMY_REVERTED_FUNCTION_INVOCATION,
+                        )?;
                     }
                 } else {
                     serializer.serialize_field(
@@ -128,7 +160,7 @@ impl crate::dto::SerializeForVersion for TransactionTrace {
     }
 }
 
-impl crate::dto::SerializeForVersion for &pathfinder_executor::types::FunctionInvocation {
+impl crate::dto::SerializeForVersion for &FunctionInvocation {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
