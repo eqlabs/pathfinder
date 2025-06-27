@@ -146,6 +146,61 @@ Setting `--storage.state-tries=0` keeps only the most recent block’s trie. Thi
   - You cannot switch between archive and pruned mode mid-run. To switch from archive to pruned, you’ll need to either re-sync or use a pruned [Database Snapshot](/database-snapshots).  
 :::
 
+### Blockchain Pruning
+
+:::warning
+
+Blockchain Pruning is still an experimental feature and not recommended for production use.
+
+:::
+
+Similar to [State Trie Pruning](#state-trie-pruning), Pathfinder allows you to control the number of historical blocks to preserve using, again, either archive or pruned mode.
+
+Archive mode keeps the entire blockchain history, which can be storage-intensive:
+
+```bash
+--storage.blockchain-history=archive
+```
+
+If you don’t require block, transaction, state update or event data for older blocks, you can enable pruning to preserve only recent blocks using the following option:
+
+```bash
+--storage.blockchain-history=<k>
+```
+
+Where `k` keeps only the last `k+1` blocks.
+
+For example, if you’re using Docker and want to prune older blocks:
+
+```bash
+sudo docker run \
+  --name pathfinder \
+  --detach \
+  -p 9545:9545 \
+  -e RUST_LOG=info \
+  eqlabs/pathfinder:latest \
+  --network mainnet \
+  --storage.blockchain-history=100
+```
+
+Here, Pathfinder keeps data for the latest 101 blocks.
+
+Similarly, if you built Pathfinder from source and want to a prune older blocks:
+
+```bash
+cargo run --release --bin pathfinder -- \
+    --network testnet \
+    --storage.blockchain-history=0
+```
+
+Setting `--storage.blockchain-history=0` keeps only the most recent block’s data.
+
+:::note
+
+You cannot switch between archive and pruned mode mid-run. To switch from archive to pruned, you’ll need to either re-sync or use a pruned [Database Snapshot](/database-snapshots). It is, however, possible to change the number of stored blocks in pruned mode each time you run Pathfinder.
+
+:::
+
 ## Environment Variables
 
 Pathfinder can also be configured via environment variables, which take second place in configuration precedence.
