@@ -41,7 +41,7 @@ ws.onmessage = (event) => {
 
 ## Pathfinder WebSocket Extensions
 
-As with the [JSON extensions](json-rpc-api#pathfinder-json-extensions), Pathfinder provides Websocket equivalents of their custom endpoints. They are served under:
+As with the [JSON extensions](json-rpc-api.md#pathfinder-json-extensions), Pathfinder provides Websocket equivalents of their custom endpoints. They are served under:
 ```
 /ws/rpc/pathfinder/v0_1
 ```
