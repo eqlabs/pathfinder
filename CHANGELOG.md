@@ -7,43 +7,7 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.17.0-beta.3] - 2025-06-26
-
-### Fixed
-
-- JSON-RPC v0.8.1 `starknet_estimateFee` method call fails if the account balance is zero.
-
-### Changed
-
-- The default value of the `--sync.poll-interval` configuration parameter has been changed to 1 seconds. Pathfinder is now polling both the latest block information and the pending/pre-confirmed block every second by default.
-
-### Removed
-
-- `pathfinder_getProof`, `pathfinder_getClassProof` and `pathfinder_getTransactionStatus` (obsoleted by standardized `starknet_*` APIs).
-
-## [0.17.0-beta.2] - 2025-06-04
-
-### Added
-
-- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://eqlabs.github.io/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
-
-  - Accepted values are:
-
-    - "unlimited" - All historical messages will be streamed.
-    - "N" - An integer specifying the number of historical messages to be streamed.
-
-  - This option defaults to N = 1024 if not specified.
-
-### Fixed
-
-- `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.
-- `starknet_traceBlockTransactions` fails for blocks <= 2687.
-
-### Changed
-
-- `blockifier` has been upgraded to version 0.15.0-rc.1, adding initial support for Starknet 0.14.0 execution.
-
-## [0.17.0-beta.1] - 2025-05-13
+## [0.17.0] - 2025-06-29
 
 ### Added
 
@@ -84,14 +48,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     b. The latest L2 block if it is behind the latest L1 checkpoint or no L1 checkpoints have been received by the node (practically unreachable)
 
 - `starknet_getTransactionStatus` now returns RECEIVED even when the gateway cannot find the transaction, provided the transaction was successfully sent by the responding node within the last 5 minutes.
+- Pathfinder now allows the users to configure the number of historical messages to be streamed via the [webscoket API](https://eqlabs.github.io/pathfinder/interacting-with-pathfinder/websocket-api). This can be done using the `--rpc.websocket.max-history` CLI option.
+
+  - Accepted values are:
+
+    - "unlimited" - All historical messages will be streamed.
+    - "N" - An integer specifying the number of historical messages to be streamed.
+
+  - This option defaults to N = 1024 if not specified.
 
 ### Fixed
 
 - `starknet_unsubscribe` does not accept subscription IDs as strings.
+- `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.
+- `starknet_traceBlockTransactions` fails for blocks <= 2687.
+- JSON-RPC v0.8.1 `starknet_estimateFee` method call fails if the account balance is zero.
 
 ### Changed
 
 - `--rpc.get-events-max-uncached-event-filters-to-load` CLI option has been replaced with `rpc.get-events-event-filter-block-range-limit`. The new option serves the same purpose of preventing queries from taking too long, but it should be clearer in its intent.
+- `blockifier` has been upgraded to version 0.15.0-rc.1, adding initial support for Starknet 0.14.0 execution.
+- The default value of the `--sync.poll-interval` configuration parameter has been changed to 1 seconds. Pathfinder is now polling both the latest block information and the pending/pre-confirmed block every second by default.
+
+### Removed
+
+- `pathfinder_getProof`, `pathfinder_getClassProof` and `pathfinder_getTransactionStatus` (obsoleted by standardized `starknet_*` APIs).
 
 ## [0.16.5] - 2025-05-22
 
