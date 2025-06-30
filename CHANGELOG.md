@@ -63,6 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_estimateFee` is failing for Braavos DEPLOY_ACCOUNT transactions involving a new Sierra 1.7.0 class.
 - `starknet_traceBlockTransactions` fails for blocks <= 2687.
 - JSON-RPC v0.8.1 `starknet_estimateFee` method call fails if the account balance is zero.
+- Websockets can be used even when `--rpc.websocket.enabled` isn't set.
 
 ### Changed
 
