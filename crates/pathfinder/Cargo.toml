@@ -24,12 +24,14 @@ bitvec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 console-subscriber = { workspace = true, optional = true }
+ed25519-consensus = "2.1.0" # For the validator example
 fake = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true, features = ["alloc"] }
 http = { workspace = true }
 ipnet = { workspace = true }
 jemallocator = { workspace = true }
+malachite-signing-ed25519 = { package = "informalsystems-malachitebft-signing-ed25519", version = "0.2", features = ["serde"] } # For the validator example
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 p2p = { path = "../p2p" }
@@ -85,6 +87,7 @@ flate2 = { workspace = true }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-consensus = { path = "../consensus" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [

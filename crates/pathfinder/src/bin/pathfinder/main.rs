@@ -9,13 +9,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use ::p2p::sync::client::peer_agnostic::Client as P2PSyncClient;
 use anyhow::Context;
-use config::{BlockchainHistory, WebsocketHistory};
+use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
-use pathfinder_lib::monitoring::{self};
-use pathfinder_lib::state;
 use pathfinder_lib::state::SyncContext;
+use pathfinder_lib::{config, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
@@ -26,8 +25,6 @@ use tracing::{info, warn};
 
 use crate::config::{NetworkConfig, StateTries};
 
-mod config;
-mod p2p;
 mod update;
 
 // The Cairo VM allocates felts on the stack, so during execution it's making
@@ -283,7 +280,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // and wait for them to finish. Only then can we exit the process and return an
     // error if some of the tasks failed or no error if we have received a signal.
 
-    let (sync_p2p_handle, sync_p2p_client) = p2p::sync::start(
+    let (sync_p2p_handle, sync_p2p_client) = p2p_network::sync::start(
         pathfinder_context.network_id,
         p2p_storage,
         config.sync_p2p.clone(),
@@ -291,7 +288,8 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     .await;
 
     let (consensus_p2p_handle, _consensus_p2p_client) =
-        p2p::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone()).await;
+        p2p_network::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone())
+            .await;
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -889,43 +887,6 @@ fn handle_critical_task_result(
                 "{} task was cancelled unexpectedly",
                 task_name
             ))
-        }
-    }
-}
-
-impl From<StateTries> for pathfinder_storage::TriePruneMode {
-    fn from(val: StateTries) -> Self {
-        match val {
-            StateTries::Pruned(num_blocks_kept) => {
-                pathfinder_storage::TriePruneMode::Prune { num_blocks_kept }
-            }
-            StateTries::Archive => pathfinder_storage::TriePruneMode::Archive,
-        }
-    }
-}
-
-impl From<BlockchainHistory> for pathfinder_storage::pruning::BlockchainHistoryMode {
-    fn from(val: BlockchainHistory) -> Self {
-        match val {
-            BlockchainHistory::Prune(num_blocks_kept) => {
-                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept }
-            }
-            BlockchainHistory::Archive => {
-                pathfinder_storage::pruning::BlockchainHistoryMode::Archive
-            }
-        }
-    }
-}
-
-impl From<WebsocketHistory> for pathfinder_rpc::jsonrpc::websocket::WebsocketHistory {
-    fn from(val: WebsocketHistory) -> Self {
-        match val {
-            WebsocketHistory::Limited(limit) => {
-                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Limited(limit)
-            }
-            WebsocketHistory::Unlimited => {
-                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Unlimited
-            }
         }
     }
 }
