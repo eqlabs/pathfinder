@@ -430,6 +430,19 @@ fn parse_blockchain_history(s: &str) -> Result<BlockchainHistory, String> {
     }
 }
 
+impl From<BlockchainHistory> for pathfinder_storage::pruning::BlockchainHistoryMode {
+    fn from(val: BlockchainHistory) -> Self {
+        match val {
+            BlockchainHistory::Prune(num_blocks_kept) => {
+                pathfinder_storage::pruning::BlockchainHistoryMode::Prune { num_blocks_kept }
+            }
+            BlockchainHistory::Archive => {
+                pathfinder_storage::pruning::BlockchainHistoryMode::Archive
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StateTries {
     Pruned(u64),
@@ -444,6 +457,17 @@ fn parse_state_tries(s: &str) -> Result<StateTries, String> {
                 .parse()
                 .map_err(|_| "Expected either `archive` or a number".to_string())?;
             Ok(StateTries::Pruned(value))
+        }
+    }
+}
+
+impl From<StateTries> for pathfinder_storage::TriePruneMode {
+    fn from(val: StateTries) -> Self {
+        match val {
+            StateTries::Pruned(num_blocks_kept) => {
+                pathfinder_storage::TriePruneMode::Prune { num_blocks_kept }
+            }
+            StateTries::Archive => pathfinder_storage::TriePruneMode::Archive,
         }
     }
 }
@@ -854,11 +878,11 @@ impl NativeExecutionConfig {
         Self
     }
 
-    pub(super) fn is_enabled(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         false
     }
 
-    pub(super) fn class_cache_size(&self) -> NonZeroUsize {
+    pub fn class_cache_size(&self) -> NonZeroUsize {
         NonZeroUsize::new(1).unwrap()
     }
 }
@@ -872,11 +896,11 @@ impl NativeExecutionConfig {
         }
     }
 
-    pub(super) fn is_enabled(&self) -> bool {
+    pub fn is_enabled(&self) -> bool {
         self.enabled
     }
 
-    pub(super) fn class_cache_size(&self) -> NonZeroUsize {
+    pub fn class_cache_size(&self) -> NonZeroUsize {
         self.class_cache_size
     }
 }
@@ -975,6 +999,19 @@ fn parse_websocket_history(s: &str) -> Result<WebsocketHistory, String> {
                 .parse()
                 .map_err(|_| "Expected either `unlimited` or a number".to_string())?;
             Ok(WebsocketHistory::Limited(value))
+        }
+    }
+}
+
+impl From<WebsocketHistory> for pathfinder_rpc::jsonrpc::websocket::WebsocketHistory {
+    fn from(val: WebsocketHistory) -> Self {
+        match val {
+            WebsocketHistory::Limited(limit) => {
+                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Limited(limit)
+            }
+            WebsocketHistory::Unlimited => {
+                pathfinder_rpc::jsonrpc::websocket::WebsocketHistory::Unlimited
+            }
         }
     }
 }
