@@ -16,7 +16,7 @@ The WebSocket interface serves the same API versions and extension endpoints as 
 - **Pathfinder Extension**  
   Exposed via `/ws/rpc/pathfinder/v0_1`
 
-You can configure the default root endpoint (i.e., `/ws`) with the `--rpc.root-version` parameter.
+> **Note:** The WebSocket interface is disabled by default. To enable it, use the `--rpc.websocket.enabled` CLI flag. The default root endpoint (i.e., `/ws`) can be configured using the `--rpc.root-version` parameter.
 
 ## WebSocket Endpoints and Usage
 A typical WebSocket connection can be opened using libraries like `ws`, `websockets`, or the native browser WebSocket API. The RPC payload structure remains the same (JSON-RPC 2.0), but it is sent over a persistent socket connection:
