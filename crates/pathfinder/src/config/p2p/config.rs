@@ -34,7 +34,7 @@ pub struct P2PSyncConfig {
 
 #[derive(Clone)]
 pub struct P2PConsensusConfig {
-    pub _core: P2PCoreConfig,
+    pub core: P2PCoreConfig,
 }
 
 /// Generates an `impl From` implementation for a given `target` that converts
@@ -178,10 +178,10 @@ fn parse_l1_checkpoint_or_exit(
 }
 
 impl P2PConsensusConfig {
-    pub(crate) fn parse_or_exit(args: P2PConsensusCli) -> Self {
+    pub fn parse_or_exit(args: P2PConsensusCli) -> Self {
         Self {
             // SAFETY: core conversion is safe because we exit the process on error
-            _core: args.core.into(),
+            core: args.core.into(),
         }
     }
 }
