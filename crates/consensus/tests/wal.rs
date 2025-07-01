@@ -141,6 +141,8 @@ async fn wal_concurrent_heights_retention_test() {
                             error!("❌ {} error: {error:?}", pretty_addr(&addr));
                             break;
                         }
+
+                        _ => {}
                     }
                 }
                 while let Ok(msg) = rx.try_recv() {

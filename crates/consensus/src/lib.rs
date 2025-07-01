@@ -271,6 +271,10 @@ pub enum ConsensusCommand {
     Proposal(SignedProposal),
     /// A signed vote received from the network.
     Vote(SignedVote),
+    /// Vote set received from the network.
+    VoteSet(Height, Round, Vec<SignedVote>),
+    /// Request a vote set sync from the network.
+    RequestVoteSet(ValidatorAddress, Height, Round),
 }
 
 impl ConsensusCommand {
@@ -281,6 +285,8 @@ impl ConsensusCommand {
             ConsensusCommand::Propose(proposal) => proposal.height,
             ConsensusCommand::Proposal(proposal) => proposal.proposal.height,
             ConsensusCommand::Vote(vote) => vote.vote.height,
+            ConsensusCommand::VoteSet(height, _, _) => *height,
+            ConsensusCommand::RequestVoteSet(_, height, _) => *height,
         }
     }
 }
@@ -291,6 +297,13 @@ pub enum NetworkMessage {
     Proposal(SignedProposal),
     /// A vote received from the network.
     Vote(SignedVote),
+    /// A vote set response.
+    VoteSetResponse {
+        requester: ValidatorAddress,
+        height: Height,
+        round: Round,
+        votes: Vec<SignedVote>,
+    },
 }
 
 /// Events that the consensus engine emits for the application to handle.
@@ -304,6 +317,8 @@ pub enum ConsensusEvent {
         round: Round,
         timeout: Timeout,
     },
+    /// The consensus needs the app to request a vote set sync.
+    RequestVoteSet { height: Height, round: Round },
     /// The consensus has reached a decision and committed a block.
     Decision { height: Height, hash: Hash },
     /// An internal error occurred in consensus.
