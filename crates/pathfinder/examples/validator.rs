@@ -1,3 +1,4 @@
+/*
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -9,10 +10,57 @@ use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout, Duration};
 use tracing::{error, info};
+*/
+use clap::Parser;
+use pathfinder_common::ChainId;
+use pathfinder_lib::config::p2p::{P2PConsensusCli, P2PConsensusConfig};
+use pathfinder_lib::p2p_network::consensus;
 use tracing_subscriber::EnvFilter;
+
+#[derive(Parser)]
+pub struct Cli {
+    #[arg(
+        long = "network",
+        long_help = "mainnet or sepolia (testnet)",
+        value_name = "NETWORK",
+        default_value = "sepolia"
+    )]
+    network: String,
+    #[clap(flatten)]
+    consensus: P2PConsensusCli,
+}
+
+fn setup_tracing_full() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .with_env_filter(filter)
+        .with_target(true)
+        .without_time()
+        .try_init();
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    setup_tracing_full();
+
+    let config = Cli::parse();
+    let network = config.network;
+    let config = P2PConsensusConfig::parse_or_exit(config.consensus);
+    let chain_id = match network.as_str() {
+        "mainnet" => ChainId::MAINNET,
+        "sepolia" => ChainId::SEPOLIA_TESTNET,
+        _ => anyhow::bail!("Unsupported network: {}", network),
+    };
+    let (_jh, client) = consensus::start(chain_id, config).await;
+
+    tokio::select! {
+        result = _jh => {
+            eprintln!("Consensus task finished with result: {:?}", result);
+        }
+    }
+
     /*
         let network; // ... Our P2P Consensus network
 
@@ -65,18 +113,6 @@ async fn main() -> anyhow::Result<()> {
         }
     */
     Ok(())
-}
-
-#[allow(dead_code)]
-fn setup_tracing_full() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .with_target(true)
-        .without_time()
-        .try_init();
 }
 
 /*

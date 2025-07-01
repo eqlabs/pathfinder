@@ -82,7 +82,7 @@ mod inner {
         let predefined_peers = config.core.predefined_peers;
 
         let peer_id = keypair.public().to_peer_id();
-        tracing::info!(%peer_id, "🖧 Starting P2P");
+        tracing::info!(%peer_id, "🖧 Starting sync P2P");
 
         let (core_client, mut p2p_events, p2p_main_loop) =
             p2p::new_sync(keypair, core_config, sync_config, chain_id);
@@ -96,7 +96,7 @@ mod inner {
             core_client
                 .start_listening(addr.clone())
                 .await
-                .with_context(|| format!("Starting P2P listener: {addr}"))?;
+                .with_context(|| format!("Starting sync P2P listener: {addr}"))?;
         }
 
         let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
@@ -132,13 +132,13 @@ mod inner {
                     loop {
                         tokio::select! {
                             _ = &mut main_loop_handle => {
-                                tracing::error!("p2p task ended unexpectedly");
-                                anyhow::bail!("p2p task ended unexpectedly");
+                                tracing::error!("sync p2p task ended unexpectedly");
+                                anyhow::bail!("sync p2p task ended unexpectedly");
                             }
                             Some(event) = p2p_events.recv() => {
                                 match handle_p2p_event(event, storage.clone()).await {
                                     Ok(()) => {},
-                                    Err(e) => { tracing::error!("Failed to handle P2P event: {:#}", e) },
+                                    Err(e) => { tracing::error!("Failed to handle sync P2P event: {:#}", e) },
                                 }
                             }
                         }
