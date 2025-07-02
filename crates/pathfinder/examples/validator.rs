@@ -57,10 +57,10 @@ async fn main() -> anyhow::Result<()> {
         "sepolia" => ChainId::SEPOLIA_TESTNET,
         _ => anyhow::bail!("Unsupported network: {}", network),
     };
-    let (_jh, client) = consensus::start(chain_id, config).await;
+    let (p2p_handle, client) = consensus::start(chain_id, config).await;
 
     tokio::select! {
-        result = _jh => {
+        result = p2p_handle => {
             eprintln!("Consensus task finished with result: {:?}", result);
         }
         _ = term_signal.recv() => {
