@@ -33,7 +33,7 @@ impl From<pathfinder_executor::CallError> for CallError {
             ContractNotFound => Self::ContractNotFound,
             InvalidMessageSelector => Self::EntrypointNotFound,
             ContractError(error, error_stack) => Self::ContractError {
-                revert_error: Some(format!("Execution error: {}", error)),
+                revert_error: Some(format!("Execution error: {error}")),
                 revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),

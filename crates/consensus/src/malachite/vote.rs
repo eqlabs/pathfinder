@@ -120,10 +120,10 @@ impl<'de> serde::Deserialize<'de> for Vote {
             .extension
             .map(|ext_helper| {
                 let message = base64::decode(&ext_helper.message).map_err(|e| {
-                    serde::de::Error::custom(format!("Invalid base64 message: {}", e))
+                    serde::de::Error::custom(format!("Invalid base64 message: {e}"))
                 })?;
                 let signature_bytes = base64::decode(&ext_helper.signature).map_err(|e| {
-                    serde::de::Error::custom(format!("Invalid base64 signature: {}", e))
+                    serde::de::Error::custom(format!("Invalid base64 signature: {e}"))
                 })?;
 
                 if signature_bytes.len() != 64 {
@@ -263,7 +263,7 @@ mod tests {
 
         // Serialize to JSON
         let json = serde_json::to_string(&vote).expect("Failed to serialize vote");
-        println!("Serialized vote: {}", json);
+        println!("Serialized vote: {json}");
 
         // Deserialize from JSON
         let deserialized_vote: Vote =
@@ -304,7 +304,7 @@ mod tests {
 
         // Serialize to JSON
         let json = serde_json::to_string(&vote).expect("Failed to serialize vote");
-        println!("Serialized vote with nil value: {}", json);
+        println!("Serialized vote with nil value: {json}");
 
         // Deserialize from JSON
         let deserialized_vote: Vote =

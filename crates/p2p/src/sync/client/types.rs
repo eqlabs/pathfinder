@@ -112,10 +112,10 @@ impl std::fmt::Display for StateDiffsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StateDiffsError::IncorrectStateDiffCount(peer) => {
-                write!(f, "Incorrect state diff count from peer {}", peer)
+                write!(f, "Incorrect state diff count from peer {peer}")
             }
             StateDiffsError::ResponseStreamFailure(peer, err) => {
-                write!(f, "Failed to read state diffs from peer {}: {}", peer, err)
+                write!(f, "Failed to read state diffs from peer {peer}: {err}")
             }
         }
     }
@@ -133,19 +133,18 @@ impl std::fmt::Display for ClassDefinitionsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ClassDefinitionsError::IncorrectClassDefinitionCount(peer) => {
-                write!(f, "Incorrect class definition count from peer {}", peer)
+                write!(f, "Incorrect class definition count from peer {peer}")
             }
             ClassDefinitionsError::CairoDefinitionError(peer) => {
-                write!(f, "Cairo class definition error from peer {}", peer)
+                write!(f, "Cairo class definition error from peer {peer}")
             }
             ClassDefinitionsError::SierraDefinitionError(peer) => {
-                write!(f, "Sierra class definition error from peer {}", peer)
+                write!(f, "Sierra class definition error from peer {peer}")
             }
             ClassDefinitionsError::ResponseStreamFailure(peer, err) => {
                 write!(
                     f,
-                    "Failed to read class definitions from peer {}: {}",
-                    peer, err
+                    "Failed to read class definitions from peer {peer}: {err}"
                 )
             }
         }

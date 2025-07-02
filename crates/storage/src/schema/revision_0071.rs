@@ -165,7 +165,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     for update in &table_updates {
         let table = &update.table_name;
         tx.execute(update.create_table_stmt, [])
-            .with_context(|| format!("Creating {}_new table", table))?;
+            .with_context(|| format!("Creating {table}_new table"))?;
         tx.execute(update.transfer_stmt, [])
             .with_context(|| format!("Transferring data from {table} to {table}_new",))?;
     }

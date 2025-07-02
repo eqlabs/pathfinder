@@ -140,9 +140,9 @@ pub enum TransactionExecutionError {
 impl std::fmt::Display for TransactionExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TransactionExecutionError::ExecutionError { error, .. } => write!(f, "{}", error),
-            TransactionExecutionError::Internal(e) => write!(f, "Internal error: {}", e),
-            TransactionExecutionError::Custom(e) => write!(f, "Custom error: {}", e),
+            TransactionExecutionError::ExecutionError { error, .. } => write!(f, "{error}"),
+            TransactionExecutionError::Internal(e) => write!(f, "Internal error: {e}"),
+            TransactionExecutionError::Custom(e) => write!(f, "Custom error: {e}"),
         }
     }
 }

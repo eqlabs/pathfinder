@@ -1272,7 +1272,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
@@ -1285,7 +1285,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Succeeded => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
@@ -1367,7 +1367,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
@@ -1380,7 +1380,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Reverted => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
@@ -1462,7 +1462,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Received => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())
@@ -1475,7 +1475,7 @@ mod tests {
                 subscription_id: 0,
                 item,
             }) if item.as_ref() == &TransactionStatusUpdate::Rejected => {}
-            _ => panic!("Unexpected message: {:?}", msg),
+            _ => panic!("Unexpected message: {msg:?}"),
         }
 
         let msg = timeout(Duration::from_secs(2), msg_receiver.recv())

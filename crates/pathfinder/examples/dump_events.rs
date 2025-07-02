@@ -82,15 +82,15 @@ fn make_ground_path(cli: &Cli) -> anyhow::Result<PathBuf> {
 
     if let serde_json::Value::Object(ref filter_map) = filter_json {
         if !filter_map.is_empty() {
-            let filter_name = format!("{}f{}.json", basename, filter_number);
+            let filter_name = format!("{basename}f{filter_number}.json");
             let filter_path = dir.join(filter_name);
             fs::write(filter_path, filter_json.to_string())?;
 
-            basename = format!("{}w{}", basename, filter_number);
+            basename = format!("{basename}w{filter_number}");
         }
     }
 
-    let name = format!("{}.jsonl", basename);
+    let name = format!("{basename}.jsonl");
     Ok(dir.join(name))
 }
 
@@ -166,7 +166,7 @@ fn main() -> anyhow::Result<()> {
                             "keys": event.keys,
                             "transaction_hash": tx_hash.clone(),
                         });
-                        writeln!(&mut output_file, "{}", v)?;
+                        writeln!(&mut output_file, "{v}")?;
                     }
                 }
             }

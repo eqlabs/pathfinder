@@ -66,7 +66,7 @@ async fn single_node_propose_timeout_advances_round() {
             assert_eq!(h, height);
             assert_eq!(r, Round::from(0));
         }
-        other => panic!("Expected RequestProposal for round 0, got: {:?}", other),
+        other => panic!("Expected RequestProposal for round 0, got: {other:?}"),
     }
 
     // Step time forward until round 1 proposal is requested

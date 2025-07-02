@@ -651,8 +651,7 @@ fn parse_versioned_constants(
         for (raw_version, rel_path) in source {
             let version = raw_version.parse::<StarknetVersion>().map_err(|_| {
                 ParseVersionedConstantsError::ParseMap(serde::de::Error::custom(format!(
-                    "Invalid Starknet version \"{}\"",
-                    raw_version
+                    "Invalid Starknet version \"{raw_version}\""
                 )))
             })?;
             let abs_path = std::fs::canonicalize(dir_path.join(rel_path))?;

@@ -149,8 +149,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
                 // No CASM definition means this is a legacy Cairo 0 class.
                 let class_definition = String::from_utf8(class_definition).map_err(|error| {
                     StateError::StateReadError(format!(
-                        "Class definition is not valid UTF-8: {}",
-                        error
+                        "Class definition is not valid UTF-8: {error}"
                     ))
                 })?;
 
@@ -183,7 +182,7 @@ fn sierra_class_as_casm(
     casm_definition: Vec<u8>,
 ) -> Result<RunnableCompiledClass, StateError> {
     let casm_definition = String::from_utf8(casm_definition).map_err(|error| {
-        StateError::StateReadError(format!("CASM definition is not valid UTF-8: {}", error))
+        StateError::StateReadError(format!("CASM definition is not valid UTF-8: {error}"))
     })?;
     let casm_class = blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(
         &casm_definition,
