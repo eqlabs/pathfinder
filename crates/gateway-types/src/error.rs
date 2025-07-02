@@ -122,7 +122,7 @@ pub enum KnownStarknetErrorCode {
 #[cfg(test)]
 mod tests {
     use super::StarknetErrorCode;
-    use crate::error::KnownStarknetErrorCode;
+    use crate::error::{KnownStarknetErrorCode, StarknetError};
 
     #[test]
     fn test_known_error_code() {
@@ -139,5 +139,32 @@ mod tests {
             e,
             StarknetErrorCode::Unknown("StarknetErrorCode.UNKNOWN_ERROR".to_owned())
         )
+    }
+
+    #[test]
+    fn test_unknown_starknet_error() {
+        let e = serde_json::from_value::<StarknetError>(serde_json::json!({
+            "code": "StarknetErrorCode.UNKNOWN_ERROR",
+            "message": "An unknown error occurred"
+        }))
+        .unwrap();
+
+        assert_eq!(
+            e,
+            StarknetError {
+                code: StarknetErrorCode::Unknown("StarknetErrorCode.UNKNOWN_ERROR".to_owned()),
+                message: "An unknown error occurred".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_starknet_error_to_string() {
+        let e = StarknetError {
+            code: StarknetErrorCode::Unknown("StarknetErrorCode.UNKNOWN_ERROR".to_owned()),
+            message: "An unknown error occurred".to_owned(),
+        };
+
+        assert_eq!(e.to_string(), "An unknown error occurred");
     }
 }
