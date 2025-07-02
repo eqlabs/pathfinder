@@ -1,3 +1,4 @@
+use libp2p::gossipsub::PublishError;
 use libp2p::PeerId;
 use p2p_proto::consensus::{ProposalPart, Vote};
 use tokio::sync::mpsc;
@@ -8,12 +9,12 @@ use crate::core;
 
 #[derive(Clone, Debug)]
 pub struct Client {
-    sender: mpsc::Sender<core::Command<Command>>,
+    sender: mpsc::UnboundedSender<core::Command<Command>>,
     local_peer_id: PeerId,
 }
 
-impl From<(PeerId, mpsc::Sender<core::Command<Command>>)> for Client {
-    fn from((peer_id, sender): (PeerId, mpsc::Sender<core::Command<Command>>)) -> Self {
+impl From<(PeerId, mpsc::UnboundedSender<core::Command<Command>>)> for Client {
+    fn from((peer_id, sender): (PeerId, mpsc::UnboundedSender<core::Command<Command>>)) -> Self {
         Self {
             sender,
             local_peer_id: peer_id,
@@ -26,11 +27,10 @@ impl Client {
         &self.local_peer_id
     }
 
-    pub async fn gossip_vote(&self, vote: Vote) -> anyhow::Result<()> {
+    pub async fn gossip_vote(&self, vote: Vote) -> Result<(), PublishError> {
         let (done_tx, mut rx) = mpsc::channel(1);
         self.sender
             .send(core::Command::Application(Command::Vote { vote, done_tx }))
-            .await
             .expect("Command receiver not to be dropped");
 
         rx.recv().await.expect("Sender not to be dropped")
@@ -40,7 +40,7 @@ impl Client {
         &self,
         height_and_round: HeightAndRound,
         proposal: Vec<ProposalPart>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), PublishError> {
         let (done_tx, mut rx) = mpsc::channel(1);
         self.sender
             .send(core::Command::Application(Command::Proposal {
@@ -48,7 +48,6 @@ impl Client {
                 proposal,
                 done_tx,
             }))
-            .await
             .expect("Command receiver not to be dropped");
 
         rx.recv().await.expect("Sender not to be dropped")
