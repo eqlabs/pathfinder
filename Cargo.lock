@@ -8424,6 +8424,7 @@ dependencies = [
  "base64 0.13.1",
  "bitvec",
  "bytes",
+ "cached",
  "clap",
  "console-subscriber",
  "const-decoder",

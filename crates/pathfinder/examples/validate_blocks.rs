@@ -79,6 +79,7 @@ fn main() -> anyhow::Result<()> {
             .transaction()
             .context("Create database transaction")?;
         let (mut proposal, header) = create_proposal(&db_tx, block_number)?;
+
         drop(db_tx);
 
         let Some(ProposalPart::Init(proposal_init)) = proposal.pop_front() else {
@@ -232,7 +233,8 @@ fn create_proposal(
     proposal_parts.push_back(ProposalPart::Fin(ProposalFin {
         // TODO(validator) using block hash for now, as we don't know how to calculate the proposal
         // commitment
-        proposal_commitment: Hash(header.hash.0),
+        // proposal_commitment: Hash(header.hash.0),
+        proposal_commitment: Hash(header.state_diff_commitment.0),
     }));
 
     Ok((proposal_parts, header))
