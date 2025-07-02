@@ -13,7 +13,7 @@ use tokio::time::MissedTickBehavior;
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
-use crate::Reorg;
+use crate::{Reorg, RpcVersion};
 
 pub struct SubscribeTransactionStatus;
 
@@ -124,6 +124,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     #[allow(clippy::collapsible_if)]
     async fn subscribe(
         state: RpcContext,
+        _version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {

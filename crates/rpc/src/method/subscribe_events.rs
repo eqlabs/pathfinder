@@ -12,7 +12,7 @@ use crate::error::ApplicationError;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::method::get_events::EmittedEvent;
 use crate::types::request::SubscriptionBlockId;
-use crate::Reorg;
+use crate::{Reorg, RpcVersion};
 
 pub struct SubscribeEvents;
 
@@ -183,6 +183,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
     async fn subscribe(
         state: RpcContext,
+        version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {
@@ -287,6 +288,11 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         tracing::debug!(error=%e, "Pending data channel closed, stopping subscription");
                         break;
                     }
+                    if version >= RpcVersion::V09 {
+                        // Ignore pre-confirmed data as it might never actually finalize.
+                        continue;
+                    }
+
                     let pending = pending_data.borrow_and_update().clone();
                     tracing::trace!(block_number=%pending.block_number(), "Received pending block update");
                     let block_number = pending.block_number();

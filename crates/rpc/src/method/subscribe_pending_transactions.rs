@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 
 use crate::context::RpcContext;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
+use crate::RpcVersion;
 
 pub struct SubscribePendingTransactions;
 
@@ -65,6 +66,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
 
     async fn subscribe(
         state: RpcContext,
+        _version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {

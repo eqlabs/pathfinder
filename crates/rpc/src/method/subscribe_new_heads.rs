@@ -8,7 +8,7 @@ use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::types::request::SubscriptionBlockId;
-use crate::Reorg;
+use crate::{Reorg, RpcVersion};
 
 pub struct SubscribeNewHeads;
 
@@ -97,6 +97,7 @@ impl RpcSubscriptionFlow for SubscribeNewHeads {
 
     async fn subscribe(
         state: RpcContext,
+        _version: RpcVersion,
         _params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {
