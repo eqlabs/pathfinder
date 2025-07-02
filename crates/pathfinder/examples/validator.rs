@@ -15,6 +15,7 @@ use clap::Parser;
 use pathfinder_common::ChainId;
 use pathfinder_lib::config::p2p::{P2PConsensusCli, P2PConsensusConfig};
 use pathfinder_lib::p2p_network::consensus;
+use tokio::signal::unix::{signal, SignalKind};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -45,6 +46,9 @@ fn setup_tracing_full() {
 async fn main() -> anyhow::Result<()> {
     setup_tracing_full();
 
+    let mut term_signal = signal(SignalKind::terminate())?;
+    let mut int_signal = signal(SignalKind::interrupt())?;
+
     let config = Cli::parse();
     let network = config.network;
     let config = P2PConsensusConfig::parse_or_exit(config.consensus);
@@ -58,6 +62,12 @@ async fn main() -> anyhow::Result<()> {
     tokio::select! {
         result = _jh => {
             eprintln!("Consensus task finished with result: {:?}", result);
+        }
+        _ = term_signal.recv() => {
+            tracing::info!("TERM signal received");
+        }
+        _ = int_signal.recv() => {
+            tracing::info!("INT signal received");
         }
     }
 
