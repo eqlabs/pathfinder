@@ -287,7 +287,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await;
 
-    let (consensus_p2p_handle, _consensus_p2p_client) =
+    let (consensus_p2p_handle, _consensus_p2p_client_and_event_rx) =
         p2p_network::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone())
             .await;
 

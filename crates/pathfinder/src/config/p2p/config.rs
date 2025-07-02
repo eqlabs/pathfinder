@@ -52,7 +52,7 @@ macro_rules! impl_from_p2p_cli {
                     let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
                         multiaddrs
                             .into_iter()
-                            .map(|addr| Multiaddr::from_str(&addr))
+                            .map(|addr| Multiaddr::from_str(addr.trim()))
                             .collect::<Result<Vec<_>>>()
                             .unwrap_or_else(|error| {
                                 Cli::command()

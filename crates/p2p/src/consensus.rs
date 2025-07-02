@@ -1,19 +1,22 @@
 //! Consensus behaviour and other related utilities for the consensus p2p
 //! network.
-mod behaviour;
-mod client;
-mod height_and_round;
-mod stream;
-
 use std::collections::HashMap;
 
-pub use behaviour::Behaviour;
-use height_and_round::HeightAndRound;
+use libp2p::gossipsub::PublishError;
 use p2p_proto::consensus::{ProposalPart, Vote};
 use pathfinder_common::ContractAddress;
 use smallvec::SmallVec;
 use stream::{StreamMessage, StreamMessageBody, StreamState};
 use tokio::sync::mpsc::Sender;
+
+mod behaviour;
+mod client;
+mod height_and_round;
+mod stream;
+
+pub use behaviour::Behaviour;
+pub use client::Client;
+pub use height_and_round::HeightAndRound;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -30,12 +33,12 @@ pub enum Command {
     Proposal {
         height_and_round: HeightAndRound,
         proposal: Vec<ProposalPart>,
-        done_tx: Sender<anyhow::Result<()>>,
+        done_tx: Sender<Result<(), PublishError>>,
     },
     /// A vote for a proposal.
     Vote {
         vote: Vote,
-        done_tx: Sender<anyhow::Result<()>>,
+        done_tx: Sender<Result<(), PublishError>>,
     },
     /// Test command to create a proposal stream.
     #[cfg(test)]
@@ -56,7 +59,7 @@ pub enum Event {
 pub struct Config {}
 
 /// The state of the consensus P2P network.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct State {
     /// The active streams of the consensus P2P network.
     active_streams: HashMap<HeightAndRound, StreamState<ProposalPart>>,
@@ -505,7 +508,7 @@ mod tests {
 
     async fn create_test_node() -> (
         core::Client<consensus::Command>,
-        mpsc::Receiver<consensus::Event>,
+        mpsc::UnboundedReceiver<consensus::Event>,
         main_loop::MainLoop<consensus::Behaviour>,
     ) {
         let keypair = Keypair::generate_ed25519();
