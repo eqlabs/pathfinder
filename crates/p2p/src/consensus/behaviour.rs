@@ -1,4 +1,3 @@
-use anyhow::Context;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, PeerId};
@@ -30,6 +29,7 @@ impl ApplicationBehaviour for Behaviour {
     type Event = consensus::Event;
     type State = consensus::State;
 
+    #[tracing::instrument(skip(self, state))]
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State) {
         use consensus::Command as ConsensusCommand;
         match command {
@@ -49,33 +49,35 @@ impl ApplicationBehaviour for Behaviour {
                 for msg in stream_msgs {
                     let topic = IdentTopic::new(TOPIC_PROPOSALS);
 
-                    if let Err(e) = self
-                        .gossipsub
-                        .publish(topic, msg.to_protobuf_bytes())
-                        .context("Failed to publish proposal message")
-                    {
-                        error!("Failed to publish proposal message: {}", e);
+                    if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
+                        error!(
+                            "Failed to publish proposal message, stream id {}, message id {}, \
+                             error {e:?}",
+                            msg.stream_id, msg.message_id
+                        );
                         tx_result = Err(e);
                         break;
                     }
                 }
-                let _ = done_tx
+                done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");
             }
             ConsensusCommand::Vote { vote, done_tx } => {
+                let cloned_vote = vote.clone();
                 let data = vote.to_protobuf_bytes();
                 let topic = IdentTopic::new(TOPIC_VOTES);
+
                 let tx_result = self
                     .gossipsub
                     .publish(topic, data)
-                    .context("Failed to publish vote message")
                     .inspect_err(|e| {
-                        error!("{e}");
+                        error!("Failed to publish vote message {cloned_vote:?}, error {e:?}");
                     })
                     .map(|_| ());
-                let _ = done_tx
+
+                done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");
@@ -104,11 +106,12 @@ impl ApplicationBehaviour for Behaviour {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn handle_event(
         &mut self,
         event: BehaviourEvent,
         state: &mut Self::State,
-        event_sender: mpsc::Sender<Self::Event>,
+        event_sender: mpsc::UnboundedSender<Self::Event>,
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
@@ -122,7 +125,7 @@ impl ApplicationBehaviour for Behaviour {
                     if let Ok(stream_msg) = StreamMessage::from_protobuf_bytes(&message.data) {
                         let events = handle_incoming_proposal_message(state, stream_msg);
                         for event in events {
-                            let _ = event_sender.send(event).await;
+                            let _ = event_sender.send(event);
                         }
                     } else {
                         error!("Failed to parse proposal message with id: {}", message_id);
@@ -130,7 +133,7 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 TOPIC_VOTES => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
-                        let _ = event_sender.send(Event::Vote(vote)).await;
+                        let _ = event_sender.send(Event::Vote(vote));
                     } else {
                         error!("Failed to parse vote message with id: {}", message_id);
                     }

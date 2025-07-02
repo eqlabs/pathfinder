@@ -29,9 +29,9 @@ where
     /// Handles all internal networking for the p2p network.
     swarm: libp2p::swarm::Swarm<Behaviour<B>>,
     /// Receives commands from the outside world.
-    command_receiver: mpsc::Receiver<Command<<B as ApplicationBehaviour>::Command>>,
+    command_receiver: mpsc::UnboundedReceiver<Command<<B as ApplicationBehaviour>::Command>>,
     /// Sends events to the outside world.
-    event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
+    event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
     /// Keeps track of pending dials and allows us to notify the caller when a
     /// dial succeeds or fails.
     pending_dials: PendingDials,
@@ -48,7 +48,7 @@ where
     /// returning `Poll::Ready(None)`. This is important in cases when the node
     /// does not initiate any actions via the client and all the client
     /// instances are dropped.
-    _command_sender: mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
+    _command_sender: mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
 }
 
 /// Used to notify the caller when a dial succeeds or fails.
@@ -81,10 +81,10 @@ where
     /// * `event_sender` - The sender for events to the outside world.
     pub fn new(
         swarm: libp2p::swarm::Swarm<Behaviour<B>>,
-        event_sender: mpsc::Sender<<B as ApplicationBehaviour>::Event>,
+        event_sender: mpsc::UnboundedSender<<B as ApplicationBehaviour>::Event>,
     ) -> (
         Self,
-        mpsc::Sender<Command<<B as ApplicationBehaviour>::Command>>,
+        mpsc::UnboundedSender<Command<<B as ApplicationBehaviour>::Command>>,
     ) {
         // Test event buffer is not used outside tests, so we can make it as small as
         // possible
@@ -94,7 +94,7 @@ where
         const TEST_EVENT_BUFFER_SIZE: usize = 1000;
         let (_test_event_sender, rx) = mpsc::channel(TEST_EVENT_BUFFER_SIZE);
 
-        let (command_sender, command_receiver) = mpsc::channel(1);
+        let (command_sender, command_receiver) = mpsc::unbounded_channel();
 
         (
             Self {

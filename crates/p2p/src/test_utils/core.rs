@@ -8,11 +8,11 @@ use crate::peers::Peer;
 
 #[derive(Clone)]
 pub struct Client<C> {
-    sender: mpsc::Sender<Command<C>>,
+    sender: mpsc::UnboundedSender<Command<C>>,
 }
 
 impl<C> Client<C> {
-    pub fn new(sender: mpsc::Sender<Command<C>>) -> Self {
+    pub fn new(sender: mpsc::UnboundedSender<Command<C>>) -> Self {
         Self { sender }
     }
 
@@ -20,7 +20,6 @@ impl<C> Client<C> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::_Test(TestCommand::GetPeersFromDHT(sender)))
-            .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
@@ -29,7 +28,6 @@ impl<C> Client<C> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::_Test(TestCommand::GetConnectedPeers(sender)))
-            .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }

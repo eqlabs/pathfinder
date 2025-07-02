@@ -79,10 +79,19 @@ mod inner {
         let keypair = identity::load_or_generate(config.core.identity_config_file)?;
         let listen_on = config.core.listen_on;
         let bootstrap_addresses = config.core.bootstrap_addresses;
-        let predefined_peers = config.core.predefined_peers;
+        let mut predefined_peers = config.core.predefined_peers;
 
-        let peer_id = keypair.public().to_peer_id();
-        tracing::info!(%peer_id, "🖧 Starting sync P2P");
+        let my_peer_id = keypair.public().to_peer_id();
+        tracing::info!(%my_peer_id, "🖧 Starting sync P2P");
+
+        // In testing it is convenient to paste the entire list of peers into their
+        // configs without having to remove the peer ID of the very configured peer.
+        if let Some(my_idx) = predefined_peers.iter().position(|addr| {
+            addr.iter()
+                .any(|p| matches!(p, Protocol::P2p(peer_id) if peer_id == my_peer_id))
+        }) {
+            predefined_peers.swap_remove(my_idx);
+        }
 
         let (core_client, mut p2p_events, p2p_main_loop) =
             p2p::new_sync(keypair, core_config, sync_config, chain_id);

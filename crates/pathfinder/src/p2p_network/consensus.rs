@@ -1,21 +1,21 @@
 #[cfg(feature = "p2p")]
 use inner::start_inner;
+use p2p::consensus::{Client, Event};
 use pathfinder_common::ChainId;
-use tokio::task::{self, JoinHandle};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::config::p2p::P2PConsensusConfig;
 
-// TODO
-// Placeholder for consensus client
-type Client = ();
+type ConsensusHandle = (
+    JoinHandle<anyhow::Result<()>>,
+    Option<(mpsc::UnboundedReceiver<Event>, Client)>,
+);
 
-pub async fn start(
-    chain_id: ChainId,
-    config: P2PConsensusConfig,
-) -> (JoinHandle<anyhow::Result<()>>, Option<Client>) {
+pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHandle {
     start_inner(chain_id, config).await.unwrap_or_else(|error| {
         (
-            task::spawn(std::future::ready(Err(
+            tokio::task::spawn(std::future::ready(Err(
                 error.context("Consensus P2P failed to start")
             ))),
             None,
@@ -28,24 +28,19 @@ mod inner {
     use std::time::Duration;
 
     use anyhow::Context;
-    use p2p::consensus::Event;
-    // TODO
-    // use p2p::consensus::client::peer_agnostic;
+    use futures::FutureExt;
     use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
     use pathfinder_common::ChainId;
-    use pathfinder_storage::Storage;
-    use tokio::task::JoinHandle;
-    use tracing::Instrument;
 
-    use super::Client;
-    use crate::config::p2p::{P2PConsensusConfig, P2PSyncConfig};
+    use super::*;
+    use crate::config::p2p::P2PConsensusConfig;
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]
     pub(super) async fn start_inner(
         chain_id: ChainId,
         config: P2PConsensusConfig,
-    ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
+    ) -> anyhow::Result<ConsensusHandle> {
         let core_config = p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
@@ -64,22 +59,28 @@ mod inner {
         let keypair = identity::load_or_generate(config.core.identity_config_file)?;
         let listen_on = config.core.listen_on;
         let bootstrap_addresses = config.core.bootstrap_addresses;
-        let predefined_peers = config.core.predefined_peers;
+        let mut predefined_peers = config.core.predefined_peers;
 
-        let peer_id = keypair.public().to_peer_id();
-        tracing::info!(%peer_id, "🖧 Starting consensus P2P");
+        let my_peer_id = keypair.public().to_peer_id();
+        tracing::info!(%my_peer_id, "🖧 Starting consensus P2P");
 
-        let (core_client, mut p2p_events, p2p_main_loop) = p2p::new_consensus(
+        // In testing it is convenient to paste the entire list of peers into their
+        // configs without having to remove the peer ID of the very configured peer.
+        if let Some(my_idx) = predefined_peers.iter().position(|addr| {
+            addr.iter()
+                .any(|p| matches!(p, Protocol::P2p(peer_id) if peer_id == my_peer_id))
+        }) {
+            predefined_peers.swap_remove(my_idx);
+        }
+
+        let (core_client, p2p_events, p2p_main_loop) = p2p::new_consensus(
             keypair,
             core_config,
             p2p::consensus::Config {/*TODO*/},
             chain_id,
         );
 
-        let mut main_loop_handle = {
-            let span = tracing::info_span!("behaviour");
-            util::task::spawn(p2p_main_loop.run().instrument(span))
-        };
+        let main_loop_handle = { util::task::spawn(p2p_main_loop.run().map(Ok)) };
 
         for addr in listen_on {
             core_client
@@ -115,41 +116,10 @@ mod inner {
             core_client.dial(peer_id, peer).await?;
         }
 
-        let join_handle = {
-            util::task::spawn(
-                async move {
-                    loop {
-                        tokio::select! {
-                            _ = &mut main_loop_handle => {
-                                tracing::error!("consensus p2p task ended unexpectedly");
-                                anyhow::bail!("consensus p2p task ended unexpectedly");
-                            }
-                            Some(event) = p2p_events.recv() => {
-                                match handle_p2p_event(event).await {
-                                    Ok(()) => {},
-                                    Err(e) => { tracing::error!("Failed to handle consensus P2P event: {:#}", e) },
-                                }
-                            }
-                        }
-                    }
-                }
-                .in_current_span(),
-            )
-        };
-
         Ok((
-            join_handle,
-            Some(() /* Client::new(core_client.as_pair().into()) */),
+            main_loop_handle,
+            Some((p2p_events, Client::from(core_client.as_pair()))),
         ))
-    }
-
-    async fn handle_p2p_event(event: Event) -> anyhow::Result<()> {
-        match event {
-            Event::Proposal(height_and_round, proposal_part) => { /*TODO*/ }
-            Event::Vote(vote) => { /*TODO*/ }
-        }
-
-        Ok(())
     }
 }
 
@@ -157,6 +127,9 @@ mod inner {
 async fn start_inner(
     _: ChainId,
     _: P2PConsensusConfig,
-) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
+) -> anyhow::Result<(
+    JoinHandle<anyhow::Result<()>>,
+    Option<(mpsc::UnboundedReceiver<Event>, Client)>,
+)> {
     Ok((tokio::task::spawn(futures::future::pending()), None))
 }

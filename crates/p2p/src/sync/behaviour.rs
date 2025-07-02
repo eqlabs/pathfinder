@@ -95,7 +95,7 @@ impl ApplicationBehaviour for Behaviour {
         &mut self,
         event: BehaviourEvent,
         state: &mut Self::State,
-        event_sender: mpsc::Sender<Self::Event>,
+        event_sender: mpsc::UnboundedSender<Self::Event>,
     ) {
         use p2p_stream::Event as P2PStreamEvent;
         match event {
@@ -112,7 +112,6 @@ impl ApplicationBehaviour for Behaviour {
                         request,
                         channel,
                     })
-                    .await
                     .expect("Event receiver not to be dropped");
             }
             BehaviourEvent::HeaderSync(P2PStreamEvent::OutboundRequestSentAwaitingResponses {
@@ -141,7 +140,6 @@ impl ApplicationBehaviour for Behaviour {
                         request,
                         channel,
                     })
-                    .await
                     .expect("Event receiver not to be dropped");
             }
             BehaviourEvent::ClassSync(P2PStreamEvent::OutboundRequestSentAwaitingResponses {
@@ -170,7 +168,6 @@ impl ApplicationBehaviour for Behaviour {
                         request,
                         channel,
                     })
-                    .await
                     .expect("Event receiver not to be dropped");
             }
             BehaviourEvent::StateDiffSync(
@@ -201,7 +198,6 @@ impl ApplicationBehaviour for Behaviour {
                         request,
                         channel,
                     })
-                    .await
                     .expect("Event receiver not to be dropped");
             }
             BehaviourEvent::TransactionSync(
@@ -232,7 +228,6 @@ impl ApplicationBehaviour for Behaviour {
                         request,
                         channel,
                     })
-                    .await
                     .expect("Event receiver not to be dropped");
             }
             BehaviourEvent::EventSync(P2PStreamEvent::OutboundRequestSentAwaitingResponses {
