@@ -22,7 +22,10 @@ use crate::wal::{convert_wal_entry_to_input, WalEntry, WalSink};
 use crate::{
     ConsensusCommand,
     ConsensusEvent,
+    ConsensusValue,
     NetworkMessage,
+    Proposal,
+    SignedProposal,
     SignedVote,
     ValidatorAddress,
     ValidatorSet,
@@ -423,13 +426,39 @@ fn handle_effect(
             output_queue.push_back(ConsensusEvent::Gossip(msg));
             Ok(resume.resume_with(()))
         }
-        Effect::RestreamProposal(_, _, _, _, _, resume) => Ok(resume.resume_with(())),
-        other => {
-            tracing::warn!(
-                effect = ?other,
-                "Unhandled effect (internal-only)"
+        Effect::RestreamProposal(height, round, valid_round, address, value_id, resume) => {
+            tracing::debug!(
+                height = %height,
+                round = %round,
+                valid_round = %valid_round,
+                address = %address,
+                value_id = ?value_id,
+                "Restreaming proposal"
             );
-            Ok(Resume::Continue)
+            output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Proposal(
+                SignedProposal {
+                    proposal: Proposal {
+                        height,
+                        round: round.into(),
+                        pol_round: valid_round.into(),
+                        proposer: address,
+                        value_id: ConsensusValue::new(value_id),
+                    },
+                    signature: Signature::from_bytes([0; 64]), // TODO: Replace with real signature
+                },
+            )));
+            Ok(resume.resume_with(()))
+        }
+        Effect::Rebroadcast(vote, resume) => {
+            tracing::debug!(
+                vote = ?vote,
+                "Rebroadcasting vote"
+            );
+            output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Vote(SignedVote {
+                vote: vote.message,
+                signature: vote.signature,
+            })));
+            Ok(resume.resume_with(()))
         }
     }
 }
