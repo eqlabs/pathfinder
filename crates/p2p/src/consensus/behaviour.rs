@@ -1,3 +1,4 @@
+use anyhow::Context;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, PeerId};
@@ -32,22 +33,52 @@ impl ApplicationBehaviour for Behaviour {
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State) {
         use consensus::Command as ConsensusCommand;
         match command {
-            ConsensusCommand::Proposal(height_and_round, proposal_part) => {
-                let stream_msgs =
-                    create_outgoing_proposal_message(state, height_and_round, proposal_part);
+            ConsensusCommand::Proposal {
+                height_and_round,
+                proposal,
+                done_tx,
+            } => {
+                let stream_msgs = proposal
+                    .into_iter()
+                    .flat_map(|proposal_part| {
+                        create_outgoing_proposal_message(state, height_and_round, proposal_part)
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut tx_result = Ok(());
                 for msg in stream_msgs {
                     let topic = IdentTopic::new(TOPIC_PROPOSALS);
-                    if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
+
+                    if let Err(e) = self
+                        .gossipsub
+                        .publish(topic, msg.to_protobuf_bytes())
+                        .context("Failed to publish proposal message")
+                    {
                         error!("Failed to publish proposal message: {}", e);
+                        tx_result = Err(e);
+                        break;
                     }
                 }
+                let _ = done_tx
+                    .send(tx_result)
+                    .await
+                    .expect("Receiver not to be dropped");
             }
-            ConsensusCommand::Vote(vote) => {
+            ConsensusCommand::Vote { vote, done_tx } => {
                 let data = vote.to_protobuf_bytes();
                 let topic = IdentTopic::new(TOPIC_VOTES);
-                if let Err(e) = self.gossipsub.publish(topic, data) {
-                    error!("Failed to publish vote message: {}", e);
-                }
+                let tx_result = self
+                    .gossipsub
+                    .publish(topic, data)
+                    .context("Failed to publish vote message")
+                    .inspect_err(|e| {
+                        error!("{e}");
+                    })
+                    .map(|_| ());
+                let _ = done_tx
+                    .send(tx_result)
+                    .await
+                    .expect("Receiver not to be dropped");
             }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {
