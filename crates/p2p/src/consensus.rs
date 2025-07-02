@@ -1,6 +1,7 @@
 //! Consensus behaviour and other related utilities for the consensus p2p
 //! network.
 mod behaviour;
+mod client;
 mod height_and_round;
 mod stream;
 
@@ -10,7 +11,9 @@ pub use behaviour::Behaviour;
 use height_and_round::HeightAndRound;
 use p2p_proto::consensus::{ProposalPart, Vote};
 use pathfinder_common::ContractAddress;
+use smallvec::SmallVec;
 use stream::{StreamMessage, StreamMessageBody, StreamState};
+use tokio::sync::mpsc::Sender;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -24,9 +27,16 @@ pub type ValidatorAddress = ContractAddress;
 #[derive(Debug, Clone)]
 pub enum Command {
     /// A proposal (part) for a new block.
-    Proposal(HeightAndRound, ProposalPart),
+    Proposal {
+        height_and_round: HeightAndRound,
+        proposal: Vec<ProposalPart>,
+        done_tx: Sender<anyhow::Result<()>>,
+    },
     /// A vote for a proposal.
-    Vote(Vote),
+    Vote {
+        vote: Vote,
+        done_tx: Sender<anyhow::Result<()>>,
+    },
     /// Test command to create a proposal stream.
     #[cfg(test)]
     TestProposalStream(HeightAndRound, Vec<ProposalPart>, bool),
@@ -66,8 +76,8 @@ pub fn create_outgoing_proposal_message(
     state: &mut State,
     height_and_round: HeightAndRound,
     proposal: ProposalPart,
-) -> Vec<StreamMessage<ProposalPart>> {
-    let mut messages = Vec::with_capacity(2);
+) -> SmallVec<[StreamMessage<ProposalPart>; 2]> {
+    let mut messages = SmallVec::with_capacity(2);
 
     // Get or create stream state
     let stream_state = state
@@ -448,11 +458,16 @@ mod tests {
                 extension: None,
             },
         ];
-
+        let mut rxs = Vec::new();
         // Send votes from node1
         for vote in &votes {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            rxs.push(rx);
             node1_client
-                .send(Command::Vote(vote.clone()))
+                .send(Command::Vote {
+                    vote: vote.clone(),
+                    done_tx: tx,
+                })
                 .await
                 .unwrap();
         }
@@ -481,6 +496,10 @@ mod tests {
         assert!(
             expected_votes.is_empty(),
             "Some expected votes were not received"
+        );
+        assert!(
+            rxs.iter_mut().all(|rx| { rx.try_recv().is_ok() }),
+            "Not all confirmations were received"
         );
     }
 
