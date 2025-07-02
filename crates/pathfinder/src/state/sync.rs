@@ -20,7 +20,7 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{BlockId, Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{Block, PendingBlock, PreConfirmedBlock};
+use starknet_gateway_types::reply::{Block, GasPrices, PendingBlock, PreConfirmedBlock};
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
@@ -939,6 +939,14 @@ fn l2_update(
     // Update L2 database. These types shouldn't be options at this level,
     // but for now the unwraps are "safe" in that these should only ever be
     // None for pending queries to the sequencer, but we aren't using those here.
+    // Nonetheless, the 0 defaults for l2_gas_price do show in the
+    // database (for old blocks that don't really have that price),
+    // and since the feeder gateway normally returns 1 in that case,
+    // that should also be the default.
+    let l2_gas_price = block.l2_gas_price.unwrap_or(GasPrices {
+        price_in_wei: GasPrice(1),
+        price_in_fri: GasPrice(1),
+    });
     let header = BlockHeader {
         hash: block.block_hash,
         parent_hash: block.parent_block_hash,
@@ -952,8 +960,8 @@ fn l2_update(
         eth_l1_data_gas_price: block.l1_data_gas_price.price_in_wei,
         // Default value for Starknet <0.13.1 is zero
         strk_l1_data_gas_price: block.l1_data_gas_price.price_in_fri,
-        eth_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_wei,
-        strk_l2_gas_price: block.l2_gas_price.unwrap_or_default().price_in_fri,
+        eth_l2_gas_price: l2_gas_price.price_in_wei,
+        strk_l2_gas_price: l2_gas_price.price_in_fri,
         sequencer_address: block
             .sequencer_address
             .unwrap_or(SequencerAddress(Felt::ZERO)),
