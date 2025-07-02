@@ -8220,6 +8220,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
+ "smallvec",
  "test-log",
  "tokio",
  "tokio-stream",
