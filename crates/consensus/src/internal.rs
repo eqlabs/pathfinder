@@ -18,7 +18,7 @@ use tokio::time::Instant;
 
 use crate::config::TimeoutValues;
 use crate::malachite::MalachiteContext;
-use crate::wal::WalSink;
+use crate::wal::{convert_wal_entry_to_input, WalEntry, WalSink};
 use crate::{ConsensusCommand, ConsensusEvent, SignedVote, ValidatorSet};
 
 /// The [InternalConsensus] acts as a driver for the Malachite core and allows
@@ -55,10 +55,45 @@ impl InternalConsensus {
         }
     }
 
+    /// Recover the consensus from a list of write-ahead log entries.
+    pub fn recover_from_wal(&mut self, entries: Vec<WalEntry>) {
+        tracing::debug!(
+            validator = %self.state.address(),
+            entry_count = entries.len(),
+            "Recovering consensus from WAL entries"
+        );
+
+        for (i, entry) in entries.into_iter().enumerate() {
+            let input = convert_wal_entry_to_input(entry);
+            if let Err(e) = self.process_input(input) {
+                tracing::error!(
+                    validator = %self.state.address(),
+                    entry_index = i,
+                    error = %e,
+                    "Failed to process WAL entry during recovery"
+                );
+                self.output_queue.push_back(ConsensusEvent::Error(e.into()));
+            }
+        }
+
+        tracing::debug!(
+            validator = %self.state.address(),
+            "Completed WAL recovery"
+        );
+    }
+
+    /// Check if this consensus engine has been finalized (i.e., a decision has
+    /// been reached)
+    pub fn is_finalized(&self) -> bool {
+        self.wal.is_finalized()
+    }
+
+    /// Feed a command into the consensus engine.
     pub fn handle_command(&mut self, cmd: ConsensusCommand) {
         self.input_queue.push_back(cmd);
     }
 
+    /// Poll the internal consensus engine for the next event.
     pub async fn poll_internal(&mut self) -> Option<ConsensusEvent> {
         // Process any timeouts that are due.
         let now = Instant::now();
@@ -230,7 +265,13 @@ fn handle_effect(
             );
             output_queue.push_back(ConsensusEvent::Decision {
                 height: cert.height,
-                hash: cert.value_id.into_inner(),
+                hash: cert.value_id.clone().into_inner(),
+            });
+            // We append the decision to the WAL so that in case of a crash,
+            // we know this height has been finalized.
+            wal.append(WalEntry::Decision {
+                height: cert.height,
+                value: cert.value_id,
             });
             Ok(resume.resume_with(()))
         }
