@@ -1,4 +1,3 @@
-use anyhow::Context;
 use libp2p::gossipsub::{self, IdentTopic};
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{identity, PeerId};
@@ -49,12 +48,12 @@ impl ApplicationBehaviour for Behaviour {
                 for msg in stream_msgs {
                     let topic = IdentTopic::new(TOPIC_PROPOSALS);
 
-                    if let Err(e) = self
-                        .gossipsub
-                        .publish(topic, msg.to_protobuf_bytes())
-                        .context("Failed to publish proposal message")
-                    {
-                        error!("Failed to publish proposal message: {}", e);
+                    if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
+                        error!(
+                            "Failed to publish proposal message, stream id {}, message id {}, \
+                             error {e:?}",
+                            msg.stream_id, msg.message_id
+                        );
                         tx_result = Err(e);
                         break;
                     }
@@ -65,20 +64,24 @@ impl ApplicationBehaviour for Behaviour {
                     .expect("Receiver not to be dropped");
             }
             ConsensusCommand::Vote { vote, done_tx } => {
+                tracing::info!("ConsensusCommand::Vote 0");
+                let cloned_vote = vote.clone();
                 let data = vote.to_protobuf_bytes();
                 let topic = IdentTopic::new(TOPIC_VOTES);
+                tracing::info!("ConsensusCommand::Vote 1");
                 let tx_result = self
                     .gossipsub
                     .publish(topic, data)
-                    .context("Failed to publish vote message")
                     .inspect_err(|e| {
-                        error!("{e}");
+                        error!("Failed to publish vote message {cloned_vote:?}, error {e:?}");
                     })
                     .map(|_| ());
+                tracing::info!("ConsensusCommand::Vote 2");
                 let _ = done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");
+                tracing::info!("ConsensusCommand::Vote 3");
             }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {

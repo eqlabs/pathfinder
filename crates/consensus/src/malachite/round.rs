@@ -7,6 +7,10 @@ impl Round {
         Self(round)
     }
 
+    pub fn nil() -> Self {
+        Self(malachite_types::Round::Nil)
+    }
+
     pub fn as_u32(&self) -> Option<u32> {
         self.0.as_u32()
     }

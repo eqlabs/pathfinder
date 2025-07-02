@@ -6432,7 +6432,7 @@ dependencies = [
  "derive-where",
  "genawaiter",
  "informalsystems-malachitebft-core-driver",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
  "informalsystems-malachitebft-metrics",
  "informalsystems-malachitebft-peer",
  "multiaddr",
@@ -6448,7 +6448,7 @@ checksum = "c34fa8ccf16f1023541d191a0eefe1359906fb7192aed76ce99257c39ec07ca5"
 dependencies = [
  "derive-where",
  "informalsystems-malachitebft-core-state-machine",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
  "informalsystems-malachitebft-core-votekeeper",
  "thiserror 2.0.11",
 ]
@@ -6461,7 +6461,18 @@ checksum = "2829f0a0821eecd21fbc681ab2d2bd899602348305ca2424d0b8a2c56d9f7ea3"
 dependencies = [
  "derive-where",
  "displaydoc",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
+]
+
+[[package]]
+name = "informalsystems-malachitebft-core-types"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "214b7d963a68f336c99e4a60def605e0efd2ad04dfb19ec64c36995ce6af4d2f"
+dependencies = [
+ "bytes",
+ "derive-where",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -6483,7 +6494,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "341fefe0f86cacadf9190d19c786054c0535d9713c7f4f1831ee3223473258c8"
 dependencies = [
  "derive-where",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
  "thiserror 2.0.11",
 ]
 
@@ -6510,13 +6521,26 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-signing-ed25519"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98c6c3a026c52ad8c84bc9b4e80cd504728ea85caa61dce46f9a9fdda5e4cf0a"
+dependencies = [
+ "base64 0.22.1",
+ "ed25519-consensus",
+ "informalsystems-malachitebft-core-types 0.2.0",
+ "serde",
+ "signature",
+]
+
+[[package]]
+name = "informalsystems-malachitebft-signing-ed25519"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b232f4564cd745f58ca2bd3ffb7adac7c810ab4c78d778b16bd512242648b186"
 dependencies = [
  "base64 0.22.1",
  "ed25519-consensus",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
  "serde",
  "signature",
 ]
@@ -8424,6 +8448,7 @@ dependencies = [
  "base64 0.13.1",
  "bitvec",
  "bytes",
+ "cached",
  "clap",
  "console-subscriber",
  "const-decoder",
@@ -8432,7 +8457,7 @@ dependencies = [
  "flate2",
  "futures",
  "http 1.2.0",
- "informalsystems-malachitebft-signing-ed25519",
+ "informalsystems-malachitebft-signing-ed25519 0.2.0",
  "ipnet",
  "jemallocator",
  "metrics 0.20.1",
@@ -8567,9 +8592,9 @@ dependencies = [
  "base64 0.13.1",
  "ed25519-consensus",
  "informalsystems-malachitebft-core-consensus",
- "informalsystems-malachitebft-core-types",
+ "informalsystems-malachitebft-core-types 0.3.0",
  "informalsystems-malachitebft-metrics",
- "informalsystems-malachitebft-signing-ed25519",
+ "informalsystems-malachitebft-signing-ed25519 0.3.0",
  "p2p_proto",
  "pathfinder-common",
  "pathfinder-crypto",

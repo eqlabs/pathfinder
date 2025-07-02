@@ -1,13 +1,14 @@
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Display;
 use std::sync::Arc;
 
 use malachite_consensus::Params;
-pub use malachite_types::VoteType;
+pub use malachite_types::{Height as HeightExt, VoteType};
 use malachite_types::{Timeout, ValuePayload};
 use p2p_proto::common::Hash;
 use serde::{Deserialize, Serialize};
 
-pub use crate::config::Config;
+pub use crate::config::{Config, TimeoutValues};
 use crate::internal::InternalConsensus;
 // Re-export malachite types needed by the public API
 pub use crate::malachite::{
@@ -335,5 +336,41 @@ impl StaticValidatorSetProvider {
 impl ValidatorSetProvider for StaticValidatorSetProvider {
     fn get_validator_set(&self, _height: &Height) -> ValidatorSet {
         self.validator_set.clone()
+    }
+}
+
+impl Display for ConsensusEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusEvent::Gossip(msg) => write!(f, "Gossip({})", msg),
+            ConsensusEvent::RequestProposal {
+                height,
+                round,
+                timeout: _,
+            } => write!(
+                f,
+                "RequestProposal{{height: {}, round: {}, ..}}",
+                height, round
+            ),
+            ConsensusEvent::Decision { height, hash } => {
+                write!(f, "Decision{{height: {}, hash: {}}}", height, hash.0)
+            }
+            ConsensusEvent::Error(err) => {
+                write!(f, "Error({})", err)
+            }
+        }
+    }
+}
+
+impl Display for NetworkMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkMessage::Proposal(proposal) => {
+                write!(f, "SignedProposal{{proposal: {}, ..}}", proposal.proposal)
+            }
+            NetworkMessage::Vote(vote) => {
+                write!(f, "SignedVote{{vote: {}, ..}}", vote.vote)
+            }
+        }
     }
 }
