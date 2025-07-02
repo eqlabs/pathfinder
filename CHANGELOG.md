@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- The default value of L2 gas price for historical blocks has been changed from 0 to 1 (for both WEI and FRI), to agree with the feeder gateway default.
+
 ## [0.17.0] - 2025-06-29
 
 ### Added
