@@ -24,26 +24,13 @@ use pathfinder_consensus::{
 };
 use pathfinder_crypto::Felt;
 use tokio::time::pause;
-use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::drive_until;
 
-#[allow(dead_code)]
-fn setup_tracing_full() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .with_target(true)
-        .without_time()
-        .try_init();
-}
-
 #[tokio::test]
 async fn single_node_propose_timeout_advances_round() {
-    //setup_tracing_full();
+    //common::setup_tracing_full();
     pause();
 
     // Build a single-validator set
@@ -58,8 +45,12 @@ async fn single_node_propose_timeout_advances_round() {
     };
     let validators = ValidatorSet::new(vec![validator]);
 
+    // Create a (single) temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let temp_dir = temp_dir.path().to_path_buf();
+
     // Create consensus instance
-    let config = Config::new(addr);
+    let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
     let height = Height::new(1);
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
@@ -91,7 +82,7 @@ async fn single_node_propose_timeout_advances_round() {
 
 #[tokio::test]
 async fn single_node_prevote_timeout_advances_round() {
-    //setup_tracing_full();
+    //common::setup_tracing_full();
     pause();
 
     // Build a single-validator set
@@ -106,8 +97,12 @@ async fn single_node_prevote_timeout_advances_round() {
     };
     let validators = ValidatorSet::new(vec![validator.clone()]);
 
+    // Create a (single) temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let temp_dir = temp_dir.path().to_path_buf();
+
     // Create consensus instance
-    let config = Config::new(addr);
+    let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
     let height = Height::new(1);
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
@@ -152,7 +147,7 @@ async fn single_node_prevote_timeout_advances_round() {
 
 #[tokio::test]
 async fn single_node_precommit_timeout_advances_round() {
-    //setup_tracing_full();
+    //common::setup_tracing_full();
     pause();
 
     // Build a single-validator set
@@ -167,8 +162,12 @@ async fn single_node_precommit_timeout_advances_round() {
     };
     let validators = ValidatorSet::new(vec![validator.clone()]);
 
+    // Create a (single) temporary directory for WAL files
+    let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+    let temp_dir = temp_dir.path().to_path_buf();
+
     // Create consensus instance
-    let config = Config::new(addr);
+    let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
     let height = Height::new(1);
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));

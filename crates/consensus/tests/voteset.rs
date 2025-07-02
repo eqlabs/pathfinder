@@ -24,26 +24,13 @@ use pathfinder_consensus::{
 };
 use pathfinder_crypto::Felt;
 use tokio::time::pause;
-use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::drive_until;
 
-#[allow(dead_code)]
-fn setup_tracing_full() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .with_target(true)
-        .without_time()
-        .try_init();
-}
-
 #[tokio::test]
 async fn single_node_emits_request_vote_set_on_precommit_timeout() {
-    setup_tracing_full();
+    //common::setup_tracing_full();
 
     // Pause time so we can control timeouts
     pause();
@@ -108,7 +95,7 @@ async fn single_node_emits_request_vote_set_on_precommit_timeout() {
 
 #[tokio::test]
 async fn single_node_resumes_after_receiving_vote_set_response() {
-    setup_tracing_full();
+    //common::setup_tracing_full();
 
     // Pause time so we can control timeouts
     pause();
