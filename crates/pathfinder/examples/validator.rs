@@ -13,6 +13,7 @@ use tracing::{error, info};
 */
 use clap::Parser;
 use pathfinder_common::ChainId;
+use pathfinder_consensus::{Config, Consensus, ConsensusCommand, Height};
 use pathfinder_lib::config::p2p::{P2PConsensusCli, P2PConsensusConfig};
 use pathfinder_lib::p2p_network::consensus;
 use tokio::signal::unix::{signal, SignalKind};
@@ -58,6 +59,101 @@ async fn main() -> anyhow::Result<()> {
         _ => anyhow::bail!("Unsupported network: {}", network),
     };
     let (p2p_handle, client) = consensus::start(chain_id, config).await;
+
+    let consensus_handle = tokio::spawn(async move {
+        let mut current_height = 1;
+
+        while current_height <= NUM_HEIGHTS {
+            let height = Height::new(current_height);
+            let mut consensus = Consensus::new(Config::new(addr));
+            consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
+
+            sleep(Duration::from_millis(100)).await;
+        }
+        /*
+            loop {
+                // Poll event from consensus engine
+                while let Some(event) = consensus.next_event().await {
+                    match event {
+                        ConsensusEvent::RequestProposal {
+                            height: h,
+                            round: r,
+                            ..
+                        } => {
+                            info!(
+                                "🔍 {} is proposing at height {h}, round {r:?}",
+                                pretty_addr(&addr)
+                            );
+
+                            let proposal = Proposal {
+                                height: h,
+                                round: r,
+                                proposer: addr,
+                                pol_round: Round::from(0),
+                                value_id: consensus_value.clone(),
+                            };
+
+                            consensus.handle_command(ConsensusCommand::Propose(proposal));
+                        }
+
+                        ConsensusEvent::Gossip(msg) => {
+                            for (peer, chan) in peers.iter() {
+                                if peer != &addr {
+                                    info!("🔍 {} sending to {peer}", pretty_addr(&addr));
+                                    let _ = chan.send(msg.clone());
+                                }
+                            }
+                        }
+
+                        ConsensusEvent::Decision { height: h, hash } => {
+                            info!(
+                                "✅ {} decided on {hash:?} at height {h}",
+                                pretty_addr(&addr)
+                            );
+                            let mut decisions = decisions.lock().unwrap();
+                            decisions.insert((addr, h), hash);
+                        }
+
+                        ConsensusEvent::Error(error) => {
+                            error!("❌ {} error: {error:?}", pretty_addr(&addr));
+                            break;
+                        }
+                    }
+                }
+
+                // Process inbound network messages
+                while let Ok(msg) = rx.try_recv() {
+                    info!(
+                        "💌 Validator {} received command: {msg:?}",
+                        pretty_addr(&addr)
+                    );
+                    let cmd = match msg {
+                        NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
+                        NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
+                    };
+                    consensus.handle_command(cmd);
+                }
+
+                // Break if all validators have decided for current height
+                if decisions
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .filter(|(_, h)| *h == height)
+                    .count()
+                    == NUM_VALIDATORS
+                {
+                    break;
+                }
+
+                sleep(Duration::from_millis(5)).await;
+            }
+
+            current_height += 1;
+
+        }
+        */
+    });
 
     tokio::select! {
         result = p2p_handle => {
