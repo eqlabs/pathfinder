@@ -49,14 +49,14 @@ impl malachite_types::Address for ValidatorAddress {}
 impl std::fmt::Display for ValidatorAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let short_addr = short_addr(self);
-        write!(f, "{}", short_addr)
+        write!(f, "{short_addr}")
     }
 }
 
 impl std::fmt::Debug for ValidatorAddress {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let short_addr = short_addr(self);
-        write!(f, "{}", short_addr)
+        write!(f, "{short_addr}")
     }
 }
 

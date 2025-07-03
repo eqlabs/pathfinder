@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
 
     // Iterate through all pre-0.13.2 blocks
     for block_number in 0..latest_block_number.get() {
-        eprint!("\rBlock {}...", block_number);
+        eprint!("\rBlock {block_number}...");
 
         let tx = db.transaction().unwrap();
         let block_number = BlockNumber::new_or_panic(block_number);
@@ -59,7 +59,7 @@ fn main() -> anyhow::Result<()> {
 
         // As soon as we reach blocks in 0.13.2 we're done
         if header.starknet_version == VERSION_CUTOFF {
-            println!("\rBlock {}. Done!", block_number);
+            println!("\rBlock {block_number}. Done!");
             break;
         }
 
@@ -116,7 +116,7 @@ fn main() -> anyhow::Result<()> {
         let new_block_hash = compute_final_hash(&header);
 
         // Write to the CSV file
-        writeln!(csv_file, "{},{}", block_number, new_block_hash)?;
+        writeln!(csv_file, "{block_number},{new_block_hash}")?;
 
         // Write to the binary file
         binary_file

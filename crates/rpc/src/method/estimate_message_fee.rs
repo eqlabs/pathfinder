@@ -218,7 +218,7 @@ impl From<pathfinder_executor::TransactionExecutionError> for EstimateMessageFee
             ExecutionError {
                 error, error_stack, ..
             } => Self::ContractError {
-                revert_error: format!("Execution error: {}", error),
+                revert_error: format!("Execution error: {error}"),
                 revert_error_stack: error_stack,
             },
             Internal(e) => Self::Internal(e),

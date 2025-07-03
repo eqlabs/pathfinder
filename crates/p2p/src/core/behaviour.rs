@@ -729,7 +729,7 @@ where
                 Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
                 Protocol::Dns4(dns) | Protocol::Dns6(dns) => {
                     // We only care about resolving to an IP address so any port is fine.
-                    let dns_with_port = format!("{}:0", dns);
+                    let dns_with_port = format!("{dns}:0");
                     match dns_with_port.to_socket_addrs() {
                         Ok(mut addrs) => addrs
                             .find(|addr| addr.is_ipv4() || addr.is_ipv6())

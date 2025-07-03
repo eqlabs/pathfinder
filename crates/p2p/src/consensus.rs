@@ -528,12 +528,12 @@ mod tests {
         for i in 0..3 {
             stream.push(ProposalPart::TransactionBatch(vec![Transaction {
                 transaction_hash: p2p_proto::common::Hash(
-                    Felt::from_hex_str(&format!("0x123abc{}", i)).unwrap(),
+                    Felt::from_hex_str(&format!("0x123abc{i}")).unwrap(),
                 ),
                 txn: TransactionVariant::L1HandlerV0(L1HandlerV0 {
                     nonce: Felt::from_hex_str(&format!("0x{}", i + 1)).unwrap(),
                     address: p2p_proto::common::Address(
-                        Felt::from_hex_str(&format!("0x789{}", i)).unwrap(),
+                        Felt::from_hex_str(&format!("0x789{i}")).unwrap(),
                     ),
                     entry_point_selector: Felt::from_hex_str(&format!("0x{}", i + 1)).unwrap(),
                     calldata: vec![Felt::from_hex_str(&format!("0x{}", i + 1)).unwrap()],

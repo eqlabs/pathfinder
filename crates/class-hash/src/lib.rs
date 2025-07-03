@@ -678,7 +678,7 @@ impl serde_json::ser::Formatter for PythonDefaultFormatter {
             } else {
                 let buf = c.encode_utf16(&mut buf);
                 for i in buf {
-                    write!(writer, r"\u{:4x}", i)?;
+                    write!(writer, r"\u{i:4x}")?;
                 }
             }
         }

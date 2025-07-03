@@ -69,10 +69,10 @@ mod tests {
 
         // Strong ref count is 1, taking the error should work
         let taken = arced.take_or_deep_clone();
-        assert_eq!(format!("{}", taken), format!("{}", src));
+        assert_eq!(format!("{taken}"), format!("{src}"));
         assert_eq!(
-            strip_backtrace(&format!("{:?}", taken)),
-            strip_backtrace(&format!("{:?}", src))
+            strip_backtrace(&format!("{taken:?}")),
+            strip_backtrace(&format!("{src:?}"))
         );
 
         assert!(arced.to_string().is_empty());
@@ -89,16 +89,16 @@ mod tests {
 
         // Strong ref count is 2, only a poor-man's clone is possible
         let cloned = arced.take_or_deep_clone();
-        assert_eq!(format!("{}", cloned), format!("{}", src));
+        assert_eq!(format!("{cloned}"), format!("{src}"));
         assert_eq!(
-            strip_backtrace(&format!("{:?}", arced)),
-            strip_backtrace(&format!("{:?}", src))
+            strip_backtrace(&format!("{arced:?}")),
+            strip_backtrace(&format!("{src:?}"))
         );
 
-        assert_eq!(format!("{}", arced), format!("{}", src));
+        assert_eq!(format!("{arced}"), format!("{}", src));
         assert_eq!(
-            strip_backtrace(&format!("{:?}", arced)),
-            strip_backtrace(&format!("{:?}", src))
+            strip_backtrace(&format!("{arced:?}")),
+            strip_backtrace(&format!("{src:?}"))
         );
     }
 }

@@ -23,14 +23,14 @@ impl ValueId {
 impl std::fmt::Display for ValueId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let short_val = short_val(&self.0);
-        write!(f, "{:?}", short_val)
+        write!(f, "{short_val:?}")
     }
 }
 
 impl std::fmt::Debug for ValueId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let short_val = short_val(&self.0);
-        write!(f, "{:?}", short_val)
+        write!(f, "{short_val:?}")
     }
 }
 

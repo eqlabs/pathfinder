@@ -134,8 +134,7 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
     let sierra_program = sierra_class.extract_sierra_program().map_err(|e| {
         StateError::StateReadError(format!(
             "Error parsing Sierra
-                program: {}",
-            e
+                program: {e}"
         ))
     })?;
 
@@ -159,7 +158,7 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e}")))?;
 
     let casm_definition = String::from_utf8(input.casm_definition).map_err(|error| {
-        StateError::StateReadError(format!("Class definition is not valid UTF-8: {}", error))
+        StateError::StateReadError(format!("Class definition is not valid UTF-8: {error}"))
     })?;
 
     let casm_class = blockifier::execution::contract_class::CompiledClassV1::try_from_json_string(

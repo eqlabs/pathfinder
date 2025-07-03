@@ -72,7 +72,7 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
                 if let Err(err) =
                     insert_tx.send((hash, idx, block_number, transaction, receipt, events))
                 {
-                    panic!("Failed to send transaction: {:?}", err);
+                    panic!("Failed to send transaction: {err:?}");
                 }
             }
         });

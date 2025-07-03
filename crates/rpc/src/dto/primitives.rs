@@ -309,7 +309,7 @@ mod pathfinder_primitives {
                 serde_json::Value::String(s) => {
                     let s = s.strip_prefix("0x").unwrap_or(s);
                     u64::from_str_radix(s, 16).map(Self).map_err(|e| {
-                        serde_json::Error::custom(format!("invalid hex value for u64: {}", e))
+                        serde_json::Error::custom(format!("invalid hex value for u64: {e}"))
                     })
                 }
                 _ => Err(serde_json::Error::custom("expected hex string")),
@@ -329,8 +329,7 @@ mod pathfinder_primitives {
                 serde_json::Value::String(s) => {
                     let bytes = hex_str::bytes_from_hex_str_stripped::<16>(s).map_err(|e| {
                         serde_json::Error::custom(format!(
-                            "failed to parse hex string as u128: {}",
-                            e
+                            "failed to parse hex string as u128: {e}"
                         ))
                     })?;
                     Ok(Self(u128::from_be_bytes(bytes)))
@@ -361,8 +360,7 @@ mod pathfinder_primitives {
                     let bytes =
                         hex_str::bytes_from_hex_str_stripped::<32>(hex_str).map_err(|e| {
                             serde_json::Error::custom(format!(
-                                "failed to parse hex string as u256: {}",
-                                e
+                                "failed to parse hex string as u256: {e}"
                             ))
                         })?;
                     Ok(H256(bytes))
@@ -399,7 +397,7 @@ mod pathfinder_crypto {
                 serde_json::Value::String(hex_str) => {
                     let bytes =
                         hex_str::bytes_from_hex_str_stripped::<32>(hex_str).map_err(|e| {
-                            serde_json::Error::custom(format!("failed to parse hex string: {}", e))
+                            serde_json::Error::custom(format!("failed to parse hex string: {e}"))
                         })?;
                     Self::from_be_bytes(bytes)
                         .map_err(|_| serde_json::Error::custom("felt overflow"))
@@ -624,8 +622,7 @@ mod pathfinder_common_types {
                     let bytes =
                         hex_str::bytes_from_hex_str_stripped::<20>(hex_str).map_err(|e| {
                             serde_json::Error::custom(format!(
-                                "failed to parse hex string as ethereum address: {}",
-                                e
+                                "failed to parse hex string as ethereum address: {e}"
                             ))
                         })?;
                     Ok(Self(H160::from(bytes)))

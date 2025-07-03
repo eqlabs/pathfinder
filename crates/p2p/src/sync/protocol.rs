@@ -176,8 +176,8 @@ pub(crate) mod codec {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!(
-                        "Encoded length {} exceeds the maximum buffer size {}",
-                        encoded_len, RESPONSE_SIZE_LIMIT
+                        "Encoded length {encoded_len} exceeds the maximum buffer size \
+                         {RESPONSE_SIZE_LIMIT}"
                     ),
                 ));
             }
