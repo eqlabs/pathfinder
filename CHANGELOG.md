@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The default value of L2 gas price for historical blocks has been changed from 0 to 1 (for both WEI and FRI), to agree with the feeder gateway default.
+- Trying to enable blockchain pruning on an archive database does indeed enable pruning in the database despite printing an error that pruning cannot be enabled.
 
 ## [0.17.0] - 2025-06-29
 
