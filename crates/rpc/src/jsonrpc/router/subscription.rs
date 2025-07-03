@@ -132,6 +132,7 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// Subscribe to active updates.
     async fn subscribe(
         state: RpcContext,
+        version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError>;
@@ -321,9 +322,10 @@ where
             util::task::spawn({
                 let params = params.clone();
                 let context = router.context.clone();
+                let rpc_version = router.version;
                 let tx = tx.clone();
                 async move {
-                    if let Err(e) = T::subscribe(context, params, tx1).await {
+                    if let Err(e) = T::subscribe(context, rpc_version, params, tx1).await {
                         tx.send_err(e).await.ok();
                     }
                 }
@@ -916,7 +918,7 @@ mod tests {
         SubscriptionMessage,
     };
     use crate::types::request::SubscriptionBlockId;
-    use crate::Notifications;
+    use crate::{Notifications, RpcVersion};
 
     #[tokio::test]
     async fn test_error_returned_from_catch_up() {
@@ -944,6 +946,7 @@ mod tests {
 
             async fn subscribe(
                 _state: RpcContext,
+                _version: RpcVersion,
                 _params: Self::Params,
                 _tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
             ) -> Result<(), crate::jsonrpc::RpcError> {
@@ -1019,6 +1022,7 @@ mod tests {
 
             async fn subscribe(
                 _state: RpcContext,
+                _version: RpcVersion,
                 _params: Self::Params,
                 _tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
             ) -> Result<(), crate::jsonrpc::RpcError> {
@@ -1108,6 +1112,7 @@ mod tests {
 
             async fn subscribe(
                 _state: RpcContext,
+                _version: RpcVersion,
                 _params: Self::Params,
                 tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
             ) -> Result<(), crate::jsonrpc::RpcError> {
@@ -1207,6 +1212,7 @@ mod tests {
 
             async fn subscribe(
                 _state: RpcContext,
+                _version: RpcVersion,
                 _params: Self::Params,
                 tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
             ) -> Result<(), crate::jsonrpc::RpcError> {
@@ -1334,6 +1340,7 @@ mod tests {
 
             async fn subscribe(
                 _state: RpcContext,
+                _version: RpcVersion,
                 _params: Self::Params,
                 tx: tokio::sync::mpsc::Sender<SubscriptionMessage<Self::Notification>>,
             ) -> Result<(), crate::jsonrpc::RpcError> {
