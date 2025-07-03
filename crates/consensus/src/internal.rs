@@ -13,13 +13,20 @@ use malachite_consensus::{
     State as ConsensusState,
 };
 use malachite_signing_ed25519::Signature;
-use malachite_types::{SignedMessage, Timeout, ValidatorSet as _, VoteType};
+use malachite_types::{SignedMessage, Timeout, ValidatorSet as _, VoteSet, VoteType};
 use tokio::time::Instant;
 
 use crate::config::TimeoutValues;
 use crate::malachite::MalachiteContext;
 use crate::wal::{convert_wal_entry_to_input, WalEntry, WalSink};
-use crate::{ConsensusCommand, ConsensusEvent, SignedVote, ValidatorSet};
+use crate::{
+    ConsensusCommand,
+    ConsensusEvent,
+    NetworkMessage,
+    SignedVote,
+    ValidatorAddress,
+    ValidatorSet,
+};
 
 /// The [InternalConsensus] acts as a driver for the Malachite core and allows
 /// us to decouple all the Malachite intrinsics from our public interface.
@@ -130,6 +137,24 @@ impl InternalConsensus {
                         "Received vote"
                     );
                     Input::Vote(convert_vote(vote))
+                }
+                ConsensusCommand::VoteSet(height, round, votes) => {
+                    tracing::debug!(
+                        height = %height,
+                        round = %round,
+                        "Received vote set"
+                    );
+                    let vote_set = VoteSet::new(votes.into_iter().map(convert_vote).collect());
+                    Input::VoteSetResponse(vote_set, vec![])
+                }
+                ConsensusCommand::RequestVoteSet(from, height, round) => {
+                    tracing::debug!(
+                        from = %from,
+                        height = %height,
+                        round = %round,
+                        "Requesting vote set"
+                    );
+                    Input::VoteSetRequest(from.to_hex_str(), height, round.into_inner())
                 }
                 ConsensusCommand::Proposal(proposal) => {
                     tracing::debug!(
@@ -370,10 +395,35 @@ fn handle_effect(
             Ok(resume.resume_with(()))
         }
         // Internally handled effects.
-        Effect::RequestVoteSet(_, _, resume)
-        | Effect::RestreamProposal(_, _, _, _, _, resume)
-        | Effect::SendVoteSetResponse(_, _, _, _, _, resume) => Ok(resume.resume_with(())),
-
+        Effect::RequestVoteSet(height, round, resume) => {
+            tracing::debug!(
+                height = %height,
+                round = %round,
+                "Requesting vote set"
+            );
+            output_queue.push_back(ConsensusEvent::RequestVoteSet {
+                height,
+                round: round.into(),
+            });
+            Ok(resume.resume_with(()))
+        }
+        Effect::SendVoteSetResponse(from, height, round, voteset, _, resume) => {
+            tracing::debug!(
+                from = %from,
+                height = %height,
+                round = %round,
+                "Sending vote set response"
+            );
+            let msg = NetworkMessage::VoteSetResponse {
+                requester: ValidatorAddress::from_hex_str(&from),
+                height,
+                round: round.into(),
+                votes: voteset.votes.into_iter().map(convert_vote_out).collect(),
+            };
+            output_queue.push_back(ConsensusEvent::Gossip(msg));
+            Ok(resume.resume_with(()))
+        }
+        Effect::RestreamProposal(_, _, _, _, _, resume) => Ok(resume.resume_with(())),
         other => {
             tracing::warn!(
                 effect = ?other,

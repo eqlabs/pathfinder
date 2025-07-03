@@ -9,23 +9,12 @@ use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout, Duration};
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 
-#[allow(dead_code)]
-fn setup_tracing_full() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .with_target(true)
-        .without_time()
-        .try_init();
-}
+mod common;
 
 #[tokio::test]
 async fn consensus_simulation() {
-    //setup_tracing_full();
+    //common::setup_tracing_full();
 
     const NUM_VALIDATORS: usize = 3;
     const NUM_HEIGHTS: u64 = 10;
@@ -140,6 +129,8 @@ async fn consensus_simulation() {
                                 error!("❌ {} error: {error:?}", pretty_addr(&addr));
                                 break;
                             }
+
+                            _ => {}
                         }
                     }
 
@@ -152,6 +143,7 @@ async fn consensus_simulation() {
                         let cmd = match msg {
                             NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                             NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
+                            _ => unreachable!(),
                         };
                         consensus.handle_command(cmd);
                     }

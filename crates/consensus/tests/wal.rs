@@ -9,26 +9,13 @@ use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{pause, sleep, Duration};
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::drive_until;
 
-#[allow(dead_code)]
-fn setup_tracing_full() {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("trace"));
-
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_env_filter(filter)
-        .with_target(true)
-        .without_time()
-        .try_init();
-}
-
 #[tokio::test]
 async fn wal_concurrent_heights_retention_test() {
-    //setup_tracing_full();
+    //common::setup_tracing_full();
 
     const NUM_VALIDATORS: usize = 2;
     const NUM_HEIGHTS: u64 = 15; // More than config.history_depth
@@ -141,6 +128,8 @@ async fn wal_concurrent_heights_retention_test() {
                             error!("❌ {} error: {error:?}", pretty_addr(&addr));
                             break;
                         }
+
+                        _ => {}
                     }
                 }
                 while let Ok(msg) = rx.try_recv() {
@@ -151,6 +140,7 @@ async fn wal_concurrent_heights_retention_test() {
                     let cmd = match msg {
                         NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                         NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
+                        _ => unreachable!(),
                     };
                     consensus.handle_command(cmd);
                 }
@@ -205,7 +195,7 @@ async fn recover_from_wal_restores_and_continues() {
     };
     use pathfinder_crypto::Felt;
 
-    //setup_tracing_full();
+    //common::setup_tracing_full();
     pause();
 
     // Create a temporary directory for WAL files
