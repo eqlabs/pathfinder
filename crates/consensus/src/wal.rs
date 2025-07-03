@@ -295,8 +295,15 @@ pub(crate) mod recovery {
     /// Extract the height from the filename of the write-ahead log file.
     pub(crate) fn extract_height_from_filename(path: &Path) -> Height {
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
-        let height = filename.split('-').nth(1).unwrap_or_default();
-        let height = height.parse::<u64>().unwrap_or_else(|_| {
+
+        // Expect format: "wal-{validator}-{height}.json"
+        let height_str = filename
+            .strip_prefix(WAL_FILE_PREFIX)
+            .and_then(|s| s.strip_suffix(".json"))
+            .and_then(|s| s.split('-').nth(1))
+            .unwrap_or_default();
+
+        let height = height_str.parse::<u64>().unwrap_or_else(|_| {
             tracing::warn!(
                 filename = %filename,
                 path = %path.display(),
@@ -304,6 +311,7 @@ pub(crate) mod recovery {
             );
             0
         });
+
         Height::new(height)
     }
 
