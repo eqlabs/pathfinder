@@ -129,8 +129,6 @@ async fn consensus_simulation() {
                                 error!("❌ {} error: {error:?}", pretty_addr(&addr));
                                 break;
                             }
-
-                            _ => {}
                         }
                     }
 

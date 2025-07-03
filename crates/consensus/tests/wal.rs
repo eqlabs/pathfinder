@@ -8,7 +8,7 @@ use pathfinder_consensus::*;
 use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{pause, sleep, Duration};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 mod common;
 use common::drive_until;
@@ -128,8 +128,6 @@ async fn wal_concurrent_heights_retention_test() {
                             error!("❌ {} error: {error:?}", pretty_addr(&addr));
                             break;
                         }
-
-                        _ => {}
                     }
                 }
                 while let Ok(msg) = rx.try_recv() {
@@ -257,15 +255,19 @@ async fn recover_from_wal_restores_and_continues() {
         }
     }
 
+    debug!("---------------------- Recovering from WAL ----------------------");
+
     // Now recover from WAL
     let mut consensus = Consensus::recover(config.clone(), Arc::new(StaticSet(validators)));
 
-    // Expect RequestProposal again for round 1
+    debug!("------------ Driving consensus post WAL recovery ----------------");
+
+    // Expect RequestProposal again for round 0
     let event = drive_until(
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::Some(1))),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::Some(0))),
     ).await;
 
     assert!(

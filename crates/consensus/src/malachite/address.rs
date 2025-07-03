@@ -25,6 +25,11 @@ impl ValidatorAddress {
             .map(Self)
             .unwrap_or_default()
     }
+
+    /// Convert the validator address to a byte array.
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        self.0 .0.to_be_bytes().to_vec()
+    }
 }
 
 impl From<p2p_proto::common::Address> for ValidatorAddress {
