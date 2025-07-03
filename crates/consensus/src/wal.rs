@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use malachite_consensus::{Input, ProposedValue, SignedConsensusMsg};
+use malachite_consensus::{Input, PeerId, ProposedValue, SignedConsensusMsg};
 use malachite_types::{Timeout, Value};
 use serde::{Deserialize, Serialize};
 
@@ -82,11 +82,8 @@ impl From<malachite_consensus::WalEntry<MalachiteContext>> for WalEntry {
                     kind: match timeout.kind {
                         Kind::Propose => "propose",
                         Kind::Prevote => "prevote",
-                        Kind::PrevoteTimeLimit => "prevote-time-limit",
                         Kind::Precommit => "precommit",
-                        Kind::PrecommitTimeLimit => "precommit-time-limit",
-                        Kind::PrevoteRebroadcast => "prevote-rebroadcast",
-                        Kind::PrecommitRebroadcast => "precommit-rebroadcast",
+                        Kind::Rebroadcast => "rebroadcast",
                     }
                     .to_string(),
                     round: timeout.round.into(),
@@ -111,11 +108,8 @@ impl From<Timeout> for WalEntry {
             kind: match timeout.kind {
                 Kind::Propose => "propose",
                 Kind::Prevote => "prevote",
-                Kind::PrevoteTimeLimit => "prevote-time-limit",
                 Kind::Precommit => "precommit",
-                Kind::PrecommitTimeLimit => "precommit-time-limit",
-                Kind::PrevoteRebroadcast => "prevote-rebroadcast",
-                Kind::PrecommitRebroadcast => "precommit-rebroadcast",
+                Kind::Rebroadcast => "rebroadcast",
             }
             .to_string(),
             round: timeout.round.into(),
@@ -153,11 +147,8 @@ pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteCont
             let timeout_kind = match kind.as_str() {
                 "propose" => malachite_types::TimeoutKind::Propose,
                 "prevote" => malachite_types::TimeoutKind::Prevote,
-                "prevote-time-limit" => malachite_types::TimeoutKind::PrevoteTimeLimit,
                 "precommit" => malachite_types::TimeoutKind::Precommit,
-                "precommit-time-limit" => malachite_types::TimeoutKind::PrecommitTimeLimit,
-                "prevote-rebroadcast" => malachite_types::TimeoutKind::PrevoteRebroadcast,
-                "precommit-rebroadcast" => malachite_types::TimeoutKind::PrecommitRebroadcast,
+                "rebroadcast" => malachite_types::TimeoutKind::Rebroadcast,
                 _ => unreachable!(),
             };
             let timeout = Timeout::new(round.into_inner(), timeout_kind);
@@ -193,7 +184,9 @@ pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteCont
                     malachite_types::Validity::Invalid
                 },
             };
-            Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Sync)
+            let peer_id =
+                PeerId::from_bytes(&proposer.to_be_bytes()).expect("Invalid proposer address");
+            Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Sync(peer_id))
         }
         _ => unreachable!(),
     }

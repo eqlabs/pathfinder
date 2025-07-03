@@ -4674,9 +4674,9 @@ dependencies = [
 
 [[package]]
 name = "derive-where"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73f2692d4bd3cac41dca28934a39894200c9fabf49586d77d0e5954af1d7902"
+checksum = "510c292c8cf384b1a340b816a9a6cf2599eb8f566a44949024af88418000c50b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -6424,9 +6424,9 @@ checksum = "b248f5224d1d606005e02c97f5aa4e88eeb230488bcc03bc9ca4d7991399f2b5"
 
 [[package]]
 name = "informalsystems-malachitebft-core-consensus"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce29ea82e820766a5b43005059c0d04b4b987c5cd9b1ad05ce45158748635a5c"
+checksum = "2a72678538b7c52ae7b69f05afeec50031faf69e0f591184108d2738f4b551ac"
 dependencies = [
  "async-recursion",
  "derive-where",
@@ -6442,9 +6442,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-driver"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7371cef819df6d21db4756793dfe6073c33ae29b26368111e5c27f35731387cd"
+checksum = "c34fa8ccf16f1023541d191a0eefe1359906fb7192aed76ce99257c39ec07ca5"
 dependencies = [
  "derive-where",
  "informalsystems-malachitebft-core-state-machine",
@@ -6455,9 +6455,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-state-machine"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6622e658a965fb032963cc41f7b172b5bac616fa747105057546964604a9f6"
+checksum = "2829f0a0821eecd21fbc681ab2d2bd899602348305ca2424d0b8a2c56d9f7ea3"
 dependencies = [
  "derive-where",
  "displaydoc",
@@ -6466,20 +6466,21 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-types"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "214b7d963a68f336c99e4a60def605e0efd2ad04dfb19ec64c36995ce6af4d2f"
+checksum = "2bd60d04f0c56285af2ea933d909d0ecee90d6c0ab4ebc2b94558a18d1f0f5c9"
 dependencies = [
  "bytes",
  "derive-where",
+ "informalsystems-malachitebft-peer",
  "thiserror 2.0.11",
 ]
 
 [[package]]
 name = "informalsystems-malachitebft-core-votekeeper"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed659014a0aadc46b7ce824b77f0ce9b63b2ce5b948c68318ee23cce1697db65"
+checksum = "341fefe0f86cacadf9190d19c786054c0535d9713c7f4f1831ee3223473258c8"
 dependencies = [
  "derive-where",
  "informalsystems-malachitebft-core-types",
@@ -6488,9 +6489,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-metrics"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be1070b0eb0794aea08b7a0e59b87c02d0f80aeed25d072df337f9822ccccd59"
+checksum = "7b83479cbe64a89ad916656cefc107d3e6d5f96abd14e4e56cf0146b0c272d64"
 dependencies = [
  "informalsystems-malachitebft-core-state-machine",
  "prometheus-client",
@@ -6498,9 +6499,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-peer"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b5eeb3b801e3106143e706201970615ee809bb46d8204fd8b7ad72630dab957"
+checksum = "eea003b8998dcd761a33ec0f690bf68ac2f2ca66fd903dd6de71d875d92cd48b"
 dependencies = [
  "bs58",
  "multihash",
@@ -6509,9 +6510,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-signing-ed25519"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98c6c3a026c52ad8c84bc9b4e80cd504728ea85caa61dce46f9a9fdda5e4cf0a"
+checksum = "b232f4564cd745f58ca2bd3ffb7adac7c810ab4c78d778b16bd512242648b186"
 dependencies = [
  "base64 0.22.1",
  "ed25519-consensus",

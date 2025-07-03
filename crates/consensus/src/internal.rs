@@ -13,7 +13,7 @@ use malachite_consensus::{
     State as ConsensusState,
 };
 use malachite_signing_ed25519::Signature;
-use malachite_types::{SignedMessage, Timeout, ValidatorSet as _, VoteSet, VoteType};
+use malachite_types::{SignedMessage, Timeout, ValidatorSet as _};
 use tokio::time::Instant;
 
 use crate::config::TimeoutValues;
@@ -27,7 +27,6 @@ use crate::{
     Proposal,
     SignedProposal,
     SignedVote,
-    ValidatorAddress,
     ValidatorSet,
 };
 
@@ -51,7 +50,7 @@ impl InternalConsensus {
         timeout_values: TimeoutValues,
         wal: Box<dyn WalSink>,
     ) -> Self {
-        let state = ConsensusState::new(MalachiteContext, params);
+        let state = ConsensusState::new(MalachiteContext, params, 128);
         Self {
             state,
             metrics: Default::default(),
@@ -141,24 +140,6 @@ impl InternalConsensus {
                     );
                     Input::Vote(convert_vote(vote))
                 }
-                ConsensusCommand::VoteSet(height, round, votes) => {
-                    tracing::debug!(
-                        height = %height,
-                        round = %round,
-                        "Received vote set"
-                    );
-                    let vote_set = VoteSet::new(votes.into_iter().map(convert_vote).collect());
-                    Input::VoteSetResponse(vote_set, vec![])
-                }
-                ConsensusCommand::RequestVoteSet(from, height, round) => {
-                    tracing::debug!(
-                        from = %from,
-                        height = %height,
-                        round = %round,
-                        "Requesting vote set"
-                    );
-                    Input::VoteSetRequest(from.to_hex_str(), height, round.into_inner())
-                }
                 ConsensusCommand::Proposal(proposal) => {
                     tracing::debug!(
                         validator = %self.state.address(),
@@ -232,11 +213,12 @@ fn handle_effect(
 ) -> Result<Resume<MalachiteContext>, Error<MalachiteContext>> {
     match effect {
         // Start a new round.
-        Effect::StartRound(height, round, address, resume) => {
+        Effect::StartRound(height, round, address, role, resume) => {
             tracing::debug!(
                 height = %height,
                 round = %round,
                 address = %address,
+                role = ?role,
                 "Starting new round"
             );
             Ok(resume.resume_with(()))
@@ -250,7 +232,7 @@ fn handle_effect(
             Ok(resume.resume_with(Some(validator_set.clone())))
         }
         // Publish a message to peers.
-        Effect::Publish(msg, resume) => {
+        Effect::PublishConsensusMsg(msg, resume) => {
             match &msg {
                 SignedConsensusMsg::Proposal(proposal) => {
                     tracing::debug!(
@@ -268,6 +250,14 @@ fn handle_effect(
             }
             let event = convert_publish(msg);
             output_queue.push_back(event);
+            Ok(resume.resume_with(()))
+        }
+        // Publish a liveness message to peers.
+        Effect::PublishLivenessMsg(msg, resume) => {
+            tracing::warn!(
+                msg = ?msg,
+                "[UNIMPLEMENTED] Publishing liveness message, skipping"
+            );
             Ok(resume.resume_with(()))
         }
         // Request the application to build a value for consensus to run on.
@@ -303,25 +293,29 @@ fn handle_effect(
             });
             Ok(resume.resume_with(()))
         }
+        // Extend a vote.
+        Effect::ExtendVote(height, round, value_id, resume) => {
+            tracing::debug!(
+                height = %height,
+                round = %round,
+                value_id = ?value_id,
+                "Extending vote (skipping)"
+            );
+            Ok(resume.resume_with(None))
+        }
         // Sign a vote.
         Effect::SignVote(vote, resume) => {
             tracing::debug!(
                 vote_type = ?vote.r#type,
-                "Signing vote"
+                "Signing vote (skipping)"
             );
-            if vote.r#type == VoteType::Precommit {
-                tracing::debug!(
-                    vote = ?vote,
-                    "Transitioning to Precommit step"
-                );
-            }
             Ok(resume.resume_with(SignedMessage::new(vote, Signature::from_bytes([0; 64]))))
         }
         // Sign a proposal.
         Effect::SignProposal(proposal, resume) => {
             tracing::debug!(
                 proposal = ?proposal,
-                "Signing proposal"
+                "Signing proposal (skipping)"
             );
             Ok(resume.resume_with(SignedMessage::new(proposal, Signature::from_bytes([0; 64]))))
         }
@@ -330,35 +324,9 @@ fn handle_effect(
             tracing::debug!(
                 msg = ?msg,
                 pk = ?pk,
-                "Verifying signature"
+                "Verifying signature (skipping)"
             );
-            Ok(resume.resume_with(true)) // Replace with real verification later
-        }
-        // Verify a commit certificate.
-        Effect::VerifyCommitCertificate(cert, _validators, _params, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Verifying commit certificate"
-            );
-            Ok(resume.resume_with(Ok(())))
-        }
-        // Verify a polka certificate.
-        Effect::VerifyPolkaCertificate(cert, _validators, _params, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Verifying polka certificate"
-            );
-            Ok(resume.resume_with(Ok(())))
-        }
-        // Extend a vote.
-        Effect::ExtendVote(height, round, value_id, resume) => {
-            tracing::debug!(
-                height = %height,
-                round = %round,
-                value_id = ?value_id,
-                "Extending vote"
-            );
-            Ok(resume.resume_with(None))
+            Ok(resume.resume_with(true))
         }
         // Verify a vote extension.
         Effect::VerifyVoteExtension(
@@ -373,59 +341,35 @@ fn handle_effect(
                 height = %height,
                 round = %round,
                 value_id = ?value_id,
-                "Verifying vote extension"
+                "Verifying vote extension (skipping)"
             );
             Ok(resume.resume_with(Ok(())))
         }
-        Effect::ScheduleTimeout(timeout, resume) => {
-            timeout_manager.schedule_timeout(timeout);
-            Ok(resume.resume_with(()))
-        }
-        Effect::CancelTimeout(timeout, resume) => {
-            timeout_manager.cancel_timeout(timeout);
-            Ok(resume.resume_with(()))
-        }
-        Effect::CancelAllTimeouts(resume) => {
-            timeout_manager.cancel_all_timeouts();
-            Ok(resume.resume_with(()))
-        }
-        Effect::ResetTimeouts(resume) => {
-            timeout_manager.reset_timeouts();
-            Ok(resume.resume_with(()))
-        }
-        Effect::WalAppend(msg, resume) => {
-            wal.append(msg.into());
-            Ok(resume.resume_with(()))
-        }
-        // Internally handled effects.
-        Effect::RequestVoteSet(height, round, resume) => {
+        // Verify a commit certificate.
+        Effect::VerifyCommitCertificate(cert, _validators, _params, resume) => {
             tracing::debug!(
-                height = %height,
-                round = %round,
-                "Requesting vote set"
+                cert = ?cert,
+                "Verifying commit certificate (skipping)"
             );
-            output_queue.push_back(ConsensusEvent::RequestVoteSet {
-                height,
-                round: round.into(),
-            });
-            Ok(resume.resume_with(()))
+            Ok(resume.resume_with(Ok(())))
         }
-        Effect::SendVoteSetResponse(from, height, round, voteset, _, resume) => {
+        // Verify a polka certificate.
+        Effect::VerifyPolkaCertificate(cert, _validators, _params, resume) => {
             tracing::debug!(
-                from = %from,
-                height = %height,
-                round = %round,
-                "Sending vote set response"
+                cert = ?cert,
+                "Verifying polka certificate (skipping)"
             );
-            let msg = NetworkMessage::VoteSetResponse {
-                requester: ValidatorAddress::from_hex_str(&from),
-                height,
-                round: round.into(),
-                votes: voteset.votes.into_iter().map(convert_vote_out).collect(),
-            };
-            output_queue.push_back(ConsensusEvent::Gossip(msg));
-            Ok(resume.resume_with(()))
+            Ok(resume.resume_with(Ok(())))
         }
+        // Verify a round certificate.
+        Effect::VerifyRoundCertificate(cert, _validators, _params, resume) => {
+            tracing::debug!(
+                cert = ?cert,
+                "Verifying round certificate (skipping)"
+            );
+            Ok(resume.resume_with(Ok(())))
+        }
+        // Restream a proposal.
         Effect::RestreamProposal(height, round, valid_round, address, value_id, resume) => {
             tracing::debug!(
                 height = %height,
@@ -449,15 +393,45 @@ fn handle_effect(
             )));
             Ok(resume.resume_with(()))
         }
-        Effect::Rebroadcast(vote, resume) => {
+        // Rebroadcast a vote.
+        Effect::RebroadcastVote(vote, resume) => {
             tracing::debug!(
                 vote = ?vote,
                 "Rebroadcasting vote"
             );
-            output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Vote(SignedVote {
-                vote: vote.message,
-                signature: vote.signature,
-            })));
+            output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Vote(
+                convert_vote_out(vote),
+            )));
+            Ok(resume.resume_with(()))
+        }
+        // Rebroadcast a round certificate.
+        Effect::RebroadcastRoundCertificate(cert, resume) => {
+            tracing::debug!(
+                cert = ?cert,
+                "Rebroadcasting round certificate (skipping)"
+            );
+            Ok(resume.resume_with(()))
+        }
+        // Timeout management.
+        Effect::ScheduleTimeout(timeout, resume) => {
+            timeout_manager.schedule_timeout(timeout);
+            Ok(resume.resume_with(()))
+        }
+        Effect::CancelTimeout(timeout, resume) => {
+            timeout_manager.cancel_timeout(timeout);
+            Ok(resume.resume_with(()))
+        }
+        Effect::CancelAllTimeouts(resume) => {
+            timeout_manager.cancel_all_timeouts();
+            Ok(resume.resume_with(()))
+        }
+        Effect::ResetTimeouts(resume) => {
+            timeout_manager.reset_timeouts();
+            Ok(resume.resume_with(()))
+        }
+        // WAL management.
+        Effect::WalAppend(msg, resume) => {
+            wal.append(msg.into());
             Ok(resume.resume_with(()))
         }
     }
@@ -596,10 +570,7 @@ mod tests {
             propose: Duration::from_millis(100),
             prevote: Duration::from_millis(200),
             precommit: Duration::from_millis(300),
-            prevote_time_limit: Duration::from_millis(400),
-            precommit_time_limit: Duration::from_millis(500),
-            prevote_rebroadcast: Duration::from_millis(600),
-            precommit_rebroadcast: Duration::from_millis(700),
+            rebroadcast: Duration::from_millis(400),
         };
 
         let mut manager = TimeoutManager {
@@ -681,10 +652,7 @@ mod tests {
             propose: Duration::from_millis(100),
             prevote: Duration::from_millis(200),
             precommit: Duration::from_millis(300),
-            prevote_time_limit: Duration::from_millis(400),
-            precommit_time_limit: Duration::from_millis(500),
-            prevote_rebroadcast: Duration::from_millis(600),
-            precommit_rebroadcast: Duration::from_millis(700),
+            rebroadcast: Duration::from_millis(400),
         };
 
         let mut manager = TimeoutManager {
@@ -726,10 +694,7 @@ mod tests {
             propose: Duration::from_millis(300),   // Longest
             prevote: Duration::from_millis(100),   // Shortest
             precommit: Duration::from_millis(200), // Medium
-            prevote_time_limit: Duration::from_millis(400),
-            precommit_time_limit: Duration::from_millis(500),
-            prevote_rebroadcast: Duration::from_millis(600),
-            precommit_rebroadcast: Duration::from_millis(700),
+            rebroadcast: Duration::from_millis(400),
         };
 
         let mut manager = TimeoutManager {

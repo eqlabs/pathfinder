@@ -1,7 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-use malachite_consensus::{Params, VoteSyncMode};
+use malachite_consensus::Params;
 pub use malachite_types::VoteType;
 use malachite_types::{Timeout, ValuePayload};
 use p2p_proto::common::Hash;
@@ -123,7 +123,6 @@ impl Consensus {
             address: self.config.address,
             threshold_params: self.config.threshold_params,
             value_payload: ValuePayload::ProposalOnly,
-            vote_sync_mode: self.config.vote_sync_mode,
         };
 
         // Create a WAL for the height. If we fail, use a NoopWal.
@@ -271,10 +270,6 @@ pub enum ConsensusCommand {
     Proposal(SignedProposal),
     /// A signed vote received from the network.
     Vote(SignedVote),
-    /// Vote set received from the network.
-    VoteSet(Height, Round, Vec<SignedVote>),
-    /// Request a vote set sync from the network.
-    RequestVoteSet(ValidatorAddress, Height, Round),
 }
 
 impl ConsensusCommand {
@@ -285,8 +280,6 @@ impl ConsensusCommand {
             ConsensusCommand::Propose(proposal) => proposal.height,
             ConsensusCommand::Proposal(proposal) => proposal.proposal.height,
             ConsensusCommand::Vote(vote) => vote.vote.height,
-            ConsensusCommand::VoteSet(height, _, _) => *height,
-            ConsensusCommand::RequestVoteSet(_, height, _) => *height,
         }
     }
 }
@@ -317,8 +310,6 @@ pub enum ConsensusEvent {
         round: Round,
         timeout: Timeout,
     },
-    /// The consensus needs the app to request a vote set sync.
-    RequestVoteSet { height: Height, round: Round },
     /// The consensus has reached a decision and committed a block.
     Decision { height: Height, hash: Hash },
     /// An internal error occurred in consensus.
