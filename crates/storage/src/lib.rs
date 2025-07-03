@@ -510,6 +510,20 @@ fn validate_mode_and_update_db(
             }
         }
         BlockchainHistoryMode::Prune { num_blocks_kept } => {
+            let init_num_blocks_kept = match init_num_blocks_kept {
+                Some(init_num_blocks_kept) => init_num_blocks_kept,
+                None => {
+                    if is_new_database {
+                        num_blocks_kept
+                    } else {
+                        anyhow::bail!(
+                            "Cannot enable blockchain history pruning on a database that was \
+                             created with it disabled."
+                        );
+                    }
+                }
+            };
+
             connection.execute(
                 r"
                 INSERT INTO storage_options (option, value)
@@ -524,12 +538,6 @@ fn validate_mode_and_update_db(
                 return Ok(blockchain_history_mode);
             }
 
-            let Some(init_num_blocks_kept) = init_num_blocks_kept else {
-                anyhow::bail!(
-                    "Cannot enable blockchain history pruning on a database that was not created \
-                     with it disabled."
-                );
-            };
             // If the blockchain history size got reduced, here we use the opportunity to
             // prune the now excess blocks. If the size got increased, we don't need to do
             // anything here since the gap will be filled as new blocks are synced.
