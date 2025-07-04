@@ -23,7 +23,7 @@ use anyhow::Context;
 pub use connection::*;
 use event::RunningEventFilter;
 pub use event::EVENT_KEY_FILTER_LIMIT;
-use pathfinder_common::{BlockHash, BlockNumber};
+use pathfinder_common::BlockNumber;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{OpenFlags, OptionalExtension};
@@ -37,44 +37,6 @@ const VERSION_KEY: &str = "user_version";
 pub enum JournalMode {
     Rollback,
     WAL,
-}
-
-/// Identifies a specific starknet block stored in the database.
-///
-/// Note that this excludes the `Pending` variant since we never store pending
-/// data in the database.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlockId {
-    Latest,
-    Number(BlockNumber),
-    Hash(BlockHash),
-}
-
-impl From<BlockHash> for BlockId {
-    fn from(value: BlockHash) -> Self {
-        Self::Hash(value)
-    }
-}
-
-impl From<BlockNumber> for BlockId {
-    fn from(value: BlockNumber) -> Self {
-        Self::Number(value)
-    }
-}
-
-impl TryFrom<pathfinder_common::BlockId> for BlockId {
-    type Error = &'static str;
-
-    fn try_from(value: pathfinder_common::BlockId) -> Result<Self, Self::Error> {
-        match value {
-            pathfinder_common::BlockId::Number(x) => Ok(BlockId::Number(x)),
-            pathfinder_common::BlockId::Hash(x) => Ok(BlockId::Hash(x)),
-            pathfinder_common::BlockId::Latest => Ok(BlockId::Latest),
-            pathfinder_common::BlockId::Pending => {
-                Err("Pending is invalid within the storage context")
-            }
-        }
-    }
 }
 
 /// Used to create [Connection's](Connection) to the pathfinder database.

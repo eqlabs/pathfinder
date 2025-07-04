@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        tx.block_id(pathfinder_storage::BlockId::Latest)
+        tx.block_id(pathfinder_common::FinalizedBlockId::Latest)
             .context("Fetching latest block number")?
             .context("No latest block number")?
             .0
@@ -26,7 +26,7 @@ fn main() -> anyhow::Result<()> {
 
     for block_number in 0..latest_block_number.get() {
         let block_number = BlockNumber::new_or_panic(block_number);
-        let block_id = pathfinder_storage::BlockId::Number(block_number);
+        let block_id = pathfinder_common::FinalizedBlockId::Number(block_number);
         let state_update = tx
             .state_update(block_id)?
             .context("Fetching state update")?;

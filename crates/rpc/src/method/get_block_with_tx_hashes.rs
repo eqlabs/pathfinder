@@ -68,7 +68,7 @@ pub async fn get_block_with_tx_hashes(
                     transactions,
                 });
             }
-            other => other.try_into().expect("Only pending cast should fail"),
+            other => other.to_finalized_or_panic(),
         };
 
         let header = transaction

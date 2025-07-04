@@ -5,8 +5,8 @@ use std::num::NonZeroU32;
 
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::BlockNumber;
-use pathfinder_storage::{BlockId, StorageBuilder};
+use pathfinder_common::{BlockNumber, FinalizedBlockId};
+use pathfinder_storage::StorageBuilder;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -35,7 +35,7 @@ fn main() -> anyhow::Result<()> {
 /// Create a valid sequence of proposal parts for the given block.
 fn find_compatible_blocks(db_txn: &pathfinder_storage::Transaction<'_>) -> anyhow::Result<()> {
     let latest = db_txn
-        .block_number(BlockId::Latest)
+        .block_number(FinalizedBlockId::Latest)
         .context("Getting latest block number")?
         .context("No blocks found")?
         .get();

@@ -25,16 +25,16 @@ pub mod request {
         Latest,
     }
 
-    impl From<SubscriptionBlockId> for pathfinder_storage::BlockId {
+    impl From<SubscriptionBlockId> for pathfinder_common::FinalizedBlockId {
         fn from(value: SubscriptionBlockId) -> Self {
             match value {
                 SubscriptionBlockId::Number(block_number) => {
-                    pathfinder_storage::BlockId::Number(block_number)
+                    pathfinder_common::FinalizedBlockId::Number(block_number)
                 }
                 SubscriptionBlockId::Hash(block_hash) => {
-                    pathfinder_storage::BlockId::Hash(block_hash)
+                    pathfinder_common::FinalizedBlockId::Hash(block_hash)
                 }
-                SubscriptionBlockId::Latest => pathfinder_storage::BlockId::Latest,
+                SubscriptionBlockId::Latest => pathfinder_common::FinalizedBlockId::Latest,
             }
         }
     }

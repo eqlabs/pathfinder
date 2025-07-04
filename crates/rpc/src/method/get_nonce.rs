@@ -52,15 +52,10 @@ pub async fn get_nonce(
             }
         }
 
-        let block_id = match input.block_id {
-            BlockId::Pending => pathfinder_storage::BlockId::Latest,
-            other => other.try_into().expect("Only pending cast should fail"),
-        };
-
         // Check that block exists. This should occur first as the block number
         // isn't checked explicitly (i.e. nonce fetch just uses <= number).
-        let block_exists = tx.block_exists(block_id).context("Checking block exists")?;
-        if !block_exists {
+        let block_id = input.block_id.to_finalized_coerced();
+        if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }
 

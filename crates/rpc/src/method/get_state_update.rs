@@ -62,10 +62,7 @@ pub async fn get_state_update(
             return Ok(Output::Pending(state_update));
         }
 
-        let block_id = input
-            .block_id
-            .try_into()
-            .expect("Only pending cast should fail");
+        let block_id = input.block_id.to_finalized_or_panic();
 
         let Some(block_number) = tx.block_number(block_id).context("Fetching block number")? else {
             return Err(Error::BlockNotFound);

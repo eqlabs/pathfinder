@@ -63,7 +63,7 @@ pub async fn get_transaction_by_block_id_and_index(
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
                 return result.map(Output);
             }
-            other => other.try_into().expect("Only pending cast should fail"),
+            other => other.to_finalized_or_panic(),
         };
 
         // Get the transaction from storage.

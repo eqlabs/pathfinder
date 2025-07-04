@@ -56,12 +56,7 @@ pub async fn get_storage_at(
             }
         }
 
-        let block_id = match input.block_id {
-            BlockId::Pending => pathfinder_storage::BlockId::Latest,
-            other => other.try_into().expect("Only pending cast should fail"),
-        };
-
-        // Check for block existence.
+        let block_id = input.block_id.to_finalized_coerced();
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }

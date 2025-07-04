@@ -3,9 +3,9 @@ use std::num::NonZeroUsize;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
+use pathfinder_common::FinalizedBlockId;
 
 use crate::prelude::*;
-use crate::BlockId;
 
 impl Transaction<'_> {
     pub fn insert_block_header(&self, header: &BlockHeader) -> anyhow::Result<()> {
@@ -191,9 +191,12 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn block_id(&self, block: BlockId) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
+    pub fn block_id(
+        &self,
+        block: FinalizedBlockId,
+    ) -> anyhow::Result<Option<(BlockNumber, BlockHash)>> {
         match block {
-            BlockId::Latest => self.inner().query_row(
+            FinalizedBlockId::Latest => self.inner().query_row(
                 "SELECT number, hash FROM block_headers ORDER BY number DESC LIMIT 1",
                 [],
                 |row| {
@@ -203,7 +206,7 @@ impl Transaction<'_> {
                     Ok((number, hash))
                 },
             ),
-            BlockId::Number(number) => self.inner().query_row(
+            FinalizedBlockId::Number(number) => self.inner().query_row(
                 "SELECT hash FROM block_headers WHERE number = ?",
                 params![&number],
                 |row| {
@@ -211,7 +214,7 @@ impl Transaction<'_> {
                     Ok((number, hash))
                 },
             ),
-            BlockId::Hash(hash) => self.inner().query_row(
+            FinalizedBlockId::Hash(hash) => self.inner().query_row(
                 "SELECT number FROM block_headers WHERE hash = ?",
                 params![&hash],
                 |row| {
@@ -224,9 +227,9 @@ impl Transaction<'_> {
         .map_err(|e| e.into())
     }
 
-    pub fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
+    pub fn block_hash(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockHash>> {
         match block {
-            BlockId::Latest => self
+            FinalizedBlockId::Latest => self
                 .inner()
                 .query_row(
                     "SELECT hash FROM block_headers ORDER BY number DESC LIMIT 1",
@@ -235,7 +238,7 @@ impl Transaction<'_> {
                 )
                 .optional()
                 .map_err(|e| e.into()),
-            BlockId::Number(number) => self
+            FinalizedBlockId::Number(number) => self
                 .inner()
                 .query_row(
                     "SELECT hash FROM block_headers WHERE number = ?",
@@ -244,7 +247,7 @@ impl Transaction<'_> {
                 )
                 .optional()
                 .map_err(|e| e.into()),
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 // This query ensures that the block exists.
                 self.inner()
                     .query_row(
@@ -258,9 +261,9 @@ impl Transaction<'_> {
         }
     }
 
-    pub fn block_number(&self, block: BlockId) -> anyhow::Result<Option<BlockNumber>> {
+    pub fn block_number(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockNumber>> {
         match block {
-            BlockId::Latest => self
+            FinalizedBlockId::Latest => self
                 .inner()
                 .query_row(
                     "SELECT number FROM block_headers ORDER BY number DESC LIMIT 1",
@@ -269,7 +272,7 @@ impl Transaction<'_> {
                 )
                 .optional()
                 .map_err(|e| e.into()),
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 // This query ensures that the block exists.
                 self.inner()
                     .query_row(
@@ -280,7 +283,7 @@ impl Transaction<'_> {
                     .optional()
                     .map_err(|e| e.into())
             }
-            BlockId::Hash(hash) => self
+            FinalizedBlockId::Hash(hash) => self
                 .inner()
                 .query_row(
                     "SELECT number FROM block_headers WHERE hash = ?",
@@ -306,21 +309,21 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
-    pub fn block_exists(&self, block: BlockId) -> anyhow::Result<bool> {
+    pub fn block_exists(&self, block: FinalizedBlockId) -> anyhow::Result<bool> {
         match block {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 let mut stmt = self
                     .inner()
                     .prepare_cached("SELECT EXISTS(SELECT 1 FROM block_headers)")?;
                 stmt.query_row([], |row| row.get(0))
             }
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     "SELECT EXISTS(SELECT 1 FROM block_headers WHERE number = ?)",
                 )?;
                 stmt.query_row(params![&number], |row| row.get(0))
             }
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 let mut stmt = self
                     .inner()
                     .prepare_cached("SELECT EXISTS(SELECT 1 FROM block_headers WHERE hash = ?)")?;
@@ -339,11 +342,11 @@ impl Transaction<'_> {
             .map_err(|e| e.into())
     }
 
-    pub fn block_header(&self, block: BlockId) -> anyhow::Result<Option<BlockHeader>> {
+    pub fn block_header(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockHeader>> {
         let sql = match block {
-            BlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
-            BlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
-            BlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
+            FinalizedBlockId::Latest => "SELECT * FROM block_headers ORDER BY number DESC LIMIT 1",
+            FinalizedBlockId::Number(_) => "SELECT * FROM block_headers WHERE number = ?",
+            FinalizedBlockId::Hash(_) => "SELECT * FROM block_headers WHERE hash = ?",
         };
 
         let mut stmt = self
@@ -352,9 +355,11 @@ impl Transaction<'_> {
             .context("Preparing block header query")?;
 
         let header = match block {
-            BlockId::Latest => stmt.query_row([], parse_row_as_header),
-            BlockId::Number(number) => stmt.query_row(params![&number], parse_row_as_header),
-            BlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row_as_header),
+            FinalizedBlockId::Latest => stmt.query_row([], parse_row_as_header),
+            FinalizedBlockId::Number(number) => {
+                stmt.query_row(params![&number], parse_row_as_header)
+            }
+            FinalizedBlockId::Hash(hash) => stmt.query_row(params![&hash], parse_row_as_header),
         }
         .optional()
         .context("Querying for block header")?;
@@ -383,13 +388,20 @@ impl Transaction<'_> {
         Ok(headers)
     }
 
-    pub fn state_commitment(&self, block: BlockId) -> anyhow::Result<Option<StateCommitment>> {
+    pub fn state_commitment(
+        &self,
+        block: FinalizedBlockId,
+    ) -> anyhow::Result<Option<StateCommitment>> {
         let sql = match block {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 "SELECT state_commitment FROM block_headers ORDER BY number DESC LIMIT 1"
             }
-            BlockId::Number(_) => "SELECT state_commitment FROM block_headers WHERE number = ?",
-            BlockId::Hash(_) => "SELECT state_commitment FROM block_headers WHERE hash = ?",
+            FinalizedBlockId::Number(_) => {
+                "SELECT state_commitment FROM block_headers WHERE number = ?"
+            }
+            FinalizedBlockId::Hash(_) => {
+                "SELECT state_commitment FROM block_headers WHERE hash = ?"
+            }
         };
 
         let mut stmt = self
@@ -398,13 +410,13 @@ impl Transaction<'_> {
             .context("Preparing state commitment query")?;
 
         let state_commitment = match block {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 stmt.query_row([], |row| row.get_state_commitment("state_commitment"))
             }
-            BlockId::Number(number) => stmt.query_row(params![&number], |row| {
+            FinalizedBlockId::Number(number) => stmt.query_row(params![&number], |row| {
                 row.get_state_commitment("state_commitment")
             }),
-            BlockId::Hash(hash) => stmt.query_row(params![&hash], |row| {
+            FinalizedBlockId::Hash(hash) => stmt.query_row(params![&hash], |row| {
                 row.get_state_commitment("state_commitment")
             }),
         }
@@ -414,7 +426,7 @@ impl Transaction<'_> {
         Ok(state_commitment)
     }
 
-    pub fn block_is_l1_accepted(&self, block: BlockId) -> anyhow::Result<bool> {
+    pub fn block_is_l1_accepted(&self, block: FinalizedBlockId) -> anyhow::Result<bool> {
         let Some(l1_l2) = self.l1_l2_pointer().context("Querying L1-L2 pointer")? else {
             return Ok(false);
         };
@@ -738,7 +750,7 @@ mod tests {
         let (mut connection, headers) = setup();
         let tx = connection.transaction().unwrap();
 
-        let result = tx.block_header(BlockId::Latest).unwrap().unwrap();
+        let result = tx.block_header(FinalizedBlockId::Latest).unwrap().unwrap();
         let expected = headers.last().unwrap();
 
         assert_eq!(&result, expected);

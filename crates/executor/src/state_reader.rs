@@ -58,7 +58,7 @@ impl<S: StorageAdapter> PathfinderStateReader<S> {
         }
     }
 
-    fn state_block_id(&self) -> Option<pathfinder_storage::BlockId> {
+    fn state_block_id(&self) -> Option<pathfinder_common::FinalizedBlockId> {
         self.block_number.map(Into::into)
     }
 

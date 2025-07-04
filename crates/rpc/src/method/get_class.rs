@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ClassHash};
+use pathfinder_common::ClassHash;
 
 use crate::context::RpcContext;
 use crate::dto::SerializeForVersion;
@@ -66,15 +66,8 @@ pub async fn get_class(
             false
         };
 
-        // Map block id to the storage variant.
-        let block_id = match input.block_id {
-            BlockId::Pending => pathfinder_storage::BlockId::Latest,
-            other => other.try_into().expect("Only pending cast should fail"),
-        };
-
-        // Check that block exists
-        let block_exists = tx.block_exists(block_id)?;
-        if !block_exists {
+        let block_id = input.block_id.to_finalized_coerced();
+        if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }
 
@@ -114,6 +107,7 @@ impl SerializeForVersion for Output {
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
+    use pathfinder_common::BlockId;
 
     use super::*;
 
