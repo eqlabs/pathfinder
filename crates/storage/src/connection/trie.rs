@@ -7,7 +7,7 @@ use pathfinder_common::prelude::*;
 use pathfinder_crypto::Felt;
 
 use crate::prelude::*;
-use crate::{BlockId, TriePruneMode};
+use crate::TriePruneMode;
 
 impl Transaction<'_> {
     pub fn class_root_index(
@@ -376,7 +376,8 @@ impl Transaction<'_> {
     /// Prune tries by removing nodes that are no longer needed at the given
     /// block.
     pub fn prune_tries(&self) -> anyhow::Result<()> {
-        let Some(block_number) = self.block_number(BlockId::Latest)? else {
+        let Some(block_number) = self.block_number(pathfinder_common::FinalizedBlockId::Latest)?
+        else {
             return Ok(());
         };
         let TriePruneMode::Prune { num_blocks_kept } = self.trie_prune_mode else {

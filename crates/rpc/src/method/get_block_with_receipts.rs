@@ -60,7 +60,7 @@ pub async fn get_block_with_receipts(
 
                 return Ok(Output::Pending(pending.block()));
             }
-            other => other.try_into().expect("Only pending cast should fail"),
+            other => other.to_finalized_or_panic(),
         };
 
         let header = db

@@ -7,10 +7,10 @@ use pathfinder_common::{
     ClassHash,
     ContractAddress,
     ContractNonce,
+    FinalizedBlockId,
     StorageAddress,
     StorageValue,
 };
-use pathfinder_storage::BlockId;
 
 pub mod concurrent;
 pub mod rc;
@@ -22,7 +22,7 @@ type ClassDefinitionWithBlockNumber = Option<(Option<BlockNumber>, Vec<u8>)>;
 pub trait StorageAdapter {
     fn transaction_executor_config(&self) -> TransactionExecutorConfig;
 
-    fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>>;
+    fn block_hash(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockHash>>;
 
     fn casm_definition(&self, class_hash: ClassHash) -> Result<Option<Vec<u8>>, StateError>;
 
@@ -33,19 +33,19 @@ pub trait StorageAdapter {
 
     fn casm_definition_at(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         class_hash: ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError>;
 
     fn class_definition_at_with_block_number(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         class_hash: ClassHash,
     ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError>;
 
     fn storage_value(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         contract_address: ContractAddress,
         storage_address: StorageAddress,
     ) -> Result<Option<StorageValue>, StateError>;
@@ -53,12 +53,12 @@ pub trait StorageAdapter {
     fn contract_nonce(
         &self,
         contract_address: ContractAddress,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
     ) -> Result<Option<ContractNonce>, StateError>;
 
     fn contract_class_hash(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         contract_address: ContractAddress,
     ) -> Result<Option<ClassHash>, StateError>;
 
@@ -66,7 +66,7 @@ pub trait StorageAdapter {
 
     fn casm_hash_at(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         class_hash: ClassHash,
     ) -> Result<Option<CasmHash>, StateError>;
 }

@@ -10,14 +10,14 @@ use std::time::Duration;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::Chain;
+use pathfinder_common::{Chain, FinalizedBlockId};
 use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
 use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
 use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{BlockId, Connection, Storage, Transaction, TransactionBehavior};
+use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply::{Block, GasPrices, PendingBlock, PreConfirmedBlock};
@@ -180,7 +180,7 @@ where
     let l2_head = tokio::task::block_in_place(|| -> anyhow::Result<_> {
         let tx = db_conn.transaction()?;
         let l2_head = tx
-            .block_header(pathfinder_storage::BlockId::Latest)
+            .block_header(FinalizedBlockId::Latest)
             .context("Fetching latest block header from database")?
             .map(|header| (header.number, header.hash, header.state_commitment));
 
@@ -319,7 +319,7 @@ where
 
                 let l2_head = tokio::task::block_in_place(|| {
                     let tx = db_conn.transaction()?;
-                    tx.block_header(pathfinder_storage::BlockId::Latest)
+                    tx.block_header(FinalizedBlockId::Latest)
                 })
                 .context("Query L2 head from database")?
                 .map(|block| (block.number, block.hash, block.state_commitment));
@@ -445,7 +445,7 @@ async fn consumer(
             .transaction()
             .context("Creating database transaction")?;
         let latest = tx
-            .block_header(pathfinder_storage::BlockId::Latest)
+            .block_header(FinalizedBlockId::Latest)
             .context("Fetching latest block header")?
             .map(|b| (b.timestamp, b.number + 1))
             .unwrap_or_default();
@@ -632,7 +632,7 @@ async fn consumer(
                 Pending((pending_block, pending_state_update)) => {
                     tracing::trace!("Updating pending data");
                     let (number, hash) = tx
-                        .block_id(pathfinder_storage::BlockId::Latest)
+                        .block_id(FinalizedBlockId::Latest)
                         .context("Fetching latest block hash")?
                         .unwrap_or_default();
 
@@ -709,7 +709,7 @@ fn perform_blockchain_pruning(
     let (pruning_point_block, pruning_point_suffix) = match pruning_event {
         PruningEvent::L1Checkpoint(l1_checkpoint) => {
             let Some(l2_head) = tx
-                .block_number(BlockId::Latest)
+                .block_number(FinalizedBlockId::Latest)
                 .context("Querying latest block number")?
             else {
                 // Empty database.
@@ -783,7 +783,7 @@ async fn latest_n_blocks(
             .transaction()
             .context("Creating database transaction")?;
 
-        let mut current = pathfinder_storage::BlockId::Latest;
+        let mut current = FinalizedBlockId::Latest;
         let mut blocks = Vec::new();
 
         for _ in 0..n {
@@ -1069,7 +1069,7 @@ fn l2_reorg(
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
     let mut head = transaction
-        .block_id(pathfinder_storage::BlockId::Latest)
+        .block_id(FinalizedBlockId::Latest)
         .context("Querying latest block number")?
         .context("Latest block number is none during reorg")?
         .0;
@@ -1186,7 +1186,7 @@ mod tests {
     };
     use pathfinder_crypto::Felt;
     use pathfinder_rpc::SyncState;
-    use pathfinder_storage::{BlockId, StorageBuilder};
+    use pathfinder_storage::StorageBuilder;
     use starknet_gateway_types::reply::{self, Block, GasPrices};
 
     use super::l2;
@@ -1958,6 +1958,7 @@ mod tests {
     }
 
     mod blockchain_pruning {
+        use pathfinder_common::FinalizedBlockId;
         use pathfinder_ethereum::EthereumStateUpdate;
 
         use super::*;
@@ -2119,14 +2120,14 @@ mod tests {
 
             let tx = conn.transaction().unwrap();
             for block in 0..(num_blocks - 1) {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
                 // Block data has been pruned.
                 assert!(!tx.block_exists(block_id).unwrap());
             }
-            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            let latest = tx.block_number(FinalizedBlockId::Latest).unwrap().unwrap();
             assert_eq!(latest, BlockNumber::new_or_panic(4));
             let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
             let transaction_hashes = tx
@@ -2177,7 +2178,7 @@ mod tests {
             let tx = conn.transaction().unwrap();
 
             for block in 0..(num_blocks - 1) {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2188,7 +2189,7 @@ mod tests {
             // Check that non-obsolete state update data has not been pruned.
             assert_eq!(
                 tx.contract_class_hash(
-                    BlockId::Number(BlockNumber::new_or_panic(2)),
+                    FinalizedBlockId::Number(BlockNumber::new_or_panic(2)),
                     contract_address_bytes!(b"contract 2"),
                 )
                 .unwrap()
@@ -2197,7 +2198,7 @@ mod tests {
             );
             assert_eq!(
                 tx.contract_class_hash(
-                    BlockId::Number(BlockNumber::new_or_panic(3)),
+                    FinalizedBlockId::Number(BlockNumber::new_or_panic(3)),
                     contract_address_bytes!(b"contract 1"),
                 )
                 .unwrap()
@@ -2206,7 +2207,7 @@ mod tests {
             );
             assert_eq!(
                 tx.storage_value(
-                    BlockId::Number(BlockNumber::new_or_panic(4)),
+                    FinalizedBlockId::Number(BlockNumber::new_or_panic(4)),
                     contract_address_bytes!(b"contract 1"),
                     storage_address_bytes!(b"storage address 1"),
                 )
@@ -2217,14 +2218,14 @@ mod tests {
             assert_eq!(
                 tx.contract_nonce(
                     contract_address_bytes!(b"contract 1"),
-                    BlockId::Number(BlockNumber::new_or_panic(5)),
+                    FinalizedBlockId::Number(BlockNumber::new_or_panic(5)),
                 )
                 .unwrap()
                 .unwrap(),
                 contract_nonce!("0x2"),
             );
 
-            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            let latest = tx.block_number(FinalizedBlockId::Latest).unwrap().unwrap();
             assert_eq!(latest, BlockNumber::new_or_panic(num_blocks - 1));
             let transactions = tx.transactions_for_block(latest.into()).unwrap().unwrap();
             let transaction_hashes = tx
@@ -2399,12 +2400,12 @@ Blockchain history must include the reorg tail and its parent block to perform a
             consumer(event_rx, context, tx).await.unwrap();
 
             let tx = conn.transaction().unwrap();
-            let latest = tx.block_number(BlockId::Latest).unwrap().unwrap();
+            let latest = tx.block_number(FinalizedBlockId::Latest).unwrap().unwrap();
             assert_eq!(latest, BlockNumber::GENESIS + block_count as u64 - 3);
 
             let prunable_blocks = vec![0, 1];
             for block in prunable_blocks {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2458,7 +2459,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let pruned_blocks = [0, 1];
 
             for block in pruned_blocks {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2486,7 +2487,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                     class_hash_bytes!(b"class 2"),
                 );
             let result = tx
-                .state_update(BlockId::Number(BlockNumber::new_or_panic(3)))
+                .state_update(FinalizedBlockId::Number(BlockNumber::new_or_panic(3)))
                 .unwrap()
                 .unwrap();
             assert_eq!(result, state_update);
@@ -2509,7 +2510,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 );
 
             let result = tx
-                .state_update(BlockId::Number(BlockNumber::new_or_panic(4)))
+                .state_update(FinalizedBlockId::Number(BlockNumber::new_or_panic(4)))
                 .unwrap()
                 .unwrap();
             assert_eq!(result, state_update);
@@ -2576,7 +2577,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let non_prunable_blocks = vec![1, 2, 3, 4];
 
             for block in prunable_blocks {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction data has been pruned (as well as block so query returns None).
                 assert!(tx.transactions_for_block(block_id).unwrap().is_none());
                 assert!(tx.transaction_hashes_for_block(block_id).unwrap().is_none());
@@ -2585,7 +2586,7 @@ Blockchain history must include the reorg tail and its parent block to perform a
             }
 
             for block in non_prunable_blocks {
-                let block_id: BlockId = BlockNumber::new_or_panic(block).into();
+                let block_id: FinalizedBlockId = BlockNumber::new_or_panic(block).into();
                 // Transaction and block data has not been pruned.
                 let transactions = tx.transactions_for_block(block_id).unwrap().unwrap();
                 let transaction_hashes =

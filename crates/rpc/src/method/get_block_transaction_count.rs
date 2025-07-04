@@ -49,7 +49,7 @@ pub async fn get_block_transaction_count(
                     .len() as u64;
                 return Ok(Output(count));
             }
-            other => other.try_into().expect("Only pending cast should fail"),
+            other => other.to_finalized_or_panic(),
         };
 
         let exists = db

@@ -604,7 +604,7 @@ impl LocalState {
             let db = db.transaction().context("Creating database transaction")?;
 
             let latest_header = db
-                .block_id(pathfinder_storage::BlockId::Latest)
+                .block_id(pathfinder_common::FinalizedBlockId::Latest)
                 .context("Querying latest header")?;
 
             let checkpoint = db

@@ -3,10 +3,10 @@ use std::num::{NonZeroU32, NonZeroUsize};
 use anyhow::Context;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHeader, BlockNumber, ChainId};
+use pathfinder_common::{BlockHeader, BlockNumber, ChainId, FinalizedBlockId};
 use pathfinder_executor::{ExecutionState, NativeClassCache};
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::{BlockId, Storage};
+use pathfinder_storage::Storage;
 use rayon::prelude::*;
 use util::percentage::Percentage;
 
@@ -46,7 +46,7 @@ fn main() -> anyhow::Result<()> {
 
     let (latest_block, chain_id) = {
         let tx = db.transaction().unwrap();
-        let (latest_block, _) = tx.block_id(BlockId::Latest)?.unwrap();
+        let (latest_block, _) = tx.block_id(FinalizedBlockId::Latest)?.unwrap();
         let latest_block = latest_block.get();
         let chain_id = get_chain_id(&tx).unwrap();
         (latest_block, chain_id)
@@ -67,7 +67,7 @@ fn main() -> anyhow::Result<()> {
     (first_block..=last_block)
         .map(|block_number| {
             let transaction = db.transaction().unwrap();
-            let block_id = BlockId::Number(BlockNumber::new_or_panic(block_number));
+            let block_id = FinalizedBlockId::Number(BlockNumber::new_or_panic(block_number));
             let block_header = transaction.block_header(block_id).unwrap().unwrap();
             let transactions_and_receipts = transaction
                 .transaction_data_for_block(block_id)

@@ -4,11 +4,10 @@ use anyhow::Context;
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
 use pathfinder_common::transaction::Transaction as StarknetTransaction;
-use pathfinder_common::{BlockHash, BlockNumber, TransactionHash};
+use pathfinder_common::{BlockHash, BlockNumber, FinalizedBlockId, TransactionHash};
 
 use super::{EventsForBlock, TransactionDataForBlock, TransactionWithReceipt};
 use crate::prelude::*;
-use crate::BlockId;
 
 pub(crate) mod compression {
     use std::sync::LazyLock;
@@ -239,7 +238,7 @@ impl Transaction<'_> {
 
     pub fn transaction_at_block(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
         index: usize,
     ) -> anyhow::Result<Option<StarknetTransaction>> {
         let Some(block_number) = self.block_number(block)? else {
@@ -251,7 +250,7 @@ impl Transaction<'_> {
             .map(|(transaction, ..)| transaction.clone()))
     }
 
-    pub fn transaction_count(&self, block: BlockId) -> anyhow::Result<usize> {
+    pub fn transaction_count(&self, block: FinalizedBlockId) -> anyhow::Result<usize> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(0);
         };
@@ -260,7 +259,7 @@ impl Transaction<'_> {
 
     pub fn transaction_data_for_block(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
     ) -> anyhow::Result<Option<Vec<TransactionDataForBlock>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
@@ -279,7 +278,7 @@ impl Transaction<'_> {
 
     pub fn transactions_for_block(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
     ) -> anyhow::Result<Option<Vec<StarknetTransaction>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
@@ -295,7 +294,7 @@ impl Transaction<'_> {
 
     pub fn transactions_with_receipts_for_block(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
     ) -> anyhow::Result<Option<Vec<(StarknetTransaction, Receipt)>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
@@ -309,7 +308,10 @@ impl Transaction<'_> {
         ))
     }
 
-    pub fn events_for_block(&self, block: BlockId) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
+    pub fn events_for_block(
+        &self,
+        block: FinalizedBlockId,
+    ) -> anyhow::Result<Option<Vec<EventsForBlock>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
         };
@@ -337,7 +339,7 @@ impl Transaction<'_> {
 
     pub fn transaction_hashes_for_block(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
     ) -> anyhow::Result<Option<Vec<TransactionHash>>> {
         let Some(block_number) = self.block_number(block)? else {
             return Ok(None);
@@ -3218,7 +3220,9 @@ mod tests {
         assert_eq!(by_number, expected);
         let by_hash = tx.transaction_at_block(header.hash.into(), idx).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = tx.transaction_at_block(BlockId::Latest, idx).unwrap();
+        let by_latest = tx
+            .transaction_at_block(FinalizedBlockId::Latest, idx)
+            .unwrap();
         assert_eq!(by_latest, expected);
 
         let invalid_index = tx
@@ -3237,7 +3241,7 @@ mod tests {
         let (mut db, header, body) = setup();
         let tx = db.transaction().unwrap();
 
-        let by_latest = tx.transaction_count(BlockId::Latest).unwrap();
+        let by_latest = tx.transaction_count(FinalizedBlockId::Latest).unwrap();
         assert_eq!(by_latest, body.len());
         let by_number = tx.transaction_count(header.number.into()).unwrap();
         assert_eq!(by_number, body.len());
@@ -3260,7 +3264,9 @@ mod tests {
         assert_eq!(by_number, expected);
         let by_hash = tx.transaction_data_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = tx.transaction_data_for_block(BlockId::Latest).unwrap();
+        let by_latest = tx
+            .transaction_data_for_block(FinalizedBlockId::Latest)
+            .unwrap();
         assert_eq!(by_latest, expected);
 
         let invalid_block = tx
@@ -3280,7 +3286,7 @@ mod tests {
         assert_eq!(by_number, expected);
         let by_hash = tx.transactions_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = tx.transactions_for_block(BlockId::Latest).unwrap();
+        let by_latest = tx.transactions_for_block(FinalizedBlockId::Latest).unwrap();
         assert_eq!(by_latest, expected);
 
         let invalid_block = tx
@@ -3311,7 +3317,9 @@ mod tests {
         assert_eq!(by_number, expected);
         let by_hash = tx.transaction_hashes_for_block(header.hash.into()).unwrap();
         assert_eq!(by_hash, expected);
-        let by_latest = tx.transaction_hashes_for_block(BlockId::Latest).unwrap();
+        let by_latest = tx
+            .transaction_hashes_for_block(FinalizedBlockId::Latest)
+            .unwrap();
         assert_eq!(by_latest, expected);
 
         let invalid_block = tx
