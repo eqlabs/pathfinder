@@ -69,9 +69,9 @@ pub enum ApplicationError {
     ValidationFailureV06(String),
     #[error("Compilation failed")]
     CompilationFailed { data: String },
-    #[error("Contract class size it too large")]
+    #[error("Contract class size is too large")]
     ContractClassSizeIsTooLarge,
-    #[error("Sender address in not an account contract")]
+    #[error("Sender address is not an account contract")]
     NonAccount,
     #[error("A transaction with the same hash already exists in the mempool")]
     DuplicateTransaction,
