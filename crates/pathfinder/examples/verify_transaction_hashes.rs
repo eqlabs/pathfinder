@@ -53,7 +53,8 @@ fn main() -> anyhow::Result<()> {
         }
 
         let tx = db.transaction().unwrap();
-        let block_id = pathfinder_common::FinalizedBlockId::Number(BlockNumber::new_or_panic(block_number));
+        let block_id =
+            pathfinder_common::FinalizedBlockId::Number(BlockNumber::new_or_panic(block_number));
         let transactions = tx
             .transaction_data_for_block(block_id)?
             .context("Transaction data missing")?;
