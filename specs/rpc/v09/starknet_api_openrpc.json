@@ -282,7 +282,7 @@
                   },
                   {
                     "not": {
-                      "enum": ["RECEIVED", "CANDIDATE", "PRE_CONFIRMED"]
+                      "enum": ["RECEIVED", "CANDIDATE"]
                     }
                   }
                 ]
