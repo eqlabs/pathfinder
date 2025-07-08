@@ -1,5 +1,4 @@
 use anyhow::Context;
-use pathfinder_common::BlockId;
 use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
@@ -9,6 +8,7 @@ use crate::executor::{
     ExecutionStateError,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
+use crate::types::BlockId;
 use crate::{compose_executor_transaction, RpcVersion};
 
 #[derive(Debug, Clone)]

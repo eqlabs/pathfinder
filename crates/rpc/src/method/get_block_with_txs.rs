@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockHeader, BlockId};
+use pathfinder_common::BlockHeader;
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);

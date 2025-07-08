@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ClassHash, ContractAddress};
+use pathfinder_common::{ClassHash, ContractAddress};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);

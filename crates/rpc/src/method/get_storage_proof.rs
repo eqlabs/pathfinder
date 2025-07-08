@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;
 use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
@@ -11,6 +10,7 @@ use pathfinder_storage::Transaction;
 
 use crate::context::RpcContext;
 use crate::dto::{DeserializeForVersion, SerializeForVersion};
+use crate::types::BlockId;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContractStorageKeys {
@@ -507,6 +507,7 @@ mod tests {
 
     use super::*;
     use crate::dto::SerializeForVersion;
+    use crate::types::BlockId;
 
     mod serialization {
         use bitvec::bitvec;

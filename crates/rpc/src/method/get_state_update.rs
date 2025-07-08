@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockId, StateUpdate};
+use pathfinder_common::StateUpdate;
 
+use crate::types::BlockId;
 use crate::{dto, RpcContext, RpcVersion};
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+use pathfinder_common::{ContractAddress, ContractNonce};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,10 +97,11 @@ impl crate::dto::SerializeForVersion for Output {
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockId, BlockNumber, ContractNonce};
+    use pathfinder_common::{BlockNumber, ContractNonce};
 
     use super::{get_nonce, Error, Input};
     use crate::context::RpcContext;
+    use crate::types::BlockId;
     use crate::RpcVersion;
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;

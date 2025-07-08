@@ -1,8 +1,9 @@
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockId, TransactionIndex};
+use pathfinder_common::TransactionIndex;
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]

@@ -5,17 +5,83 @@ pub(crate) mod receipt;
 pub mod syncing;
 
 pub use class::*;
+pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::TipHex;
+    use pathfinder_common::{FinalizedBlockId, TipHex};
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
 
     use crate::dto::U64Hex;
+
+    /// A way of identifying a block in a JSON-RPC request.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum BlockId {
+        Number(BlockNumber),
+        Hash(BlockHash),
+        Latest,
+        Pending,
+    }
+
+    impl From<BlockHash> for BlockId {
+        fn from(value: BlockHash) -> Self {
+            BlockId::Hash(value)
+        }
+    }
+
+    impl From<BlockNumber> for BlockId {
+        fn from(value: BlockNumber) -> Self {
+            BlockId::Number(value)
+        }
+    }
+
+    impl BlockId {
+        pub fn is_pending(&self) -> bool {
+            matches!(self, BlockId::Pending)
+        }
+
+        /// Converts this [BlockId] to a [FinalizedBlockId].
+        ///
+        /// # Panics
+        ///
+        /// If this [BlockId] is [`BlockId::Pending`].
+        pub fn to_finalized_or_panic(self) -> FinalizedBlockId {
+            match self {
+                BlockId::Number(number) => FinalizedBlockId::Number(number),
+                BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
+                BlockId::Latest => FinalizedBlockId::Latest,
+                BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
+            }
+        }
+
+        /// Converts this [BlockId] to a [FinalizedBlockId].
+        ///
+        /// Coerces [`BlockId::Pending`] to [`FinalizedBlockId::Latest`].
+        pub fn to_finalized_coerced(self) -> FinalizedBlockId {
+            match self {
+                BlockId::Number(number) => FinalizedBlockId::Number(number),
+                BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
+                BlockId::Latest | BlockId::Pending => FinalizedBlockId::Latest,
+            }
+        }
+    }
+
+    impl From<BlockId> for starknet_gateway_client::BlockId {
+        fn from(value: BlockId) -> Self {
+            match value {
+                BlockId::Number(block_number) => {
+                    starknet_gateway_client::BlockId::Number(block_number)
+                }
+                BlockId::Hash(block_hash) => starknet_gateway_client::BlockId::Hash(block_hash),
+                BlockId::Latest => starknet_gateway_client::BlockId::Latest,
+                BlockId::Pending => starknet_gateway_client::BlockId::Pending,
+            }
+        }
+    }
 
     /// A way of identifying a block in a subscription request.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]

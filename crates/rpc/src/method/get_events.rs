@@ -2,13 +2,13 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::BlockId;
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
 use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::{PendingBlockVariant, PendingData};
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;

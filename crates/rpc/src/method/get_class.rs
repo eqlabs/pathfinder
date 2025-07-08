@@ -3,14 +3,14 @@ use pathfinder_common::ClassHash;
 
 use crate::context::RpcContext;
 use crate::dto::SerializeForVersion;
-use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::{BlockId, CairoContractClass, ContractClass, SierraContractClass};
 use crate::{dto, RpcVersion};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ClassHashNotFound);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: pathfinder_common::BlockId,
+    block_id: BlockId,
     class_hash: pathfinder_common::ClassHash,
 }
 
@@ -107,7 +107,6 @@ impl SerializeForVersion for Output {
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::BlockId;
 
     use super::*;
 

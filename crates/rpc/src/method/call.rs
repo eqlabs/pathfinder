@@ -1,10 +1,11 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug)]

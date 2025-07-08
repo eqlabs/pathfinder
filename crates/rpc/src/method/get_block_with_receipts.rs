@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 pub enum Output {

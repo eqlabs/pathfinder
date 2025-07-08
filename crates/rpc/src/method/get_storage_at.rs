@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{ContractAddress, StorageAddress, StorageValue};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]

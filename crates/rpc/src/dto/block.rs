@@ -4,7 +4,7 @@ use serde::de::Error;
 use crate::dto::SerializeStruct;
 use crate::{Reorg, RpcVersion};
 
-impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
+impl crate::dto::DeserializeForVersion for crate::types::request::BlockId {
     fn deserialize(value: super::Value) -> Result<Self, serde_json::Error> {
         let rpc_version = value.version;
         if value.is_string() {

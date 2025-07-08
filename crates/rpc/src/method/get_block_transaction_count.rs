@@ -1,12 +1,12 @@
 use anyhow::Context;
-use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: pathfinder_common::BlockId,
+    block_id: BlockId,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
