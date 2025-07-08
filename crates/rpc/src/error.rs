@@ -252,19 +252,20 @@ impl ApplicationError {
                 transaction_index,
                 error,
                 error_stack,
-            } => match version {
-                RpcVersion::V08 => {
+            } => {
+                if version >= RpcVersion::V08 {
                     let error_stack = error_stack_frames_to_json(&error_stack.0);
                     Some(json!({
                         "transaction_index": transaction_index,
                         "execution_error": error_stack,
                     }))
+                } else {
+                    Some(json!({
+                        "transaction_index": transaction_index,
+                        "execution_error": error,
+                    }))
                 }
-                _ => Some(json!({
-                    "transaction_index": transaction_index,
-                    "execution_error": error,
-                })),
-            },
+            }
             ApplicationError::Internal(_) => None,
             ApplicationError::Custom(cause) => {
                 let cause = cause.to_string();
@@ -282,17 +283,18 @@ impl ApplicationError {
             ApplicationError::ContractError {
                 revert_error,
                 revert_error_stack,
-            } => match version {
-                RpcVersion::V08 => {
+            } => {
+                if version >= RpcVersion::V08 {
                     let revert_error_stack = error_stack_frames_to_json(&revert_error_stack.0);
                     Some(json!({
                         "revert_error": revert_error_stack
                     }))
+                } else {
+                    Some(json!({
+                        "revert_error": revert_error
+                    }))
                 }
-                _ => Some(json!({
-                    "revert_error": revert_error
-                })),
-            },
+            }
             ApplicationError::TooManyKeysInFilter { limit, requested } => Some(json!({
                 "limit": limit,
                 "requested": requested,
