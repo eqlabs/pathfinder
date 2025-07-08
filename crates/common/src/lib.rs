@@ -318,15 +318,10 @@ impl BlockId {
 /// A way of identifying a specific block that has been finalized.
 ///
 /// Useful in contexts that do not work with pending blocks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FinalizedBlockId {
-    #[serde(rename = "block_number")]
     Number(BlockNumber),
-    #[serde(rename = "block_hash")]
     Hash(BlockHash),
-    #[serde(rename = "latest")]
     Latest,
 }
 
