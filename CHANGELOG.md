@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default value of L2 gas price for historical blocks has been changed from 0 to 1 (for both WEI and FRI), to agree with the feeder gateway default.
 - Trying to enable blockchain pruning on an archive database does indeed enable pruning in the database despite printing an error that pruning cannot be enabled.
 - When running on Starknet < 0.14.0 and querying for the "pre_confirmed" block header Pathfinder returns a non-conformant response that has "parent_hash" instead of "block_number".
+- Transaction execution errors and contract errors are returning unstructured error information on the JSON-RPC 0.9.0 API.
 
 ## [0.17.0] - 2025-06-29
 
