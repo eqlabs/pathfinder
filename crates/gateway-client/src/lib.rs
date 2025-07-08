@@ -22,17 +22,6 @@ pub enum BlockId {
     Pending,
 }
 
-impl From<pathfinder_common::BlockId> for BlockId {
-    fn from(block_id: pathfinder_common::BlockId) -> Self {
-        match block_id {
-            pathfinder_common::BlockId::Number(number) => BlockId::Number(number),
-            pathfinder_common::BlockId::Hash(hash) => BlockId::Hash(hash),
-            pathfinder_common::BlockId::Latest => BlockId::Latest,
-            pathfinder_common::BlockId::Pending => BlockId::Pending,
-        }
-    }
-}
-
 impl From<BlockNumber> for BlockId {
     fn from(block_number: BlockNumber) -> Self {
         BlockId::Number(block_number)
