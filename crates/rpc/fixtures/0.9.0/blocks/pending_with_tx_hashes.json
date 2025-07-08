@@ -12,7 +12,7 @@
     "price_in_fri": "0x7374726b206c32676173207072696365",
     "price_in_wei": "0x6c3220676173207072696365"
   },
-  "parent_hash": "0x6c6174657374",
+  "block_number": 3,
   "sequencer_address": "0x70656e64696e672073657175656e6365722061646472657373",
   "starknet_version": "0.11.0",
   "timestamp": 1234567,

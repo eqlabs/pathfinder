@@ -28,6 +28,7 @@ impl crate::dto::DeserializeForVersion for Input {
 pub enum Output {
     Pending {
         header: Arc<PendingBlockVariant>,
+        block_number: pathfinder_common::BlockNumber,
         transactions: Vec<Transaction>,
     },
     Full {
@@ -66,6 +67,7 @@ pub async fn get_block_with_txs(
 
                 return Ok(Output::Pending {
                     header: pending.block(),
+                    block_number: pending.block_number(),
                     transactions,
                 });
             }
@@ -104,10 +106,11 @@ impl crate::dto::SerializeForVersion for Output {
         match self {
             Output::Pending {
                 header,
+                block_number,
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(header.as_ref())?;
+                serializer.flatten(&(*block_number, header.as_ref()))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),

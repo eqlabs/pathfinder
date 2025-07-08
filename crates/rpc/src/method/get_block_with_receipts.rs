@@ -17,7 +17,10 @@ pub enum Output {
         )>,
         is_l1_accepted: bool,
     },
-    Pending(Arc<PendingBlockVariant>),
+    Pending {
+        block: Arc<PendingBlockVariant>,
+        block_number: pathfinder_common::BlockNumber,
+    },
 }
 
 pub struct Input {
@@ -58,7 +61,10 @@ pub async fn get_block_with_receipts(
                     .get(&db, rpc_version)
                     .context("Querying pending data")?;
 
-                return Ok(Output::Pending(pending.block()));
+                return Ok(Output::Pending {
+                    block: pending.block(),
+                    block_number: pending.block_number(),
+                });
             }
             other => other.to_finalized_or_panic(),
         };
@@ -126,8 +132,11 @@ impl crate::dto::SerializeForVersion for Output {
                         }),
                 )?;
             }
-            Output::Pending(block) => {
-                serializer.flatten(block.as_ref())?;
+            Output::Pending {
+                block,
+                block_number,
+            } => {
+                serializer.flatten(&(*block_number, block.as_ref()))?;
                 let transactions = block.transactions();
                 serializer.serialize_iter(
                     "transactions",

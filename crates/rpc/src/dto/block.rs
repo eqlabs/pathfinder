@@ -86,35 +86,49 @@ impl crate::dto::SerializeForVersion for pathfinder_common::BlockHeader {
     }
 }
 
-impl crate::dto::SerializeForVersion for starknet_gateway_types::reply::PendingBlock {
+impl crate::dto::SerializeForVersion
+    for (
+        pathfinder_common::BlockNumber,
+        &starknet_gateway_types::reply::PendingBlock,
+    )
+{
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let (block_number, pending_block) = *self;
+
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("parent_hash", &self.parent_hash)?;
-        serializer.serialize_field("timestamp", &self.timestamp.get())?;
-        serializer.serialize_field("sequencer_address", &self.sequencer_address)?;
+        if serializer.version >= RpcVersion::V09 {
+            serializer.serialize_field("block_number", &block_number)?;
+        } else {
+            serializer.serialize_field("parent_hash", &pending_block.parent_hash)?;
+        }
+        serializer.serialize_field("timestamp", &pending_block.timestamp.get())?;
+        serializer.serialize_field("sequencer_address", &pending_block.sequencer_address)?;
         serializer.serialize_field(
             "l1_gas_price",
             &ResourcePrice {
-                price_in_wei: self.l1_gas_price.price_in_wei,
-                price_in_fri: self.l1_gas_price.price_in_fri,
+                price_in_wei: pending_block.l1_gas_price.price_in_wei,
+                price_in_fri: pending_block.l1_gas_price.price_in_fri,
             },
         )?;
-        serializer.serialize_field("starknet_version", &self.starknet_version.to_string())?;
+        serializer.serialize_field(
+            "starknet_version",
+            &pending_block.starknet_version.to_string(),
+        )?;
 
         if serializer.version >= RpcVersion::V07 {
             serializer.serialize_field(
                 "l1_data_gas_price",
                 &ResourcePrice {
-                    price_in_wei: self.l1_data_gas_price.price_in_wei,
-                    price_in_fri: self.l1_data_gas_price.price_in_fri,
+                    price_in_wei: pending_block.l1_data_gas_price.price_in_wei,
+                    price_in_fri: pending_block.l1_data_gas_price.price_in_fri,
                 },
             )?;
             serializer.serialize_field(
                 "l1_da_mode",
-                &match self.l1_da_mode {
+                &match pending_block.l1_da_mode {
                     starknet_gateway_types::reply::L1DataAvailabilityMode::Blob => "BLOB",
                     starknet_gateway_types::reply::L1DataAvailabilityMode::Calldata => "CALLDATA",
                 },
@@ -125,8 +139,8 @@ impl crate::dto::SerializeForVersion for starknet_gateway_types::reply::PendingB
             serializer.serialize_field(
                 "l2_gas_price",
                 &ResourcePrice {
-                    price_in_wei: self.l2_gas_price.price_in_wei,
-                    price_in_fri: self.l2_gas_price.price_in_fri,
+                    price_in_wei: pending_block.l2_gas_price.price_in_wei,
+                    price_in_fri: pending_block.l2_gas_price.price_in_fri,
                 },
             )?;
         }
@@ -184,14 +198,21 @@ impl crate::dto::SerializeForVersion for crate::pending::PreConfirmedBlock {
     }
 }
 
-impl crate::dto::SerializeForVersion for crate::pending::PendingBlockVariant {
+impl crate::dto::SerializeForVersion
+    for (
+        pathfinder_common::BlockNumber,
+        &crate::pending::PendingBlockVariant,
+    )
+{
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        match self {
+        let (block_number, pending_block) = *self;
+
+        match pending_block {
             crate::pending::PendingBlockVariant::Pending(pending_block) => {
-                pending_block.serialize(serializer)
+                (block_number, pending_block).serialize(serializer)
             }
             crate::pending::PendingBlockVariant::PreConfirmed(pre_confirmed_block, _) => {
                 pre_confirmed_block.serialize(serializer)
@@ -336,6 +357,7 @@ mod tests {
 
     #[test]
     fn pending_block() {
+        let block_number = BlockNumber::new_or_panic(12345);
         let pending = PendingBlock {
             l1_gas_price: GasPrices {
                 price_in_wei: GasPrice(0x34795c87c),
@@ -362,7 +384,9 @@ mod tests {
         };
 
         pretty_assertions_sorted::assert_eq!(
-            pending.serialize(Serializer::new(RpcVersion::V06)).unwrap(),
+            (block_number, &pending)
+                .serialize(Serializer::new(RpcVersion::V06))
+                .unwrap(),
             json!({
                 "l1_gas_price": {
                   "price_in_fri": "0x59425e9d6d3c",
@@ -376,7 +400,9 @@ mod tests {
         );
 
         pretty_assertions_sorted::assert_eq!(
-            pending.serialize(Serializer::new(RpcVersion::V07)).unwrap(),
+            (block_number, &pending)
+                .serialize(Serializer::new(RpcVersion::V07))
+                .unwrap(),
             json!({
                 "l1_da_mode": "BLOB",
                 "l1_data_gas_price": {
@@ -395,7 +421,9 @@ mod tests {
         );
 
         pretty_assertions_sorted::assert_eq!(
-            pending.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
+            (block_number, &pending)
+                .serialize(Serializer::new(RpcVersion::V08))
+                .unwrap(),
             json!({
                 "l1_da_mode": "BLOB",
                 "l1_data_gas_price": {
@@ -411,6 +439,31 @@ mod tests {
                     "price_in_wei": "0x12345678"
                 },
                 "parent_hash": "0x6084bda2cd3247aa11364404f7918001e82a7567cfe0b949fa6a7f3d4b4099f",
+                "sequencer_address": "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+                "starknet_version": "0.13.3",
+                "timestamp": 1734728886,
+            })
+        );
+
+        pretty_assertions_sorted::assert_eq!(
+            (block_number, &pending)
+                .serialize(Serializer::new(RpcVersion::V09))
+                .unwrap(),
+            json!({
+                "l1_da_mode": "BLOB",
+                "l1_data_gas_price": {
+                  "price_in_fri": "0xe27be612da1",
+                  "price_in_wei": "0x85257107"
+                },
+                "l1_gas_price": {
+                  "price_in_fri": "0x59425e9d6d3c",
+                  "price_in_wei": "0x34795c87c"
+                },
+                "l2_gas_price": {
+                    "price_in_fri": "0x23456789",
+                    "price_in_wei": "0x12345678"
+                },
+                "block_number": 12345,
                 "sequencer_address": "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
                 "starknet_version": "0.13.3",
                 "timestamp": 1734728886,
