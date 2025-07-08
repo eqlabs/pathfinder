@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHeader, BlockId, TransactionHash};
+use pathfinder_common::{BlockHeader, BlockId, BlockNumber, TransactionHash};
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
@@ -27,6 +27,7 @@ impl crate::dto::DeserializeForVersion for Input {
 pub enum Output {
     Pending {
         header: Arc<PendingBlockVariant>,
+        block_number: BlockNumber,
         transactions: Vec<TransactionHash>,
     },
     Full {
@@ -65,6 +66,7 @@ pub async fn get_block_with_tx_hashes(
 
                 return Ok(Output::Pending {
                     header: pending.block(),
+                    block_number: pending.block_number(),
                     transactions,
                 });
             }
@@ -101,10 +103,11 @@ impl crate::dto::SerializeForVersion for Output {
         match self {
             Output::Pending {
                 header,
+                block_number,
                 transactions,
             } => {
                 let mut serializer = serializer.serialize_struct()?;
-                serializer.flatten(header.as_ref())?;
+                serializer.flatten(&(*block_number, header.as_ref()))?;
                 serializer.serialize_iter(
                     "transactions",
                     transactions.len(),
