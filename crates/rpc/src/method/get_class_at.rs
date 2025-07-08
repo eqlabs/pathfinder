@@ -76,12 +76,7 @@ pub async fn get_class_at(
             None
         };
 
-        // Map block id to the storage variant.
-        let block_id = match input.block_id {
-            BlockId::Pending => pathfinder_storage::BlockId::Latest,
-            other => other.try_into().expect("Only pending cast should fail"),
-        };
-
+        let block_id = input.block_id.to_finalized_coerced();
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }

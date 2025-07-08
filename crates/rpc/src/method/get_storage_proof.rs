@@ -282,7 +282,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             // Getting proof of a pending block is not supported.
             return Err(Error::ProofMissing);
         }
-        other => other.try_into().expect("Only pending cast should fail"),
+        other => other.to_finalized_or_panic(),
     };
 
     let span = tracing::Span::current();

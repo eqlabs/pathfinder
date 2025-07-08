@@ -6,6 +6,7 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
+use pathfinder_common::FinalizedBlockId;
 use rusqlite::types::Value;
 
 use crate::bloom::{AggregateBloom, BlockRange, BloomFilter};
@@ -156,7 +157,7 @@ impl Transaction<'_> {
         contract_address: Option<ContractAddress>,
         mut keys: Vec<Vec<EventKey>>,
     ) -> anyhow::Result<(Vec<EmittedEvent>, Option<BlockNumber>)> {
-        let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
+        let Some(latest_block) = self.block_number(FinalizedBlockId::Latest)? else {
             // No blocks in the database.
             return Ok((vec![], None));
         };
@@ -194,7 +195,7 @@ impl Transaction<'_> {
         let mut emitted_events = vec![];
 
         for block in blocks_to_scan {
-            let Some(block_header) = self.block_header(crate::BlockId::Number(block))? else {
+            let Some(block_header) = self.block_header(FinalizedBlockId::Number(block))? else {
                 break;
             };
 
@@ -253,7 +254,7 @@ impl Transaction<'_> {
             return Err(EventFilterError::PageSizeTooSmall);
         }
 
-        let Some(latest_block) = self.block_number(crate::BlockId::Latest)? else {
+        let Some(latest_block) = self.block_number(FinalizedBlockId::Latest)? else {
             // No blocks in the database.
             return Ok(PageOfEvents {
                 events: vec![],
@@ -320,7 +321,7 @@ impl Transaction<'_> {
             tracing::trace!(%block, %events_required, "Processing block");
 
             let block_header = self
-                .block_header(crate::BlockId::Number(block))?
+                .block_header(FinalizedBlockId::Number(block))?
                 .expect("Only existing blocks should be scanned");
 
             let events = match self.events_for_block(block.into())? {

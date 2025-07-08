@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        tx.block_id(pathfinder_storage::BlockId::Latest)
+        tx.block_id(pathfinder_common::FinalizedBlockId::Latest)
             .context("Fetching latest block number")?
             .context("Latest block number does not exist")?
             .0
@@ -43,7 +43,8 @@ fn main() -> anyhow::Result<()> {
         }
 
         let tx = db.transaction().unwrap();
-        let block_id = pathfinder_storage::BlockId::Number(BlockNumber::new_or_panic(block_number));
+        let block_id =
+            pathfinder_common::FinalizedBlockId::Number(BlockNumber::new_or_panic(block_number));
         let header = tx
             .block_header(block_id)
             .context("Fetching block header")?

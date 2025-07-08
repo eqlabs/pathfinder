@@ -584,7 +584,7 @@ async fn download_block(
                     let tx = conn
                         .transaction()
                         .context("Creating database transaction")?;
-                    tx.block_hash(pathfinder_storage::BlockId::Number(seq_head_number))
+                    tx.block_hash(pathfinder_common::FinalizedBlockId::Number(seq_head_number))
                         .context("Query block hash")?
                 };
                 match our_block_hash {

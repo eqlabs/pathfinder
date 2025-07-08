@@ -399,7 +399,7 @@ fn map_from_block_to_number(
         Some(Number(number)) => Ok(Some(number)),
         Some(Pending) | Some(Latest) => {
             let number = tx
-                .block_id(pathfinder_storage::BlockId::Latest)
+                .block_id(pathfinder_common::FinalizedBlockId::Latest)
                 .context("Querying latest block number")?
                 .ok_or(GetEventsError::BlockNotFound)?
                 .0;

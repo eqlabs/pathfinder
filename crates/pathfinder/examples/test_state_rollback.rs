@@ -2,8 +2,8 @@ use std::num::NonZeroU32;
 use std::time::Instant;
 
 use anyhow::Context;
-use pathfinder_common::BlockNumber;
-use pathfinder_storage::{BlockId, StorageBuilder};
+use pathfinder_common::{BlockNumber, FinalizedBlockId};
+use pathfinder_storage::StorageBuilder;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
 
     let latest_block = {
         let tx = db.transaction().unwrap();
-        let (latest_block, _) = tx.block_id(BlockId::Latest)?.unwrap();
+        let (latest_block, _) = tx.block_id(FinalizedBlockId::Latest)?.unwrap();
         latest_block.get()
     };
     let from: u64 = std::env::args()

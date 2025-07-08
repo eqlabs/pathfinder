@@ -31,9 +31,8 @@ use anyhow::Context;
 use clap::{Args, Parser};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
-use pathfinder_common::Chain;
+use pathfinder_common::{Chain, FinalizedBlockId};
 use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
-use pathfinder_storage::BlockId;
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
@@ -128,21 +127,21 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         header_only: Option<bool>,
     }
 
-    impl TryInto<BlockId> for BlockIdParam {
+    impl TryInto<FinalizedBlockId> for BlockIdParam {
         type Error = ();
 
-        fn try_into(self) -> Result<BlockId, Self::Error> {
+        fn try_into(self) -> Result<FinalizedBlockId, Self::Error> {
             if let Some(n) = self.block_number {
                 if n == "latest" {
-                    return Ok(BlockId::Latest);
+                    return Ok(FinalizedBlockId::Latest);
                 } else {
                     let n: u64 = n.parse().map_err(|_| ())?;
-                    return Ok(BlockId::Number(BlockNumber::new_or_panic(n)));
+                    return Ok(FinalizedBlockId::Number(BlockNumber::new_or_panic(n)));
                 }
             }
 
             if let Some(h) = self.block_hash {
-                return Ok(BlockId::Hash(h));
+                return Ok(FinalizedBlockId::Hash(h));
             }
             Err(())
         }
@@ -406,7 +405,7 @@ pub struct ContractAddresses {
 #[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
-    block_id: BlockId,
+    block_id: FinalizedBlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
     let header = tx
         .block_header(block_id)
@@ -474,7 +473,7 @@ fn resolve_block(
 #[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_signature(
     tx: &pathfinder_storage::Transaction<'_>,
-    block_id: BlockId,
+    block_id: FinalizedBlockId,
 ) -> anyhow::Result<starknet_gateway_types::reply::BlockSignature> {
     let header = tx
         .block_header(block_id)
@@ -499,13 +498,13 @@ fn resolve_signature(
 #[tracing::instrument(level = "trace", skip(tx))]
 fn resolve_state_update(
     tx: &pathfinder_storage::Transaction<'_>,
-    block: BlockId,
+    block: FinalizedBlockId,
     reorg_config: Option<ReorgConfig>,
     reorged: Arc<AtomicBool>,
 ) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
     let block = if let Some(reorg_config) = reorg_config {
         match block {
-            BlockId::Number(block_number) => {
+            FinalizedBlockId::Number(block_number) => {
                 if reorged.load(Ordering::Relaxed) {
                     // reorg is active
                     if block_number > reorg_config.reorg_to_block {
@@ -523,7 +522,7 @@ fn resolve_state_update(
 
                 block
             }
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 if reorged.load(Ordering::Relaxed) {
                     reorg_config.reorg_to_block.into()
                 } else {

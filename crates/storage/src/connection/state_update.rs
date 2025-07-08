@@ -10,9 +10,9 @@ use pathfinder_common::state_update::{
     StateUpdateData,
     SystemContractUpdate,
 };
+use pathfinder_common::FinalizedBlockId;
 
 use crate::prelude::*;
-use crate::BlockId;
 
 type StorageUpdates = Vec<(StorageAddress, StorageValue)>;
 
@@ -249,7 +249,7 @@ impl Transaction<'_> {
 
     fn block_details(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
     ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment, StateCommitment)>> {
         use const_format::formatcp;
 
@@ -284,15 +284,15 @@ impl Transaction<'_> {
         let tx = self.inner();
 
         match block {
-            BlockId::Latest => tx.query_row(LATEST, [], handle_row),
-            BlockId::Number(number) => tx.query_row(NUMBER, params![&number], handle_row),
-            BlockId::Hash(hash) => tx.query_row(HASH, params![&hash], handle_row),
+            FinalizedBlockId::Latest => tx.query_row(LATEST, [], handle_row),
+            FinalizedBlockId::Number(number) => tx.query_row(NUMBER, params![&number], handle_row),
+            FinalizedBlockId::Hash(hash) => tx.query_row(HASH, params![&hash], handle_row),
         }
         .optional()
         .map_err(Into::into)
     }
 
-    pub fn state_update(&self, block: BlockId) -> anyhow::Result<Option<StateUpdate>> {
+    pub fn state_update(&self, block: FinalizedBlockId) -> anyhow::Result<Option<StateUpdate>> {
         let Some((block_number, block_hash, state_commitment, parent_state_commitment)) =
             self.block_details(block).context("Querying block header")?
         else {
@@ -531,7 +531,10 @@ impl Transaction<'_> {
     }
 
     /// Returns hashes of Cairo and Sierra classes declared at a given block.
-    pub fn declared_classes_at(&self, block: BlockId) -> anyhow::Result<Option<Vec<ClassHash>>> {
+    pub fn declared_classes_at(
+        &self,
+        block: FinalizedBlockId,
+    ) -> anyhow::Result<Option<Vec<ClassHash>>> {
         let Some((block_number, _)) = self.block_id(block).context("Querying block header")? else {
             return Ok(None);
         };
@@ -580,12 +583,12 @@ impl Transaction<'_> {
 
     pub fn storage_value(
         &self,
-        block: BlockId,
+        block: FinalizedBlockId,
         contract_address: ContractAddress,
         key: StorageAddress,
     ) -> anyhow::Result<Option<StorageValue>> {
         match block {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT storage_value
@@ -600,7 +603,7 @@ impl Transaction<'_> {
                     row.get_storage_value(0)
                 })
             }
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT storage_value
@@ -615,7 +618,7 @@ impl Transaction<'_> {
                     row.get_storage_value(0)
                 })
             }
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT storage_value
@@ -640,10 +643,10 @@ impl Transaction<'_> {
     pub fn contract_exists(
         &self,
         contract_address: ContractAddress,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
     ) -> anyhow::Result<bool> {
         match block_id {
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= ?)",
                 )?;
@@ -652,7 +655,7 @@ impl Transaction<'_> {
                     |row| row.get(0),
                 )
             }
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT EXISTS(
                         SELECT 1 FROM contract_updates WHERE contract_address = ? AND block_number <= (
@@ -665,7 +668,7 @@ impl Transaction<'_> {
                     |row| row.get(0),
                 )
             }
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     "SELECT EXISTS(SELECT 1 FROM contract_updates WHERE contract_address = ?)",
                 )?;
@@ -681,10 +684,10 @@ impl Transaction<'_> {
     pub fn contract_nonce(
         &self,
         contract_address: ContractAddress,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
     ) -> anyhow::Result<Option<ContractNonce>> {
         match block_id {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT nonce FROM nonce_updates
@@ -695,7 +698,7 @@ impl Transaction<'_> {
                 )?;
                 stmt.query_row(params![&contract_address], |row| row.get_contract_nonce(0))
             }
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT nonce FROM nonce_updates
@@ -708,7 +711,7 @@ impl Transaction<'_> {
                     row.get_contract_nonce(0)
                 })
             }
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"
                     SELECT nonce FROM nonce_updates
@@ -730,11 +733,11 @@ impl Transaction<'_> {
 
     pub fn contract_class_hash(
         &self,
-        block_id: BlockId,
+        block_id: FinalizedBlockId,
         contract_address: ContractAddress,
     ) -> anyhow::Result<Option<ClassHash>> {
         match block_id {
-            BlockId::Latest => {
+            FinalizedBlockId::Latest => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT class_hash FROM contract_updates
                 WHERE contract_address = ?
@@ -742,7 +745,7 @@ impl Transaction<'_> {
                 )?;
                 stmt.query_row(params![&contract_address], |row| row.get_class_hash(0))
             }
-            BlockId::Number(number) => {
+            FinalizedBlockId::Number(number) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT class_hash FROM contract_updates
                 WHERE contract_address = ? AND block_number <= ?
@@ -752,7 +755,7 @@ impl Transaction<'_> {
                     row.get_class_hash(0)
                 })
             }
-            BlockId::Hash(hash) => {
+            FinalizedBlockId::Hash(hash) => {
                 let mut stmt = self.inner().prepare_cached(
                     r"SELECT class_hash FROM contract_updates
                 WHERE contract_address = ? AND block_number <= (
@@ -1245,13 +1248,13 @@ mod tests {
 
             // check getters for compiled class
             let hash = tx
-                .casm_hash_at(BlockId::Latest, ClassHash(SIERRA_HASH.0))
+                .casm_hash_at(FinalizedBlockId::Latest, ClassHash(SIERRA_HASH.0))
                 .unwrap()
                 .unwrap();
             assert_eq!(hash, casm_hash_bytes!(b"casm hash"));
 
             let definition = tx
-                .casm_definition_at(BlockId::Latest, ClassHash(SIERRA_HASH.0))
+                .casm_definition_at(FinalizedBlockId::Latest, ClassHash(SIERRA_HASH.0))
                 .unwrap()
                 .unwrap();
             assert_eq!(definition, b"casm definition");
@@ -1401,7 +1404,7 @@ mod tests {
                 .unwrap();
 
             let latest = tx
-                .contract_nonce(contract, BlockId::Latest)
+                .contract_nonce(contract, FinalizedBlockId::Latest)
                 .unwrap()
                 .unwrap();
             assert_eq!(latest, expected);
@@ -1429,7 +1432,7 @@ mod tests {
                 .unwrap();
 
             let latest = tx
-                .contract_nonce(contract, BlockId::Latest)
+                .contract_nonce(contract, FinalizedBlockId::Latest)
                 .unwrap()
                 .unwrap();
             assert_eq!(latest, expected);
@@ -1449,7 +1452,7 @@ mod tests {
             // Invalid i.e. missing contract should be None
             let invalid_contract = contract_address_bytes!(b"invalid");
             let invalid_latest = tx
-                .contract_nonce(invalid_contract, BlockId::Latest)
+                .contract_nonce(invalid_contract, FinalizedBlockId::Latest)
                 .unwrap();
             assert_eq!(invalid_latest, None);
             let invalid_by_hash = tx
@@ -1481,7 +1484,7 @@ mod tests {
 
             // Valid key and contract.
             let latest = tx
-                .storage_value(BlockId::Latest, contract, key)
+                .storage_value(FinalizedBlockId::Latest, contract, key)
                 .unwrap()
                 .unwrap();
             assert_eq!(latest, expected);
@@ -1499,7 +1502,7 @@ mod tests {
             // Invalid key should be none
             let invalid_key = storage_address_bytes!(b"invalid key");
             let latest = tx
-                .storage_value(BlockId::Latest, contract, invalid_key)
+                .storage_value(FinalizedBlockId::Latest, contract, invalid_key)
                 .unwrap();
             assert_eq!(latest, None);
             let by_hash = tx
@@ -1514,7 +1517,7 @@ mod tests {
             // Invalid contract should be none
             let invalid_contract = contract_address_bytes!(b"invalid");
             let latest = tx
-                .storage_value(BlockId::Latest, invalid_contract, key)
+                .storage_value(FinalizedBlockId::Latest, invalid_contract, key)
                 .unwrap();
             assert_eq!(latest, None);
             let by_hash = tx

@@ -71,7 +71,7 @@ pub async fn trace_block_transactions(
                 )
             }
             other => {
-                let block_id = other.try_into().expect("Only pending should fail");
+                let block_id = other.to_finalized_or_panic();
 
                 let header = db_tx
                     .block_header(block_id)?
