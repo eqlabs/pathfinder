@@ -256,16 +256,10 @@ impl TransactionVersion {
 
 /// A way of identifying a specific block.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
-#[serde(deny_unknown_fields)]
 pub enum BlockId {
-    #[serde(rename = "block_number")]
     Number(BlockNumber),
-    #[serde(rename = "block_hash")]
     Hash(BlockHash),
-    #[serde(rename = "latest")]
     Latest,
-    #[serde(rename = "pending")]
     Pending,
 }
 
