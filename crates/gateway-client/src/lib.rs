@@ -4,7 +4,6 @@ use std::result::Result;
 use std::time::Duration;
 
 use pathfinder_common::prelude::*;
-use pathfinder_common::BlockId;
 use reqwest::Url;
 use starknet_gateway_types::error::SequencerError;
 use starknet_gateway_types::reply::{PendingBlock, PreConfirmedBlock};
@@ -13,6 +12,38 @@ use starknet_gateway_types::{reply, request};
 
 mod builder;
 mod metrics;
+
+/// A way of identifying a specific block.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BlockId {
+    Number(BlockNumber),
+    Hash(BlockHash),
+    Latest,
+    Pending,
+}
+
+impl From<pathfinder_common::BlockId> for BlockId {
+    fn from(block_id: pathfinder_common::BlockId) -> Self {
+        match block_id {
+            pathfinder_common::BlockId::Number(number) => BlockId::Number(number),
+            pathfinder_common::BlockId::Hash(hash) => BlockId::Hash(hash),
+            pathfinder_common::BlockId::Latest => BlockId::Latest,
+            pathfinder_common::BlockId::Pending => BlockId::Pending,
+        }
+    }
+}
+
+impl From<BlockNumber> for BlockId {
+    fn from(block_number: BlockNumber) -> Self {
+        BlockId::Number(block_number)
+    }
+}
+
+impl From<BlockHash> for BlockId {
+    fn from(block_hash: BlockHash) -> Self {
+        BlockId::Hash(block_hash)
+    }
+}
 
 #[allow(unused_variables)]
 #[mockall::automock]

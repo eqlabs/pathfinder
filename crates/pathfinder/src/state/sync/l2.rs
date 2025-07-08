@@ -344,7 +344,7 @@ pub async fn poll_latest(
         interval.tick().await;
 
         let Ok(latest) = gateway
-            .block_header(pathfinder_common::BlockId::Latest)
+            .block_header(starknet_gateway_client::BlockId::Latest)
             .await
             .inspect_err(|e| tracing::debug!(error=%e, "Error requesting latest block ID"))
         else {
@@ -1193,10 +1193,10 @@ mod tests {
         use assert_matches::assert_matches;
         use pathfinder_common::macro_prelude::*;
         use pathfinder_common::prelude::*;
-        use pathfinder_common::{BlockId, Chain};
+        use pathfinder_common::Chain;
         use pathfinder_crypto::Felt;
         use pathfinder_storage::StorageBuilder;
-        use starknet_gateway_client::MockGatewayApi;
+        use starknet_gateway_client::{BlockId, MockGatewayApi};
         use starknet_gateway_types::error::{
             KnownStarknetErrorCode,
             SequencerError,

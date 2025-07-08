@@ -145,7 +145,7 @@ pub async fn trace_block_transactions(
 
     context
         .sequencer
-        .block_traces(input.block_id)
+        .block_traces(input.block_id.into())
         .await
         .context("Forwarding to feeder gateway")
         .map_err(TraceBlockTransactionsError::from)

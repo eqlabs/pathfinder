@@ -12,10 +12,11 @@
 //!   3. [Params](stage::Params) where you select the retry behavior.
 //!   4. [Final](stage::Final) where you select the REST operation type, which
 //!      is then executed.
-use pathfinder_common::{BlockId, ClassHash, TransactionHash};
+use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_types::error::SequencerError;
 
 use crate::metrics::{with_metrics, BlockTag, RequestMetadata};
+use crate::BlockId;
 
 const X_THROTTLING_BYPASS: &str = "X-Throttling-Bypass";
 
@@ -659,7 +660,7 @@ mod tests {
         use warp::http::response::Builder;
         use warp::Filter;
 
-        use crate::{Client, GatewayApi};
+        use crate::{BlockId, Client, GatewayApi};
 
         fn server() -> (tokio::task::JoinHandle<()>, std::net::SocketAddr) {
             let any = warp::any().then(|| async { Builder::new().status(500).body("whatever") });
@@ -674,10 +675,7 @@ mod tests {
             let mut url = reqwest::Url::parse("http://localhost/").unwrap();
             url.set_port(Some(addr.port())).unwrap();
             let client = Client::for_test(url).unwrap().disable_retry_for_tests();
-            let error = client
-                .block_header(pathfinder_common::BlockId::Latest)
-                .await
-                .unwrap_err();
+            let error = client.block_header(BlockId::Latest).await.unwrap_err();
             assert_eq!(
                 error.to_string(),
                 "error decoding response body: invalid error variant"
