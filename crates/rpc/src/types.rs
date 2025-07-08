@@ -11,7 +11,7 @@ pub use request::BlockId;
 pub mod request {
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
-    use pathfinder_common::{FinalizedBlockId, TipHex};
+    use pathfinder_common::TipHex;
     use serde::de::Error;
     use serde::Deserialize;
     use serde_with::serde_as;
@@ -44,28 +44,29 @@ pub mod request {
             matches!(self, BlockId::Pending)
         }
 
-        /// Converts this [BlockId] to a [FinalizedBlockId].
+        /// Converts this [BlockId] to a [pathfinder_common::BlockId].
         ///
         /// # Panics
         ///
         /// If this [BlockId] is [`BlockId::Pending`].
-        pub fn to_finalized_or_panic(self) -> FinalizedBlockId {
+        pub fn to_finalized_or_panic(self) -> pathfinder_common::BlockId {
             match self {
-                BlockId::Number(number) => FinalizedBlockId::Number(number),
-                BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
-                BlockId::Latest => FinalizedBlockId::Latest,
+                BlockId::Number(number) => pathfinder_common::BlockId::Number(number),
+                BlockId::Hash(hash) => pathfinder_common::BlockId::Hash(hash),
+                BlockId::Latest => pathfinder_common::BlockId::Latest,
                 BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
             }
         }
 
-        /// Converts this [BlockId] to a [FinalizedBlockId].
+        /// Converts this [BlockId] to a [pathfinder_common::BlockId].
         ///
-        /// Coerces [`BlockId::Pending`] to [`FinalizedBlockId::Latest`].
-        pub fn to_finalized_coerced(self) -> FinalizedBlockId {
+        /// Coerces [`BlockId::Pending`] to
+        /// [`pathfinder_common::BlockId::Latest`].
+        pub fn to_finalized_coerced(self) -> pathfinder_common::BlockId {
             match self {
-                BlockId::Number(number) => FinalizedBlockId::Number(number),
-                BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
-                BlockId::Latest | BlockId::Pending => FinalizedBlockId::Latest,
+                BlockId::Number(number) => pathfinder_common::BlockId::Number(number),
+                BlockId::Hash(hash) => pathfinder_common::BlockId::Hash(hash),
+                BlockId::Latest | BlockId::Pending => pathfinder_common::BlockId::Latest,
             }
         }
     }
@@ -91,16 +92,16 @@ pub mod request {
         Latest,
     }
 
-    impl From<SubscriptionBlockId> for pathfinder_common::FinalizedBlockId {
+    impl From<SubscriptionBlockId> for pathfinder_common::BlockId {
         fn from(value: SubscriptionBlockId) -> Self {
             match value {
                 SubscriptionBlockId::Number(block_number) => {
-                    pathfinder_common::FinalizedBlockId::Number(block_number)
+                    pathfinder_common::BlockId::Number(block_number)
                 }
                 SubscriptionBlockId::Hash(block_hash) => {
-                    pathfinder_common::FinalizedBlockId::Hash(block_hash)
+                    pathfinder_common::BlockId::Hash(block_hash)
                 }
-                SubscriptionBlockId::Latest => pathfinder_common::FinalizedBlockId::Latest,
+                SubscriptionBlockId::Latest => pathfinder_common::BlockId::Latest,
             }
         }
     }

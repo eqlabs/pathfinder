@@ -258,13 +258,13 @@ impl TransactionVersion {
 ///
 /// Useful in contexts that do not work with pending blocks.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum FinalizedBlockId {
+pub enum BlockId {
     Number(BlockNumber),
     Hash(BlockHash),
     Latest,
 }
 
-impl FinalizedBlockId {
+impl BlockId {
     pub fn is_latest(&self) -> bool {
         self == &Self::Latest
     }
@@ -390,13 +390,13 @@ impl TryFrom<Felt> for GasPrice {
     }
 }
 
-impl From<BlockNumber> for FinalizedBlockId {
+impl From<BlockNumber> for BlockId {
     fn from(number: BlockNumber) -> Self {
         Self::Number(number)
     }
 }
 
-impl From<BlockHash> for FinalizedBlockId {
+impl From<BlockHash> for BlockId {
     fn from(hash: BlockHash) -> Self {
         Self::Hash(hash)
     }

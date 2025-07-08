@@ -288,7 +288,7 @@ pub mod test_utils {
         Receipt,
     };
     use pathfinder_common::transaction::*;
-    use pathfinder_common::FinalizedBlockId;
+    use pathfinder_common::BlockId;
     use pathfinder_merkle_tree::{ClassCommitmentTree, StorageCommitmentTree};
     use pathfinder_storage::{Storage, StorageBuilder};
     use starknet_gateway_types::reply::GasPrices;
@@ -702,7 +702,7 @@ pub mod test_utils {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            tx.block_header(FinalizedBlockId::Latest)
+            tx.block_header(BlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
         })
@@ -884,7 +884,7 @@ pub mod test_utils {
             let mut db = storage2.connection().unwrap();
             let tx = db.transaction().unwrap();
 
-            tx.block_header(FinalizedBlockId::Latest)
+            tx.block_header(BlockId::Latest)
                 .unwrap()
                 .expect("Storage should contain a latest block")
         })

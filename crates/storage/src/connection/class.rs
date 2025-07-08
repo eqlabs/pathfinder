@@ -1,10 +1,10 @@
 use anyhow::Context;
 use pathfinder_common::{
+    BlockId,
     BlockNumber,
     CasmHash,
     ClassCommitmentLeafHash,
     ClassHash,
-    FinalizedBlockId,
     SierraHash,
 };
 
@@ -182,7 +182,7 @@ impl Transaction<'_> {
     /// `block_id`.
     pub fn compressed_class_definition_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         self.compressed_class_definition_at_with_block_number(block_id, class_hash)
@@ -191,7 +191,7 @@ impl Transaction<'_> {
 
     pub fn compressed_class_definition_at_with_block_number(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
@@ -201,7 +201,7 @@ impl Transaction<'_> {
         };
 
         match block_id {
-        FinalizedBlockId::Latest => {
+        BlockId::Latest => {
             let mut stmt = self.inner().prepare_cached(
                 "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number IS NOT NULL",
             )?;
@@ -210,7 +210,7 @@ impl Transaction<'_> {
                 from_row,
             )
         }
-        FinalizedBlockId::Number(number) => {
+        BlockId::Number(number) => {
             let mut stmt = self.inner().prepare_cached(
                 "SELECT definition, block_number FROM class_definitions WHERE hash=? AND block_number <= ?",
             )?;
@@ -219,7 +219,7 @@ impl Transaction<'_> {
                 from_row,
             )
         }
-        FinalizedBlockId::Hash(hash) => {
+        BlockId::Hash(hash) => {
             let mut stmt = self.inner().prepare_cached(
                 r"SELECT definition, block_number FROM class_definitions
                 WHERE hash = ? AND block_number <= (SELECT number from block_headers WHERE hash = ?)",
@@ -238,7 +238,7 @@ impl Transaction<'_> {
     /// `block_id`.
     pub fn class_definition_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         self.class_definition_at_with_block_number(block_id, class_hash)
@@ -249,7 +249,7 @@ impl Transaction<'_> {
     /// `block_id`, as well as the block number at which it was declared.
     pub fn class_definition_at_with_block_number(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<(BlockNumber, Vec<u8>)>> {
         let definition =
@@ -329,7 +329,7 @@ impl Transaction<'_> {
     /// declared at `block_id`.
     pub fn casm_definition_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<Vec<u8>>> {
         self.casm_definition_at_with_block_number(block_id, class_hash)
@@ -341,7 +341,7 @@ impl Transaction<'_> {
     /// declared.
     pub fn casm_definition_at_with_block_number(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<(Option<BlockNumber>, Vec<u8>)>> {
         let from_row = |row: &rusqlite::Row<'_>| {
@@ -351,7 +351,7 @@ impl Transaction<'_> {
         };
 
         let definition = match block_id {
-        FinalizedBlockId::Latest => {
+        BlockId::Latest => {
             let mut stmt = self.inner().prepare_cached(
                 r"SELECT
                 casm_definitions.definition,
@@ -367,7 +367,7 @@ impl Transaction<'_> {
             )?;
             stmt.query_row(params![&class_hash],from_row)
         }
-        FinalizedBlockId::Number(number) => {
+        BlockId::Number(number) => {
             let mut stmt = self.inner().prepare_cached(
                 r"SELECT
                 casm_definitions.definition,
@@ -382,7 +382,7 @@ impl Transaction<'_> {
                 AND class_definitions.block_number <= ?")?;
             stmt.query_row(params![&class_hash, &number], from_row,)
         },
-        FinalizedBlockId::Hash(hash) => {
+        BlockId::Hash(hash) => {
             let mut stmt = self.inner().prepare_cached(
             r"SELECT
                 casm_definitions.definition,
@@ -427,11 +427,11 @@ impl Transaction<'_> {
     /// `block_id`.
     pub fn casm_hash_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> anyhow::Result<Option<CasmHash>> {
         let compiled_class_hash = match block_id {
-        FinalizedBlockId::Latest => {
+        BlockId::Latest => {
             let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
@@ -445,7 +445,7 @@ impl Transaction<'_> {
                 AND class_definitions.block_number IS NOT NULL"#)?;
             stmt.query_row(params![&class_hash], |row| row.get_casm_hash(0))
         }
-        FinalizedBlockId::Number(number) => {
+        BlockId::Number(number) => {
             let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
@@ -459,7 +459,7 @@ impl Transaction<'_> {
                 AND class_definitions.block_number <= ?"#)?;
             stmt.query_row(params![&class_hash, &number], |row| row.get_casm_hash(0))
         }
-        FinalizedBlockId::Hash(hash) => {
+        BlockId::Hash(hash) => {
             let mut stmt = self.inner().prepare_cached(
             r#"SELECT
                 casm_definitions.compiled_class_hash 
