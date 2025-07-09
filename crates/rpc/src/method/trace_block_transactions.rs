@@ -41,7 +41,12 @@ pub async fn trace_block_transactions(
 ) -> Result<TraceBlockTransactionsOutput, TraceBlockTransactionsError> {
     enum LocalExecution {
         Success(TraceBlockTransactionsOutput),
-        Unsupported(Vec<pathfinder_common::transaction::Transaction>),
+        Unsupported(
+            (
+                pathfinder_common::BlockId,
+                Vec<pathfinder_common::transaction::Transaction>,
+            ),
+        ),
     }
 
     let span = tracing::Span::current();
@@ -53,7 +58,7 @@ pub async fn trace_block_transactions(
         let mut db_conn = storage.connection()?;
         let db_tx = db_conn.transaction()?;
 
-        let (header, transactions, cache) = match input.block_id {
+        let (block_id, header, transactions, cache) = match input.block_id {
             BlockId::Pending => {
                 let pending = context
                     .pending_data
@@ -64,6 +69,7 @@ pub async fn trace_block_transactions(
                 let transactions = pending.transactions().to_vec();
 
                 (
+                    None,
                     header,
                     transactions,
                     // Can't use the cache for pending blocks since they have no block hash.
@@ -71,7 +77,9 @@ pub async fn trace_block_transactions(
                 )
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_finalized_or_panic(&db_tx)
+                    .or_else(|_| Err(TraceBlockTransactionsError::BlockNotFound))?;
 
                 let header = db_tx
                     .block_header(block_id)?
@@ -83,7 +91,7 @@ pub async fn trace_block_transactions(
                     .into_iter()
                     .collect::<Vec<_>>();
 
-                (header, transactions, context.cache.clone())
+                (Some(block_id), header, transactions, context.cache.clone())
             }
         };
 
@@ -97,9 +105,10 @@ pub async fn trace_block_transactions(
                     )))
                 }
                 _ => {
-                    return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported(
+                    return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported((
+                        block_id.expect("Pending was handled explicitly above"),
                         transactions,
-                    ))
+                    )));
                 }
             }
         }
@@ -138,14 +147,14 @@ pub async fn trace_block_transactions(
     .await
     .context("trace_block_transactions: fetch block & transactions")??;
 
-    let transactions = match traces {
+    let (block_id, transactions) = match traces {
         LocalExecution::Success(output) => return Ok(output),
-        LocalExecution::Unsupported(transactions) => transactions,
+        LocalExecution::Unsupported((block_id, transactions)) => (block_id, transactions),
     };
 
     context
         .sequencer
-        .block_traces(input.block_id.into())
+        .block_traces(block_id.into())
         .await
         .context("Forwarding to feeder gateway")
         .map_err(TraceBlockTransactionsError::from)

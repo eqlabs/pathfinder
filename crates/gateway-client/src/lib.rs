@@ -34,6 +34,16 @@ impl From<BlockHash> for BlockId {
     }
 }
 
+impl From<pathfinder_common::BlockId> for BlockId {
+    fn from(block_id: pathfinder_common::BlockId) -> Self {
+        match block_id {
+            pathfinder_common::BlockId::Number(block_number) => BlockId::Number(block_number),
+            pathfinder_common::BlockId::Hash(block_hash) => BlockId::Hash(block_hash),
+            pathfinder_common::BlockId::Latest => BlockId::Latest,
+        }
+    }
+}
+
 #[allow(unused_variables)]
 #[mockall::automock]
 #[async_trait::async_trait]

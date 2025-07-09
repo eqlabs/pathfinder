@@ -64,7 +64,9 @@ pub async fn get_transaction_by_block_id_and_index(
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
                 return result.map(Output);
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_finalized_or_panic(&db_tx)
+                .or_else(|_| Err(GetTransactionByBlockIdAndIndexError::BlockNotFound))?,
         };
 
         // Get the transaction from storage.

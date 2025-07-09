@@ -91,7 +91,9 @@ pub async fn simulate_transactions(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_finalized_or_panic(&db_tx)
+                    .or_else(|_| Err(SimulateTransactionError::BlockNotFound))?;
 
                 let header = db_tx
                     .block_header(block_id)

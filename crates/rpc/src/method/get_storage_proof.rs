@@ -277,14 +277,6 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
         });
     }
 
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            // Getting proof of a pending block is not supported.
-            return Err(Error::ProofMissing);
-        }
-        other => other.to_finalized_or_panic(),
-    };
-
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -295,6 +287,16 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let block_id = match input.block_id {
+            BlockId::Pending => {
+                // Getting proof of a pending block is not supported.
+                return Err(Error::ProofMissing);
+            }
+            other => other
+                .to_finalized_or_panic(&tx)
+                .or_else(|_| Err(Error::BlockNotFound))?,
+        };
 
         // Use internal error to indicate that the process of querying for a particular
         // block failed, which is not the same as being sure that the block is

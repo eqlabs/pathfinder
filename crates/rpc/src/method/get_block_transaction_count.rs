@@ -49,7 +49,10 @@ pub async fn get_block_transaction_count(
                     .len() as u64;
                 return Ok(Output(count));
             }
-            other => other.to_finalized_or_panic(),
+
+            other => other
+                .to_finalized_or_panic(&db)
+                .or_else(|_| Err(Error::BlockNotFound))?,
         };
 
         let exists = db

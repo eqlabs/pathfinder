@@ -66,7 +66,9 @@ pub async fn get_block_with_receipts(
                     block_number: pending.block_number(),
                 });
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_finalized_or_panic(&db)
+                .or_else(|_| Err(Error::BlockNotFound))?,
         };
 
         let header = db

@@ -23,6 +23,7 @@ pub mod request {
     pub enum BlockId {
         Number(BlockNumber),
         Hash(BlockHash),
+        L1Accepted,
         Latest,
         Pending,
     }
@@ -46,40 +47,53 @@ pub mod request {
 
         /// Converts this [BlockId] to a [pathfinder_common::BlockId].
         ///
+        /// Resolves [`BlockId::L1Accepted`] to the latest L1 accepted block
+        /// number. Returns an error if there is no L1 accepted block number
+        /// or the database lookup fails.
+        ///
         /// # Panics
         ///
         /// If this [BlockId] is [`BlockId::Pending`].
-        pub fn to_finalized_or_panic(self) -> pathfinder_common::BlockId {
+        pub fn to_finalized_or_panic(
+            self,
+            tx: &pathfinder_storage::Transaction<'_>,
+        ) -> anyhow::Result<pathfinder_common::BlockId> {
             match self {
-                BlockId::Number(number) => pathfinder_common::BlockId::Number(number),
-                BlockId::Hash(hash) => pathfinder_common::BlockId::Hash(hash),
-                BlockId::Latest => pathfinder_common::BlockId::Latest,
+                BlockId::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
+                BlockId::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
+                BlockId::L1Accepted => {
+                    let block_number = tx
+                        .l1_l2_pointer()?
+                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                    Ok(pathfinder_common::BlockId::Number(block_number))
+                }
+                BlockId::Latest => Ok(pathfinder_common::BlockId::Latest),
                 BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
             }
         }
 
         /// Converts this [BlockId] to a [pathfinder_common::BlockId].
         ///
+        /// Resolves [`BlockId::L1Accepted`] to the latest L1 accepted block
+        /// number. Returns an error if there is no L1 accepted block number
+        /// or the database lookup fails.
+        ///
         /// Coerces [`BlockId::Pending`] to
         /// [`pathfinder_common::BlockId::Latest`].
-        pub fn to_finalized_coerced(self) -> pathfinder_common::BlockId {
+        pub fn to_finalized_coerced(
+            self,
+            tx: &pathfinder_storage::Transaction<'_>,
+        ) -> anyhow::Result<pathfinder_common::BlockId> {
             match self {
-                BlockId::Number(number) => pathfinder_common::BlockId::Number(number),
-                BlockId::Hash(hash) => pathfinder_common::BlockId::Hash(hash),
-                BlockId::Latest | BlockId::Pending => pathfinder_common::BlockId::Latest,
-            }
-        }
-    }
-
-    impl From<BlockId> for starknet_gateway_client::BlockId {
-        fn from(value: BlockId) -> Self {
-            match value {
-                BlockId::Number(block_number) => {
-                    starknet_gateway_client::BlockId::Number(block_number)
+                BlockId::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
+                BlockId::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
+                BlockId::L1Accepted => {
+                    let block_number = tx
+                        .l1_l2_pointer()?
+                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                    Ok(pathfinder_common::BlockId::Number(block_number))
                 }
-                BlockId::Hash(block_hash) => starknet_gateway_client::BlockId::Hash(block_hash),
-                BlockId::Latest => starknet_gateway_client::BlockId::Latest,
-                BlockId::Pending => starknet_gateway_client::BlockId::Pending,
+                BlockId::Latest | BlockId::Pending => Ok(pathfinder_common::BlockId::Latest),
             }
         }
     }

@@ -86,7 +86,9 @@ pub async fn estimate_message_fee(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_finalized_or_panic(&db_tx)
+                    .or_else(|_| Err(EstimateMessageFeeError::BlockNotFound))?;
 
                 let header = db_tx
                     .block_header(block_id)

@@ -76,7 +76,10 @@ pub async fn get_class_at(
             None
         };
 
-        let block_id = input.block_id.to_finalized_coerced();
+        let block_id = input
+            .block_id
+            .to_finalized_or_panic(&tx)
+            .or_else(|_| Err(Error::BlockNotFound))?;
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }

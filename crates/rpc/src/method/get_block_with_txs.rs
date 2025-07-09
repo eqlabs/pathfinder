@@ -72,7 +72,9 @@ pub async fn get_block_with_txs(
                     transactions,
                 });
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_finalized_or_panic(&transaction)
+                .or_else(|_| Err(Error::BlockNotFound))?,
         };
 
         let header = transaction
