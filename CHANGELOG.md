@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `pathfinder_lastL1AcceptedBlockHashAndNumber`, a pathfinder extension analogous to `starknet_blockHashAndNumber`
+
 ### Fixed
 
 - The default value of L2 gas price for historical blocks has been changed from 0 to 1 (for both WEI and FRI), to agree with the feeder gateway default.

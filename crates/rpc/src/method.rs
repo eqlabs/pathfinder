@@ -25,6 +25,7 @@ pub mod get_transaction_by_block_id_and_index;
 pub mod get_transaction_by_hash;
 pub mod get_transaction_receipt;
 pub mod get_transaction_status;
+pub mod last_l1_accepted_block_hash_and_number;
 pub mod simulate_transactions;
 pub mod subscribe_events;
 pub mod subscribe_new_heads;
@@ -61,6 +62,7 @@ pub use get_transaction_by_block_id_and_index::get_transaction_by_block_id_and_i
 pub use get_transaction_by_hash::get_transaction_by_hash;
 pub use get_transaction_receipt::get_transaction_receipt;
 pub use get_transaction_status::get_transaction_status;
+pub use last_l1_accepted_block_hash_and_number::last_l1_accepted_block_hash_and_number;
 pub use simulate_transactions::simulate_transactions;
 pub use syncing::syncing;
 pub use trace_block_transactions::trace_block_transactions;
