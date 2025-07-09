@@ -255,17 +255,11 @@ impl TransactionVersion {
 }
 
 /// A way of identifying a specific block.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BlockId {
-    #[serde(rename = "block_number")]
     Number(BlockNumber),
-    #[serde(rename = "block_hash")]
     Hash(BlockHash),
-    #[serde(rename = "latest")]
     Latest,
-    #[serde(rename = "pending")]
     Pending,
 }
 
@@ -324,15 +318,10 @@ impl BlockId {
 /// A way of identifying a specific block that has been finalized.
 ///
 /// Useful in contexts that do not work with pending blocks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize)]
-#[cfg_attr(any(test, feature = "full-serde"), derive(Serialize))]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum FinalizedBlockId {
-    #[serde(rename = "block_number")]
     Number(BlockNumber),
-    #[serde(rename = "block_hash")]
     Hash(BlockHash),
-    #[serde(rename = "latest")]
     Latest,
 }
 
@@ -797,38 +786,6 @@ mod tests {
             assert!(StarknetVersion::from_str("1.2").is_err());
             assert!(StarknetVersion::from_str("1").is_err());
             assert!(StarknetVersion::from_str("1.2.a").is_err());
-        }
-    }
-
-    mod block_id_serde {
-        use super::super::BlockId;
-
-        #[test]
-        fn latest() {
-            let result = serde_json::from_str::<BlockId>(r#""latest""#).unwrap();
-            assert_eq!(result, BlockId::Latest);
-        }
-
-        #[test]
-        fn pending() {
-            let result = serde_json::from_str::<BlockId>(r#""pending""#).unwrap();
-            assert_eq!(result, BlockId::Pending);
-        }
-
-        #[test]
-        fn number() {
-            use crate::BlockNumber;
-            let result = serde_json::from_str::<BlockId>(r#"{"block_number": 123456}"#).unwrap();
-            assert_eq!(result, BlockId::Number(BlockNumber(123456)));
-        }
-
-        #[test]
-        fn hash() {
-            use crate::macro_prelude::block_hash;
-
-            let result =
-                serde_json::from_str::<BlockId>(r#"{"block_hash": "0xdeadbeef"}"#).unwrap();
-            assert_eq!(result, BlockId::Hash(block_hash!("0xdeadbeef")));
         }
     }
 
