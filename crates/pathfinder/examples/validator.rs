@@ -33,8 +33,8 @@ use pathfinder_consensus::{
 use pathfinder_crypto::Felt;
 use pathfinder_lib::config::p2p::{P2PConsensusCli, P2PConsensusConfig};
 use pathfinder_lib::p2p_network::consensus;
-// use pathfinder_lib::validator; TODO
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
 use util::task;
 
@@ -73,6 +73,27 @@ fn setup_tracing_full() {
         .with_target(true)
         // .without_time()
         .try_init();
+}
+
+enum ConsensusTaskEvent {
+    /// The consensus engine informs us about an event that it wants us to
+    /// handle.
+    Event(ConsensusEvent),
+    /// We received an event from the P2P network which has impact on
+    /// consensus, so we issue a command to the consensus engine.
+    CommandFromP2P(ConsensusCommand),
+}
+
+enum P2PTaskEvent {
+    /// An event coming from the P2P network (from the consensus P2P network
+    /// main loop).
+    P2PEvent(Event),
+    /// The consensus engine requested that we produce a proposal, so we create
+    /// it, feed it back to the consensus engine, and we must cache it for
+    /// gossiping when the engine requests so.
+    CacheProposal(HeightAndRound, Vec<ProposalPart>),
+    /// Consensus requested that we gossip a message via the P2P network.
+    GossipRequest(NetworkMessage),
 }
 
 #[tokio::main]
@@ -122,18 +143,177 @@ async fn main() -> anyhow::Result<()> {
         })
         .collect::<Vec<Validator>>();
     tracing::debug!("validators: {:#?}", validators);
-    // anyhow::bail!("test");
 
     let validator_set = ValidatorSet::new(validators);
 
     let config = P2PConsensusConfig::parse_or_exit(config.consensus);
-    let (p2p_handle, client) = consensus::start(chain_id, config).await;
+    let (p2p_main_loop_handle, client) = consensus::start(chain_id, config).await;
     let (mut p2p_event_rx, p2p_client) = client.context("Starting P2P consensus client")?;
     // TODO figure out proposal part retention time
     const ONE_HOUR: u64 = 3600;
     let mut cache = TimedCache::<HeightAndRound, Vec<ProposalPart>>::with_lifespan(ONE_HOUR);
 
-    let consensus_handle = task::spawn(async move {
+    // Events that are produced by the P2p task consumed by the consensus task.
+    // TODO channel size
+    let (tx_to_consensus, mut rx_from_p2p) = mpsc::channel::<ConsensusTaskEvent>(10);
+    // Events that are produced by the consensus task and consumed by the P2P task.
+    // TODO channel size
+    let (tx_to_p2p, mut rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
+
+    let p2p_task_handle = task::spawn(async move {
+        loop {
+            let p2p_task_event = tokio::select! {
+                p2p_event = p2p_event_rx.recv() => {
+                    match p2p_event {
+                        Some(event) => P2PTaskEvent::P2PEvent(event),
+                        None => {
+                            tracing::warn!("P2P event receiver was dropped, exiting P2P task");
+                            return;
+                        }
+                    }
+                }
+                from_consensus = rx_from_consensus.recv() => {
+                    from_consensus.expect("Receiver not to be dropped")
+                }
+            };
+
+            match p2p_task_event {
+                P2PTaskEvent::P2PEvent(event) => {
+                    tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
+
+                    match event {
+                        Event::Proposal(height_and_round, proposal_part) => {
+                            if let Ok(Some((proposal_commitment, proposer))) =
+                                handle_proposal_part(height_and_round, proposal_part, &mut cache)
+                            {
+                                let proposal = Proposal {
+                                    height: Height::new(height_and_round.height()),
+                                    round: height_and_round.round().into(),
+                                    value_id: proposal_commitment.into(),
+                                    pol_round: Round::nil(),
+                                    proposer: proposer.into(),
+                                };
+
+                                let cmd = ConsensusCommand::Proposal(SignedProposal {
+                                    proposal,
+                                    signature: Signature::test(), // TODO
+                                });
+
+                                tx_to_consensus
+                                    .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
+                        }
+                        Event::Vote(vote) => {
+                            let vote = vote.into();
+                            let cmd = ConsensusCommand::Vote(SignedVote {
+                                vote,
+                                signature: Signature::test(), // TODO
+                            });
+
+                            tx_to_consensus
+                                .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                .await
+                                .expect("Receiver not to be dropped");
+                        }
+                    }
+                }
+                P2PTaskEvent::CacheProposal(height_and_round, proposal_parts) => {
+                    let ProposalPart::Fin(ProposalFin {
+                        proposal_commitment,
+                    }) = proposal_parts.last().expect("Valid proposal")
+                    else {
+                        unreachable!("Simulated proposal always ends with Fin");
+                    };
+                    let proposal_commitment = proposal_commitment.0;
+
+                    tracing::info!(
+                        "🖧  🗃️ {validator_address} caching our proposal for {height_and_round}, \
+                         hash {proposal_commitment}"
+                    );
+
+                    cache.cache_set(height_and_round, proposal_parts);
+                }
+                P2PTaskEvent::GossipRequest(msg) => match msg {
+                    NetworkMessage::Proposal(SignedProposal {
+                        proposal,
+                        signature: _, /* TODO */
+                    }) => {
+                        let height_and_round = HeightAndRound::new(
+                            proposal.height.as_u64(),
+                            // TODO What about Nil rounds?
+                            proposal.round.as_u32().unwrap_or_default(),
+                        );
+                        let proposal = cache
+                            .cache_remove(&height_and_round)
+                            .expect("Proposal was inserted into the cache");
+
+                        loop {
+                            tracing::info!(
+                                "🖧 🚀 {validator_address} Gossiping proposal for \
+                                 {height_and_round}"
+                            );
+                            match p2p_client
+                                .gossip_proposal(height_and_round, proposal.clone())
+                                .await
+                            {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        "🖧 🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
+                                    );
+                                    break;
+                                }
+                                Err(PublishError::InsufficientPeers) => {
+                                    tracing::warn!(
+                                        "Insufficient peers to gossip proposal for \
+                                         {height_and_round}, retrying..."
+                                    );
+                                    tokio::time::sleep(Duration::from_secs(5)).await;
+                                }
+                                Err(error) => {
+                                    tracing::error!(
+                                        "Error gossiping proposal for {height_and_round}: {error}"
+                                    );
+                                    // TODO Unrecoverable?
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    NetworkMessage::Vote(SignedVote {
+                        vote,
+                        signature: _, /* TODO */
+                    }) => {
+                        loop {
+                            tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?}");
+                            match p2p_client.gossip_vote(vote.clone().into()).await {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        "🖧  ✋🎉 {validator_address} Gossiping vote SUCCESS!"
+                                    );
+                                    break;
+                                }
+                                Err(PublishError::InsufficientPeers) => {
+                                    tracing::warn!(
+                                        "Insufficient peers to gossip {vote:?}, retrying..."
+                                    );
+                                    tokio::time::sleep(Duration::from_secs(5)).await;
+                                }
+                                Err(error) => {
+                                    tracing::error!("Error gossiping {vote:?}: {error}");
+                                    // TODO Unrecoverable?
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        }
+    });
+
+    let consensus_task_handle = task::spawn(async move {
         let mut consensus = Consensus::new(Config::new(validator_address).with_timeout_values(
             TimeoutValues {
                 propose: Duration::from_secs(60),
@@ -146,194 +326,104 @@ async fn main() -> anyhow::Result<()> {
             },
             // Default::default(),
         ));
-        consensus.handle_command(ConsensusCommand::StartHeight(Height::new(0), validator_set));
-        // TODO not sure if this is needed
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
+        // Add grace time before others can join
         if validator_address == ValidatorAddress::from(Address(Felt::ONE)) {
-            // loop {
-            // tracing::info!("⏳  {validator_address} just looping without doing
-            // anything...");
-            tracing::info!("⏳  {validator_address} waiting before sending first proposal...");
+            tracing::info!("🧠 ⏳  {validator_address} waiting before starting consensus...");
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            // }
         }
 
+        consensus.handle_command(ConsensusCommand::StartHeight(Height::new(0), validator_set));
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
         loop {
-            if let Some(event) = consensus.next_event().await {
-                tracing::info!("ℹ️  {validator_address} consensus event: {event}");
-
-                match event {
-                    ConsensusEvent::RequestProposal { height, round, .. } => {
-                        tracing::info!(
-                            "🔍 {validator_address} is proposing at height {height}, round {round}",
-                        );
-
-                        let wire_proposal =
-                            sepolia_block_6_proposal(height, round, validator_address.into());
-                        let ProposalPart::Fin(ProposalFin {
-                            proposal_commitment,
-                        }) = wire_proposal.last().expect("Valid proposal")
-                        else {
-                            unreachable!()
-                        };
-                        let proposal_commitment = *proposal_commitment;
-
-                        cache.cache_set(
-                            HeightAndRound::new(
-                                height.as_u64(),
-                                // TODO What about Nil rounds?
-                                round.as_u32().unwrap_or_default(),
-                            ),
-                            wire_proposal,
-                        );
-
-                        let proposal = Proposal {
-                            height,
-                            round,
-                            proposer: validator_address,
-                            pol_round: Round::nil(),
-                            value_id: ConsensusValue::new(ValueId::new(proposal_commitment)),
-                        };
-
-                        tracing::info!(
-                            "⚙️  {validator_address} handling command Propose({proposal:?})"
-                        );
-
-                        consensus.handle_command(ConsensusCommand::Propose(proposal));
-                    }
-                    ConsensusEvent::Gossip(msg) => match msg {
-                        NetworkMessage::Proposal(SignedProposal {
-                            proposal,
-                            signature: _, /* TODO */
-                        }) => {
-                            let height_and_round = HeightAndRound::new(
-                                proposal.height.as_u64(),
-                                // TODO What about Nil rounds?
-                                proposal.round.as_u32().unwrap_or_default(),
-                            );
-                            let proposal = cache
-                                .cache_remove(&height_and_round)
-                                .expect("Proposal was inserted into the cache");
-
-                            loop {
-                                tracing::info!(
-                                    "🚀 {validator_address} Gossiping proposal for \
-                                     {height_and_round}"
-                                );
-                                match p2p_client
-                                    .gossip_proposal(height_and_round, proposal.clone())
-                                    .await
-                                {
-                                    Ok(()) => {
-                                        tracing::info!(
-                                            "✋🎉 {validator_address} Gossiping proposal SUCCESS!"
-                                        );
-                                        break;
-                                    }
-                                    Err(PublishError::InsufficientPeers) => {
-                                        tracing::warn!(
-                                            "Insufficient peers to gossip proposal for \
-                                             {height_and_round}, retrying..."
-                                        );
-                                        tokio::time::sleep(Duration::from_secs(5)).await;
-                                    }
-                                    Err(error) => {
-                                        tracing::error!(
-                                            "Error gossiping proposal for {height_and_round}: \
-                                             {error}"
-                                        );
-                                        // TODO Unrecoverable?
-                                        return;
-                                    }
-                                }
-                            }
+            let consensus_task_event = tokio::select! {
+                consensus_event = consensus.next_event() => {
+                    match consensus_event {
+                        Some(event) => ConsensusTaskEvent::Event(event),
+                        None => {
+                            continue;
                         }
-                        NetworkMessage::Vote(SignedVote {
-                            vote,
-                            signature: _, /* TODO */
-                        }) => {
-                            loop {
-                                tracing::info!("✋ {validator_address} Gossiping vote {vote:?}");
-                                match p2p_client.gossip_vote(vote.clone().into()).await {
-                                    Ok(()) => {
-                                        tracing::info!(
-                                            "✋🎉 {validator_address} Gossiping vote SUCCESS!"
-                                        );
-                                        break;
-                                    }
-                                    Err(PublishError::InsufficientPeers) => {
-                                        tracing::warn!(
-                                            "Insufficient peers to gossip {vote:?}, retrying..."
-                                        );
-                                        tokio::time::sleep(Duration::from_secs(5)).await;
-                                    }
-                                    Err(error) => {
-                                        tracing::error!("Error gossiping {vote:?}: {error}");
-                                        // TODO Unrecoverable?
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    ConsensusEvent::Decision { height, hash } => {
-                        tracing::info!(
-                            "✅ {validator_address} decided on {hash:?} at height {height}"
-                        );
-                        // TODO
-                        // commit_block(height, hash);
-                    }
-                    ConsensusEvent::Error(error) => {
-                        // TODO are all of these errors fatal or recoverable?
-                        // What is the best way to handle them?
-                        tracing::error!("❌ {validator_address} error: {error:?}");
-                        // Bail out, stop the consensus
-                        break;
                     }
                 }
-            }
+                from_p2p = rx_from_p2p.recv() => {
+                    from_p2p.expect("Receiver not to be dropped")
+                }
+            };
 
-            // Process inbound network messages
-            while let Ok(event) = p2p_event_rx.try_recv() {
-                tracing::info!("💌 {validator_address} p2p event: {event:?}");
+            match consensus_task_event {
+                ConsensusTaskEvent::Event(event) => {
+                    tracing::info!("🧠 ℹ️  {validator_address} consensus event: {event}");
 
-                match event {
-                    Event::Proposal(height_and_round, proposal_part) => {
-                        if let Ok(Some((proposal_commitment, proposer))) =
-                            handle_proposal_part(height_and_round, proposal_part, &mut cache)
-                        {
+                    match event {
+                        ConsensusEvent::RequestProposal { height, round, .. } => {
+                            tracing::info!(
+                                "🧠 🔍 {validator_address} is proposing at height {height}, round \
+                                 {round}",
+                            );
+
+                            let wire_proposal =
+                                sepolia_block_6_proposal(height, round, validator_address.into());
+
+                            let ProposalPart::Fin(ProposalFin {
+                                proposal_commitment,
+                            }) = wire_proposal.last().expect("Valid proposal")
+                            else {
+                                unreachable!()
+                            };
+                            let proposal_commitment = *proposal_commitment;
+
+                            tx_to_p2p
+                                .send(P2PTaskEvent::CacheProposal(
+                                    HeightAndRound::new(
+                                        height.as_u64(),
+                                        round.as_u32().unwrap_or_default(),
+                                    ),
+                                    wire_proposal,
+                                ))
+                                .await
+                                .expect("Receiver not to be dropped");
+
                             let proposal = Proposal {
-                                height: Height::new(height_and_round.height()),
-                                round: height_and_round.round().into(),
-                                value_id: proposal_commitment.into(),
-                                // pol_round: Round::from(0),
+                                height,
+                                round,
+                                proposer: validator_address,
                                 pol_round: Round::nil(),
-                                proposer: proposer.into(),
+                                value_id: ConsensusValue::new(ValueId::new(proposal_commitment)),
                             };
 
                             tracing::info!(
-                                "⚙️  {validator_address} handling command Proposal({proposal:?})"
+                                "🧠 ⚙️  {validator_address} handling command Propose({proposal:?})"
                             );
 
-                            let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                proposal,
-                                signature: Signature::test(), // TODO
-                            });
-                            consensus.handle_command(cmd);
+                            consensus.handle_command(ConsensusCommand::Propose(proposal));
+                        }
+                        ConsensusEvent::Gossip(msg) => {
+                            tx_to_p2p
+                                .send(P2PTaskEvent::GossipRequest(msg))
+                                .await
+                                .expect("Receiver not to be dropped");
+                        }
+                        ConsensusEvent::Decision { height, hash } => {
+                            tracing::info!(
+                                "🧠 ✅ {validator_address} decided on {hash:?} at height {height}"
+                            );
+                            // TODO
+                            // commit_block(height, hash);
+                        }
+                        ConsensusEvent::Error(error) => {
+                            // TODO are all of these errors fatal or recoverable?
+                            // What is the best way to handle them?
+                            tracing::error!("🧠 ❌ {validator_address} consensus error: {error:?}");
+                            // Bail out, stop the consensus
+                            break;
                         }
                     }
-                    Event::Vote(vote) => {
-                        let vote = vote.into();
-
-                        tracing::info!("⚙️  {validator_address} handling command Vote({vote:?})");
-
-                        let cmd = ConsensusCommand::Vote(SignedVote {
-                            vote,
-                            signature: Signature::test(), // TODO
-                        });
-                        consensus.handle_command(cmd);
-                    }
+                }
+                ConsensusTaskEvent::CommandFromP2P(cmd) => {
+                    tracing::info!("🧠 ⚙️  {validator_address} handling command {cmd}");
+                    consensus.handle_command(cmd);
                 }
             }
 
@@ -342,10 +432,13 @@ async fn main() -> anyhow::Result<()> {
     });
 
     tokio::select! {
-        result = p2p_handle => {
-            tracing::info!("P2P consensus task finished with result: {:?}", result);
+        result = p2p_main_loop_handle => {
+            tracing::info!("P2P consensus main loop finished with result: {:?}", result);
         }
-        _ = consensus_handle => {
+        _ = p2p_task_handle => {
+            tracing::info!("P2P task finished unexpectedly");
+        }
+        _ = consensus_task_handle => {
             tracing::info!("Consensus engine task finished unexpectedly");
         }
         _ = term_signal.recv() => {
@@ -435,6 +528,8 @@ fn handle_proposal_part(
     }
 }
 
+/// Based on Sepolia Block 6, however with adjustable height, round, and
+/// proposer.
 fn sepolia_block_6_proposal(height: Height, round: Round, proposer: Address) -> Vec<ProposalPart> {
     let round = round.as_u32().expect("Round not to be Nil???");
     vec![

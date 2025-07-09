@@ -339,6 +339,19 @@ impl ValidatorSetProvider for StaticValidatorSetProvider {
     }
 }
 
+impl Display for ConsensusCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusCommand::StartHeight(height, _) => write!(f, "StartHeight({})", height),
+            ConsensusCommand::Propose(proposal) => write!(f, "Propose({})", proposal),
+            ConsensusCommand::Proposal(signed_proposal) => {
+                write!(f, "Proposal({})", signed_proposal.proposal)
+            }
+            ConsensusCommand::Vote(signed_vote) => write!(f, "Vote({})", signed_vote.vote),
+        }
+    }
+}
+
 impl Display for ConsensusEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
