@@ -145,7 +145,7 @@ pub async fn call(
             }
             other => {
                 let block_id = other
-                    .to_finalized_or_panic(&db_tx)
+                    .to_common_or_panic(&db_tx)
                     .or_else(|_| Err(CallError::BlockNotFound))?;
 
                 let header = db_tx

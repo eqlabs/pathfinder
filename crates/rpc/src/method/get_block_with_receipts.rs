@@ -67,7 +67,7 @@ pub async fn get_block_with_receipts(
                 });
             }
             other => other
-                .to_finalized_or_panic(&db)
+                .to_common_or_panic(&db)
                 .or_else(|_| Err(Error::BlockNotFound))?,
         };
 

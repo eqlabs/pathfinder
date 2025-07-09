@@ -54,7 +54,7 @@ pub mod request {
         /// # Panics
         ///
         /// If this [BlockId] is [`BlockId::Pending`].
-        pub fn to_finalized_or_panic(
+        pub fn to_common_or_panic(
             self,
             tx: &pathfinder_storage::Transaction<'_>,
         ) -> anyhow::Result<pathfinder_common::BlockId> {
@@ -80,7 +80,7 @@ pub mod request {
         ///
         /// Coerces [`BlockId::Pending`] to
         /// [`pathfinder_common::BlockId::Latest`].
-        pub fn to_finalized_coerced(
+        pub fn to_common_coerced(
             self,
             tx: &pathfinder_storage::Transaction<'_>,
         ) -> anyhow::Result<pathfinder_common::BlockId> {

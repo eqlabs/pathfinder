@@ -90,7 +90,7 @@ pub async fn estimate_fee(
             }
             other => {
                 let block_id = other
-                    .to_finalized_or_panic(&db_tx)
+                    .to_common_or_panic(&db_tx)
                     .or_else(|_| Err(EstimateFeeError::BlockNotFound))?;
 
                 let header = db_tx

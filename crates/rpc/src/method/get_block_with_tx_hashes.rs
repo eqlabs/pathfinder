@@ -72,7 +72,7 @@ pub async fn get_block_with_tx_hashes(
                 });
             }
             other => other
-                .to_finalized_or_panic(&transaction)
+                .to_common_or_panic(&transaction)
                 .or_else(|_| Err(Error::BlockNotFound))?,
         };
 

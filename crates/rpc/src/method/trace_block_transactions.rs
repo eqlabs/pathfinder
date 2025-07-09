@@ -78,7 +78,7 @@ pub async fn trace_block_transactions(
             }
             other => {
                 let block_id = other
-                    .to_finalized_or_panic(&db_tx)
+                    .to_common_or_panic(&db_tx)
                     .or_else(|_| Err(TraceBlockTransactionsError::BlockNotFound))?;
 
                 let header = db_tx

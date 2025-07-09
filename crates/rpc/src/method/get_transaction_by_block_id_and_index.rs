@@ -65,7 +65,7 @@ pub async fn get_transaction_by_block_id_and_index(
                 return result.map(Output);
             }
             other => other
-                .to_finalized_or_panic(&db_tx)
+                .to_common_or_panic(&db_tx)
                 .or_else(|_| Err(GetTransactionByBlockIdAndIndexError::BlockNotFound))?,
         };
 

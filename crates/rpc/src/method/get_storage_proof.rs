@@ -294,7 +294,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
                 return Err(Error::ProofMissing);
             }
             other => other
-                .to_finalized_or_panic(&tx)
+                .to_common_or_panic(&tx)
                 .or_else(|_| Err(Error::BlockNotFound))?,
         };
 
