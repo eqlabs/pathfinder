@@ -251,7 +251,7 @@ async fn main() -> anyhow::Result<()> {
 
                         loop {
                             tracing::info!(
-                                "🖧 🚀 {validator_address} Gossiping proposal for \
+                                "🖧  🚀 {validator_address} Gossiping proposal for \
                                  {height_and_round}"
                             );
                             match p2p_client
@@ -260,7 +260,7 @@ async fn main() -> anyhow::Result<()> {
                             {
                                 Ok(()) => {
                                     tracing::info!(
-                                        "🖧 🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
+                                        "🖧  🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
                                     );
                                     break;
                                 }
@@ -319,12 +319,8 @@ async fn main() -> anyhow::Result<()> {
                 propose: Duration::from_secs(60),
                 prevote: Duration::from_secs(60),
                 precommit: Duration::from_secs(60),
-                prevote_time_limit: Duration::from_secs(600),
-                precommit_time_limit: Duration::from_secs(600),
-                prevote_rebroadcast: Duration::from_secs(10),
-                precommit_rebroadcast: Duration::from_secs(10),
+                rebroadcast: Duration::from_secs(10),
             },
-            // Default::default(),
         ));
 
         // Add grace time before others can join

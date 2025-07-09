@@ -100,7 +100,6 @@ async fn consensus_simulation() {
                                     height: h,
                                     round: r,
                                     proposer: addr,
-                                    // pol_round: Round::from(0),
                                     pol_round: Round::nil(),
                                     value_id: consensus_value.clone(),
                                 };
@@ -140,12 +139,9 @@ async fn consensus_simulation() {
                             pretty_addr(&addr)
                         );
 
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-
                         let cmd = match msg {
                             NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                             NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
-                            _ => unreachable!(),
                         };
                         consensus.handle_command(cmd);
                     }

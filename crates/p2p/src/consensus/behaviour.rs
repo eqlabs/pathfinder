@@ -64,11 +64,9 @@ impl ApplicationBehaviour for Behaviour {
                     .expect("Receiver not to be dropped");
             }
             ConsensusCommand::Vote { vote, done_tx } => {
-                tracing::info!("ConsensusCommand::Vote 0");
                 let cloned_vote = vote.clone();
                 let data = vote.to_protobuf_bytes();
                 let topic = IdentTopic::new(TOPIC_VOTES);
-                tracing::info!("ConsensusCommand::Vote 1");
                 let tx_result = self
                     .gossipsub
                     .publish(topic, data)
@@ -76,12 +74,10 @@ impl ApplicationBehaviour for Behaviour {
                         error!("Failed to publish vote message {cloned_vote:?}, error {e:?}");
                     })
                     .map(|_| ());
-                tracing::info!("ConsensusCommand::Vote 2");
                 let _ = done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");
-                tracing::info!("ConsensusCommand::Vote 3");
             }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {
@@ -115,7 +111,6 @@ impl ApplicationBehaviour for Behaviour {
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
-        tracing::info!("Handling Gossipsub event: {:?}", e);
         match e {
             Message {
                 propagation_source: _,
@@ -134,9 +129,7 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 TOPIC_VOTES => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
-                        tracing::info!("Handling Gossipsub event: event_sender.send()...");
                         let _ = event_sender.send(Event::Vote(vote)).await;
-                        tracing::info!("Handling Gossipsub event: event_sender.send()...DONE!");
                     } else {
                         error!("Failed to parse vote message with id: {}", message_id);
                     }

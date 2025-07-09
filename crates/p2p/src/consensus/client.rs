@@ -28,18 +28,12 @@ impl Client {
     }
 
     pub async fn gossip_vote(&self, vote: Vote) -> Result<(), PublishError> {
-        tracing::info!("Client::gossip_vote 0");
         let (done_tx, mut rx) = mpsc::channel(1);
-        tracing::info!("Client::gossip_vote 1");
         self.sender
             .send(core::Command::Application(Command::Vote { vote, done_tx }))
             .await
             .expect("Command receiver not to be dropped");
-        tracing::info!("Client::gossip_vote 2");
-        let result = rx.recv().await.expect("Sender not to be dropped");
-        tracing::info!("Client::gossip_vote 3");
-        result
-        // Ok(())
+        rx.recv().await.expect("Sender not to be dropped")
     }
 
     pub async fn gossip_proposal(
