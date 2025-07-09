@@ -115,6 +115,7 @@ impl ApplicationBehaviour for Behaviour {
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
+        tracing::info!("Handling Gossipsub event: {:?}", e);
         match e {
             Message {
                 propagation_source: _,
@@ -133,7 +134,9 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 TOPIC_VOTES => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
+                        tracing::info!("Handling Gossipsub event: event_sender.send()...");
                         let _ = event_sender.send(Event::Vote(vote)).await;
+                        tracing::info!("Handling Gossipsub event: event_sender.send()...DONE!");
                     } else {
                         error!("Failed to parse vote message with id: {}", message_id);
                     }

@@ -39,6 +39,7 @@ impl Client {
         let result = rx.recv().await.expect("Sender not to be dropped");
         tracing::info!("Client::gossip_vote 3");
         result
+        // Ok(())
     }
 
     pub async fn gossip_proposal(
