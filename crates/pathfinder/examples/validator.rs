@@ -250,7 +250,7 @@ async fn main() -> anyhow::Result<()> {
 
                         loop {
                             tracing::info!(
-                                "🖧 🚀 {validator_address} Gossiping proposal for \
+                                "🖧  🚀 {validator_address} Gossiping proposal for \
                                  {height_and_round}"
                             );
                             match p2p_client
@@ -259,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
                             {
                                 Ok(()) => {
                                     tracing::info!(
-                                        "🖧 🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
+                                        "🖧  🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
                                     );
                                     break;
                                 }

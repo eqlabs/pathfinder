@@ -82,11 +82,9 @@ zstd = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 const-decoder = { workspace = true }
-# For the validator example
 ed25519-consensus = "2.1.0"
 flate2 = { workspace = true }
-# For the validator example
-malachite-signing-ed25519 = { package = "informalsystems-malachitebft-signing-ed25519", version = "0.3", features = ["serde"] }
+malachite-signing-ed25519 = { package = "informalsystems-malachitebft-signing-ed25519", version = "0.3" }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
@@ -94,7 +92,7 @@ pathfinder-consensus = { path = "../consensus" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [
-    # "small_aggregate_filters",
+    "small_aggregate_filters",
 ] }
 pretty_assertions_sorted = { workspace = true }
 proptest = { workspace = true }

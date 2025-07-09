@@ -231,9 +231,6 @@ fn create_proposal(
     proposal_parts.push_back(ProposalPart::TransactionBatch(consensus_txns));
 
     proposal_parts.push_back(ProposalPart::Fin(ProposalFin {
-        // TODO(validator) using block hash for now, as we don't know how to calculate the proposal
-        // commitment
-        // proposal_commitment: Hash(header.hash.0),
         proposal_commitment: Hash(header.state_diff_commitment.0),
     }));
 
