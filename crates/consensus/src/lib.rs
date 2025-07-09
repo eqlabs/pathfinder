@@ -290,13 +290,6 @@ pub enum NetworkMessage {
     Proposal(SignedProposal),
     /// A vote received from the network.
     Vote(SignedVote),
-    /// A vote set response.
-    VoteSetResponse {
-        requester: ValidatorAddress,
-        height: Height,
-        round: Round,
-        votes: Vec<SignedVote>,
-    },
 }
 
 /// Events that the consensus engine emits for the application to handle.
