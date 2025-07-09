@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::FinalizedBlockId;
+use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 
@@ -25,7 +25,7 @@ pub async fn last_l1_accepted_block_hash_and_number(context: RpcContext) -> Resu
         let opt_block_number = db_tx.l1_l2_pointer().context("Querying L1-L2 pointer")?;
         let last_block_number = opt_block_number.ok_or(Error::NoBlocks)?;
         db_tx
-            .block_id(FinalizedBlockId::Number(last_block_number))
+            .block_id(BlockId::Number(last_block_number))
             .context("Reading latest accepted block number and hash from database")?
             .map(|(number, hash)| Output { number, hash })
             .ok_or(Error::NoBlocks)
@@ -48,7 +48,7 @@ impl crate::dto::SerializeForVersion for Output {
 
 #[cfg(test)]
 mod tests {
-    use pathfinder_common::{felt, BlockHash, BlockNumber};
+    use pathfinder_common::{block_hash_bytes, BlockNumber};
     use pathfinder_storage::{StorageBuilder, TriePruneMode};
     use pretty_assertions_sorted::assert_eq;
     use serde_json::json;
@@ -65,8 +65,8 @@ mod tests {
             .unwrap();
 
         let expected = Output {
-            number: BlockNumber::GENESIS,
-            hash: BlockHash(felt!("0x67656E65736973")),
+            number: BlockNumber::new_or_panic(1),
+            hash: block_hash_bytes!(b"block 1"),
         };
         assert_eq!(actual, expected);
     }

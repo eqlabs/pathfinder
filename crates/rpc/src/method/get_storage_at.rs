@@ -216,6 +216,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn l1_accepted() {
+        let ctx = RpcContext::for_tests_with_pending().await;
+        let contract_address = contract_address_bytes!(b"contract 1");
+        let key = storage_address_bytes!(b"storage addr 0");
+        let block_id = BlockId::L1Accepted;
+
+        let result = get_storage_at(
+            ctx,
+            Input {
+                contract_address,
+                key,
+                block_id,
+            },
+            RPC_VERSION,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.0, storage_value_bytes!(b"storage value 1"));
+    }
+
+    #[tokio::test]
     async fn defaults_to_zero() {
         let ctx = RpcContext::for_tests_with_pending().await;
         let contract_address = contract_address_bytes!(b"contract 1");

@@ -162,10 +162,36 @@ mod tests {
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
     #[tokio::test]
+    async fn l1_accepted(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests();
+        // This transaction is in block 1 which is L1 accepted.
+        let tx_hash = transaction_hash_bytes!(b"txn 1");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let output = get_transaction_receipt(context, input, version)
+            .await
+            .unwrap();
+
+        let output_json = output.serialize(Serializer { version }).unwrap();
+
+        crate::assert_json_matches_fixture!(
+            output_json,
+            version,
+            "transactions/receipt_l1_accepted.json"
+        );
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
     async fn l2_accepted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
-        // This transaction is in block 1 which is not L1 accepted.
-        let tx_hash = transaction_hash_bytes!(b"txn 1");
+        // This transaction is in block 2 which is L2 accepted.
+        let tx_hash = transaction_hash_bytes!(b"txn 3");
         let input = Input {
             transaction_hash: tx_hash,
         };

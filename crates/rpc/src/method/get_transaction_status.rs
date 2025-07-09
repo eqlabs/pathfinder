@@ -257,8 +257,8 @@ mod tests {
     #[tokio::test]
     async fn l1_accepted() {
         let context = RpcContext::for_tests();
-        // This transaction is in block 0 which is L1 accepted.
-        let tx_hash = transaction_hash_bytes!(b"txn 0");
+        // This transaction is in block 1 which is L1 accepted.
+        let tx_hash = transaction_hash_bytes!(b"txn 1");
         let input = Input {
             transaction_hash: tx_hash,
         };
@@ -277,8 +277,8 @@ mod tests {
     #[tokio::test]
     async fn l2_accepted(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests();
-        // This transaction is in block 1 which is not L1 accepted.
-        let tx_hash = transaction_hash_bytes!(b"txn 1");
+        // This transaction is in block 2 which is not L1 accepted.
+        let tx_hash = transaction_hash_bytes!(b"txn 3");
         let input = Input {
             transaction_hash: tx_hash,
         };

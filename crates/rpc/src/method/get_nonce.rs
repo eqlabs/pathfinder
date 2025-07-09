@@ -139,6 +139,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn l1_accepted() {
+        let context = RpcContext::for_tests();
+
+        // This contract is created in `setup_storage` at block 1,
+        // so we expect the nonce to be 0x0 at block 1 (L1 accepted)
+        let input = Input {
+            block_id: BlockId::L1Accepted,
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
+        assert_eq!(nonce.0, contract_nonce!("0x0"));
+    }
+
+    #[tokio::test]
     async fn latest() {
         let context = RpcContext::for_tests();
 
