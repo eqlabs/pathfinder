@@ -143,9 +143,15 @@ pub async fn get_transaction_status(
                         Err(Error::TxnHashNotFound)
                     }
                 }
-                (_, GatewayExecutionStatus::Rejected) => Ok(Output::Rejected {
-                    error_message: tx.tx_failure_reason.map(|reason| reason.error_message),
-                }),
+                (_, GatewayExecutionStatus::Rejected) => {
+                    if rpc_version < RpcVersion::V09 {
+                        Ok(Output::Rejected {
+                            error_message: tx.tx_failure_reason.map(|reason| reason.error_message),
+                        })
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
+                }
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
                 (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => {
                     Ok(Output::AcceptedOnL1(TxnExecutionStatus::Reverted {
@@ -226,6 +232,7 @@ mod tests {
 
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};
+    use crate::jsonrpc::RpcError;
     use crate::RpcVersion;
 
     #[rstest::rstest]
@@ -394,7 +401,7 @@ mod tests {
             ),
         };
         let context = RpcContext::for_tests();
-        let status = get_transaction_status(context, input, RPC_VERSION)
+        let status = get_transaction_status(context, input, RpcVersion::V08)
             .await
             .unwrap();
 
@@ -408,6 +415,31 @@ mod tests {
                 )
             }
         );
+    }
+
+    #[tokio::test]
+    async fn rejected_does_not_exist() {
+        let input = Input {
+            // Transaction hash known to be rejected by the testnet gateway.
+            transaction_hash: transaction_hash!(
+                "0x4fef839b57a7ac72c8738dc821897cc605b5cc5aafa487e445e9282ac37ac23"
+            ),
+        };
+        let context = RpcContext::for_tests();
+        let error = get_transaction_status(context, input, RpcVersion::V09)
+            .await
+            .err()
+            .unwrap();
+        let rpc_error = RpcError::from(error);
+        let error_json = rpc_error
+            .serialize(Serializer::new(RpcVersion::V09))
+            .unwrap();
+
+        let expected = json!({
+            "code": 29,
+            "message": "Transaction hash not found",
+        });
+        assert_eq!(error_json, expected);
     }
 
     #[rstest::rstest]
