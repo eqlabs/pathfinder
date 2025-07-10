@@ -9,6 +9,7 @@ use crate::v08::method as v08_method;
 #[rustfmt::skip]
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::V09)
+        .register("pathfinder_lastL1AcceptedBlockHashAndNumber",  crate::method::last_l1_accepted_block_hash_and_number)
         .register("starknet_addDeclareTransaction",               v08_method::add_declare_transaction)
         .register("starknet_addDeployAccountTransaction",         v08_method::add_deploy_account_transaction)
         .register("starknet_addInvokeTransaction",                v08_method::add_invoke_transaction)
