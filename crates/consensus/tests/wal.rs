@@ -138,7 +138,6 @@ async fn wal_concurrent_heights_retention_test() {
                     let cmd = match msg {
                         NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                         NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
-                        _ => unreachable!(),
                     };
                     consensus.handle_command(cmd);
                 }

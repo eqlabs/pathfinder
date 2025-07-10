@@ -252,14 +252,6 @@ fn handle_effect(
             output_queue.push_back(event);
             Ok(resume.resume_with(()))
         }
-        // Publish a liveness message to peers.
-        Effect::PublishLivenessMsg(msg, resume) => {
-            tracing::warn!(
-                msg = ?msg,
-                "[UNIMPLEMENTED] Publishing liveness message, skipping"
-            );
-            Ok(resume.resume_with(()))
-        }
         // Request the application to build a value for consensus to run on.
         Effect::GetValue(height, round, timeout, resume) => {
             tracing::debug!(
@@ -293,16 +285,6 @@ fn handle_effect(
             });
             Ok(resume.resume_with(()))
         }
-        // Extend a vote.
-        Effect::ExtendVote(height, round, value_id, resume) => {
-            tracing::debug!(
-                height = %height,
-                round = %round,
-                value_id = ?value_id,
-                "Extending vote (skipping)"
-            );
-            Ok(resume.resume_with(None))
-        }
         // Sign a vote.
         Effect::SignVote(vote, resume) => {
             tracing::debug!(
@@ -327,47 +309,6 @@ fn handle_effect(
                 "Verifying signature (skipping)"
             );
             Ok(resume.resume_with(true))
-        }
-        // Verify a vote extension.
-        Effect::VerifyVoteExtension(
-            height,
-            round,
-            value_id,
-            _extension,
-            _validator_address,
-            resume,
-        ) => {
-            tracing::debug!(
-                height = %height,
-                round = %round,
-                value_id = ?value_id,
-                "Verifying vote extension (skipping)"
-            );
-            Ok(resume.resume_with(Ok(())))
-        }
-        // Verify a commit certificate.
-        Effect::VerifyCommitCertificate(cert, _validators, _params, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Verifying commit certificate (skipping)"
-            );
-            Ok(resume.resume_with(Ok(())))
-        }
-        // Verify a polka certificate.
-        Effect::VerifyPolkaCertificate(cert, _validators, _params, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Verifying polka certificate (skipping)"
-            );
-            Ok(resume.resume_with(Ok(())))
-        }
-        // Verify a round certificate.
-        Effect::VerifyRoundCertificate(cert, _validators, _params, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Verifying round certificate (skipping)"
-            );
-            Ok(resume.resume_with(Ok(())))
         }
         // Restream a proposal.
         Effect::RestreamProposal(height, round, valid_round, address, value_id, resume) => {
@@ -404,14 +345,6 @@ fn handle_effect(
             )));
             Ok(resume.resume_with(()))
         }
-        // Rebroadcast a round certificate.
-        Effect::RebroadcastRoundCertificate(cert, resume) => {
-            tracing::debug!(
-                cert = ?cert,
-                "Rebroadcasting round certificate (skipping)"
-            );
-            Ok(resume.resume_with(()))
-        }
         // Timeout management.
         Effect::ScheduleTimeout(timeout, resume) => {
             timeout_manager.schedule_timeout(timeout);
@@ -434,6 +367,23 @@ fn handle_effect(
             wal.append(msg.into());
             Ok(resume.resume_with(()))
         }
+        // --------------------------------------------------------------
+        // Effects we don't care about. They're not relevant to Starknet.
+        // --------------------------------------------------------------
+        // Verify a commit certificate.
+        Effect::VerifyCommitCertificate(_, _, _, resume) => Ok(resume.resume_with(Ok(()))),
+        // Verify a polka certificate.
+        Effect::VerifyPolkaCertificate(_, _, _, resume) => Ok(resume.resume_with(Ok(()))),
+        // Verify a round certificate.
+        Effect::VerifyRoundCertificate(_, _, _, resume) => Ok(resume.resume_with(Ok(()))),
+        // Publish a liveness message to peers.
+        Effect::PublishLivenessMsg(_, resume) => Ok(resume.resume_with(())),
+        // Rebroadcast a round certificate.
+        Effect::RebroadcastRoundCertificate(_, resume) => Ok(resume.resume_with(())),
+        // Extend a vote.
+        Effect::ExtendVote(_, _, _, resume) => Ok(resume.resume_with(None)),
+        // Verify a vote extension.
+        Effect::VerifyVoteExtension(_, _, _, _, _, resume) => Ok(resume.resume_with(Ok(()))),
     }
 }
 
