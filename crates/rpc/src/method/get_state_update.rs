@@ -66,7 +66,7 @@ pub async fn get_state_update(
         let block_id = input
             .block_id
             .to_common_or_panic(&tx)
-            .or_else(|_| Err(Error::BlockNotFound))?;
+            .map_err(|_| Error::BlockNotFound)?;
 
         let Some(block_number) = tx.block_number(block_id).context("Fetching block number")? else {
             return Err(Error::BlockNotFound);

@@ -66,7 +66,7 @@ pub async fn get_transaction_by_block_id_and_index(
             }
             other => other
                 .to_common_or_panic(&db_tx)
-                .or_else(|_| Err(GetTransactionByBlockIdAndIndexError::BlockNotFound))?,
+                .map_err(|_| GetTransactionByBlockIdAndIndexError::BlockNotFound)?,
         };
 
         // Get the transaction from storage.

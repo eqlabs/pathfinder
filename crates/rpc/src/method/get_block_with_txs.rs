@@ -74,7 +74,7 @@ pub async fn get_block_with_txs(
             }
             other => other
                 .to_common_or_panic(&transaction)
-                .or_else(|_| Err(Error::BlockNotFound))?,
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         let header = transaction

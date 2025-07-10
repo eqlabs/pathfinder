@@ -295,7 +295,7 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             }
             other => other
                 .to_common_or_panic(&tx)
-                .or_else(|_| Err(Error::BlockNotFound))?,
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         // Use internal error to indicate that the process of querying for a particular

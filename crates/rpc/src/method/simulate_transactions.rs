@@ -93,7 +93,7 @@ pub async fn simulate_transactions(
             other => {
                 let block_id = other
                     .to_common_or_panic(&db_tx)
-                    .or_else(|_| Err(SimulateTransactionError::BlockNotFound))?;
+                    .map_err(|_| SimulateTransactionError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)

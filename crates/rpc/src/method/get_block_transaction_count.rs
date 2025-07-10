@@ -52,7 +52,7 @@ pub async fn get_block_transaction_count(
 
             other => other
                 .to_common_or_panic(&db)
-                .or_else(|_| Err(Error::BlockNotFound))?,
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         let exists = db

@@ -88,7 +88,7 @@ pub async fn estimate_message_fee(
             other => {
                 let block_id = other
                     .to_common_or_panic(&db_tx)
-                    .or_else(|_| Err(EstimateMessageFeeError::BlockNotFound))?;
+                    .map_err(|_| EstimateMessageFeeError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)
