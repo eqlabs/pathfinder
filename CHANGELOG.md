@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `pathfinder_lastL1AcceptedBlockHashAndNumber`, a pathfinder extension analogous to `starknet_blockHashAndNumber`
+- As an extension to the Starknet JSON-RPC specification, Pathfinder now accepts the `l1_accepted` `BLOCK_TAG`. This can be used to reference the latest L1 accepted block known by the node.
 
 ### Fixed
 
