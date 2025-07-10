@@ -18,6 +18,36 @@
                     "description": "A semver compatible version string"
                 }
             }
+        },
+        {
+            "name": "pathfinder_lastL1AcceptedBlockHashAndNumber",
+            "summary": "Get the block hash and number of the most recent block accepted on L1.",
+            "params": [],
+            "result": {
+                "name": "result",
+                "description": "The latest accepted block hash and number",
+                "schema": {
+                    "title": "Starknet block hash and number result",
+                    "type": "object",
+                    "properties": {
+                        "block_hash": {
+                            "title": "Block hash",
+                            "$ref": "#/components/schemas/BLOCK_HASH"
+                        },
+                        "block_number": {
+                            "title": "Block number",
+                            "$ref": "#/components/schemas/BLOCK_NUMBER"
+                        }
+                    },
+                    "required": ["block_hash", "block_number"]
+                }
+            },
+            "errors": {
+                "NO_BLOCKS": {
+                    "code": 32,
+                    "message": "There are no blocks"
+                }
+            }
         }
     ],
     "components": {
