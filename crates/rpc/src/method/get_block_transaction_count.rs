@@ -1,12 +1,12 @@
 use anyhow::Context;
-use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: pathfinder_common::BlockId,
+    block_id: BlockId,
 }
 
 impl crate::dto::DeserializeForVersion for Input {
@@ -49,7 +49,10 @@ pub async fn get_block_transaction_count(
                     .len() as u64;
                 return Ok(Output(count));
             }
-            other => other.to_finalized_or_panic(),
+
+            other => other
+                .to_common_or_panic(&db)
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         let exists = db

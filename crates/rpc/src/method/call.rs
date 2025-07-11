@@ -1,10 +1,11 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, CallParam, CallResultValue, ContractAddress, EntryPoint};
+use pathfinder_common::{CallParam, CallResultValue, ContractAddress, EntryPoint};
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug)]
@@ -143,7 +144,9 @@ pub async fn call(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_common_or_panic(&db_tx)
+                    .map_err(|_| CallError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)

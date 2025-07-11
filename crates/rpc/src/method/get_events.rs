@@ -2,13 +2,13 @@ use std::str::FromStr;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::BlockId;
 use pathfinder_storage::{EventFilterError, EVENT_KEY_FILTER_LIMIT};
 use tokio::task::JoinHandle;
 
 use crate::context::RpcContext;
 use crate::dto::{self, SerializeForVersion, Serializer};
 use crate::pending::{PendingBlockVariant, PendingData};
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 pub const EVENT_PAGE_SIZE_LIMIT: usize = 1024;
@@ -371,6 +371,14 @@ fn map_to_block_to_number(
             Ok(Some(number))
         }
         Some(Number(number)) => Ok(Some(number)),
+        Some(L1Accepted) => {
+            let number = tx
+                .l1_l2_pointer()
+                .context("Querying L1-L2 pointer")?
+                .ok_or(GetEventsError::BlockNotFound)?;
+
+            Ok(Some(number))
+        }
         Some(Pending) | Some(Latest) | None => Ok(None),
     }
 }
@@ -397,9 +405,17 @@ fn map_from_block_to_number(
             Ok(Some(number))
         }
         Some(Number(number)) => Ok(Some(number)),
+        Some(L1Accepted) => {
+            let number = tx
+                .l1_l2_pointer()
+                .context("Querying L1-L2 pointer")?
+                .ok_or(GetEventsError::BlockNotFound)?;
+
+            Ok(Some(number))
+        }
         Some(Pending) | Some(Latest) => {
             let number = tx
-                .block_id(pathfinder_common::FinalizedBlockId::Latest)
+                .block_id(pathfinder_common::BlockId::Latest)
                 .context("Querying latest block number")?
                 .ok_or(GetEventsError::BlockNotFound)?
                 .0;

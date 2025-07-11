@@ -1,5 +1,4 @@
 use anyhow::Context;
-use pathfinder_common::BlockId;
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
 use serde::de::Error;
 
@@ -12,6 +11,7 @@ use crate::executor::{
     SIGNATURE_ELEMENT_LIMIT,
 };
 use crate::types::request::BroadcastedTransaction;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -89,7 +89,9 @@ pub async fn estimate_fee(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_common_or_panic(&db_tx)
+                    .map_err(|_| EstimateFeeError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)
@@ -225,7 +227,7 @@ mod tests {
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBound, ResourceBounds};
-    use pathfinder_common::{felt, BlockId, ResourceAmount, ResourcePricePerUnit, Tip};
+    use pathfinder_common::{felt, ResourceAmount, ResourcePricePerUnit, Tip};
     use pathfinder_executor::types::{FeeEstimate, PriceUnit};
     use pretty_assertions_sorted::assert_eq;
 
@@ -242,7 +244,7 @@ mod tests {
         BroadcastedInvokeTransactionV3,
         BroadcastedTransaction,
     };
-    use crate::types::{ContractClass, SierraContractClass};
+    use crate::types::{BlockId, ContractClass, SierraContractClass};
     use crate::RpcVersion;
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;

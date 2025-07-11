@@ -1,10 +1,9 @@
 //! Metrics related utilities
 use futures::Future;
-use pathfinder_common::BlockId;
 
 use super::builder::stage::Method;
 use super::builder::Request;
-use super::SequencerError;
+use super::{BlockId, SequencerError};
 
 const METRIC_REQUESTS: &str = "gateway_requests_total";
 const METRIC_FAILED_REQUESTS: &str = "gateway_requests_failed_total";

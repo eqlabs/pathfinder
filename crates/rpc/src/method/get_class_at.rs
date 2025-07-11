@@ -1,16 +1,16 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress};
+use pathfinder_common::ContractAddress;
 
 use crate::context::RpcContext;
 use crate::dto::SerializeForVersion;
-use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::{BlockId, CairoContractClass, ContractClass, SierraContractClass};
 use crate::{dto, RpcVersion};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Input {
-    block_id: pathfinder_common::BlockId,
+    block_id: BlockId,
     contract_address: pathfinder_common::ContractAddress,
 }
 
@@ -76,7 +76,10 @@ pub async fn get_class_at(
             None
         };
 
-        let block_id = input.block_id.to_finalized_coerced();
+        let block_id = input
+            .block_id
+            .to_common_coerced(&tx)
+            .map_err(|_| Error::BlockNotFound)?;
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }

@@ -225,7 +225,7 @@ where
                 }
                 _ => starting_block,
             };
-            let starting_block = pathfinder_common::FinalizedBlockId::from(starting_block);
+            let starting_block = pathfinder_common::BlockId::from(starting_block);
 
             db.block_number(starting_block)
                 .map_err(RpcError::InternalError)?
@@ -233,7 +233,7 @@ where
                     match max_history {
                         WebsocketHistory::Limited(limit) => {
                             let latest = db
-                                .block_number(pathfinder_common::FinalizedBlockId::Latest)
+                                .block_number(pathfinder_common::BlockId::Latest)
                                 .map_err(RpcError::InternalError)?
                                 .unwrap_or(BlockNumber::GENESIS);
                             // + 1 because `starting_block` also counts as one block.

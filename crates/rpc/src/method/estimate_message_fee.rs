@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use pathfinder_common::prelude::*;
-use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, IntoStarkFelt, L1BlobDataAvailability};
 use starknet_api::core::PatriciaKey;
@@ -11,6 +10,7 @@ use starknet_api::transaction::fields::{Calldata, Fee};
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::executor::CALLDATA_LIMIT;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -86,7 +86,9 @@ pub async fn estimate_message_fee(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_common_or_panic(&db_tx)
+                    .map_err(|_| EstimateMessageFeeError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)
@@ -260,13 +262,14 @@ mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::{BlockId, L1DataAvailabilityMode};
+    use pathfinder_common::L1DataAvailabilityMode;
     use pathfinder_storage::StorageBuilder;
     use primitive_types::H160;
 
     use super::*;
     use crate::context::RpcContext;
     use crate::dto::{SerializeForVersion, Serializer};
+    use crate::types::BlockId;
     use crate::RpcVersion;
 
     enum Setup {

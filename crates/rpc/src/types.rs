@@ -5,6 +5,7 @@ pub(crate) mod receipt;
 pub mod syncing;
 
 pub use class::*;
+pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
@@ -17,6 +18,86 @@ pub mod request {
 
     use crate::dto::U64Hex;
 
+    /// A way of identifying a block in a JSON-RPC request.
+    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+    pub enum BlockId {
+        Number(BlockNumber),
+        Hash(BlockHash),
+        L1Accepted,
+        Latest,
+        Pending,
+    }
+
+    impl From<BlockHash> for BlockId {
+        fn from(value: BlockHash) -> Self {
+            BlockId::Hash(value)
+        }
+    }
+
+    impl From<BlockNumber> for BlockId {
+        fn from(value: BlockNumber) -> Self {
+            BlockId::Number(value)
+        }
+    }
+
+    impl BlockId {
+        pub fn is_pending(&self) -> bool {
+            matches!(self, BlockId::Pending)
+        }
+
+        /// Converts this [BlockId] to a [pathfinder_common::BlockId].
+        ///
+        /// Resolves [`BlockId::L1Accepted`] to the latest L1 accepted block
+        /// number. Returns an error if there is no L1 accepted block number
+        /// or the database lookup fails.
+        ///
+        /// # Panics
+        ///
+        /// If this [BlockId] is [`BlockId::Pending`].
+        pub fn to_common_or_panic(
+            self,
+            tx: &pathfinder_storage::Transaction<'_>,
+        ) -> anyhow::Result<pathfinder_common::BlockId> {
+            match self {
+                BlockId::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
+                BlockId::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
+                BlockId::L1Accepted => {
+                    let block_number = tx
+                        .l1_l2_pointer()?
+                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                    Ok(pathfinder_common::BlockId::Number(block_number))
+                }
+                BlockId::Latest => Ok(pathfinder_common::BlockId::Latest),
+                BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
+            }
+        }
+
+        /// Converts this [BlockId] to a [pathfinder_common::BlockId].
+        ///
+        /// Resolves [`BlockId::L1Accepted`] to the latest L1 accepted block
+        /// number. Returns an error if there is no L1 accepted block number
+        /// or the database lookup fails.
+        ///
+        /// Coerces [`BlockId::Pending`] to
+        /// [`pathfinder_common::BlockId::Latest`].
+        pub fn to_common_coerced(
+            self,
+            tx: &pathfinder_storage::Transaction<'_>,
+        ) -> anyhow::Result<pathfinder_common::BlockId> {
+            match self {
+                BlockId::Number(number) => Ok(pathfinder_common::BlockId::Number(number)),
+                BlockId::Hash(hash) => Ok(pathfinder_common::BlockId::Hash(hash)),
+                BlockId::L1Accepted => {
+                    let block_number = tx
+                        .l1_l2_pointer()?
+                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                    Ok(pathfinder_common::BlockId::Number(block_number))
+                }
+                BlockId::Latest | BlockId::Pending => Ok(pathfinder_common::BlockId::Latest),
+            }
+        }
+    }
+
     /// A way of identifying a block in a subscription request.
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub enum SubscriptionBlockId {
@@ -25,16 +106,16 @@ pub mod request {
         Latest,
     }
 
-    impl From<SubscriptionBlockId> for pathfinder_common::FinalizedBlockId {
+    impl From<SubscriptionBlockId> for pathfinder_common::BlockId {
         fn from(value: SubscriptionBlockId) -> Self {
             match value {
                 SubscriptionBlockId::Number(block_number) => {
-                    pathfinder_common::FinalizedBlockId::Number(block_number)
+                    pathfinder_common::BlockId::Number(block_number)
                 }
                 SubscriptionBlockId::Hash(block_hash) => {
-                    pathfinder_common::FinalizedBlockId::Hash(block_hash)
+                    pathfinder_common::BlockId::Hash(block_hash)
                 }
-                SubscriptionBlockId::Latest => pathfinder_common::FinalizedBlockId::Latest,
+                SubscriptionBlockId::Latest => pathfinder_common::BlockId::Latest,
             }
         }
     }

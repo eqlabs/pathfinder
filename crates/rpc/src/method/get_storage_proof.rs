@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use anyhow::Context;
 use pathfinder_common::prelude::*;
 use pathfinder_common::trie::TrieNode;
-use pathfinder_common::BlockId;
 use pathfinder_crypto::Felt;
 use pathfinder_merkle_tree::tree::GetProofError;
 use pathfinder_merkle_tree::{ClassCommitmentTree, ContractsStorageTree, StorageCommitmentTree};
@@ -11,6 +10,7 @@ use pathfinder_storage::Transaction;
 
 use crate::context::RpcContext;
 use crate::dto::{DeserializeForVersion, SerializeForVersion};
+use crate::types::BlockId;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContractStorageKeys {
@@ -277,14 +277,6 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
         });
     }
 
-    let block_id = match input.block_id {
-        BlockId::Pending => {
-            // Getting proof of a pending block is not supported.
-            return Err(Error::ProofMissing);
-        }
-        other => other.to_finalized_or_panic(),
-    };
-
     let span = tracing::Span::current();
     let jh = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
@@ -295,6 +287,16 @@ pub async fn get_storage_proof(context: RpcContext, input: Input) -> Result<Outp
             .context("Opening database connection")?;
 
         let tx = db.transaction().context("Creating database transaction")?;
+
+        let block_id = match input.block_id {
+            BlockId::Pending => {
+                // Getting proof of a pending block is not supported.
+                return Err(Error::ProofMissing);
+            }
+            other => other
+                .to_common_or_panic(&tx)
+                .map_err(|_| Error::BlockNotFound)?,
+        };
 
         // Use internal error to indicate that the process of querying for a particular
         // block failed, which is not the same as being sure that the block is
@@ -507,6 +509,7 @@ mod tests {
 
     use super::*;
     use crate::dto::SerializeForVersion;
+    use crate::types::BlockId;
 
     mod serialization {
         use bitvec::bitvec;

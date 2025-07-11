@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{BlockCommitmentSignature, BlockNumber, FinalizedBlockId};
+use pathfinder_common::{BlockCommitmentSignature, BlockId, BlockNumber};
 
 use crate::prelude::*;
 
@@ -25,12 +25,9 @@ impl Transaction<'_> {
         Ok(())
     }
 
-    pub fn signature(
-        &self,
-        block: FinalizedBlockId,
-    ) -> anyhow::Result<Option<BlockCommitmentSignature>> {
+    pub fn signature(&self, block: BlockId) -> anyhow::Result<Option<BlockCommitmentSignature>> {
         match block {
-            FinalizedBlockId::Latest => self.inner().query_row(
+            BlockId::Latest => self.inner().query_row(
                 "SELECT signature_r, signature_s FROM block_signatures ORDER BY block_number DESC \
                  LIMIT 1",
                 [],
@@ -40,7 +37,7 @@ impl Transaction<'_> {
                     Ok(BlockCommitmentSignature { r, s })
                 },
             ),
-            FinalizedBlockId::Number(number) => self.inner().query_row(
+            BlockId::Number(number) => self.inner().query_row(
                 "SELECT signature_r, signature_s FROM block_signatures WHERE block_number = ?",
                 params![&number],
                 |row| {
@@ -49,7 +46,7 @@ impl Transaction<'_> {
                     Ok(BlockCommitmentSignature { r, s })
                 },
             ),
-            FinalizedBlockId::Hash(hash) => self.inner().query_row(
+            BlockId::Hash(hash) => self.inner().query_row(
                 r"SELECT signature_r, signature_s
                 FROM block_signatures
                 JOIN block_headers ON block_signatures.block_number = block_headers.number
@@ -112,7 +109,7 @@ mod tests {
         let (mut connection, _headers, signatures) = setup();
         let tx = connection.transaction().unwrap();
 
-        let result = tx.signature(FinalizedBlockId::Latest).unwrap().unwrap();
+        let result = tx.signature(BlockId::Latest).unwrap().unwrap();
         let expected = signatures.last().unwrap();
 
         assert_eq!(&result, expected);

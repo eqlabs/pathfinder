@@ -1,8 +1,9 @@
 use anyhow::Context;
 use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockId, TransactionIndex};
+use pathfinder_common::TransactionIndex;
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -63,7 +64,9 @@ pub async fn get_transaction_by_block_id_and_index(
                     .ok_or(GetTransactionByBlockIdAndIndexError::InvalidTxnIndex);
                 return result.map(Output);
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_common_or_panic(&db_tx)
+                .map_err(|_| GetTransactionByBlockIdAndIndexError::BlockNotFound)?,
         };
 
         // Get the transaction from storage.

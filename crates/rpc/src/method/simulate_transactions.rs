@@ -1,5 +1,4 @@
 use anyhow::Context;
-use pathfinder_common::BlockId;
 use pathfinder_executor::TransactionExecutionError;
 
 use crate::context::RpcContext;
@@ -11,6 +10,7 @@ use crate::executor::{
     SIGNATURE_ELEMENT_LIMIT,
 };
 use crate::types::request::BroadcastedTransaction;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug)]
@@ -91,7 +91,9 @@ pub async fn simulate_transactions(
                 (pending.header(), Some(pending.state_update()))
             }
             other => {
-                let block_id = other.to_finalized_or_panic();
+                let block_id = other
+                    .to_common_or_panic(&db_tx)
+                    .map_err(|_| SimulateTransactionError::BlockNotFound)?;
 
                 let header = db_tx
                     .block_header(block_id)
@@ -239,7 +241,6 @@ pub(crate) mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
-    use pathfinder_common::BlockId;
     use pathfinder_crypto::Felt;
     use pathfinder_executor::types::{
         DeclareTransactionExecutionInfo,
@@ -261,6 +262,7 @@ pub(crate) mod tests {
         BroadcastedDeclareTransactionV1,
         BroadcastedTransaction,
     };
+    use crate::types::BlockId;
     use crate::RpcVersion;
 
     pub(crate) async fn setup_storage_with_starknet_version(

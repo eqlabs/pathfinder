@@ -4,13 +4,14 @@ use serde::de::Error;
 use crate::dto::SerializeStruct;
 use crate::{Reorg, RpcVersion};
 
-impl crate::dto::DeserializeForVersion for pathfinder_common::BlockId {
+impl crate::dto::DeserializeForVersion for crate::types::request::BlockId {
     fn deserialize(value: super::Value) -> Result<Self, serde_json::Error> {
         let rpc_version = value.version;
         if value.is_string() {
             let value: String = value.deserialize()?;
             match value.as_str() {
                 "latest" => Ok(Self::Latest),
+                "l1_accepted" => Ok(Self::L1Accepted),
                 "pending" if rpc_version < RpcVersion::V09 => Ok(Self::Pending),
                 "pre_confirmed" if rpc_version >= RpcVersion::V09 => Ok(Self::Pending),
                 _ => Err(serde_json::Error::custom("Invalid block id")),

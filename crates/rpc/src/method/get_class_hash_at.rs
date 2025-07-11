@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ClassHash, ContractAddress};
+use pathfinder_common::{ClassHash, ContractAddress};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);
@@ -54,7 +55,10 @@ pub async fn get_class_hash_at(
             }
         }
 
-        let block_id = input.block_id.to_finalized_coerced();
+        let block_id = input
+            .block_id
+            .to_common_coerced(&tx)
+            .map_err(|_| Error::BlockNotFound)?;
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }

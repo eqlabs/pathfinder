@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 pub enum Output {
@@ -66,7 +66,9 @@ pub async fn get_block_with_receipts(
                     block_number: pending.block_number(),
                 });
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_common_or_panic(&db)
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         let header = db

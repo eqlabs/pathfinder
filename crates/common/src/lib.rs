@@ -254,90 +254,19 @@ impl TransactionVersion {
     pub const THREE_WITH_QUERY_VERSION: Self = Self::THREE.with_query_version();
 }
 
-/// A way of identifying a specific block.
+/// A way of identifying a specific block that has been finalized.
+///
+/// Useful in contexts that do not work with pending blocks.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BlockId {
     Number(BlockNumber),
     Hash(BlockHash),
     Latest,
-    Pending,
 }
 
 impl BlockId {
-    pub fn is_pending(&self) -> bool {
-        self == &BlockId::Pending
-    }
-
-    pub fn is_latest(&self) -> bool {
-        self == &BlockId::Latest
-    }
-
-    /// Converts this [BlockId] to a [FinalizedBlockId].
-    ///
-    /// # Panics
-    ///
-    /// If this [BlockId] is [`BlockId::Pending`].
-    pub fn to_finalized_or_panic(self) -> FinalizedBlockId {
-        match self {
-            BlockId::Number(number) => FinalizedBlockId::Number(number),
-            BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
-            BlockId::Latest => FinalizedBlockId::Latest,
-            BlockId::Pending => panic!("Cannot convert BlockId::Pending to FinalizedBlockId"),
-        }
-    }
-
-    /// Converts this [BlockId] to a [FinalizedBlockId].
-    ///
-    /// # Returns
-    ///
-    /// - [anyhow::Error] if the [BlockId] is [`BlockId::Pending`].
-    /// - [FinalizedBlockId] with the corresponding variant otherwise.
-    pub fn try_to_finalized(self) -> anyhow::Result<FinalizedBlockId> {
-        match self {
-            BlockId::Number(number) => Ok(FinalizedBlockId::Number(number)),
-            BlockId::Hash(hash) => Ok(FinalizedBlockId::Hash(hash)),
-            BlockId::Latest => Ok(FinalizedBlockId::Latest),
-            BlockId::Pending => {
-                anyhow::bail!("Cannot convert BlockId::Pending to FinalizedBlockId")
-            }
-        }
-    }
-
-    /// Converts this [BlockId] to a [FinalizedBlockId].
-    ///
-    /// Coerces [`BlockId::Pending`] to [`FinalizedBlockId::Latest`].
-    pub fn to_finalized_coerced(self) -> FinalizedBlockId {
-        match self {
-            BlockId::Number(number) => FinalizedBlockId::Number(number),
-            BlockId::Hash(hash) => FinalizedBlockId::Hash(hash),
-            BlockId::Latest | BlockId::Pending => FinalizedBlockId::Latest,
-        }
-    }
-}
-
-/// A way of identifying a specific block that has been finalized.
-///
-/// Useful in contexts that do not work with pending blocks.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum FinalizedBlockId {
-    Number(BlockNumber),
-    Hash(BlockHash),
-    Latest,
-}
-
-impl FinalizedBlockId {
     pub fn is_latest(&self) -> bool {
         self == &Self::Latest
-    }
-}
-
-impl From<FinalizedBlockId> for BlockId {
-    fn from(value: FinalizedBlockId) -> Self {
-        match value {
-            FinalizedBlockId::Number(number) => BlockId::Number(number),
-            FinalizedBlockId::Hash(hash) => BlockId::Hash(hash),
-            FinalizedBlockId::Latest => BlockId::Latest,
-        }
     }
 }
 
@@ -468,18 +397,6 @@ impl From<BlockNumber> for BlockId {
 }
 
 impl From<BlockHash> for BlockId {
-    fn from(hash: BlockHash) -> Self {
-        Self::Hash(hash)
-    }
-}
-
-impl From<BlockNumber> for FinalizedBlockId {
-    fn from(number: BlockNumber) -> Self {
-        Self::Number(number)
-    }
-}
-
-impl From<BlockHash> for FinalizedBlockId {
     fn from(hash: BlockHash) -> Self {
         Self::Hash(hash)
     }

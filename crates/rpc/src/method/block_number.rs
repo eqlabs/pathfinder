@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::FinalizedBlockId;
+use pathfinder_common::BlockId;
 
 use crate::context::RpcContext;
 
@@ -18,7 +18,7 @@ pub async fn block_number(context: RpcContext) -> Result<Output, Error> {
             .context("Opening database connection")?;
         let tx = db.transaction().context("Opening database transaction")?;
 
-        tx.block_id(FinalizedBlockId::Latest)
+        tx.block_id(BlockId::Latest)
             .context("Reading latest block number from database")?
             .map(|(block_number, _)| Output(block_number))
             .ok_or(Error::NoBlocks)

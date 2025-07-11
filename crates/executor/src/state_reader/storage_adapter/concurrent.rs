@@ -4,12 +4,12 @@ use blockifier::blockifier::config::{ConcurrencyConfig, TransactionExecutorConfi
 use blockifier::state::errors::StateError;
 use pathfinder_common::{
     BlockHash,
+    BlockId,
     BlockNumber,
     CasmHash,
     ClassHash,
     ContractAddress,
     ContractNonce,
-    FinalizedBlockId,
     StorageAddress,
     StorageValue,
 };
@@ -29,44 +29,41 @@ pub struct ConcurrentStorageAdapter {
 }
 
 enum Command {
-    BlockHash(
-        FinalizedBlockId,
-        SyncSender<anyhow::Result<Option<BlockHash>>>,
-    ),
+    BlockHash(BlockId, SyncSender<anyhow::Result<Option<BlockHash>>>),
     CasmDefinition(ClassHash, SyncSender<Result<Option<Vec<u8>>, StateError>>),
     ClassDefinitionWithBlockNumber(
         ClassHash,
         SyncSender<Result<ClassDefinitionWithBlockNumber, StateError>>,
     ),
     CasmDefinitionAt(
-        FinalizedBlockId,
+        BlockId,
         ClassHash,
         SyncSender<Result<Option<Vec<u8>>, StateError>>,
     ),
     ClassDefinitionAtWithBlockNumber(
-        FinalizedBlockId,
+        BlockId,
         ClassHash,
         SyncSender<Result<ClassDefinitionAtWithBlockNumber, StateError>>,
     ),
     StorageValue(
-        FinalizedBlockId,
+        BlockId,
         ContractAddress,
         StorageAddress,
         SyncSender<Result<Option<StorageValue>, StateError>>,
     ),
     ContractNonce(
         ContractAddress,
-        FinalizedBlockId,
+        BlockId,
         SyncSender<Result<Option<ContractNonce>, StateError>>,
     ),
     ContractClassHash(
-        FinalizedBlockId,
+        BlockId,
         ContractAddress,
         SyncSender<Result<Option<ClassHash>, StateError>>,
     ),
     CasmHash(ClassHash, SyncSender<Result<Option<CasmHash>, StateError>>),
     CasmHashAt(
-        FinalizedBlockId,
+        BlockId,
         ClassHash,
         SyncSender<Result<Option<CasmHash>, StateError>>,
     ),
@@ -118,7 +115,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
         }
     }
 
-    fn block_hash(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockHash>> {
+    fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .send(Command::BlockHash(block, tx))
@@ -147,7 +144,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
 
     fn casm_definition_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError> {
         let (tx, rx) = mpsc::sync_channel(1);
@@ -159,7 +156,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
 
     fn class_definition_at_with_block_number(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<(BlockNumber, Vec<u8>)>, StateError> {
         let (tx, rx) = mpsc::sync_channel(1);
@@ -173,7 +170,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
 
     fn storage_value(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         contract_address: ContractAddress,
         storage_address: StorageAddress,
     ) -> Result<Option<StorageValue>, StateError> {
@@ -192,7 +189,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
     fn contract_nonce(
         &self,
         contract_address: ContractAddress,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
     ) -> Result<Option<ContractNonce>, StateError> {
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
@@ -203,7 +200,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
 
     fn contract_class_hash(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         contract_address: ContractAddress,
     ) -> Result<Option<ClassHash>, StateError> {
         let (tx, rx) = mpsc::sync_channel(1);
@@ -223,7 +220,7 @@ impl StorageAdapter for ConcurrentStorageAdapter {
 
     fn casm_hash_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: ClassHash,
     ) -> Result<Option<CasmHash>, StateError> {
         let (tx, rx) = mpsc::sync_channel(1);

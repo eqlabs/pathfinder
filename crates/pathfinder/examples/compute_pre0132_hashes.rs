@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
     // Get latest block number
     let latest_block_number = {
         let tx = db.transaction().unwrap();
-        tx.block_id(pathfinder_common::FinalizedBlockId::Latest)
+        tx.block_id(pathfinder_common::BlockId::Latest)
             .context("Fetching latest block number")?
             .context("No latest block number")?
             .0
@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
 
         let tx = db.transaction().unwrap();
         let block_number = BlockNumber::new_or_panic(block_number);
-        let block_id = pathfinder_common::FinalizedBlockId::Number(block_number);
+        let block_id = pathfinder_common::BlockId::Number(block_number);
 
         // Load block header
         let mut header = tx

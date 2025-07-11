@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress, StorageAddress, StorageValue};
+use pathfinder_common::{ContractAddress, StorageAddress, StorageValue};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -56,7 +57,10 @@ pub async fn get_storage_at(
             }
         }
 
-        let block_id = input.block_id.to_finalized_coerced();
+        let block_id = input
+            .block_id
+            .to_common_coerced(&tx)
+            .map_err(|_| Error::BlockNotFound)?;
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }
@@ -209,6 +213,28 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.0, storage_value_bytes!(b"storage value 2"));
+    }
+
+    #[tokio::test]
+    async fn l1_accepted() {
+        let ctx = RpcContext::for_tests_with_pending().await;
+        let contract_address = contract_address_bytes!(b"contract 1");
+        let key = storage_address_bytes!(b"storage addr 0");
+        let block_id = BlockId::L1Accepted;
+
+        let result = get_storage_at(
+            ctx,
+            Input {
+                contract_address,
+                key,
+                block_id,
+            },
+            RPC_VERSION,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.0, storage_value_bytes!(b"storage value 1"));
     }
 
     #[tokio::test]

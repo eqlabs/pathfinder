@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockId, StateUpdate};
+use pathfinder_common::StateUpdate;
 
+use crate::types::BlockId;
 use crate::{dto, RpcContext, RpcVersion};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +63,10 @@ pub async fn get_state_update(
             return Ok(Output::Pending(state_update));
         }
 
-        let block_id = input.block_id.to_finalized_or_panic();
+        let block_id = input
+            .block_id
+            .to_common_or_panic(&tx)
+            .map_err(|_| Error::BlockNotFound)?;
 
         let Some(block_number) = tx.block_number(block_id).context("Fetching block number")? else {
             return Err(Error::BlockNotFound);

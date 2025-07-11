@@ -350,7 +350,7 @@ impl PendingWatcher {
         }
 
         let latest = tx
-            .block_header(pathfinder_common::FinalizedBlockId::Latest)
+            .block_header(pathfinder_common::BlockId::Latest)
             .context("Querying latest block header")?
             .unwrap_or_default();
 

@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use blockifier::blockifier::config::TransactionExecutorConfig;
 use blockifier::state::errors::StateError;
-use pathfinder_common::{BlockHash, FinalizedBlockId};
+use pathfinder_common::{BlockHash, BlockId};
 use pathfinder_storage::Transaction;
 
 use crate::state_reader::storage_adapter::{map_anyhow_to_state_err, StorageAdapter};
@@ -25,7 +25,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
         TransactionExecutorConfig::default()
     }
 
-    fn block_hash(&self, block: FinalizedBlockId) -> anyhow::Result<Option<BlockHash>> {
+    fn block_hash(&self, block: BlockId) -> anyhow::Result<Option<BlockHash>> {
         self.db_tx.block_hash(block)
     }
 
@@ -49,7 +49,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
 
     fn casm_definition_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: pathfinder_common::ClassHash,
     ) -> Result<Option<Vec<u8>>, StateError> {
         self.db_tx
@@ -59,7 +59,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
 
     fn class_definition_at_with_block_number(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: pathfinder_common::ClassHash,
     ) -> Result<Option<(pathfinder_common::BlockNumber, Vec<u8>)>, StateError> {
         self.db_tx
@@ -69,7 +69,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
 
     fn storage_value(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         contract_address: pathfinder_common::ContractAddress,
         storage_address: pathfinder_common::StorageAddress,
     ) -> Result<Option<pathfinder_common::StorageValue>, StateError> {
@@ -81,7 +81,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
     fn contract_nonce(
         &self,
         contract_address: pathfinder_common::ContractAddress,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
     ) -> Result<Option<pathfinder_common::ContractNonce>, StateError> {
         self.db_tx
             .contract_nonce(contract_address, block_id)
@@ -90,7 +90,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
 
     fn contract_class_hash(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         contract_address: pathfinder_common::ContractAddress,
     ) -> Result<Option<pathfinder_common::ClassHash>, StateError> {
         self.db_tx
@@ -109,7 +109,7 @@ impl<'tx> StorageAdapter for RcStorageAdapter<'tx> {
 
     fn casm_hash_at(
         &self,
-        block_id: FinalizedBlockId,
+        block_id: BlockId,
         class_hash: pathfinder_common::ClassHash,
     ) -> Result<Option<pathfinder_common::CasmHash>, StateError> {
         self.db_tx

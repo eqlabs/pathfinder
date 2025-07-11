@@ -8,9 +8,9 @@ use std::future::Future;
 
 use futures::stream::StreamExt;
 use gateway_test_utils::{response_from, setup_with_varied_responses};
-use pathfinder_common::{BlockId, BlockNumber};
+use pathfinder_common::BlockNumber;
 use pretty_assertions_sorted::assert_eq;
-use starknet_gateway_client::{Client, GatewayApi};
+use starknet_gateway_client::{BlockId, Client, GatewayApi};
 use starknet_gateway_types::error::KnownStarknetErrorCode;
 
 #[tokio::test]

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use pathfinder_common::{BlockHeader, BlockId, BlockNumber, TransactionHash};
+use pathfinder_common::{BlockHeader, BlockNumber, TransactionHash};
 
 use crate::context::RpcContext;
 use crate::pending::PendingBlockVariant;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound);
@@ -70,7 +71,9 @@ pub async fn get_block_with_tx_hashes(
                     transactions,
                 });
             }
-            other => other.to_finalized_or_panic(),
+            other => other
+                .to_common_or_panic(&transaction)
+                .map_err(|_| Error::BlockNotFound)?,
         };
 
         let header = transaction

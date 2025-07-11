@@ -254,7 +254,7 @@ impl LatestStream {
                 interval.tick().await;
 
                 let Ok(latest) = fgw
-                    .block_header(pathfinder_common::BlockId::Latest)
+                    .block_header(starknet_gateway_client::BlockId::Latest)
                     .await
                     .inspect_err(|e| tracing::debug!(error=%e, "Error requesting latest block ID"))
                 else {
@@ -312,7 +312,6 @@ mod tests {
     use pathfinder_common::receipt::Receipt;
     use pathfinder_common::state_update::{self, StateUpdateData};
     use pathfinder_common::transaction::Transaction;
-    use pathfinder_common::BlockId;
     use pathfinder_crypto::signature::ecdsa_sign;
     use pathfinder_crypto::Felt;
     use pathfinder_ethereum::EthereumClient;
@@ -323,6 +322,7 @@ mod tests {
     use rayon::iter::Rev;
     use rstest::rstest;
     use sha3::digest::consts::U6;
+    use starknet_gateway_client::BlockId;
     use starknet_gateway_types::error::SequencerError;
 
     use super::*;

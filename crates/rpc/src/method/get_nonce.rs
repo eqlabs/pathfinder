@@ -1,7 +1,8 @@
 use anyhow::Context;
-use pathfinder_common::{BlockId, ContractAddress, ContractNonce};
+use pathfinder_common::{ContractAddress, ContractNonce};
 
 use crate::context::RpcContext;
+use crate::types::BlockId;
 use crate::RpcVersion;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,7 +55,10 @@ pub async fn get_nonce(
 
         // Check that block exists. This should occur first as the block number
         // isn't checked explicitly (i.e. nonce fetch just uses <= number).
-        let block_id = input.block_id.to_finalized_coerced();
+        let block_id = input
+            .block_id
+            .to_common_coerced(&tx)
+            .map_err(|_| Error::BlockNotFound)?;
         if !tx.block_exists(block_id)? {
             return Err(Error::BlockNotFound);
         }
@@ -96,10 +100,11 @@ impl crate::dto::SerializeForVersion for Output {
 mod tests {
     use assert_matches::assert_matches;
     use pathfinder_common::macro_prelude::*;
-    use pathfinder_common::{BlockId, BlockNumber, ContractNonce};
+    use pathfinder_common::{BlockNumber, ContractNonce};
 
     use super::{get_nonce, Error, Input};
     use crate::context::RpcContext;
+    use crate::types::BlockId;
     use crate::RpcVersion;
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;
@@ -131,6 +136,20 @@ mod tests {
         let result = get_nonce(context, input, RPC_VERSION).await;
 
         assert_matches!(result, Err(Error::BlockNotFound));
+    }
+
+    #[tokio::test]
+    async fn l1_accepted() {
+        let context = RpcContext::for_tests();
+
+        // This contract is created in `setup_storage` at block 1,
+        // so we expect the nonce to be 0x0 at block 1 (L1 accepted)
+        let input = Input {
+            block_id: BlockId::L1Accepted,
+            contract_address: contract_address_bytes!(b"contract 1"),
+        };
+        let nonce = get_nonce(context, input, RPC_VERSION).await.unwrap();
+        assert_eq!(nonce.0, contract_nonce!("0x0"));
     }
 
     #[tokio::test]
