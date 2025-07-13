@@ -2,10 +2,7 @@ use p2p_proto::consensus as p2p_proto;
 
 use super::MalachiteContext;
 
-/// A proposal part for the malachite context.
-///
-/// This is a wrapper around the `ProposalPart` type from the `p2p_proto` crate
-/// which implements the `ProposalPart` trait for the malachite context.
+/// A proposal part for the consensus logic.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ProposalPart(p2p_proto::ProposalPart);
 

@@ -8,13 +8,14 @@ use malachite_types::{
 use p2p_proto::consensus as p2p_proto;
 use serde::{Deserialize, Serialize};
 
-use super::{Height, MalachiteContext, Round, ValidatorAddress, ValueId};
+use super::{ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress, ValueId};
 
-/// A vote for a value in a round
+/// A vote for a value in a consensus round.
 ///
-/// This is not a wrapper around the `Vote` type from the `p2p_proto` crate
-/// because we need to own that `NilOrVal` to satisfy the interface.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// A vote is cast by a validator to indicate their agreement or disagreement
+/// with a proposed block value. The vote includes the validator's address, the
+/// round number, and the block value being voted on.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Vote {
     pub r#type: VoteType,
     pub height: Height,
@@ -22,6 +23,20 @@ pub struct Vote {
     pub value: NilOrVal<ValueId>,
     pub validator_address: ValidatorAddress,
     pub extension: Option<SignedExtension<MalachiteContext>>,
+}
+
+impl std::fmt::Debug for Vote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value_str = match &self.value {
+            NilOrVal::Nil => "Nil".to_string(),
+            NilOrVal::Val(val) => format!("{:?}", ConsensusValue::new(*val)),
+        };
+        write!(
+            f,
+            "H:{} R:{} From:{} Val:{}",
+            self.height, self.round, self.validator_address, value_str
+        )
+    }
 }
 
 impl serde::Serialize for Vote {
@@ -158,10 +173,10 @@ impl From<p2p_proto::Vote> for Vote {
                 p2p_proto::VoteType::Prevote => VoteType::Prevote,
                 p2p_proto::VoteType::Precommit => VoteType::Precommit,
             },
-            height: Height::new(vote.height),
+            height: Height::try_from(vote.height).expect("block number out of range"),
             round: Round::from(vote.round),
             value: match vote.block_hash {
-                Some(v) => NilOrVal::Val(ValueId::from(v)),
+                Some(v) => NilOrVal::Val(v),
                 None => NilOrVal::Nil,
             },
             validator_address: ValidatorAddress::from(vote.voter),
@@ -180,7 +195,7 @@ impl From<Vote> for p2p_proto::Vote {
             height: vote.height.as_u64(),
             round: vote.round.as_u32().expect("round is not nil"),
             block_hash: match &vote.value {
-                NilOrVal::Val(value) => Some(value.clone().into_inner()),
+                NilOrVal::Val(value) => Some(*value),
                 NilOrVal::Nil => None,
             },
             voter: vote.validator_address.into(),
@@ -195,7 +210,7 @@ impl malachite_types::Vote<MalachiteContext> for Vote {
     }
 
     fn round(&self) -> MalachiteRound {
-        self.round.inner()
+        self.round.into_inner()
     }
 
     fn value(&self) -> &NilOrVal<ValueId> {
@@ -242,11 +257,9 @@ mod tests {
         // Create a test vote
         let vote = Vote {
             r#type: VoteType::Prevote,
-            height: Height::new(100),
+            height: Height::try_from(100).expect("block number out of range"),
             round: Round::from(5),
-            value: NilOrVal::Val(ValueId::new(Hash(
-                Felt::from_hex_str("0x123456789").unwrap(),
-            ))),
+            value: NilOrVal::Val(Hash(Felt::from_hex_str("0x123456789").unwrap())),
             validator_address: ValidatorAddress::from(Address(
                 Felt::from_hex_str("0xabcdef").unwrap(),
             )),
@@ -293,7 +306,7 @@ mod tests {
         // Create a test vote with Nil value
         let vote = Vote {
             r#type: VoteType::Precommit,
-            height: Height::new(101),
+            height: Height::try_from(101).expect("block number out of range"),
             round: Round::from(6),
             value: NilOrVal::Nil,
             validator_address: ValidatorAddress::from(Address(

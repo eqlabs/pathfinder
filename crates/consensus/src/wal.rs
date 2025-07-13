@@ -122,7 +122,7 @@ pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteCont
     match entry {
         WalEntry::SignedProposal(proposal) => {
             tracing::debug!(
-                value_id = ?proposal.proposal.value_id,
+                value = ?proposal.proposal.value,
                 from = %proposal.proposal.proposer,
                 height = %proposal.proposal.height,
                 round = %proposal.proposal.round,
@@ -312,7 +312,7 @@ pub(crate) mod recovery {
             0
         });
 
-        Height::new(height)
+        Height::try_from(height).expect("block number out of range")
     }
 
     /// Collect all the write-ahead log files in the given directory. The result

@@ -2,14 +2,13 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use malachite_consensus::Params;
+use malachite_types::ValuePayload;
 pub use malachite_types::VoteType;
-use malachite_types::{Timeout, ValuePayload};
-use p2p_proto::common::Hash;
 use serde::{Deserialize, Serialize};
 
-pub use crate::config::Config;
+pub use crate::config::{Config, TimeoutValues};
 use crate::internal::InternalConsensus;
-// Re-export malachite types needed by the public API
+// Re-export consensus types needed by the public API
 pub use crate::malachite::{
     ConsensusValue,
     Height,
@@ -244,21 +243,34 @@ impl Consensus {
 }
 
 /// A fully validated, signed proposal ready to enter consensus.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SignedProposal {
     pub proposal: Proposal,
     pub signature: Signature,
 }
 
 /// A signed vote.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SignedVote {
     pub vote: Vote,
     pub signature: Signature,
 }
 
+// Note: We intentionally ignore the signature as it's not used yet.
+impl std::fmt::Debug for SignedProposal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.proposal)
+    }
+}
+
+// Note: We intentionally ignore the signature as it's not used yet.
+impl std::fmt::Debug for SignedVote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.vote)
+    }
+}
+
 /// Commands that the application can send into the consensus engine.
-#[derive(Debug)]
 pub enum ConsensusCommand {
     /// Start consensus at a given height with the validator set.
     StartHeight(Height, ValidatorSet),
@@ -283,6 +295,28 @@ impl ConsensusCommand {
         }
     }
 }
+
+impl std::fmt::Debug for ConsensusCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusCommand::StartHeight(height, validator_set) => write!(
+                f,
+                "StartHeight({}, [{}])",
+                height,
+                validator_set
+                    .validators
+                    .iter()
+                    .map(|v| v.address.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            ConsensusCommand::Propose(proposal) => write!(f, "Propose({proposal:?})"),
+            ConsensusCommand::Proposal(proposal) => write!(f, "Proposal({proposal:?})"),
+            ConsensusCommand::Vote(vote) => write!(f, "Vote({vote:?})"),
+        }
+    }
+}
+
 /// A message to be gossiped to peers.
 #[derive(Clone, Debug)]
 pub enum NetworkMessage {
@@ -293,23 +327,44 @@ pub enum NetworkMessage {
 }
 
 /// Events that the consensus engine emits for the application to handle.
-#[derive(Debug)]
 pub enum ConsensusEvent {
     /// The consensus wants this message to be gossiped to peers.
     Gossip(NetworkMessage),
     /// The consensus needs the app to build and inject a proposal.
-    RequestProposal {
-        height: Height,
-        round: Round,
-        timeout: Timeout,
-    },
+    RequestProposal { height: Height, round: Round },
     /// The consensus has reached a decision and committed a block.
-    Decision { height: Height, hash: Hash },
+    Decision {
+        height: Height,
+        value: ConsensusValue,
+    },
     /// An internal error occurred in consensus.
     Error(anyhow::Error),
 }
 
-/// A trait for types that can provide a validator set for a given height.
+impl std::fmt::Debug for ConsensusEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConsensusEvent::Gossip(msg) => match msg {
+                NetworkMessage::Proposal(proposal) => write!(f, "Gossip(Proposal({proposal:?}))"),
+                NetworkMessage::Vote(vote) => write!(f, "Gossip(Vote({vote:?}))"),
+            },
+            ConsensusEvent::RequestProposal { height, round, .. } => {
+                write!(f, "RequestProposal(H:{height} R:{round})")
+            }
+            ConsensusEvent::Decision { height, value } => {
+                write!(f, "Decision(H:{height} Val:{value:?})")
+            }
+            ConsensusEvent::Error(error) => write!(f, "Error({error:?})"),
+        }
+    }
+}
+
+/// A trait for retrieving the validator set at a specific blockchain height.
+///
+/// This trait allows consensus to dynamically determine the set of validators
+/// that are eligible to participate in consensus at any given height.
+///
+/// This is useful for handling validator set changes across heights.
 pub trait ValidatorSetProvider: Send + Sync {
     fn get_validator_set(&self, height: &Height) -> ValidatorSet;
 }

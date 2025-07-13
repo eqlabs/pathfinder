@@ -20,8 +20,7 @@ async fn consensus_simulation() {
     const NUM_HEIGHTS: u64 = 10;
 
     let value_hash = Hash(Felt::from_hex_str("0xabcdef").unwrap());
-    let value_id = ValueId::new(value_hash);
-    let consensus_value = ConsensusValue::new(value_id.clone());
+    let consensus_value = ConsensusValue::new(value_hash);
 
     // Create validators and channels
     let mut validators = vec![];
@@ -74,7 +73,7 @@ async fn consensus_simulation() {
             let mut current_height = 1;
 
             while current_height <= NUM_HEIGHTS {
-                let height = Height::new(current_height);
+                let height = Height::try_from(current_height).unwrap();
                 let config = Config::new(addr).with_wal_dir(wal_dir.clone());
                 let mut consensus = Consensus::new(config);
                 consensus
@@ -101,7 +100,7 @@ async fn consensus_simulation() {
                                     round: r,
                                     proposer: addr,
                                     pol_round: Round::from(0),
-                                    value_id: consensus_value.clone(),
+                                    value: consensus_value.clone(),
                                 };
 
                                 consensus.handle_command(ConsensusCommand::Propose(proposal));
@@ -116,13 +115,13 @@ async fn consensus_simulation() {
                                 }
                             }
 
-                            ConsensusEvent::Decision { height: h, hash } => {
+                            ConsensusEvent::Decision { height: h, value } => {
                                 info!(
-                                    "✅ {} decided on {hash:?} at height {h}",
+                                    "✅ {} decided on {value:?} at height {h}",
                                     pretty_addr(&addr)
                                 );
                                 let mut decisions = decisions.lock().unwrap();
-                                decisions.insert((addr, h), hash);
+                                decisions.insert((addr, h), value);
                             }
 
                             ConsensusEvent::Error(error) => {
@@ -188,7 +187,7 @@ async fn consensus_simulation() {
         let decisions_guard = decisions.lock().unwrap();
         let height_decisions: Vec<_> = decisions_guard
             .iter()
-            .filter(|((_, h), _)| *h == Height::new(height))
+            .filter(|((_, h), _)| *h == Height::try_from(height).unwrap())
             .map(|(_, hash)| hash)
             .collect();
 

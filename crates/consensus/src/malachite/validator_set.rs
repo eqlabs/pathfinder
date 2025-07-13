@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::{MalachiteContext, Validator};
 
-/// A validator set contains a list of validators sorted by address.
+/// A validator set represents a group of consensus participants.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidatorSet {
     pub validators: Arc<Vec<Validator>>,
