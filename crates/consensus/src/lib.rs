@@ -6,7 +6,7 @@ use malachite_types::ValuePayload;
 pub use malachite_types::VoteType;
 use serde::{Deserialize, Serialize};
 
-pub use crate::config::Config;
+pub use crate::config::{Config, TimeoutValues};
 use crate::internal::InternalConsensus;
 // Re-export consensus types needed by the public API
 pub use crate::malachite::{
