@@ -410,7 +410,6 @@ impl FinalityStatus {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -1121,12 +1120,7 @@ mod tests {
         let ctx = RpcContext::for_tests()
             .with_storage(storage)
             .with_pending_data(pending_data.clone())
-            .with_websockets(WebsocketContext::new(
-                WebsocketHistory::Unlimited,
-                NonZeroUsize::new(1024).unwrap(),
-                NonZeroUsize::new(1024).unwrap(),
-                pending_data,
-            ));
+            .with_websockets(WebsocketContext::new(WebsocketHistory::Unlimited));
         (v08::register_routes().build(ctx), pending_data_sender)
     }
 }

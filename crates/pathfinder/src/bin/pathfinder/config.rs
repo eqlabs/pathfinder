@@ -942,27 +942,6 @@ pub struct WebsocketConfig {
     )]
     pub enabled: bool,
     #[arg(
-        long = "rpc.websocket.buffer-capacity",
-        long_help = "The socket buffer for outbound messages. If specific clients have their \
-                     subscription sporadically closed due to lagging streams, consider increasing \
-                     this buffer. See also `rpc.websocket.topic-capacity`",
-        value_name = "CAPACITY",
-        default_value = "100",
-        env = "PATHFINDER_WEBSOCKET_BUFFER_CAPACITY"
-    )]
-    pub socket_buffer_capacity: NonZeroUsize,
-    #[arg(
-        long = "rpc.websocket.topic-capacity",
-        long_help = "The topic sender capacity. The topic senders are upstream of socket buffers \
-                     and common to all clients and subscriptions. If a variety of clients \
-                     regularly have their subscription closed due to a lagging stream, consider \
-                     increasing this buffer. See also `rpc.websocket.buffer-capacity`",
-        value_name = "CAPACITY",
-        default_value = "100",
-        env = "PATHFINDER_WEBSOCKET_TOPIC_CAPACITY"
-    )]
-    pub topic_sender_capacity: NonZeroUsize,
-    #[arg(
         long = "rpc.websocket.max-history",
         long_help = "The maximum number of historical messages to send for each topic when a new client subscribes. If set to `unlimited`, all historical messages are sent. If set to a number N, only the last N messages are sent. Defaults to 1024 if not specified.",
         default_value = "1024",

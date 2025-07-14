@@ -246,12 +246,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     );
 
     let context = if config.websocket.enabled {
-        context.with_websockets(WebsocketContext::new(
-            config.websocket.max_history.into(),
-            config.websocket.socket_buffer_capacity,
-            config.websocket.topic_sender_capacity,
-            rx_pending,
-        ))
+        context.with_websockets(WebsocketContext::new(config.websocket.max_history.into()))
     } else {
         context
     };
@@ -306,7 +301,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             sync_state.clone(),
             &config,
             tx_pending,
-            rpc_server.get_topic_broadcasters().cloned(),
             notifications,
             gateway_public_key,
             sync_p2p_client,
@@ -469,7 +463,6 @@ fn start_sync(
     sync_state: Arc<SyncState>,
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     p2p_client: Option<P2PSyncClient>,
@@ -483,7 +476,6 @@ fn start_sync(
             sync_state,
             config,
             tx_pending,
-            websocket_txs,
             notifications,
             gateway_public_key,
         )
@@ -510,7 +502,6 @@ fn start_sync(
     sync_state: Arc<SyncState>,
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
     _p2p_client: Option<P2PSyncClient>,
@@ -523,7 +514,6 @@ fn start_sync(
         sync_state,
         config,
         tx_pending,
-        websocket_txs,
         notifications,
         gateway_public_key,
     )
@@ -537,7 +527,6 @@ fn start_feeder_gateway_sync(
     sync_state: Arc<SyncState>,
     config: &config::Config,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
-    websocket_txs: Option<pathfinder_rpc::TopicBroadcasters>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
@@ -553,7 +542,6 @@ fn start_feeder_gateway_sync(
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
-        websocket_txs,
         notifications,
         block_cache_size: 1_000,
         restart_delay: config.debug.restart_delay,

@@ -37,8 +37,6 @@ use tower_http::cors::CorsLayer;
 use tower_http::ServiceBuilderExt;
 
 use crate::jsonrpc::rpc_handler;
-use crate::jsonrpc::websocket::websocket_handler;
-pub use crate::jsonrpc::websocket::{BlockHeader, TopicBroadcasters};
 use crate::types::syncing::Syncing;
 
 const DEFAULT_MAX_CONNECTIONS: usize = 1024;
@@ -202,17 +200,17 @@ impl RpcServer {
 
         let router = if self.context.websocket.is_some() {
             router
-                .route("/ws", get(websocket_handler))
+                .route("/ws", get(rpc_handler))
                 .with_state(default_router)
-                .route("/ws/rpc/v0_6", get(websocket_handler))
+                .route("/ws/rpc/v0_6", get(rpc_handler))
                 .with_state(v06_routes)
-                .route("/ws/rpc/v0_7", get(websocket_handler))
+                .route("/ws/rpc/v0_7", get(rpc_handler))
                 .with_state(v07_routes)
                 .route("/ws/rpc/v0_8", post(rpc_handler).get(rpc_handler))
                 .with_state(v08_routes)
                 .route("/ws/rpc/v0_9", post(rpc_handler).get(rpc_handler))
                 .with_state(v09_routes)
-                .route("/ws/rpc/pathfinder/v0_1", get(websocket_handler))
+                .route("/ws/rpc/pathfinder/v0_1", get(rpc_handler))
                 .with_state(pathfinder_routes)
         } else {
             router.with_state(default_router)
@@ -228,13 +226,6 @@ impl RpcServer {
         });
 
         Ok((server_handle, addr))
-    }
-
-    pub fn get_topic_broadcasters(&self) -> Option<&TopicBroadcasters> {
-        self.context
-            .websocket
-            .as_ref()
-            .map(|websocket| &websocket.broadcasters)
     }
 }
 
@@ -1302,13 +1293,8 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
         let mut context = RpcContext::for_tests();
         if api.has_websocket() {
-            let (_, rx_pending) = tokio::sync::watch::channel(Default::default());
-
             context = context.with_websockets(context::WebsocketContext::new(
                 WebsocketHistory::Unlimited,
-                std::num::NonZeroUsize::new(10).unwrap(),
-                std::num::NonZeroUsize::new(10).unwrap(),
-                rx_pending,
             ));
         }
         let (_jh, addr) = RpcServer::new(addr, context, RpcVersion::V07)
