@@ -45,7 +45,7 @@ do_sed "Cargo.toml" "s/^version = \".*\"/version = \"${VERSION}\"/"
 
 # List of crates to be published to crates.io
 # These require explicit version dependencies for publishing
-CRATES=("common" "crypto" "serde" "class-hash" "p2p")
+CRATES=("common" "crypto" "serde" "class-hash" "p2p" "consensus")
 
 # Update versions in crate Cargo.toml files
 for crate in "${CRATES[@]}"; do
