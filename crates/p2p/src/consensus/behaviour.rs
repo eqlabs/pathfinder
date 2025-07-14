@@ -58,7 +58,7 @@ impl ApplicationBehaviour for Behaviour {
                         break;
                     }
                 }
-                let _ = done_tx
+                done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");
@@ -74,7 +74,7 @@ impl ApplicationBehaviour for Behaviour {
                         error!("Failed to publish vote message {cloned_vote:?}, error {e:?}");
                     })
                     .map(|_| ());
-                let _ = done_tx
+                done_tx
                     .send(tx_result)
                     .await
                     .expect("Receiver not to be dropped");

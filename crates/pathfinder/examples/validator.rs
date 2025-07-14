@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
                 .validators
                 .iter()
                 .map(|addr| {
-                    Felt::from_hex_str(&addr).context(format!("Parsing validator address {addr}"))
+                    Felt::from_hex_str(addr).context(format!("Parsing validator address {addr}"))
                 })
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
@@ -516,7 +516,7 @@ fn handle_proposal_part(
         }) => {
             parts.push(proposal_part);
             let ProposalPart::Init(ProposalInit { proposer, .. }) =
-                parts.get(0).expect("Proposal Init")
+                parts.first().expect("Proposal Init")
             else {
                 unreachable!("Proposal Init is inserted first");
             };

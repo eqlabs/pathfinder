@@ -7,13 +7,12 @@ use tokio::task::JoinHandle;
 
 use crate::config::p2p::P2PConsensusConfig;
 
-pub async fn start(
-    chain_id: ChainId,
-    config: P2PConsensusConfig,
-) -> (
+type ConsensusHandle = (
     JoinHandle<anyhow::Result<()>>,
     Option<(Receiver<Event>, Client)>,
-) {
+);
+
+pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHandle {
     start_inner(chain_id, config).await.unwrap_or_else(|error| {
         (
             tokio::task::spawn(std::future::ready(Err(
@@ -32,7 +31,6 @@ mod inner {
     use futures::FutureExt;
     use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
     use pathfinder_common::ChainId;
-    use tokio::task::JoinHandle;
     use tracing::Instrument;
 
     use super::*;
@@ -43,10 +41,7 @@ mod inner {
     pub(super) async fn start_inner(
         chain_id: ChainId,
         config: P2PConsensusConfig,
-    ) -> anyhow::Result<(
-        JoinHandle<anyhow::Result<()>>,
-        Option<(Receiver<Event>, Client)>,
-    )> {
+    ) -> anyhow::Result<ConsensusHandle> {
         let core_config = p2p::core::Config {
             direct_connection_timeout: config.core.direct_connection_timeout,
             relay_connection_timeout: Duration::from_secs(10),
