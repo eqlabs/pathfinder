@@ -533,7 +533,7 @@ fn sepolia_block_6_proposal(height: Height, round: Round, proposer: Address) -> 
     let round = round.as_u32().expect("Round not to be Nil???");
     vec![
         ProposalPart::Init(ProposalInit {
-            height: height.as_inner().get(),
+            height: height.into_inner().get(),
             round,
             // valid_round: Some(round), // TODO ???
             valid_round: None,
