@@ -70,7 +70,7 @@ async fn consensus_simulation() {
 
         let wal_dir = temp_dir.clone();
         let handle = tokio::spawn(async move {
-            let mut current_height = 0;
+            let mut current_height = 1;
 
             while current_height <= NUM_HEIGHTS {
                 let height = Height::try_from(current_height).unwrap();
@@ -99,7 +99,7 @@ async fn consensus_simulation() {
                                     height: h,
                                     round: r,
                                     proposer: addr,
-                                    pol_round: Round::nil(),
+                                    pol_round: Round::from(0),
                                     value: consensus_value.clone(),
                                 };
 
@@ -137,7 +137,6 @@ async fn consensus_simulation() {
                             "💌 Validator {} received command: {msg:?}",
                             pretty_addr(&addr)
                         );
-
                         let cmd = match msg {
                             NetworkMessage::Proposal(p) => ConsensusCommand::Proposal(p),
                             NetworkMessage::Vote(v) => ConsensusCommand::Vote(v),
@@ -184,7 +183,7 @@ async fn consensus_simulation() {
     );
 
     // Verify decisions for each height
-    for height in 0..=NUM_HEIGHTS - 1 {
+    for height in 1..=NUM_HEIGHTS {
         let decisions_guard = decisions.lock().unwrap();
         let height_decisions: Vec<_> = decisions_guard
             .iter()

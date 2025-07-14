@@ -1,5 +1,3 @@
-use std::fmt::Display;
-
 pub use malachite_types::VoteType;
 use malachite_types::{
     Height as MalachiteHeight,
@@ -244,16 +242,6 @@ impl malachite_types::Vote<MalachiteContext> for Vote {
             extension: Some(extension),
             ..self
         }
-    }
-}
-
-impl Display for Vote {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Vote {{ type: {:?}, height: {}, round: {}, value: {:?}, validator_address: {},.. }}",
-            self.r#type, self.height, self.round, self.value, self.validator_address
-        )
     }
 }
 
