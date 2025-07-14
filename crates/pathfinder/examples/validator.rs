@@ -17,13 +17,14 @@ use pathfinder_consensus::{
     ConsensusEvent,
     ConsensusValue,
     Height,
+    HeightExt as _,
     NetworkMessage,
     Proposal,
     Round,
     Signature,
     SignedProposal,
     SignedVote,
-    // TimeoutValues,
+    TimeoutValues,
     Validator,
     ValidatorAddress,
     ValidatorSet,
@@ -240,7 +241,7 @@ async fn main() -> anyhow::Result<()> {
                         signature: _, /* TODO */
                     }) => {
                         let height_and_round = HeightAndRound::new(
-                            proposal.height.as_inner().get(),
+                            proposal.height.as_u64(),
                             // TODO What about Nil rounds?
                             proposal.round.as_u32().unwrap_or_default(),
                         );
@@ -314,13 +315,12 @@ async fn main() -> anyhow::Result<()> {
 
     let consensus_task_handle = task::spawn(async move {
         let mut consensus = Consensus::new(Config::new(validator_address).with_timeout_values(
-            // TimeoutValues {
-            //     propose: Duration::from_secs(60),
-            //     prevote: Duration::from_secs(60),
-            //     precommit: Duration::from_secs(60),
-            //     rebroadcast: Duration::from_secs(10),
-            // },
-            Default::default(),
+            TimeoutValues {
+                // TODO The correct way to cancel the rebroadcast timeout is with the rebroadcast
+                // certificate, which we don't support yet.
+                // rebroadcast: Duration::from_secs(3600),
+                ..Default::default()
+            },
         ));
 
         // Add grace time before others can join
@@ -329,9 +329,11 @@ async fn main() -> anyhow::Result<()> {
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
 
+        let mut current_height = Height::try_from(0).expect("Valid block number");
+
         consensus.handle_command(ConsensusCommand::StartHeight(
-            Height::try_from(0).expect("Valid block number"),
-            validator_set,
+            current_height,
+            validator_set.clone(),
         ));
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -376,7 +378,7 @@ async fn main() -> anyhow::Result<()> {
                             tx_to_p2p
                                 .send(P2PTaskEvent::CacheProposal(
                                     HeightAndRound::new(
-                                        height.as_inner().get(),
+                                        height.as_u64(),
                                         round.as_u32().unwrap_or_default(),
                                     ),
                                     wire_proposal,
@@ -410,6 +412,12 @@ async fn main() -> anyhow::Result<()> {
                             );
                             // TODO
                             // commit_block(height, hash);
+
+                            current_height = current_height.increment();
+                            consensus.handle_command(ConsensusCommand::StartHeight(
+                                current_height,
+                                validator_set.clone(),
+                            ));
                         }
                         ConsensusEvent::Error(error) => {
                             // TODO are all of these errors fatal or recoverable?
@@ -577,7 +585,7 @@ fn sepolia_block_6_proposal(height: Height, round: Round, proposer: Address) -> 
         //     )),
         // }),
         ProposalPart::Fin(ProposalFin {
-            proposal_commitment: Hash(Felt::from_u64(height.as_inner().get())),
+            proposal_commitment: Hash(Felt::from_u64(height.as_u64())),
         }),
     ]
 }

@@ -5,7 +5,7 @@ mod address;
 pub use address::ValidatorAddress;
 
 mod height;
-pub use height::Height;
+pub use height::{Height, HeightExt};
 
 mod proposal_part;
 pub use proposal_part::ProposalPart;

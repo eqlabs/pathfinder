@@ -12,6 +12,7 @@ use crate::internal::InternalConsensus;
 pub use crate::malachite::{
     ConsensusValue,
     Height,
+    HeightExt,
     Proposal,
     Round,
     Validator,
