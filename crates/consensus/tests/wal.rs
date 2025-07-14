@@ -21,8 +21,7 @@ async fn wal_concurrent_heights_retention_test() {
     const NUM_HEIGHTS: u64 = 15; // More than config.history_depth
 
     let value_hash = Hash(Felt::from_hex_str("0xabcdef").unwrap());
-    let value_id = ValueId::new(value_hash);
-    let consensus_value = ConsensusValue::new(value_id.clone());
+    let consensus_value = ConsensusValue::new(value_hash);
 
     // Create a temporary directory for WAL files
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
@@ -74,7 +73,7 @@ async fn wal_concurrent_heights_retention_test() {
             let mut consensus = Consensus::new(config);
             // Start all heights up front
             for current_height in 1..=NUM_HEIGHTS {
-                let height = Height::new(current_height);
+                let height = Height::try_from(current_height).unwrap();
                 consensus
                     .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
             }
@@ -100,7 +99,7 @@ async fn wal_concurrent_heights_retention_test() {
                                 round: r,
                                 proposer: addr,
                                 pol_round: Round::from(0),
-                                value_id: consensus_value.clone(),
+                                value: consensus_value.clone(),
                             };
 
                             consensus.handle_command(ConsensusCommand::Propose(proposal));
@@ -115,13 +114,13 @@ async fn wal_concurrent_heights_retention_test() {
                             }
                         }
 
-                        ConsensusEvent::Decision { height: h, hash } => {
+                        ConsensusEvent::Decision { height: h, value } => {
                             info!(
-                                "✅ {} decided on {hash:?} at height {h}",
+                                "✅ {} decided on {value:?} at height {h}",
                                 pretty_addr(&addr)
                             );
                             let mut decisions = decisions.lock().unwrap();
-                            decisions.insert((addr, h), hash);
+                            decisions.insert((addr, h), value);
                         }
 
                         ConsensusEvent::Error(error) => {
@@ -188,7 +187,6 @@ async fn recover_from_wal_restores_and_continues() {
         Proposal,
         Round,
         ValidatorSetProvider,
-        ValueId,
     };
     use pathfinder_crypto::Felt;
 
@@ -214,7 +212,7 @@ async fn recover_from_wal_restores_and_continues() {
     // Config with temporary WAL directory
     let config = Config::new(addr).with_wal_dir(wal_dir.to_path_buf());
 
-    let height = Height::new(42);
+    let height = Height::try_from(42).unwrap();
 
     // Create and run consensus to log data to WAL
     {
@@ -226,16 +224,16 @@ async fn recover_from_wal_restores_and_continues() {
             &mut consensus,
             Duration::from_secs(1),
             5,
-            |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::ZERO)),
+            |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
         ).await;
 
         // Send a proposal to enter prevote
-        let value_id = ValueId::new(Hash(Felt::from_hex_str("0xabc123").unwrap()));
+        let value_id = Hash(Felt::from_hex_str("0xabc123").unwrap());
         let proposal = Proposal {
             height,
-            round: Round::new(malachite_types::Round::ZERO),
-            value_id: ConsensusValue::new(value_id),
-            pol_round: Round::new(malachite_types::Round::ZERO),
+            round: Round::new(0),
+            value: ConsensusValue::new(value_id),
+            pol_round: Round::new(0),
             proposer: addr,
         };
         let signed = SignedProposal {
@@ -266,7 +264,7 @@ async fn recover_from_wal_restores_and_continues() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(malachite_types::Round::Some(0))),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
     ).await;
 
     assert!(

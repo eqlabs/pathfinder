@@ -26,6 +26,12 @@ use crate::{proto, ToProtobuf, TryFromProtobuf};
 )]
 pub struct Hash(pub Felt);
 
+impl std::fmt::Display for Hash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, std::hash::Hash, Default)]
 pub struct Hash256(pub primitive_types::H256);
 

@@ -30,8 +30,10 @@ use crate::{
     ValidatorSet,
 };
 
-/// The [InternalConsensus] acts as a driver for the Malachite core and allows
-/// us to decouple all the Malachite intrinsics from our public interface.
+/// The [InternalConsensus] acts as a driver for the Malachite core.
+///
+/// It allows us to decouple all the Malachite intrinsics from our public
+/// interface.
 ///
 /// We spawn a new instance of this entity for each height, as we might be
 /// involved in multiple consensus processes at the same time.
@@ -143,7 +145,7 @@ impl InternalConsensus {
                 ConsensusCommand::Proposal(proposal) => {
                     tracing::debug!(
                         validator = %self.state.address(),
-                        value_id = ?proposal.proposal.value_id,
+                        value = ?proposal.proposal.value,
                         from = %proposal.proposal.proposer,
                         height = %proposal.proposal.height,
                         round = %proposal.proposal.round,
@@ -156,7 +158,7 @@ impl InternalConsensus {
                 ConsensusCommand::Propose(proposal) => {
                     tracing::debug!(
                         validator = %self.state.address(),
-                        value_id = ?proposal.value_id,
+                        value = ?proposal.value,
                         height = %proposal.height,
                         round = %proposal.round,
                         "Proposing value"
@@ -164,7 +166,7 @@ impl InternalConsensus {
                     Input::Propose(LocallyProposedValue::new(
                         proposal.height,
                         proposal.round.into_inner(),
-                        proposal.value_id,
+                        proposal.value,
                     ))
                 }
                 ConsensusCommand::StartHeight(height, validators) => {
@@ -253,7 +255,7 @@ fn handle_effect(
             Ok(resume.resume_with(()))
         }
         // Request the application to build a value for consensus to run on.
-        Effect::GetValue(height, round, timeout, resume) => {
+        Effect::GetValue(height, round, _, resume) => {
             tracing::debug!(
                 height = %height,
                 round = %round,
@@ -262,7 +264,6 @@ fn handle_effect(
             output_queue.push_back(ConsensusEvent::RequestProposal {
                 height,
                 round: round.into(),
-                timeout,
             });
             Ok(resume.resume_with(()))
         }
@@ -270,12 +271,12 @@ fn handle_effect(
         Effect::Decide(cert, _, resume) => {
             tracing::info!(
                 height = %cert.height,
-                hash = ?cert.value_id.clone().into_inner(),
+                value = ?cert.value_id,
                 "Consensus decided on value"
             );
             output_queue.push_back(ConsensusEvent::Decision {
                 height: cert.height,
-                hash: cert.value_id.clone().into_inner(),
+                value: ConsensusValue::new(cert.value_id),
             });
             // We append the decision to the WAL so that in case of a crash,
             // we know this height has been finalized.
@@ -302,10 +303,9 @@ fn handle_effect(
             Ok(resume.resume_with(SignedMessage::new(proposal, Signature::from_bytes([0; 64]))))
         }
         // Verify a signature.
-        Effect::VerifySignature(msg, pk, resume) => {
+        Effect::VerifySignature(msg, _, resume) => {
             tracing::debug!(
-                msg = ?msg,
-                pk = ?pk,
+                msg = ?msg.message,
                 "Verifying signature (skipping)"
             );
             Ok(resume.resume_with(true))
@@ -327,7 +327,7 @@ fn handle_effect(
                         round: round.into(),
                         pol_round: valid_round.into(),
                         proposer: address,
-                        value_id: ConsensusValue::new(value_id),
+                        value: ConsensusValue::new(value_id),
                     },
                     signature: Signature::from_bytes([0; 64]), // TODO: Replace with real signature
                 },
@@ -387,6 +387,7 @@ fn handle_effect(
     }
 }
 
+/// Convert a signed consensus message to a consensus event.
 fn convert_publish(msg: SignedConsensusMsg<MalachiteContext>) -> ConsensusEvent {
     use crate::NetworkMessage;
 
@@ -404,10 +405,12 @@ fn convert_publish(msg: SignedConsensusMsg<MalachiteContext>) -> ConsensusEvent 
     ConsensusEvent::Gossip(network_msg)
 }
 
+/// Convert a signed vote to a Malachite signed vote.
 fn convert_vote(vote: SignedVote) -> malachite_types::SignedVote<MalachiteContext> {
     malachite_types::SignedVote::new(vote.vote, vote.signature)
 }
 
+/// Convert a Malachite signed vote to a signed vote.
 fn convert_vote_out(vote: malachite_types::SignedVote<MalachiteContext>) -> SignedVote {
     SignedVote {
         vote: vote.message,
@@ -415,7 +418,9 @@ fn convert_vote_out(vote: malachite_types::SignedVote<MalachiteContext>) -> Sign
     }
 }
 
-/// A scheduled timeout.
+/// A scheduled timeout for a consensus event.
+///
+/// Malachite requests us to schedule timeouts for various consensus events.
 struct ScheduledTimeout {
     timeout: Timeout,
     due: Instant,

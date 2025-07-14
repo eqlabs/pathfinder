@@ -1,21 +1,27 @@
-/// A round for the malachite context.
+/// A round number in the consensus protocol.
+///
+/// Each height of the blockchain can go through multiple rounds of consensus
+/// before reaching agreement. The round number starts at 0 and increments when
+/// consensus fails to be reached in the current round.
+///
+/// A round can also be "nil" which represents no round.
 #[derive(Clone, Copy, PartialOrd, Ord, Debug, PartialEq, Eq)]
 pub struct Round(malachite_types::Round);
 
 impl Round {
-    pub fn new(round: malachite_types::Round) -> Self {
-        Self(round)
+    pub fn new(round: u32) -> Self {
+        Self(malachite_types::Round::new(round))
+    }
+
+    pub fn nil() -> Self {
+        Self(malachite_types::Round::Nil)
     }
 
     pub fn as_u32(&self) -> Option<u32> {
         self.0.as_u32()
     }
 
-    pub fn inner(&self) -> malachite_types::Round {
-        self.0
-    }
-
-    pub fn into_inner(self) -> malachite_types::Round {
+    pub(crate) fn into_inner(self) -> malachite_types::Round {
         self.0
     }
 }
@@ -59,6 +65,9 @@ impl<'de> serde::Deserialize<'de> for Round {
 
 impl std::fmt::Display for Round {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self.0 {
+            malachite_types::Round::Nil => write!(f, "nil"),
+            malachite_types::Round::Some(value) => write!(f, "{value}"),
+        }
     }
 }

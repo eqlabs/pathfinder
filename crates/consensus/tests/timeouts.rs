@@ -19,7 +19,6 @@ use pathfinder_consensus::{
     Validator,
     ValidatorAddress,
     ValidatorSet,
-    ValueId,
     Vote,
 };
 use pathfinder_crypto::Felt;
@@ -52,7 +51,7 @@ async fn single_node_propose_timeout_advances_round() {
     // Create consensus instance
     let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
-    let height = Height::new(1);
+    let height = Height::try_from(1).unwrap();
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Expect initial RequestProposal at round 0
@@ -104,7 +103,7 @@ async fn single_node_prevote_timeout_advances_round() {
     // Create consensus instance
     let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
-    let height = Height::new(1);
+    let height = Height::try_from(1).unwrap();
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Wait for initial RequestProposal
@@ -116,11 +115,11 @@ async fn single_node_prevote_timeout_advances_round() {
     ).await;
 
     // Send a proposal (to enter prevote step)
-    let value_id = ValueId::new(Hash(Felt::from_hex_str("0x123456789").unwrap()));
+    let value_id = Hash(Felt::from_hex_str("0x123456789").unwrap());
     let proposal = Proposal {
         height,
         round: Round::from(0),
-        value_id: ConsensusValue::new(value_id),
+        value: ConsensusValue::new(value_id),
         pol_round: Round::from(0),
         proposer: addr,
     };
@@ -169,7 +168,7 @@ async fn single_node_precommit_timeout_advances_round() {
     // Create consensus instance
     let config = Config::new(addr).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
-    let height = Height::new(1);
+    let height = Height::try_from(1).unwrap();
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Wait for initial RequestProposal
@@ -182,11 +181,11 @@ async fn single_node_precommit_timeout_advances_round() {
     .await;
 
     // Send a proposal
-    let value_id = ValueId::new(Hash(Felt::from_hex_str("0x123456789").unwrap()));
+    let value_id = Hash(Felt::from_hex_str("0x123456789").unwrap());
     let proposal = Proposal {
         height,
         round: Round::from(0),
-        value_id: ConsensusValue::new(value_id.clone()),
+        value: ConsensusValue::new(value_id),
         pol_round: Round::from(0),
         proposer: addr,
     };

@@ -75,7 +75,7 @@ impl malachite_types::Context for MalachiteContext {
         Proposal {
             height,
             round: round.into(),
-            value_id: value,
+            value,
             proposer: address,
             pol_round: pol_round.into(),
         }

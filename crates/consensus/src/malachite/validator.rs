@@ -1,12 +1,15 @@
 use super::{MalachiteContext, ValidatorAddress};
 
-/// A public key for the malachite context.
+/// A public key for the consensus protocol.
 pub type PublicKey = malachite_signing_ed25519::PublicKey;
 
-/// A validator's voting power
+/// A validator's voting power.
 pub type VotingPower = u64;
 
 /// A validator in the consensus protocol.
+///
+/// Each validator has an associated address and public key to uniquely identify
+/// them. The voting power determines their weight in consensus decisions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Validator {
     pub address: ValidatorAddress,
