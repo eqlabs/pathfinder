@@ -1,4 +1,3 @@
-pub use malachite_types::Height as HeightExt;
 use pathfinder_common::BlockNumber;
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +43,7 @@ impl std::fmt::Debug for Height {
     }
 }
 
-impl HeightExt for Height {
+impl malachite_types::Height for Height {
     const ZERO: Self = Self(pathfinder_common::BlockNumber::GENESIS);
 
     const INITIAL: Self = Self(pathfinder_common::BlockNumber::GENESIS);

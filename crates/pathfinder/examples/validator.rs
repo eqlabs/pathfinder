@@ -17,7 +17,6 @@ use pathfinder_consensus::{
     ConsensusEvent,
     ConsensusValue,
     Height,
-    HeightExt as _,
     NetworkMessage,
     Proposal,
     Round,
@@ -241,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
                         signature: _, /* TODO */
                     }) => {
                         let height_and_round = HeightAndRound::new(
-                            proposal.height.as_u64(),
+                            proposal.height.as_inner().get(),
                             // TODO What about Nil rounds?
                             proposal.round.as_u32().unwrap_or_default(),
                         );
@@ -318,7 +317,7 @@ async fn main() -> anyhow::Result<()> {
             TimeoutValues {
                 // TODO The correct way to cancel the rebroadcast timeout is with the rebroadcast
                 // certificate, which we don't support yet.
-                // rebroadcast: Duration::from_secs(3600),
+                rebroadcast: Duration::from_secs(3600),
                 ..Default::default()
             },
         ));
@@ -378,7 +377,7 @@ async fn main() -> anyhow::Result<()> {
                             tx_to_p2p
                                 .send(P2PTaskEvent::CacheProposal(
                                     HeightAndRound::new(
-                                        height.as_u64(),
+                                        height.as_inner().get(),
                                         round.as_u32().unwrap_or_default(),
                                     ),
                                     wire_proposal,
@@ -413,7 +412,12 @@ async fn main() -> anyhow::Result<()> {
                             // TODO
                             // commit_block(height, hash);
 
-                            current_height = current_height.increment();
+                            current_height = Height::new(
+                                current_height
+                                    .as_inner()
+                                    .checked_add(1)
+                                    .expect("Height never reaches i64::MAX"),
+                            );
                             consensus.handle_command(ConsensusCommand::StartHeight(
                                 current_height,
                                 validator_set.clone(),
@@ -585,7 +589,7 @@ fn sepolia_block_6_proposal(height: Height, round: Round, proposer: Address) -> 
         //     )),
         // }),
         ProposalPart::Fin(ProposalFin {
-            proposal_commitment: Hash(Felt::from_u64(height.as_u64())),
+            proposal_commitment: Hash(Felt::from_u64(height.as_inner().get())),
         }),
     ]
 }
