@@ -321,8 +321,9 @@ async fn main() -> anyhow::Result<()> {
         let mut consensus = Consensus::new(Config::new(validator_address).with_timeout_values(
             TimeoutValues {
                 // TODO The correct way to cancel the rebroadcast timeout is with the rebroadcast
-                // certificate, which we don't support yet.
-                rebroadcast: Duration::from_secs(3600),
+                // certificate, which we don't support yet, so we set the timeout to a large value
+                // so that no rebroadcasts are triggered.
+                rebroadcast: Duration::from_secs(3600 * 24 * 365),
                 ..Default::default()
             },
         ));
@@ -421,20 +422,21 @@ async fn main() -> anyhow::Result<()> {
                             // commit_block(height, hash);
 
                             assert!(started_heights.remove(&height));
-                            assert_eq!(height, current_height);
 
-                            current_height = Height::new(
-                                current_height
-                                    .as_inner()
-                                    .checked_add(1)
-                                    .expect("Height never reaches i64::MAX"),
-                            );
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                height,
-                                validator_set.clone(),
-                            );
+                            if height == current_height {
+                                current_height = Height::new(
+                                    current_height
+                                        .as_inner()
+                                        .checked_add(1)
+                                        .expect("Height never reaches i64::MAX"),
+                                );
+                                start_height(
+                                    &mut consensus,
+                                    &mut started_heights,
+                                    current_height,
+                                    validator_set.clone(),
+                                );
+                            }
                         }
                         ConsensusEvent::Error(error) => {
                             // TODO are all of these errors fatal or recoverable?
