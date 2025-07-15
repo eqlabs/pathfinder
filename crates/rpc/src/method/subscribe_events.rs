@@ -183,7 +183,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
     async fn subscribe(
         state: RpcContext,
-        version: RpcVersion,
+        _version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {
@@ -288,13 +288,15 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         tracing::debug!(error=%e, "Pending data channel closed, stopping subscription");
                         break;
                     }
-                    if version >= RpcVersion::V09 {
+
+                    let pending = pending_data.borrow_and_update().clone();
+                    if pending.is_pre_confirmed() {
                         // Ignore pre-confirmed data as it might never actually finalize.
                         continue;
                     }
 
-                    let pending = pending_data.borrow_and_update().clone();
                     tracing::trace!(block_number=%pending.block_number(), "Received pending block update");
+
                     let block_number = pending.block_number();
                     if block_number != current_block {
                         tracing::trace!(

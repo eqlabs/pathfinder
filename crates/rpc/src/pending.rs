@@ -267,6 +267,10 @@ impl PendingData {
             }
         }
     }
+
+    pub fn is_pre_confirmed(&self) -> bool {
+        matches!(self.block.as_ref(), PendingBlockVariant::PreConfirmed(_, _))
+    }
 }
 
 impl PendingWatcher {
