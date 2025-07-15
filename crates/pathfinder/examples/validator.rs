@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -257,12 +258,7 @@ async fn main() -> anyhow::Result<()> {
                                 .gossip_proposal(height_and_round, proposal.clone())
                                 .await
                             {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        "🖧  🚀🎉 {validator_address} Gossiping proposal SUCCESS!"
-                                    );
-                                    break;
-                                }
+                                Ok(()) => break,
                                 Err(PublishError::InsufficientPeers) => {
                                     tracing::warn!(
                                         "Insufficient peers to gossip proposal for \
@@ -287,12 +283,7 @@ async fn main() -> anyhow::Result<()> {
                         loop {
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?}");
                             match p2p_client.gossip_vote(vote.clone().into()).await {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        "🖧  ✋🎉 {validator_address} Gossiping vote SUCCESS!"
-                                    );
-                                    break;
-                                }
+                                Ok(()) => break,
                                 Err(PublishError::InsufficientPeers) => {
                                     tracing::warn!(
                                         "Insufficient peers to gossip {vote:?}, retrying..."
@@ -313,6 +304,20 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let consensus_task_handle = task::spawn(async move {
+        /// TODO make `StartHeight` lazy within the consensus crate, except for
+        /// the first height at which the validator is started.
+        fn start_height(
+            consensus: &mut Consensus,
+            started_heights: &mut HashSet<Height>,
+            height: Height,
+            validator_set: ValidatorSet,
+        ) {
+            if !started_heights.contains(&height) {
+                started_heights.insert(height);
+                consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+            }
+        }
+
         let mut consensus = Consensus::new(Config::new(validator_address).with_timeout_values(
             TimeoutValues {
                 // TODO The correct way to cancel the rebroadcast timeout is with the rebroadcast
@@ -329,11 +334,14 @@ async fn main() -> anyhow::Result<()> {
         }
 
         let mut current_height = Height::try_from(0).expect("Valid block number");
+        let mut started_heights = HashSet::new();
 
-        consensus.handle_command(ConsensusCommand::StartHeight(
+        start_height(
+            &mut consensus,
+            &mut started_heights,
             current_height,
             validator_set.clone(),
-        ));
+        );
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
@@ -412,16 +420,21 @@ async fn main() -> anyhow::Result<()> {
                             // TODO
                             // commit_block(height, hash);
 
+                            assert!(started_heights.remove(&height));
+                            assert_eq!(height, current_height);
+
                             current_height = Height::new(
                                 current_height
                                     .as_inner()
                                     .checked_add(1)
                                     .expect("Height never reaches i64::MAX"),
                             );
-                            consensus.handle_command(ConsensusCommand::StartHeight(
-                                current_height,
+                            start_height(
+                                &mut consensus,
+                                &mut started_heights,
+                                height,
                                 validator_set.clone(),
-                            ));
+                            );
                         }
                         ConsensusEvent::Error(error) => {
                             // TODO are all of these errors fatal or recoverable?
@@ -434,6 +447,30 @@ async fn main() -> anyhow::Result<()> {
                 }
                 ConsensusTaskEvent::CommandFromP2P(cmd) => {
                     tracing::info!("🧠 ⚙️  {validator_address} handling command {cmd:?}");
+
+                    let cmd_height = cmd.height();
+                    match &cmd {
+                        // There were no p2p messages for a height higher than the current height,
+                        // so we did start a new height upon successful decision, before any p2p
+                        // messages for the new height were received.
+                        ConsensusCommand::StartHeight(..) | ConsensusCommand::Propose(_) => {
+                            assert!(cmd_height >= current_height);
+                            assert!(started_heights.contains(&cmd_height));
+                        }
+                        // Sometimes messages for the next height are received before the engine
+                        // decides upon the current height. In such case we need to ensure that a
+                        // consensus engine is already started for this new height carried in those
+                        // messages.
+                        ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
+                            start_height(
+                                &mut consensus,
+                                &mut started_heights,
+                                cmd_height,
+                                validator_set.clone(),
+                            );
+                        }
+                    }
+
                     consensus.handle_command(cmd);
                 }
             }
