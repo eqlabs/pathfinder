@@ -212,7 +212,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 block_number,
                                 subscription_name: REORG_SUBSCRIPTION_NAME,
                             }).await.is_err() {
-                                break;
+                                return Ok(());
                             }
                         }
                         Err(e) => {
@@ -221,7 +221,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                  lagging: {:?}",
                                 e
                             );
-                            break;
+                            return Ok(());
                         }
                     }
                 }
@@ -268,7 +268,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         block_number,
                                         subscription_name: SUBSCRIPTION_NAME,
                                     }).await.is_err() {
-                                        break;
+                                        return Ok(());
                                     }
                                 }
                             }
@@ -279,14 +279,14 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                  lagging: {:?}",
                                 e
                             );
-                            break;
+                            return Ok(());
                         }
                     }
                 }
                 pending_changed = pending_data.changed() => {
                     if let Err(e) = pending_changed {
                         tracing::debug!(error=%e, "Pending data channel closed, stopping subscription");
-                        break;
+                        return Ok(());
                     }
 
                     let pending = pending_data.borrow_and_update().clone();
@@ -337,14 +337,13 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 block_number,
                                 subscription_name: SUBSCRIPTION_NAME,
                             }).await.is_err() {
-                                break;
+                                return Ok(());
                             }
                         }
                     }
                 }
             }
         }
-        Ok(())
     }
 }
 
