@@ -328,8 +328,9 @@ where
                     if let Err(e) = T::subscribe(context, rpc_version, params, tx1).await {
                         tx.send_err(e).await.ok();
                     }
+                    tracing::trace!("Subscription task exited");
                 }
-            }.in_current_span());
+            }.instrument(tracing::debug_span!("subscribe_task")));
             let first_msg = match rx1.recv().await {
                 Some(msg) => msg,
                 None => {
@@ -393,6 +394,9 @@ where
                     break;
                 }
             }
+
+            rx1.close();
+            tracing::trace!("Subscription closed");
         }.instrument(tracing::debug_span!("subscription", subscription_id=%subscription_id.0))))
     }
 }
