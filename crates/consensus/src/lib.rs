@@ -326,6 +326,15 @@ pub enum NetworkMessage {
     Vote(SignedVote),
 }
 
+impl NetworkMessage {
+    pub fn height(&self) -> Height {
+        match self {
+            NetworkMessage::Proposal(proposal) => proposal.proposal.height,
+            NetworkMessage::Vote(vote) => vote.vote.height,
+        }
+    }
+}
+
 /// Events that the consensus engine emits for the application to handle.
 pub enum ConsensusEvent {
     /// The consensus wants this message to be gossiped to peers.
