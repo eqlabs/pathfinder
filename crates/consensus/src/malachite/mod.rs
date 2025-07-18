@@ -23,7 +23,7 @@ mod validator_set;
 pub use validator_set::ValidatorSet;
 
 mod value;
-pub use value::{ConsensusValue, ValueId};
+pub use value::{ConsensusBounded, ConsensusValue};
 
 mod vote;
 pub use vote::Vote;

@@ -1,4 +1,4 @@
-use super::{MalachiteContext, ValidatorAddress};
+use super::{ConsensusBounded, MalachiteContext, ValidatorAddress};
 
 /// A public key for the consensus protocol.
 pub type PublicKey = malachite_signing_ed25519::PublicKey;
@@ -29,7 +29,7 @@ impl Ord for Validator {
     }
 }
 
-impl malachite_types::Validator<MalachiteContext> for Validator {
+impl<V: ConsensusBounded + 'static> malachite_types::Validator<MalachiteContext<V>> for Validator {
     fn address(&self) -> &ValidatorAddress {
         &self.address
     }

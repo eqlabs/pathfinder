@@ -1,14 +1,11 @@
 pub use malachite_types::VoteType;
 use malachite_types::{
-    Height as MalachiteHeight,
-    NilOrVal,
-    Round as MalachiteRound,
-    SignedExtension,
+    Height as MalachiteHeight, NilOrVal, Round as MalachiteRound, SignedExtension
 };
 use p2p_proto::consensus as p2p_proto;
 use serde::{Deserialize, Serialize};
 
-use super::{ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress, ValueId};
+use super::{ConsensusBounded, ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress};
 
 /// A vote for a value in a consensus round.
 ///
@@ -16,20 +13,20 @@ use super::{ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress, V
 /// with a proposed block value. The vote includes the validator's address, the
 /// round number, and the block value being voted on.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Vote {
+pub struct Vote<V> {
     pub r#type: VoteType,
     pub height: Height,
     pub round: Round,
-    pub value: NilOrVal<ValueId>,
+    pub value: Option<ConsensusValue<V>>,
     pub validator_address: ValidatorAddress,
-    pub extension: Option<SignedExtension<MalachiteContext>>,
+    //pub extension: Option<SignedExtension<MalachiteContext<V>>>,
 }
 
-impl std::fmt::Debug for Vote {
+impl<V: ConsensusBounded + 'static> std::fmt::Debug for Vote<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value_str = match &self.value {
-            NilOrVal::Nil => "Nil".to_string(),
-            NilOrVal::Val(val) => format!("{:?}", ConsensusValue::new(*val)),
+            None => "Nil".to_string(),
+            Some(val) => format!("{:?}", val),
         };
         write!(
             f,
@@ -39,28 +36,28 @@ impl std::fmt::Debug for Vote {
     }
 }
 
-impl serde::Serialize for Vote {
+impl<V: ConsensusBounded + 'static> serde::Serialize for Vote<V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         // Create a simple struct for serialization
         #[derive(Serialize)]
-        struct VoteHelper<'a> {
+        struct VoteHelper<'a, V: ConsensusBounded + 'static> {
             #[serde(rename = "type")]
             vote_type: &'static str,
             height: &'a Height,
             round: &'a Round,
-            value: Option<&'a ValueId>,
+            value: Option<&'a ConsensusValue<V>>,
             validator_address: &'a ValidatorAddress,
-            extension: Option<ExtensionHelper>,
+            //extension: Option<ExtensionHelper>,
         }
 
-        #[derive(Serialize)]
+        /*#[derive(Serialize)]
         struct ExtensionHelper {
             message: String,
             signature: String,
-        }
+        }*/
 
         let vote_type = match self.r#type {
             VoteType::Prevote => "prevote",
@@ -68,14 +65,14 @@ impl serde::Serialize for Vote {
         };
 
         let value = match &self.value {
-            NilOrVal::Nil => None,
-            NilOrVal::Val(val) => Some(val),
+            None => None,
+            Some(val) => Some(val),
         };
 
-        let extension = self.extension.as_ref().map(|ext| ExtensionHelper {
+        /*let extension = self.extension.as_ref().map(|ext| ExtensionHelper {
             message: base64::encode(&ext.message),
             signature: base64::encode(ext.signature.to_bytes()),
-        });
+        });*/
 
         let helper = VoteHelper {
             vote_type,
@@ -83,35 +80,35 @@ impl serde::Serialize for Vote {
             round: &self.round,
             value,
             validator_address: &self.validator_address,
-            extension,
+            //extension,
         };
 
         helper.serialize(serializer)
     }
 }
 
-impl<'de> serde::Deserialize<'de> for Vote {
+impl<'de, V: ConsensusBounded + 'static> serde::Deserialize<'de> for Vote<V> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         // Helper struct for deserialization
         #[derive(Deserialize)]
-        struct VoteHelper {
+        struct VoteHelper<V> {
             #[serde(rename = "type")]
             vote_type: String,
             height: Height,
             round: Round,
-            value: Option<ValueId>,
+            value: Option<ConsensusValue<V>>,
             validator_address: ValidatorAddress,
-            extension: Option<ExtensionHelper>,
+            //extension: Option<ExtensionHelper>,
         }
 
-        #[derive(Deserialize)]
+        /*#[derive(Deserialize)]
         struct ExtensionHelper {
             message: String,
             signature: String,
-        }
+        }*/
 
         let helper = VoteHelper::deserialize(deserializer)?;
 
@@ -127,11 +124,11 @@ impl<'de> serde::Deserialize<'de> for Vote {
         };
 
         let value = match helper.value {
-            None => NilOrVal::Nil,
-            Some(val) => NilOrVal::Val(val),
+            None => None,
+            Some(val) => Some(val),
         };
 
-        let extension = helper
+        /*let extension = helper
             .extension
             .map(|ext_helper| {
                 let message = base64::decode(&ext_helper.message).map_err(|e| {
@@ -153,7 +150,7 @@ impl<'de> serde::Deserialize<'de> for Vote {
                     signature: malachite_signing_ed25519::Signature::from_bytes(signature_array),
                 })
             })
-            .transpose()?;
+            .transpose()?;*/
 
         Ok(Vote {
             r#type: vote_type,
@@ -161,50 +158,12 @@ impl<'de> serde::Deserialize<'de> for Vote {
             round: helper.round,
             value,
             validator_address: helper.validator_address,
-            extension,
+            //extension,
         })
     }
 }
 
-impl From<p2p_proto::Vote> for Vote {
-    fn from(vote: p2p_proto::Vote) -> Self {
-        Self {
-            r#type: match vote.vote_type {
-                p2p_proto::VoteType::Prevote => VoteType::Prevote,
-                p2p_proto::VoteType::Precommit => VoteType::Precommit,
-            },
-            height: Height::try_from(vote.height).expect("block number out of range"),
-            round: Round::from(vote.round),
-            value: match vote.block_hash {
-                Some(v) => NilOrVal::Val(v),
-                None => NilOrVal::Nil,
-            },
-            validator_address: ValidatorAddress::from(vote.voter),
-            extension: None, // TODO: implement extension
-        }
-    }
-}
-
-impl From<Vote> for p2p_proto::Vote {
-    fn from(vote: Vote) -> Self {
-        p2p_proto::Vote {
-            vote_type: match vote.r#type {
-                VoteType::Prevote => p2p_proto::VoteType::Prevote,
-                VoteType::Precommit => p2p_proto::VoteType::Precommit,
-            },
-            height: vote.height.as_u64(),
-            round: vote.round.as_u32().expect("round is not nil"),
-            block_hash: match &vote.value {
-                NilOrVal::Val(value) => Some(*value),
-                NilOrVal::Nil => None,
-            },
-            voter: vote.validator_address.into(),
-            extension: vote.extension.map(|ext| ext.message.clone()),
-        }
-    }
-}
-
-impl malachite_types::Vote<MalachiteContext> for Vote {
+impl<V: ConsensusBounded + 'static> malachite_types::Vote<MalachiteContext<V>> for Vote<V> {
     fn height(&self) -> Height {
         self.height
     }
@@ -213,12 +172,18 @@ impl malachite_types::Vote<MalachiteContext> for Vote {
         self.round.into_inner()
     }
 
-    fn value(&self) -> &NilOrVal<ValueId> {
-        &self.value
+    fn value(&self) -> &NilOrVal<V> {
+        match &self.value {
+            None => &NilOrVal::Nil,
+            Some(val) => &NilOrVal::Val(val.value),
+        }
     }
 
-    fn take_value(self) -> NilOrVal<ValueId> {
-        self.value
+    fn take_value(self) -> NilOrVal<V> {
+        match self.value {
+            None => NilOrVal::Nil,
+            Some(val) => NilOrVal::Val(val.value),
+        }
     }
 
     fn vote_type(&self) -> VoteType {
@@ -229,17 +194,17 @@ impl malachite_types::Vote<MalachiteContext> for Vote {
         &self.validator_address
     }
 
-    fn extension(&self) -> Option<&SignedExtension<MalachiteContext>> {
-        self.extension.as_ref()
+    fn extension(&self) -> Option<&SignedExtension<MalachiteContext<V>>> {
+        None
     }
 
-    fn take_extension(&mut self) -> Option<SignedExtension<MalachiteContext>> {
-        self.extension.take()
+    fn take_extension(&mut self) -> Option<SignedExtension<MalachiteContext<V>>> {
+        None
     }
 
-    fn extend(self, extension: SignedExtension<MalachiteContext>) -> Self {
+    fn extend(self, extension: SignedExtension<MalachiteContext<V>>) -> Self {
         Self {
-            extension: Some(extension),
+            //extension: Some(extension),
             ..self
         }
     }
@@ -330,5 +295,48 @@ mod tests {
         assert_eq!(vote.value, deserialized_vote.value);
         assert_eq!(vote.validator_address, deserialized_vote.validator_address);
         assert_eq!(vote.extension, deserialized_vote.extension);
+    }
+}
+
+
+
+/* ------------------ */
+
+
+impl<V: ConsensusBounded + 'static> From<p2p_proto::Vote> for Vote<V> {
+    fn from(vote: p2p_proto::Vote) -> Self {
+        Self {
+            r#type: match vote.vote_type {
+                p2p_proto::VoteType::Prevote => VoteType::Prevote,
+                p2p_proto::VoteType::Precommit => VoteType::Precommit,
+            },
+            height: Height::try_from(vote.height).expect("block number out of range"),
+            round: Round::from(vote.round),
+            value: match vote.block_hash {
+                Some(v) => Some(ConsensusValue::new(v)),
+                None => None,
+            },
+            validator_address: ValidatorAddress::from(vote.voter),
+            extension: None, // TODO: implement extension
+        }
+    }
+}
+
+impl<V: ConsensusBounded + 'static> From<Vote<V>> for p2p_proto::Vote {
+    fn from(vote: Vote<V>) -> Self {
+        p2p_proto::Vote {
+            vote_type: match vote.r#type {
+                VoteType::Prevote => p2p_proto::VoteType::Prevote,
+                VoteType::Precommit => p2p_proto::VoteType::Precommit,
+            },
+            height: vote.height.as_u64(),
+            round: vote.round.as_u32().expect("round is not nil"),
+            block_hash: match &vote.value {
+                Some(value) => Some(value.value.clone()),
+                None => None,
+            },
+            voter: vote.validator_address.into(),
+            extension: vote.extension.map(|ext| ext.message.clone()),
+        }
     }
 }
