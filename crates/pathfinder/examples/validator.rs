@@ -170,9 +170,16 @@ async fn main() -> anyhow::Result<()> {
     let (mut p2p_event_rx, p2p_client) = client.context("Starting P2P consensus client")?;
     // TODO figure out proposal part retention time
     const ONE_HOUR: u64 = 3600;
-    // let mut proposal_cache =
-    //     TimedCache::<HeightAndRound, Vec<ProposalPart>>::with_lifespan(ONE_HOUR);
-    let mut proposal_cache2 = TimedCache::<Height, Vec<ProposalPart>>::with_lifespan(ONE_HOUR);
+    // Cache for proposals that we created and are waiting to be gossiped upon a
+    // command from the consensus engine. Once the proposal is gossiped, it is
+    // removed from the cache.
+    let mut my_proposals_cache =
+        TimedCache::<HeightAndRound, Vec<ProposalPart>>::with_lifespan(ONE_HOUR);
+    // Cache for proposals that we received from other validators and may need to be
+    // proposed by us in another round at the same height. The proposals are removed
+    // either when we gossip them or when decision is made at the same height.
+    let mut incoming_proposals_cache =
+        TimedCache::<Height, Vec<ProposalPart>>::with_lifespan(ONE_HOUR);
 
     // Events that are produced by the P2p task consumed by the consensus task.
     // TODO channel size
@@ -208,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
                                 Height::try_from(height_and_round.height())
                                     .expect("Valid block number"),
                                 proposal_part,
-                                &mut proposal_cache2,
+                                &mut incoming_proposals_cache,
                             ) {
                                 let proposal = Proposal {
                                     height: Height::try_from(height_and_round.height())
@@ -258,7 +265,7 @@ async fn main() -> anyhow::Result<()> {
                          hash {proposal_commitment}"
                     );
 
-                    proposal_cache2.cache_set(
+                    incoming_proposals_cache.cache_set(
                         Height::try_from(height_and_round.height()).expect("Valid block number"),
                         proposal_parts,
                     );
@@ -268,7 +275,7 @@ async fn main() -> anyhow::Result<()> {
                         "🖧  🗑️ {validator_address} removing proposal from cache for height \
                          {height}"
                     );
-                    proposal_cache2.cache_remove(&height);
+                    incoming_proposals_cache.cache_remove(&height);
                 }
                 P2PTaskEvent::GossipRequest(msg) => match msg {
                     NetworkMessage::Proposal(SignedProposal {
@@ -284,7 +291,7 @@ async fn main() -> anyhow::Result<()> {
                         //     .cache_remove(&height_and_round)
                         //     .expect("Proposal was inserted into the cache");
 
-                        let mut proposal_parts = proposal_cache2
+                        let mut proposal_parts = incoming_proposals_cache
                             .cache_get(&proposal.height)
                             .expect("Proposal was inserted into the cache")
                             .clone();
@@ -588,7 +595,7 @@ async fn main() -> anyhow::Result<()> {
                             let last_nil = last_nil_vote_height.take();
 
                             if let Some(last_nil) = last_nil {
-                                if cmd_height.into_inner() > current_height.into_inner() + 1
+                                if cmd_height.into_inner() > current_height.into_inner() + 0
                                     && cmd_height.into_inner() > last_nil.into_inner()
                                 {
                                     tracing::info!(
