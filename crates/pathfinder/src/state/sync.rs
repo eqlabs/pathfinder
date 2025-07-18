@@ -647,15 +647,20 @@ async fn consumer(
                     }
                 }
                 PreConfirmed((block_number, pre_confirmed_block)) => {
-                    // Note that there's no check here to ensure that the pre-confirmed block
-                    // is a child of the latest block. This is because all users of this data
-                    // will get a reference to the data via `PendingWatcher::get()`, which _does_
-                    // this check at the point of use.
-                    let pending =
-                        PendingData::from_pre_confirmed_block(*pre_confirmed_block, block_number);
-                    let number_of_transactions = pending.transactions().len();
-                    pending_data.send_replace(pending);
-                    tracing::debug!(%block_number, %number_of_transactions, "Updated pre-confirmed data");
+                    let (latest_block_number, _) = tx
+                        .block_id(BlockId::Latest)
+                        .context("Fetching latest block hash")?
+                        .unwrap_or_default();
+
+                    if block_number == latest_block_number + 1 {
+                        let pending = PendingData::from_pre_confirmed_block(
+                            *pre_confirmed_block,
+                            block_number,
+                        );
+                        let number_of_transactions = pending.transactions().len();
+                        pending_data.send_replace(pending);
+                        tracing::debug!(%block_number, %number_of_transactions, "Updated pre-confirmed data");
+                    }
                 }
             }
 
