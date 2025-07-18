@@ -1,21 +1,21 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress};
+use super::{ConsensusBounded, ConsensusValue, Height, MalachiteContext, Round, ValidatorAddress};
 
 /// A proposal for a block value in a consensus round.
 ///
 /// A proposal is created by the designated proposer for a given height and
 /// round. It contains the proposed block value along with additional metadata.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Proposal {
+pub struct Proposal<V> {
     pub height: Height,
     pub round: Round,
-    pub value: ConsensusValue,
+    pub value: ConsensusValue<V>,
     pub pol_round: Round,
     pub proposer: ValidatorAddress,
 }
 
-impl std::fmt::Debug for Proposal {
+impl<V: ConsensusBounded> std::fmt::Debug for Proposal<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -25,7 +25,7 @@ impl std::fmt::Debug for Proposal {
     }
 }
 
-impl malachite_types::Proposal<MalachiteContext> for Proposal {
+impl<V: ConsensusBounded + 'static> malachite_types::Proposal<MalachiteContext<V>> for Proposal<V> {
     fn height(&self) -> Height {
         self.height
     }
@@ -34,11 +34,11 @@ impl malachite_types::Proposal<MalachiteContext> for Proposal {
         self.round.into_inner()
     }
 
-    fn value(&self) -> &ConsensusValue {
+    fn value(&self) -> &ConsensusValue<V> {
         &self.value
     }
 
-    fn take_value(self) -> ConsensusValue {
+    fn take_value(self) -> ConsensusValue<V> {
         self.value
     }
 

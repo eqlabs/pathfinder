@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::config::{Config, TimeoutValues};
 use crate::internal::InternalConsensus;
+use crate::malachite::ConsensusBounded;
 // Re-export consensus types needed by the public API
 pub use crate::malachite::{
     ConsensusValue,
@@ -17,7 +18,6 @@ pub use crate::malachite::{
     Validator,
     ValidatorAddress,
     ValidatorSet,
-    ValueId,
     Vote,
 };
 use crate::wal::{FileWalSink, NoopWal, WalSink};
@@ -30,15 +30,18 @@ mod wal;
 /// A signature for the malachite context.
 pub type Signature = malachite_signing_ed25519::Signature;
 
+/// The default consensus engine.
+pub type PathfinderConsensus = Consensus<p2p_proto::common::Hash>;
+
 /// Pathfinder consensus engine.
-pub struct Consensus {
-    internal: HashMap<Height, InternalConsensus>,
-    event_queue: VecDeque<ConsensusEvent>,
+pub struct Consensus<V: ConsensusBounded + 'static> {
+    internal: HashMap<Height, InternalConsensus<V>>,
+    event_queue: VecDeque<ConsensusEvent<V>>,
     config: Config,
     min_kept_height: Option<Height>,
 }
 
-impl Consensus {
+impl<V: ConsensusBounded + 'static> Consensus<V> {
     /// Create a new consensus engine for the current validator.
     pub fn new(config: Config) -> Self {
         Self {
@@ -115,7 +118,7 @@ impl Consensus {
         &mut self,
         height: Height,
         validator_set: &ValidatorSet,
-    ) -> InternalConsensus {
+    ) -> InternalConsensus<V> {
         let params = Params {
             initial_height: height,
             initial_validator_set: validator_set.clone(),
@@ -126,7 +129,7 @@ impl Consensus {
 
         // Create a WAL for the height. If we fail, use a NoopWal.
         let wal = match FileWalSink::new(&self.config.address, &height, &self.config.wal_dir) {
-            Ok(wal) => Box::new(wal) as Box<dyn WalSink>,
+            Ok(wal) => Box::new(wal) as Box<dyn WalSink<V>>,
             Err(e) => {
                 tracing::error!(
                     validator = %self.config.address,
@@ -143,7 +146,7 @@ impl Consensus {
     }
 
     /// Feed a command into the consensus engine.
-    pub fn handle_command(&mut self, cmd: ConsensusCommand) {
+    pub fn handle_command(&mut self, cmd: ConsensusCommand<V>) {
         match cmd {
             // Start a new height.
             ConsensusCommand::StartHeight(height, validator_set) => {
@@ -174,7 +177,7 @@ impl Consensus {
     }
 
     /// Poll all engines for an event.
-    pub async fn next_event(&mut self) -> Option<ConsensusEvent> {
+    pub async fn next_event(&mut self) -> Option<ConsensusEvent<V>> {
         let mut finished_heights = Vec::new();
         // Drain each internal engine.
         for (height, engine) in self.internal.iter_mut() {
@@ -244,47 +247,47 @@ impl Consensus {
 
 /// A fully validated, signed proposal ready to enter consensus.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SignedProposal {
-    pub proposal: Proposal,
+pub struct SignedProposal<V> {
+    pub proposal: Proposal<V>,
     pub signature: Signature,
 }
 
 /// A signed vote.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SignedVote {
-    pub vote: Vote,
+pub struct SignedVote<V> {
+    pub vote: Vote<V>,
     pub signature: Signature,
 }
 
 // Note: We intentionally ignore the signature as it's not used yet.
-impl std::fmt::Debug for SignedProposal {
+impl<V: ConsensusBounded + 'static> std::fmt::Debug for SignedProposal<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.proposal)
     }
 }
 
 // Note: We intentionally ignore the signature as it's not used yet.
-impl std::fmt::Debug for SignedVote {
+impl<V: ConsensusBounded + 'static> std::fmt::Debug for SignedVote<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.vote)
     }
 }
 
 /// Commands that the application can send into the consensus engine.
-pub enum ConsensusCommand {
+pub enum ConsensusCommand<V> {
     /// Start consensus at a given height with the validator set.
     StartHeight(Height, ValidatorSet),
     /// A complete, locally validated and signed proposal that we create as the
     /// proposer for the current round.
-    Propose(Proposal),
+    Propose(Proposal<V>),
     /// A complete, locally validated and signed proposal that was received over
     /// the network from another validator.
-    Proposal(SignedProposal),
+    Proposal(SignedProposal<V>),
     /// A signed vote received from the network.
-    Vote(SignedVote),
+    Vote(SignedVote<V>),
 }
 
-impl ConsensusCommand {
+impl<V: ConsensusBounded + 'static> ConsensusCommand<V> {
     /// Get the consensus height associated with the command.
     pub fn height(&self) -> Height {
         match self {
@@ -296,7 +299,7 @@ impl ConsensusCommand {
     }
 }
 
-impl std::fmt::Debug for ConsensusCommand {
+impl<V: ConsensusBounded + 'static> std::fmt::Debug for ConsensusCommand<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusCommand::StartHeight(height, validator_set) => write!(
@@ -319,29 +322,29 @@ impl std::fmt::Debug for ConsensusCommand {
 
 /// A message to be gossiped to peers.
 #[derive(Clone, Debug)]
-pub enum NetworkMessage {
+pub enum NetworkMessage<V> {
     /// A complete, locally validated and signed proposal ready to be gossiped.
-    Proposal(SignedProposal),
+    Proposal(SignedProposal<V>),
     /// A vote received from the network.
-    Vote(SignedVote),
+    Vote(SignedVote<V>),
 }
 
 /// Events that the consensus engine emits for the application to handle.
-pub enum ConsensusEvent {
+pub enum ConsensusEvent<V> {
     /// The consensus wants this message to be gossiped to peers.
-    Gossip(NetworkMessage),
+    Gossip(NetworkMessage<V>),
     /// The consensus needs the app to build and inject a proposal.
     RequestProposal { height: Height, round: Round },
     /// The consensus has reached a decision and committed a block.
     Decision {
         height: Height,
-        value: ConsensusValue,
+        value: ConsensusValue<V>,
     },
     /// An internal error occurred in consensus.
     Error(anyhow::Error),
 }
 
-impl std::fmt::Debug for ConsensusEvent {
+impl<V: ConsensusBounded + 'static> std::fmt::Debug for ConsensusEvent<V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConsensusEvent::Gossip(msg) => match msg {

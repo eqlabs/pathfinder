@@ -7,8 +7,8 @@ use malachite_consensus::{Input, PeerId, ProposedValue, SignedConsensusMsg};
 use malachite_types::{Timeout, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::malachite::MalachiteContext;
-use crate::{ConsensusValue, Height, Round, SignedProposal, SignedVote, ValidatorAddress, ValueId};
+use crate::malachite::{ConsensusBounded, MalachiteContext};
+use crate::{ConsensusValue, Height, Round, SignedProposal, SignedVote, ValidatorAddress};
 
 /// The prefix of the write-ahead log file.
 pub(crate) const WAL_FILE_PREFIX: &str = "wal-";
@@ -22,9 +22,9 @@ pub(crate) fn filename(address: &ValidatorAddress, height: &Height) -> String {
 }
 
 /// A trait for types that can append to a write-ahead log.
-pub(crate) trait WalSink: Send {
+pub(crate) trait WalSink<V>: Send {
     /// Append an entry to the write-ahead log.
-    fn append(&mut self, entry: WalEntry);
+    fn append(&mut self, entry: WalEntry<V>);
 
     /// Check if this WAL has been finalized (a decision has been reached)
     fn is_finalized(&self) -> bool {
@@ -34,11 +34,11 @@ pub(crate) trait WalSink: Send {
 
 /// A write-ahead log entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum WalEntry {
+pub(crate) enum WalEntry<V> {
     /// A signed proposal.
-    SignedProposal(SignedProposal),
+    SignedProposal(SignedProposal<V>),
     /// A signed vote.
-    SignedVote(SignedVote),
+    SignedVote(SignedVote<V>),
     /// A timeout.
     Timeout { kind: String, round: Round },
     /// A proposed value.
@@ -47,17 +47,17 @@ pub(crate) enum WalEntry {
         round: Round,
         valid_round: Round,
         proposer: ValidatorAddress,
-        value: ValueId,
+        value: ConsensusValue<V>,
         validity: bool,
     },
     /// A decision was reached.
-    Decision { height: Height, value: ValueId },
+    Decision { height: Height, value: ConsensusValue<V> },
 }
 
 // This is necessary because unfortunately the malachite types are not
 // serializable.
-impl From<malachite_consensus::WalEntry<MalachiteContext>> for WalEntry {
-    fn from(entry: malachite_consensus::WalEntry<MalachiteContext>) -> Self {
+impl<V: ConsensusBounded + 'static> From<malachite_consensus::WalEntry<MalachiteContext<V>>> for WalEntry<V> {
+    fn from(entry: malachite_consensus::WalEntry<MalachiteContext<V>>) -> Self {
         use malachite_consensus::WalEntry as MalachiteWalEntry;
         match entry {
             MalachiteWalEntry::ConsensusMsg(msg) => {
@@ -94,14 +94,14 @@ impl From<malachite_consensus::WalEntry<MalachiteContext>> for WalEntry {
                 round: proposed_value.round.into(),
                 valid_round: proposed_value.valid_round.into(),
                 proposer: proposed_value.proposer,
-                value: proposed_value.value.id(),
+                value: ConsensusValue::new(proposed_value.value.id()),
                 validity: proposed_value.validity.is_valid(),
             },
         }
     }
 }
 
-impl From<Timeout> for WalEntry {
+impl<V> From<Timeout> for WalEntry<V> {
     fn from(timeout: Timeout) -> Self {
         use malachite_types::TimeoutKind as Kind;
         WalEntry::Timeout {
@@ -118,7 +118,7 @@ impl From<Timeout> for WalEntry {
 }
 
 /// Convert a WAL entry to the corresponding malachite Input.
-pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteContext> {
+pub(crate) fn convert_wal_entry_to_input<V: ConsensusBounded + 'static>(entry: WalEntry<V>) -> Input<MalachiteContext<V>> {
     match entry {
         WalEntry::SignedProposal(proposal) => {
             tracing::debug!(
@@ -177,7 +177,7 @@ pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteCont
                 round: round.into_inner(),
                 valid_round: valid_round.into_inner(),
                 proposer,
-                value: ConsensusValue::new(value),
+                value,
                 validity: if validity {
                     malachite_types::Validity::Valid
                 } else {
@@ -254,8 +254,8 @@ impl Drop for FileWalSink {
     }
 }
 
-impl WalSink for FileWalSink {
-    fn append(&mut self, entry: WalEntry) {
+impl<V: Serialize> WalSink<V> for FileWalSink {
+    fn append(&mut self, entry: WalEntry<V>) {
         // Check if this entry is a decision
         if matches!(entry, WalEntry::Decision { .. }) {
             self.has_decision = true;
@@ -277,8 +277,8 @@ impl WalSink for FileWalSink {
 /// A write-ahead log that does nothing.
 pub(crate) struct NoopWal;
 
-impl WalSink for NoopWal {
-    fn append(&mut self, entry: WalEntry) {
+impl<V: std::fmt::Debug> WalSink<V> for NoopWal {
+    fn append(&mut self, entry: WalEntry<V>) {
         tracing::debug!("NoopWal: Appending entry: {:?}", entry);
     }
 
@@ -348,7 +348,7 @@ pub(crate) mod recovery {
     }
 
     /// Read the entries from the write-ahead log file.
-    pub(crate) fn read_entries(path: &Path) -> Result<Vec<WalEntry>, std::io::Error> {
+    pub(crate) fn read_entries<V: for<'de> Deserialize<'de>>(path: &Path) -> Result<Vec<WalEntry<V>>, std::io::Error> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut entries = Vec::new();
@@ -356,7 +356,7 @@ pub(crate) mod recovery {
         for (line_num, line) in reader.lines().enumerate() {
             let line = line?;
             if !line.trim().is_empty() {
-                let entry: WalEntry = serde_json::from_str(&line).map_err(|e| {
+                let entry: WalEntry<V> = serde_json::from_str(&line).map_err(|e| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
                         format!(
@@ -374,9 +374,9 @@ pub(crate) mod recovery {
     }
 
     /// Recover all incomplete heights from the write-ahead log.
-    pub(crate) fn recover_incomplete_heights(
+    pub(crate) fn recover_incomplete_heights<V: for<'de> Deserialize<'de>>(
         wal_dir: &Path,
-    ) -> Result<Vec<(Height, Vec<WalEntry>)>, std::io::Error> {
+    ) -> Result<Vec<(Height, Vec<WalEntry<V>>)>, std::io::Error> {
         // Check if the WAL directory exists
         if !wal_dir.exists() {
             tracing::info!(

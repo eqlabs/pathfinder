@@ -2,6 +2,7 @@ use malachite_signing_ed25519::Ed25519;
 use malachite_types::{NilOrVal, Round, ValidatorSet as MalachiteValidatorSet, ValueId, VoteType};
 
 use super::{
+    ConsensusBounded,
     ConsensusValue,
     Height,
     Proposal,
@@ -14,21 +15,29 @@ use super::{
 
 /// The malachite context for the consensus logic.
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MalachiteContext;
+pub struct MalachiteContext<V> {
+    _phantom: std::marker::PhantomData<V>,
+}
 
-impl malachite_types::Context for MalachiteContext {
+impl<V: ConsensusBounded + 'static> MalachiteContext<V> {
+    pub fn new() -> Self {
+        Self { _phantom: std::marker::PhantomData }
+    }
+}
+
+impl<V: ConsensusBounded + 'static> malachite_types::Context for MalachiteContext<V> {
     type Address = ValidatorAddress;
     type Height = Height;
 
     type ProposalPart = ProposalPart;
-    type Proposal = Proposal;
+    type Proposal = Proposal<V>;
 
     type Validator = Validator;
     type ValidatorSet = ValidatorSet;
 
-    type Value = ConsensusValue;
+    type Value = ConsensusValue<V>;
 
-    type Vote = Vote;
+    type Vote = Vote<V>;
 
     type Extension = Vec<u8>;
 
@@ -100,8 +109,11 @@ impl malachite_types::Context for MalachiteContext {
             height,
             round: round.into(),
             validator_address: address,
-            value: value_id,
-            extension: None,
+            value: match value_id {
+                NilOrVal::Nil => None,
+                NilOrVal::Val(value) => Some(ConsensusValue::new(value)),
+            },
+            //extension: None,
         }
     }
 
@@ -124,8 +136,11 @@ impl malachite_types::Context for MalachiteContext {
             height,
             round: round.into(),
             validator_address: address,
-            value: value_id,
-            extension: None,
+            value: match value_id {
+                NilOrVal::Nil => None,
+                NilOrVal::Val(value) => Some(ConsensusValue::new(value)),
+            },
+            //extension: None,
         }
     }
 }
