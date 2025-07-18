@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `pathfinder_lastL1AcceptedBlockHashAndNumber`, a pathfinder extension analogous to `starknet_blockHashAndNumber`
 - Pathfinder now accepts the `l1_accepted` `BLOCK_TAG` on the JSON-RPC interface. This can be used to reference the latest L1 accepted block known by the node.
 
+### Changed
+
+- All WebSocket API routes (served on `/ws`) are now deprecated and will be removed on the next release.
+- Some of the CLI options that are no longer needed have also been removed:
+
+  - `rpc.websocket.buffer-capacity`
+  - `rpc.websocket.topic-capacity`
+
 ### Fixed
 
 - The default value of L2 gas price for historical blocks has been changed from 0 to 1 (for both WEI and FRI), to agree with the feeder gateway default.

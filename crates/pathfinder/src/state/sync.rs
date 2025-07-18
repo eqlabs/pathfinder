@@ -15,7 +15,7 @@ use pathfinder_crypto::Felt;
 use pathfinder_ethereum::{EthereumApi, EthereumStateUpdate};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::types::syncing::{self, NumberedBlock, Syncing};
-use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState, TopicBroadcasters};
+use pathfinder_rpc::{Notifications, PendingData, Reorg, SyncState};
 use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
@@ -82,7 +82,6 @@ pub struct SyncContext<G, E> {
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
     pub block_validation_mode: l2::BlockValidationMode,
-    pub websocket_txs: Option<TopicBroadcasters>,
     pub notifications: Notifications,
     pub block_cache_size: usize,
     pub restart_delay: Duration,
@@ -160,7 +159,6 @@ where
         l1_poll_interval: _,
         pending_data,
         block_validation_mode: _,
-        websocket_txs,
         notifications,
         block_cache_size,
         restart_delay,
@@ -243,7 +241,6 @@ where
         state,
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
-        websocket_txs,
         notifications,
     };
     let mut consumer_handle =
@@ -412,7 +409,6 @@ struct ConsumerContext {
     pub state: Arc<SyncState>,
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
-    pub websocket_txs: Option<TopicBroadcasters>,
     pub notifications: Notifications,
 }
 
@@ -426,7 +422,6 @@ async fn consumer(
         state,
         pending_data,
         verify_tree_hashes,
-        mut websocket_txs,
         mut notifications,
     } = context;
 
@@ -528,7 +523,6 @@ async fn consumer(
                         *state_diff_commitment,
                         verify_tree_hashes,
                         storage.clone(),
-                        &mut websocket_txs,
                         &mut notifications,
                     )
                     .with_context(|| format!("Update L2 state to {block_number}"))?;
@@ -909,7 +903,6 @@ fn l2_update(
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
-    websocket_txs: &mut Option<TopicBroadcasters>,
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
     let (storage_commitment, class_commitment) = update_starknet_state(
@@ -1025,24 +1018,6 @@ fn l2_update(
                 transaction
                     .update_l1_l2_pointer(Some(header.number))
                     .context("Update L1-L2 head")?;
-            }
-        }
-    }
-
-    if let Some(sender) = websocket_txs {
-        if let Err(e) = sender.new_head.send_if_receiving(header.clone().into()) {
-            tracing::error!(error=?e, "Failed to send header over websocket broadcaster.");
-            // Disable websocket entirely so that the closed channel doesn't spam this
-            // error. It is unlikely that any error here wouldn't simply repeat
-            // indefinitely.
-            *websocket_txs = None;
-            return Ok(());
-        }
-        if sender.l2_blocks.receiver_count() > 0 {
-            if let Err(e) = sender.l2_blocks.send(block.clone().into()) {
-                tracing::error!(error=?e, "Failed to send block over websocket broadcaster.");
-                *websocket_txs = None;
-                return Ok(());
             }
         }
     }
@@ -1639,7 +1614,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1693,7 +1667,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1761,7 +1734,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1814,7 +1786,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1856,7 +1827,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1901,7 +1871,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -1949,7 +1918,6 @@ mod tests {
             state: Arc::new(SyncState::default()),
             pending_data: tx,
             verify_tree_hashes: false,
-            websocket_txs: None,
             notifications: Default::default(),
         };
 
@@ -2111,7 +2079,6 @@ mod tests {
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2168,7 +2135,6 @@ mod tests {
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications: Default::default(),
             };
 
@@ -2267,7 +2233,6 @@ mod tests {
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2291,7 +2256,6 @@ mod tests {
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2320,7 +2284,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2365,7 +2328,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2392,7 +2354,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications,
             };
 
@@ -2447,7 +2408,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications: Default::default(),
             };
 
@@ -2565,7 +2525,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications: Default::default(),
             };
 
@@ -2651,7 +2610,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications: Default::default(),
             };
 
@@ -2685,7 +2643,6 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 state: Arc::new(SyncState::default()),
                 pending_data: tx,
                 verify_tree_hashes: false,
-                websocket_txs: None,
                 notifications: Default::default(),
             };
 

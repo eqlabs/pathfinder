@@ -349,7 +349,6 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
     use std::time::Duration;
 
     use axum::extract::ws::Message;
@@ -1035,12 +1034,7 @@ mod tests {
             .with_storage(storage)
             .with_notifications(notifications)
             .with_pending_data(pending_data.clone())
-            .with_websockets(WebsocketContext::new(
-                WebsocketHistory::Unlimited,
-                NonZeroUsize::new(1024).unwrap(),
-                NonZeroUsize::new(1024).unwrap(),
-                pending_data,
-            ));
+            .with_websockets(WebsocketContext::new(WebsocketHistory::Unlimited));
         match version {
             RpcVersion::V06 => (v06::register_routes().build(ctx), pending_data_tx),
             RpcVersion::V07 => (v07::register_routes().build(ctx), pending_data_tx),
