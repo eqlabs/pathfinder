@@ -195,6 +195,23 @@ impl TransactionVariant {
             _ => {}
         }
     }
+
+    pub fn sender_address(&self) -> ContractAddress {
+        match self {
+            TransactionVariant::DeclareV0(tx) => tx.sender_address,
+            TransactionVariant::DeclareV1(tx) => tx.sender_address,
+            TransactionVariant::DeclareV2(tx) => tx.sender_address,
+            TransactionVariant::DeclareV3(tx) => tx.sender_address,
+            TransactionVariant::DeployV0(tx) => tx.contract_address,
+            TransactionVariant::DeployV1(tx) => tx.contract_address,
+            TransactionVariant::DeployAccountV1(tx) => tx.contract_address,
+            TransactionVariant::DeployAccountV3(tx) => tx.contract_address,
+            TransactionVariant::InvokeV0(tx) => tx.sender_address,
+            TransactionVariant::InvokeV1(tx) => tx.sender_address,
+            TransactionVariant::InvokeV3(tx) => tx.sender_address,
+            TransactionVariant::L1Handler(tx) => tx.contract_address,
+        }
+    }
 }
 
 impl From<DeclareTransactionV2> for TransactionVariant {
