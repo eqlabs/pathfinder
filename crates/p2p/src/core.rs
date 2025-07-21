@@ -10,7 +10,7 @@ mod client;
 #[cfg(test)]
 mod tests;
 
-pub use behaviour::{Behaviour, Builder, Event};
+pub use behaviour::{kademlia_protocol_name, Behaviour, Builder, Event};
 pub use client::Client;
 
 use crate::peers::Peer;
