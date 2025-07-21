@@ -430,14 +430,17 @@ async fn main() -> anyhow::Result<()> {
 
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
-        // higher height.
+        // higher height. This is a workaround for the missing sync/catch-up mechanism
+        // that we'll have in pathfinder, once this tool is actually merged into
+        // pathfinder.
         let mut last_nil_vote_height = None;
 
-        // Add grace time before others can join
-        if validator_address == ValidatorAddress::from(Address(Felt::ONE)) {
-            tracing::info!("🧠 ⏳  {validator_address} waiting before starting consensus...");
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-        }
+        // // Add grace time before others can join
+        // if validator_address == ValidatorAddress::from(Address(Felt::ONE)) {
+        //     tracing::info!("🧠 ⏳  {validator_address} waiting before starting
+        // consensus...");
+        //     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        // }
 
         let db_height = std::fs::read_to_string(&config.db_file)
             .unwrap_or_else(|e| {
