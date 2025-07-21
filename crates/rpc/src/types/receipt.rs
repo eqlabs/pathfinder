@@ -156,37 +156,6 @@ impl crate::dto::SerializeForVersion for ExecutionStatus {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[cfg_attr(test, derive(serde::Deserialize))]
-pub enum FinalityStatus {
-    AcceptedOnL2,
-    //AcceptedOnL1,
-}
-
-impl crate::dto::SerializeForVersion for FinalityStatus {
-    fn serialize(
-        &self,
-        serializer: crate::dto::Serializer,
-    ) -> Result<crate::dto::Ok, crate::dto::Error> {
-        match self {
-            Self::AcceptedOnL2 => serializer.serialize_str("ACCEPTED_ON_L2"),
-        }
-    }
-}
-
-impl crate::dto::DeserializeForVersion for FinalityStatus {
-    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
-        let s: String = value.deserialize()?;
-        match s.as_str() {
-            "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
-            _ => Err(serde::de::Error::unknown_variant(
-                "Unknown finality status",
-                &["ACCEPTED_ON_L2"],
-            )),
-        }
-    }
-}
-
 /// Message sent from L2 to L1.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Deserialize))]

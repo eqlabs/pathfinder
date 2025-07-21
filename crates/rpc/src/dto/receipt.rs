@@ -41,7 +41,7 @@ impl From<&pathfinder_common::receipt::ExecutionStatus> for TxnExecutionStatus {
 
 struct TxnExecutionStatusWithRevertReason<'a>(pub &'a pathfinder_common::receipt::ExecutionStatus);
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TxnFinalityStatus {
     PreConfirmed,
     AcceptedOnL2,
@@ -140,6 +140,21 @@ impl SerializeForVersion for TxnFinalityStatus {
             TxnFinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
         }
         .serialize(serializer)
+    }
+}
+
+impl crate::dto::DeserializeForVersion for TxnFinalityStatus {
+    fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
+        let s: String = value.deserialize()?;
+        match s.as_str() {
+            "ACCEPTED_ON_L1" => Ok(Self::AcceptedOnL1),
+            "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
+            "PRE_CONFIRMED" => Ok(Self::PreConfirmed),
+            _ => Err(serde::de::Error::unknown_variant(
+                &s,
+                &["ACCEPTED_ON_L1", "ACCEPTED_ON_L2", "PRE_CONFIRMED"],
+            )),
+        }
     }
 }
 
