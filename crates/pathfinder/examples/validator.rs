@@ -308,6 +308,10 @@ async fn main() -> anyhow::Result<()> {
                             // assert_eq!(height_and_round.round(), 0);
                             proposal_parts
                         } else {
+                            // TODO(Chris) this panic is here to catch a very rare case which I'm
+                            // almost sure occurred at least once during tests on my machine. Once
+                            // I'm sure if it's a real concern or not the panic will be removed and
+                            // the case handled correctly (if it really occurs).
                             panic!(
                                 "Engine requested gossiping a proposal for {height_and_round} but \
                                  we did not create it. my_proposals_cache: \
@@ -425,8 +429,17 @@ async fn main() -> anyhow::Result<()> {
             }
         }
 
-        let mut consensus =
-            Consensus::new(Config::new(validator_address).with_wal_dir(config.wal_directory));
+        let mut consensus = Consensus::new(
+            Config::new(validator_address)
+                .with_wal_dir(config.wal_directory)
+                .with_history_depth(
+                    // TODO: We don't support round certificates yet, and we want to limit
+                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
+                    // engines which are finalized because the effect `CancelAllTimeouts` is only
+                    // triggered upon a new round or a new height.
+                    0,
+                ),
+        );
 
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
@@ -434,13 +447,6 @@ async fn main() -> anyhow::Result<()> {
         // that we'll have in pathfinder, once this tool is actually merged into
         // pathfinder.
         let mut last_nil_vote_height = None;
-
-        // // Add grace time before others can join
-        // if validator_address == ValidatorAddress::from(Address(Felt::ONE)) {
-        //     tracing::info!("🧠 ⏳  {validator_address} waiting before starting
-        // consensus...");
-        //     tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-        // }
 
         let db_height = std::fs::read_to_string(&config.db_file)
             .unwrap_or_else(|e| {
@@ -533,9 +539,10 @@ async fn main() -> anyhow::Result<()> {
                         ConsensusEvent::Gossip(msg) => {
                             // TODO Sometimes the engine requests gossiping votes for heights that
                             // are a few steps behind the current height and have already been
-                            // decided upon. We're not sure if this is a  bug in the engine but for
-                            // the time being we're just ignoring those requests from the engine,
-                            // because gossiping those votes is just spamming the network.
+                            // decided upon. This is due to the fact that `history_depth` in config
+                            // is > 0 and we're not supporting round certificates yet. Setting
+                            // history depth to a low value (or 0) should mitigate this issue for
+                            // now.
                             if msg.height() >= current_height {
                                 // Record the highest height at which we voted Nil as it may be an
                                 // indication that we're lagging behind the consensus network.

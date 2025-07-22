@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
@@ -12,6 +13,8 @@ use libp2p::{dns, identify, noise, Multiaddr, Swarm, Transport};
 use pathfinder_common::ChainId;
 use serde::Deserialize;
 use zeroize::Zeroizing;
+
+use crate::behaviour::BootstrapBehaviour;
 
 mod behaviour;
 
@@ -103,30 +106,16 @@ async fn main() -> anyhow::Result<()> {
 
     swarm.listen_on(args.listen_on)?;
 
-    let mut bootstrap_interval =
-        tokio::time::interval(Duration::from_secs(args.bootstrap_interval_seconds));
-
     let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
 
     loop {
-        let bootstrap_interval_tick = bootstrap_interval.tick();
-        tokio::pin!(bootstrap_interval_tick);
-
         let network_status_interval_tick = network_status_interval.tick();
         tokio::pin!(network_status_interval_tick);
 
         tokio::select! {
             _ = network_status_interval_tick => {
-                let network_info = swarm.network_info();
-                let num_peers = network_info.num_peers();
-                let connection_counters = network_info.connection_counters();
-                let num_established_connections = connection_counters.num_established();
-                let num_pending_connections = connection_counters.num_pending();
-                tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
-            }
-            _ = bootstrap_interval_tick => {
-                tracing::debug!("Doing periodical bootstrap");
-                _ = swarm.behaviour_mut().kademlia.bootstrap();
+                dump_network_status(&swarm);
+                dump_dht(&mut swarm);
             }
             Some(event) = swarm.next() => {
                 match event {
@@ -191,4 +180,33 @@ fn setup_tracing(pretty_log: bool) {
     } else {
         builder.compact().init();
     }
+}
+
+fn dump_network_status(swarm: &Swarm<BootstrapBehaviour>) {
+    let network_info = swarm.network_info();
+    let num_peers = network_info.num_peers();
+    let connection_counters = network_info.connection_counters();
+    let num_established_connections = connection_counters.num_established();
+    let num_pending_connections = connection_counters.num_pending();
+    tracing::info!(%num_peers, %num_established_connections, %num_pending_connections, "Network status")
+}
+
+fn dump_dht(swarm: &mut Swarm<BootstrapBehaviour>) {
+    let me = *swarm.local_peer_id();
+
+    let dht = swarm
+        .behaviour_mut()
+        .kademlia
+        .kbuckets()
+        // Cannot .into_iter() a KBucketRef, hence the inner collect followed by
+        // flat_map
+        .map(|kbucket_ref| {
+            kbucket_ref
+                .iter()
+                .map(|entry_ref| *entry_ref.node.key.preimage())
+                .collect::<Vec<_>>()
+        })
+        .flat_map(|peers_in_bucket| peers_in_bucket.into_iter())
+        .collect::<HashSet<_>>();
+    tracing::info!(%me, ?dht, "Local DHT");
 }

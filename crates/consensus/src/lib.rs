@@ -196,7 +196,13 @@ impl Consensus {
 
         // Prune old engines if we have any finished heights.
         if !finished_heights.is_empty() {
-            self.prune_old_engines();
+            tracing::trace!(
+                validator = %self.config.address,
+                finished_heights = ?finished_heights,
+                ">>>> FINISHED HEIGHTS"
+            );
+
+            self.prune_old_engines(finished_heights);
         }
 
         // Return the first event from the queue.
@@ -204,7 +210,7 @@ impl Consensus {
     }
 
     /// Prune old engines from the internal map.
-    fn prune_old_engines(&mut self) {
+    fn prune_old_engines(&mut self, finished_heights: Vec<Height>) {
         use malachite_types::Height;
         let max_height = self.internal.keys().max().copied();
         if let Some(max_height) = max_height {
@@ -212,7 +218,34 @@ impl Consensus {
 
             if let Some(new_min) = new_min_height {
                 self.min_kept_height = Some(new_min);
-                self.internal.retain(|height, _| *height >= new_min);
+
+                let racy_engines = self
+                    .internal
+                    .iter()
+                    .filter_map(|(height, engine)| {
+                        // Should be pruned, but is not yet finalized. So we keep it for now. Will
+                        // probably be pruned next time.
+                        (*height < new_min && !engine.is_finalized()).then_some(*height)
+                    })
+                    .collect::<Vec<_>>();
+
+                if !racy_engines.is_empty() {
+                    tracing::trace!(
+                        validator = %self.config.address,
+                        racy_engines = ?racy_engines,
+                        ">>>> RACY ENGINES that were not pruned this time"
+                    );
+                }
+
+                self.internal.retain(|height, engine| {
+                    // Once a while a race condition can occur where:
+                    // - history_depth is 0
+                    // - max_height refers to a started engine for whom a vote or proposal was
+                    //   received BEFORE the previously highest engine actually emitted a decision.
+                    // We should therefore also retain engines which are NOT decided yet to include
+                    // this rare condition. These engines will be pruned next time anyway.
+                    *height >= new_min || !engine.is_finalized()
+                });
 
                 tracing::debug!(
                     validator = %self.config.address,
@@ -220,6 +253,31 @@ impl Consensus {
                     max_height = %max_height,
                     "Pruned old consensus engines"
                 );
+
+                let events = self
+                    .event_queue
+                    .iter()
+                    .filter(|event| match event.height() {
+                        Some(height) => height < max_height,
+                        None => false,
+                    })
+                    .collect::<Vec<_>>();
+
+                if !events.is_empty() {
+                    tracing::trace!(?events, ">>>> EVENTS BELOW MAX HEIGHT");
+                }
+
+                let events = events
+                    .iter()
+                    .filter(|event| match event.height() {
+                        Some(height) => finished_heights.contains(&height),
+                        None => false,
+                    })
+                    .collect::<Vec<_>>();
+
+                if !events.is_empty() {
+                    tracing::trace!(?events, ">>>> EVENTS IN FINISHED HEIGHTS");
+                }
             }
         }
     }
@@ -348,6 +406,17 @@ pub enum ConsensusEvent {
     },
     /// An internal error occurred in consensus.
     Error(anyhow::Error),
+}
+
+impl ConsensusEvent {
+    pub fn height(&self) -> Option<Height> {
+        match self {
+            ConsensusEvent::Gossip(network_message) => Some(network_message.height()),
+            ConsensusEvent::RequestProposal { height, .. } => Some(*height),
+            ConsensusEvent::Decision { height, .. } => Some(*height),
+            ConsensusEvent::Error(_) => None,
+        }
+    }
 }
 
 impl std::fmt::Debug for ConsensusEvent {

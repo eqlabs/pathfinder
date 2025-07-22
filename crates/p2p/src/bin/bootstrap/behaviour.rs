@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use libp2p::kad::store::MemoryStore;
 use libp2p::kad::{self};
 use libp2p::swarm::NetworkBehaviour;
@@ -18,6 +20,8 @@ pub struct BootstrapBehaviour {
 impl BootstrapBehaviour {
     pub fn new(pub_key: identity::PublicKey, chain_id: ChainId) -> Self {
         let peer_id = pub_key.to_peer_id();
+        let mut kad_config = kad::Config::new(kademlia_protocol_name(chain_id));
+        kad_config.set_periodic_bootstrap_interval(Some(Duration::from_secs(5)));
 
         Self {
             relay: relay::Behaviour::new(peer_id, Default::default()),
@@ -28,11 +32,7 @@ impl BootstrapBehaviour {
                 identify::Config::new(identify::PROTOCOL_NAME.to_string(), pub_key)
                     .with_agent_version(format!("pathfinder/{}", env!("CARGO_PKG_VERSION"))),
             ),
-            kademlia: kad::Behaviour::with_config(
-                peer_id,
-                MemoryStore::new(peer_id),
-                kad::Config::new(kademlia_protocol_name(chain_id)),
-            ),
+            kademlia: kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), kad_config),
         }
     }
 }

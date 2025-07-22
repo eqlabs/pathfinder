@@ -118,19 +118,6 @@ impl InternalConsensus {
                 .pop()
                 .expect("No timeout to pop");
 
-            /*
-            if let TimeoutKind::Rebroadcast = timeout.kind {
-                // TODO If the timeout is for rebroadcasting, we skip it as we don't
-                // support rebroadcasting yet.
-                tracing::debug!(
-                    validator = %self.state.address(),
-                    timeout = ?timeout,
-                    "Skipping rebroadcast timeout"
-                );
-                continue;
-            }
-            */
-
             let input = Input::TimeoutElapsed(timeout);
             tracing::debug!(
                 validator = %self.state.address(),
