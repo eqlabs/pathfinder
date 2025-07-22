@@ -444,7 +444,6 @@ mod tests {
         use pretty_assertions_sorted::assert_eq;
         use rstest::rstest;
         use serde_json::json;
-        use tokio::sync::watch;
 
         use super::*;
         use crate::dto::DeserializeForVersion;
@@ -508,13 +507,7 @@ mod tests {
                 }
             }
 
-            let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
-            let ws_ctx = WebsocketContext::new(
-                WebsocketHistory::Unlimited,
-                NonZeroUsize::new(100).unwrap(),
-                NonZeroUsize::new(100).unwrap(),
-                pending_data_rx,
-            );
+            let ws_ctx = WebsocketContext::new(WebsocketHistory::Unlimited);
             RpcRouter::builder(RpcVersion::default())
                 .register("subtract", subtract)
                 .register("sum", sum)
@@ -683,8 +676,6 @@ mod tests {
     }
 
     mod panic_handling {
-        use tokio::sync::watch;
-
         use super::*;
         use crate::jsonrpc::websocket::{WebsocketContext, WebsocketHistory};
 
@@ -697,13 +688,7 @@ mod tests {
                 "Success"
             }
 
-            let (_pending_data_tx, pending_data_rx) = watch::channel(Default::default());
-            let ws_ctx = WebsocketContext::new(
-                WebsocketHistory::Unlimited,
-                NonZeroUsize::new(100).unwrap(),
-                NonZeroUsize::new(100).unwrap(),
-                pending_data_rx,
-            );
+            let ws_ctx = WebsocketContext::new(WebsocketHistory::Unlimited);
             RpcRouter::builder(Default::default())
                 .register("panic", always_panic)
                 .register("success", always_success)
