@@ -900,8 +900,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroUsize;
-
     use axum::async_trait;
     use axum::extract::ws::Message;
     use pathfinder_common::{BlockHash, BlockHeader, BlockNumber};
@@ -1465,12 +1463,7 @@ mod tests {
             .with_storage(storage)
             .with_notifications(notifications)
             .with_pending_data(pending_data.clone())
-            .with_websockets(WebsocketContext::new(
-                websocket_history,
-                NonZeroUsize::new(1024).unwrap(),
-                NonZeroUsize::new(1024).unwrap(),
-                pending_data,
-            ));
+            .with_websockets(WebsocketContext::new(websocket_history));
 
         RpcRouter::builder(crate::RpcVersion::V08)
             .register("test", endpoint)

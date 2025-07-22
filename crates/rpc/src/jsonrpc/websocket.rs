@@ -30,8 +30,19 @@
 //! Closing subscription."}},"id":null}
 //! ```
 
-mod data;
-mod logic;
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WebsocketHistory {
+    Limited(u64),
+    Unlimited,
+}
 
-pub use data::*;
-pub use logic::*;
+#[derive(Clone)]
+pub struct WebsocketContext {
+    pub max_history: WebsocketHistory,
+}
+
+impl WebsocketContext {
+    pub fn new(max_history: WebsocketHistory) -> Self {
+        Self { max_history }
+    }
+}
