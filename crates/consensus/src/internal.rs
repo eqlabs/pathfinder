@@ -117,6 +117,7 @@ impl InternalConsensus {
                 .timeouts
                 .pop()
                 .expect("No timeout to pop");
+
             let input = Input::TimeoutElapsed(timeout);
             tracing::debug!(
                 validator = %self.state.address(),

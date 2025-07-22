@@ -33,8 +33,8 @@ impl std::fmt::Debug for Vote {
         };
         write!(
             f,
-            "H:{} R:{} From:{} Val:{}",
-            self.height, self.round, self.validator_address, value_str
+            "{{{:?} H:{} R:{} From:{} Val:{}}}",
+            self.r#type, self.height, self.round, self.validator_address, value_str
         )
     }
 }
