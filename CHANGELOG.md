@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- All WebSocket API routes (served on `/ws`) are now deprecated and will be removed on the next release.
+- All WebSocket API routes (served on `/ws`) are now deprecated and will be removed on the next release. Additionally, Pathfinder no longer supports `pathfinder_subscribe` and `pathfinder_unsubscribe` methods on these routes.
 - Some of the CLI options that are no longer needed have also been removed:
 
   - `rpc.websocket.buffer-capacity`
