@@ -30,8 +30,7 @@ use futures::prelude::*;
 /// for a request/streaming-response [`Behaviour`](crate::Behaviour) protocol or
 /// protocol family and how they are encoded / decoded on an I/O stream.
 #[allow(dead_code)]
-#[trait_variant::make(Codec: Send)]
-pub trait LocalCodec {
+pub trait Codec {
     /// The type of protocol(s) or protocol versions being negotiated.
     type Protocol: AsRef<str> + Send + Sync + Clone;
     /// The type of inbound and outbound requests.
@@ -41,43 +40,43 @@ pub trait LocalCodec {
 
     /// Reads a request from the given I/O stream according to the
     /// negotiated protocol.
-    async fn read_request<T>(
+    fn read_request<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
-    ) -> io::Result<Self::Request>
+    ) -> impl Future<Output = io::Result<Self::Request>> + Send
     where
         T: AsyncRead + Unpin + Send;
 
     /// Reads a response from the given I/O stream according to the
     /// negotiated protocol.
-    async fn read_response<T>(
+    fn read_response<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
-    ) -> io::Result<Self::Response>
+    ) -> impl Future<Output = io::Result<Self::Response>> + Send
     where
         T: AsyncRead + Unpin + Send;
 
     /// Writes a request to the given I/O stream according to the
     /// negotiated protocol.
-    async fn write_request<T>(
+    fn write_request<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
         req: Self::Request,
-    ) -> io::Result<()>
+    ) -> impl Future<Output = io::Result<()>> + Send
     where
         T: AsyncWrite + Unpin + Send;
 
     /// Writes a response to the given I/O stream according to the
     /// negotiated protocol.
-    async fn write_response<T>(
+    fn write_response<T>(
         &mut self,
         protocol: &Self::Protocol,
         io: &mut T,
         res: Self::Response,
-    ) -> io::Result<()>
+    ) -> impl Future<Output = io::Result<()>> + Send
     where
         T: AsyncWrite + Unpin + Send;
 }
