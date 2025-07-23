@@ -29,7 +29,6 @@ use futures::prelude::*;
 /// A `Codec` defines the request and response types
 /// for a request/streaming-response [`Behaviour`](crate::Behaviour) protocol or
 /// protocol family and how they are encoded / decoded on an I/O stream.
-#[allow(dead_code)]
 pub trait Codec {
     /// The type of protocol(s) or protocol versions being negotiated.
     type Protocol: AsRef<str> + Send + Sync + Clone;
