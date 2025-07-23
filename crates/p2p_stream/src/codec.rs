@@ -24,16 +24,16 @@
 
 use std::io;
 
-use async_trait::async_trait;
 use futures::prelude::*;
 
 /// A `Codec` defines the request and response types
 /// for a request/streaming-response [`Behaviour`](crate::Behaviour) protocol or
 /// protocol family and how they are encoded / decoded on an I/O stream.
-#[async_trait]
-pub trait Codec {
+#[allow(dead_code)]
+#[trait_variant::make(Codec: Send)]
+pub trait LocalCodec {
     /// The type of protocol(s) or protocol versions being negotiated.
-    type Protocol: AsRef<str> + Send + Clone;
+    type Protocol: AsRef<str> + Send + Sync + Clone;
     /// The type of inbound and outbound requests.
     type Request: Send;
     /// The type of inbound and outbound responses.

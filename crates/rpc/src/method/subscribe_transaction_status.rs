@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use axum::async_trait;
 use pathfinder_common::receipt::ExecutionStatus;
 use pathfinder_common::{BlockNumber, TransactionHash};
 use reply::transaction_status as status;
@@ -116,7 +115,6 @@ impl crate::dto::SerializeForVersion for Notification {
 
 const SUBSCRIPTION_NAME: &str = "starknet_subscriptionTransactionStatus";
 
-#[async_trait]
 impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     type Params = Params;
     type Notification = Notification;

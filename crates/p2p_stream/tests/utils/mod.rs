@@ -4,7 +4,6 @@ use std::time::Duration;
 use std::{io, iter};
 
 use anyhow::{bail, Result};
-use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::prelude::*;
 use libp2p::core::transport::MemoryTransport;
@@ -70,7 +69,6 @@ impl TryFrom<u32> for Action {
     }
 }
 
-#[async_trait]
 impl Codec for TestCodec {
     type Protocol = StreamProtocol;
     type Request = Action;

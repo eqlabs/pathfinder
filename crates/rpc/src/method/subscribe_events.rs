@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use axum::async_trait;
 use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
 use pathfinder_storage::{AGGREGATE_BLOOM_BLOCK_RANGE_LEN, EVENT_KEY_FILTER_LIMIT};
 use tokio::sync::mpsc;
@@ -89,7 +88,6 @@ impl crate::dto::SerializeForVersion for Notification {
 
 const SUBSCRIPTION_NAME: &str = "starknet_subscriptionEvents";
 
-#[async_trait]
 impl RpcSubscriptionFlow for SubscribeEvents {
     type Params = Option<Params>;
     type Notification = Notification;

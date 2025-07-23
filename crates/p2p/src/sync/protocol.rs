@@ -28,7 +28,6 @@ pub mod name {
 pub(crate) mod codec {
     use std::marker::PhantomData;
 
-    use async_trait::async_trait;
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
     use p2p_proto::{class, event, header, proto, state, transaction, ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
@@ -128,11 +127,10 @@ pub(crate) mod codec {
         }
     }
 
-    #[async_trait]
     impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
         for ProdCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
     where
-        Protocol: AsRef<str> + Send + Clone,
+        Protocol: AsRef<str> + Send + Sync + Clone,
         Req: TryFromProtobuf<ProstReq> + ToProtobuf<ProstReq> + Send,
         Resp: TryFromProtobuf<ProstResp> + ToProtobuf<ProstResp> + Send,
         ProstReq: prost::Message + Default,
@@ -220,7 +218,6 @@ pub(crate) mod codec {
         }
     }
 
-    #[async_trait]
     impl<Protocol, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
         for SyncCodec<Protocol, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
     where
