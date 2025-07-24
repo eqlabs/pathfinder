@@ -1,8 +1,59 @@
+use std::fmt::Display;
 use std::time::Duration;
 
-use pathfinder_consensus::{Consensus, ConsensusEvent};
+use pathfinder_consensus::{Consensus, ConsensusEvent, ValidatorAddress, ValuePayload};
+use serde::{Deserialize, Serialize};
 use tokio::time::advance;
 use tracing_subscriber::EnvFilter;
+
+/// A simple validator address type.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+pub struct NodeAddress(pub String);
+
+impl Display for NodeAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<NodeAddress> for Vec<u8> {
+    fn from(addr: NodeAddress) -> Self {
+        addr.0.into_bytes()
+    }
+}
+
+/// A simple consensus value type.
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ConsensusValue(pub String);
+
+impl Display for ConsensusValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Advances simulated time and polls `Consensus` until a matching event is seen
+/// or max attempts are hit. Returns the matching event if found.
+#[allow(dead_code)]
+pub async fn drive_until<V: ValuePayload + 'static, A: ValidatorAddress + 'static, F>(
+    consensus: &mut Consensus<V, A>,
+    tick: Duration,
+    max_attempts: usize,
+    mut match_fn: F,
+) -> Option<ConsensusEvent<V, A>>
+where
+    F: FnMut(&ConsensusEvent<V, A>) -> bool,
+{
+    for _ in 0..max_attempts {
+        advance(tick).await;
+        if let Some(event) = consensus.next_event().await {
+            if match_fn(&event) {
+                return Some(event);
+            }
+        }
+    }
+    None
+}
 
 /// Setup tracing for the tests.
 /// This is just used for debugging purposes.
@@ -16,27 +67,4 @@ pub fn setup_tracing_full() {
         .with_target(true)
         .without_time()
         .try_init();
-}
-
-/// Advances simulated time and polls `Consensus` until a matching event is seen
-/// or max attempts are hit. Returns the matching event if found.
-#[allow(dead_code)]
-pub async fn drive_until<F>(
-    consensus: &mut Consensus,
-    tick: Duration,
-    max_attempts: usize,
-    mut match_fn: F,
-) -> Option<ConsensusEvent>
-where
-    F: FnMut(&ConsensusEvent) -> bool,
-{
-    for _ in 0..max_attempts {
-        advance(tick).await;
-        if let Some(event) = consensus.next_event().await {
-            if match_fn(&event) {
-                return Some(event);
-            }
-        }
-    }
-    None
 }

@@ -1,31 +1,26 @@
 use std::time::Duration;
 
 use ed25519_consensus::SigningKey;
-use malachite_signing_ed25519::PublicKey;
-use malachite_types::{NilOrVal, VoteType};
-use p2p_proto::common::{Address, Hash};
 use pathfinder_consensus::{
     Config,
     Consensus,
     ConsensusCommand,
     ConsensusEvent,
-    ConsensusValue,
-    Height,
     Proposal,
+    PublicKey,
     Round,
     Signature,
     SignedProposal,
     SignedVote,
     Validator,
-    ValidatorAddress,
     ValidatorSet,
     Vote,
+    VoteType,
 };
-use pathfinder_crypto::Felt;
 use tokio::time::pause;
 
 mod common;
-use common::drive_until;
+use common::{drive_until, ConsensusValue, NodeAddress};
 
 #[tokio::test]
 async fn single_node_propose_timeout_advances_round() {
@@ -35,10 +30,10 @@ async fn single_node_propose_timeout_advances_round() {
     // Build a single-validator set
     let sk = SigningKey::new(rand::rngs::OsRng);
     let pk = sk.verification_key();
-    let addr = ValidatorAddress::from(Address(Felt::from_hex_str("0x01").unwrap()));
+    let addr = NodeAddress("0x01".to_string());
     let pubkey = PublicKey::from_bytes(pk.to_bytes());
     let validator = Validator {
-        address: addr,
+        address: addr.clone(),
         public_key: pubkey,
         voting_power: 1,
     };
@@ -49,9 +44,9 @@ async fn single_node_propose_timeout_advances_round() {
     let temp_dir = temp_dir.path().to_path_buf();
 
     // Create consensus instance
-    let config = Config::new(addr).with_wal_dir(temp_dir);
-    let mut consensus = Consensus::new(config);
-    let height = Height::try_from(1).unwrap();
+    let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
+    let mut consensus: Consensus<ConsensusValue, NodeAddress> = Consensus::new(config);
+    let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Expect initial RequestProposal at round 0
@@ -63,7 +58,7 @@ async fn single_node_propose_timeout_advances_round() {
             ..
         }) => {
             assert_eq!(h, height);
-            assert_eq!(r, Round::from(0));
+            assert_eq!(r, 0);
         }
         other => panic!("Expected RequestProposal for round 0, got: {other:?}"),
     }
@@ -73,8 +68,9 @@ async fn single_node_propose_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
-    ).await;
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 1),
+    )
+    .await;
 
     assert!(result.is_some(), "Timeout did not trigger expected round 1");
 }
@@ -87,10 +83,10 @@ async fn single_node_prevote_timeout_advances_round() {
     // Build a single-validator set
     let sk = SigningKey::new(rand::rngs::OsRng);
     let pk = sk.verification_key();
-    let addr = ValidatorAddress::from(Address(Felt::from_hex_str("0x0000123").unwrap()));
+    let addr = NodeAddress("0x0000123".to_string());
     let pubkey = PublicKey::from_bytes(pk.to_bytes());
     let validator = Validator {
-        address: addr,
+        address: addr.clone(),
         public_key: pubkey,
         voting_power: 1,
     };
@@ -101,9 +97,9 @@ async fn single_node_prevote_timeout_advances_round() {
     let temp_dir = temp_dir.path().to_path_buf();
 
     // Create consensus instance
-    let config = Config::new(addr).with_wal_dir(temp_dir);
+    let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
-    let height = Height::try_from(1).unwrap();
+    let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Wait for initial RequestProposal
@@ -111,19 +107,20 @@ async fn single_node_prevote_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(1),
         5,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(0)),
-    ).await;
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 0),
+    )
+    .await;
 
     // Send a proposal (to enter prevote step)
-    let value_id = Hash(Felt::from_hex_str("0x123456789").unwrap());
+    let value = ConsensusValue("Hello, world!".to_string());
     let proposal = Proposal {
         height,
-        round: Round::from(0),
-        value: ConsensusValue::new(value_id),
-        pol_round: Round::from(0),
+        round: Round::new(0),
+        value,
+        pol_round: Round::new(0),
         proposer: addr,
     };
-    let signature: Signature = Signature::from_bytes([0; 64]);
+    let signature = Signature::from_bytes([0; 64]);
     let signed = SignedProposal {
         proposal,
         signature,
@@ -135,8 +132,9 @@ async fn single_node_prevote_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
-    ).await;
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 1),
+    )
+    .await;
 
     assert!(
         result.is_some(),
@@ -152,10 +150,10 @@ async fn single_node_precommit_timeout_advances_round() {
     // Build a single-validator set
     let sk = SigningKey::new(rand::rngs::OsRng);
     let pk = sk.verification_key();
-    let addr = ValidatorAddress::from(Address(Felt::from_hex_str("0x0000456").unwrap()));
+    let addr = NodeAddress("0x0000456".to_string());
     let pubkey = PublicKey::from_bytes(pk.to_bytes());
     let validator = Validator {
-        address: addr,
+        address: addr.clone(),
         public_key: pubkey,
         voting_power: 1,
     };
@@ -166,9 +164,9 @@ async fn single_node_precommit_timeout_advances_round() {
     let temp_dir = temp_dir.path().to_path_buf();
 
     // Create consensus instance
-    let config = Config::new(addr).with_wal_dir(temp_dir);
+    let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
     let mut consensus = Consensus::new(config);
-    let height = Height::try_from(1).unwrap();
+    let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
     // Wait for initial RequestProposal
@@ -176,18 +174,18 @@ async fn single_node_precommit_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(1),
         5,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(0)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 0),
     )
     .await;
 
     // Send a proposal
-    let value_id = Hash(Felt::from_hex_str("0x123456789").unwrap());
+    let value = ConsensusValue("Hello, world!".to_string());
     let proposal = Proposal {
         height,
-        round: Round::from(0),
-        value: ConsensusValue::new(value_id),
-        pol_round: Round::from(0),
-        proposer: addr,
+        round: Round::new(0),
+        value: value.clone(),
+        pol_round: Round::new(0),
+        proposer: addr.clone(),
     };
     let signature: Signature = Signature::from_bytes([0; 64]);
     let signed = SignedProposal {
@@ -200,10 +198,9 @@ async fn single_node_precommit_timeout_advances_round() {
     let vote = Vote {
         r#type: VoteType::Prevote,
         height,
-        round: Round::from(0),
+        round: Round::new(0),
         validator_address: addr,
-        value: NilOrVal::Val(value_id),
-        extension: None,
+        value: Some(value),
     };
     let vote_signature = Signature::from_bytes([0; 64]);
     let signed_vote = SignedVote {
@@ -218,7 +215,7 @@ async fn single_node_precommit_timeout_advances_round() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::from(1)),
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 1),
     )
     .await;
 

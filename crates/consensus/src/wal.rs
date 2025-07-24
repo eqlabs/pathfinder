@@ -1,14 +1,12 @@
+use std::fmt::Debug;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use malachite_consensus::{Input, PeerId, ProposedValue, SignedConsensusMsg};
-use malachite_types::{Timeout, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::malachite::MalachiteContext;
-use crate::{ConsensusValue, Height, Round, SignedProposal, SignedVote, ValidatorAddress, ValueId};
+use crate::{Round, SignedProposal, SignedVote};
 
 /// The prefix of the write-ahead log file.
 pub(crate) const WAL_FILE_PREFIX: &str = "wal-";
@@ -17,14 +15,15 @@ pub(crate) const WAL_FILE_PREFIX: &str = "wal-";
 pub(crate) const WAL_FILE_EXTENSION: &str = "json";
 
 /// The filename of the write-ahead log for a given validator and height.
-pub(crate) fn filename(address: &ValidatorAddress, height: &Height) -> String {
+pub(crate) fn filename(address: &impl ToString, height: u64) -> String {
+    let address = address.to_string();
     format!("{WAL_FILE_PREFIX}{address}-{height}.{WAL_FILE_EXTENSION}")
 }
 
 /// A trait for types that can append to a write-ahead log.
-pub(crate) trait WalSink: Send {
+pub(crate) trait WalSink<V, A>: Send {
     /// Append an entry to the write-ahead log.
-    fn append(&mut self, entry: WalEntry);
+    fn append(&mut self, entry: WalEntry<V, A>);
 
     /// Check if this WAL has been finalized (a decision has been reached)
     fn is_finalized(&self) -> bool {
@@ -34,162 +33,24 @@ pub(crate) trait WalSink: Send {
 
 /// A write-ahead log entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum WalEntry {
+pub(crate) enum WalEntry<V, A> {
     /// A signed proposal.
-    SignedProposal(SignedProposal),
+    SignedProposal(SignedProposal<V, A>),
     /// A signed vote.
-    SignedVote(SignedVote),
+    SignedVote(SignedVote<V, A>),
     /// A timeout.
     Timeout { kind: String, round: Round },
     /// A proposed value.
     ProposedValue {
-        height: Height,
+        height: u64,
         round: Round,
         valid_round: Round,
-        proposer: ValidatorAddress,
-        value: ValueId,
+        proposer: A,
+        value: V,
         validity: bool,
     },
     /// A decision was reached.
-    Decision { height: Height, value: ValueId },
-}
-
-// This is necessary because unfortunately the malachite types are not
-// serializable.
-impl From<malachite_consensus::WalEntry<MalachiteContext>> for WalEntry {
-    fn from(entry: malachite_consensus::WalEntry<MalachiteContext>) -> Self {
-        use malachite_consensus::WalEntry as MalachiteWalEntry;
-        match entry {
-            MalachiteWalEntry::ConsensusMsg(msg) => {
-                let signature = *msg.signature();
-                match msg {
-                    SignedConsensusMsg::Proposal(proposal) => {
-                        let proposal = proposal.message;
-                        WalEntry::SignedProposal(SignedProposal {
-                            proposal,
-                            signature,
-                        })
-                    }
-                    SignedConsensusMsg::Vote(vote) => {
-                        let vote = vote.message;
-                        WalEntry::SignedVote(SignedVote { vote, signature })
-                    }
-                }
-            }
-            MalachiteWalEntry::Timeout(timeout) => {
-                use malachite_types::TimeoutKind as Kind;
-                WalEntry::Timeout {
-                    kind: match timeout.kind {
-                        Kind::Propose => "propose",
-                        Kind::Prevote => "prevote",
-                        Kind::Precommit => "precommit",
-                        Kind::Rebroadcast => "rebroadcast",
-                    }
-                    .to_string(),
-                    round: timeout.round.into(),
-                }
-            }
-            MalachiteWalEntry::ProposedValue(proposed_value) => WalEntry::ProposedValue {
-                height: proposed_value.height,
-                round: proposed_value.round.into(),
-                valid_round: proposed_value.valid_round.into(),
-                proposer: proposed_value.proposer,
-                value: proposed_value.value.id(),
-                validity: proposed_value.validity.is_valid(),
-            },
-        }
-    }
-}
-
-impl From<Timeout> for WalEntry {
-    fn from(timeout: Timeout) -> Self {
-        use malachite_types::TimeoutKind as Kind;
-        WalEntry::Timeout {
-            kind: match timeout.kind {
-                Kind::Propose => "propose",
-                Kind::Prevote => "prevote",
-                Kind::Precommit => "precommit",
-                Kind::Rebroadcast => "rebroadcast",
-            }
-            .to_string(),
-            round: timeout.round.into(),
-        }
-    }
-}
-
-/// Convert a WAL entry to the corresponding malachite Input.
-pub(crate) fn convert_wal_entry_to_input(entry: WalEntry) -> Input<MalachiteContext> {
-    match entry {
-        WalEntry::SignedProposal(proposal) => {
-            tracing::debug!(
-                value = ?proposal.proposal.value,
-                from = %proposal.proposal.proposer,
-                height = %proposal.proposal.height,
-                round = %proposal.proposal.round,
-                "Recovering proposal from WAL"
-            );
-            let signed_msg =
-                malachite_types::SignedProposal::new(proposal.proposal, proposal.signature);
-            Input::Proposal(signed_msg)
-        }
-        WalEntry::SignedVote(vote) => {
-            tracing::debug!(
-                vote_type = ?vote.vote.r#type,
-                from = %vote.vote.validator_address,
-                height = %vote.vote.height,
-                round = %vote.vote.round,
-                "Recovering vote from WAL"
-            );
-            let signed_vote = malachite_types::SignedVote::new(vote.vote, vote.signature);
-            Input::Vote(signed_vote)
-        }
-        WalEntry::Timeout { kind, round } => {
-            let timeout_kind = match kind.as_str() {
-                "propose" => malachite_types::TimeoutKind::Propose,
-                "prevote" => malachite_types::TimeoutKind::Prevote,
-                "precommit" => malachite_types::TimeoutKind::Precommit,
-                "rebroadcast" => malachite_types::TimeoutKind::Rebroadcast,
-                _ => unreachable!(),
-            };
-            let timeout = Timeout::new(round.into_inner(), timeout_kind);
-            tracing::debug!(
-                timeout = ?timeout,
-                "Recovering timeout from WAL"
-            );
-            Input::TimeoutElapsed(timeout)
-        }
-        WalEntry::ProposedValue {
-            height,
-            round,
-            valid_round,
-            proposer,
-            value,
-            validity,
-        } => {
-            tracing::debug!(
-                height = %height,
-                round = %round,
-                value = ?value,
-                "Recovering proposed value from WAL"
-            );
-            let proposed_value = ProposedValue {
-                height,
-                round: round.into_inner(),
-                valid_round: valid_round.into_inner(),
-                proposer,
-                value: ConsensusValue::new(value),
-                validity: if validity {
-                    malachite_types::Validity::Valid
-                } else {
-                    malachite_types::Validity::Invalid
-                },
-            };
-            let peer_id =
-                PeerId::from_bytes(&proposer.to_be_bytes()).expect("Invalid proposer address");
-            Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Sync(peer_id))
-        }
-        _ => unreachable!(),
-    }
+    Decision { height: u64, value: V },
 }
 
 /// A write-ahead log that writes to a file.
@@ -200,11 +61,7 @@ pub struct FileWalSink {
 }
 
 impl FileWalSink {
-    pub fn new(
-        address: &ValidatorAddress,
-        height: &Height,
-        wal_dir: &Path,
-    ) -> std::io::Result<Self> {
+    pub fn new(address: &impl ToString, height: u64, wal_dir: &Path) -> std::io::Result<Self> {
         // Create the WAL directory if it doesn't exist
         std::fs::create_dir_all(wal_dir)?;
 
@@ -254,8 +111,8 @@ impl Drop for FileWalSink {
     }
 }
 
-impl WalSink for FileWalSink {
-    fn append(&mut self, entry: WalEntry) {
+impl<V: Serialize, A: Serialize> WalSink<V, A> for FileWalSink {
+    fn append(&mut self, entry: WalEntry<V, A>) {
         // Check if this entry is a decision
         if matches!(entry, WalEntry::Decision { .. }) {
             self.has_decision = true;
@@ -277,8 +134,8 @@ impl WalSink for FileWalSink {
 /// A write-ahead log that does nothing.
 pub(crate) struct NoopWal;
 
-impl WalSink for NoopWal {
-    fn append(&mut self, entry: WalEntry) {
+impl<V: Debug, A: Debug> WalSink<V, A> for NoopWal {
+    fn append(&mut self, entry: WalEntry<V, A>) {
         tracing::debug!("NoopWal: Appending entry: {:?}", entry);
     }
 
@@ -293,7 +150,7 @@ pub(crate) mod recovery {
     use super::*;
 
     /// Extract the height from the filename of the write-ahead log file.
-    pub(crate) fn extract_height_from_filename(path: &Path) -> Height {
+    pub(crate) fn extract_height_from_filename(path: &Path) -> u64 {
         let filename = path.file_name().unwrap_or_default().to_string_lossy();
 
         // Expect format: "wal-{validator}-{height}.json"
@@ -303,23 +160,19 @@ pub(crate) mod recovery {
             .and_then(|s| s.split('-').nth(1))
             .unwrap_or_default();
 
-        let height = height_str.parse::<u64>().unwrap_or_else(|_| {
+        height_str.parse::<u64>().unwrap_or_else(|_| {
             tracing::warn!(
                 filename = %filename,
                 path = %path.display(),
                 "Failed to parse height from filename, using 0"
             );
             0
-        });
-
-        Height::try_from(height).expect("block number out of range")
+        })
     }
 
     /// Collect all the write-ahead log files in the given directory. The result
     /// is sorted by height.
-    pub(crate) fn collect_wal_files(
-        wal_dir: &Path,
-    ) -> Result<Vec<(Height, PathBuf)>, std::io::Error> {
+    pub(crate) fn collect_wal_files(wal_dir: &Path) -> Result<Vec<(u64, PathBuf)>, std::io::Error> {
         let mut files = Vec::new();
         let dir = fs::read_dir(wal_dir).map_err(|e| {
             std::io::Error::other(format!(
@@ -348,7 +201,11 @@ pub(crate) mod recovery {
     }
 
     /// Read the entries from the write-ahead log file.
-    pub(crate) fn read_entries(path: &Path) -> Result<Vec<WalEntry>, std::io::Error> {
+    pub(crate) fn read_entries<V, A>(path: &Path) -> Result<Vec<WalEntry<V, A>>, std::io::Error>
+    where
+        V: for<'de> Deserialize<'de>,
+        A: for<'de> Deserialize<'de>,
+    {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
         let mut entries = Vec::new();
@@ -356,7 +213,7 @@ pub(crate) mod recovery {
         for (line_num, line) in reader.lines().enumerate() {
             let line = line?;
             if !line.trim().is_empty() {
-                let entry: WalEntry = serde_json::from_str(&line).map_err(|e| {
+                let entry: WalEntry<V, A> = serde_json::from_str(&line).map_err(|e| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
                         format!(
@@ -374,9 +231,14 @@ pub(crate) mod recovery {
     }
 
     /// Recover all incomplete heights from the write-ahead log.
-    pub(crate) fn recover_incomplete_heights(
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
-    ) -> Result<Vec<(Height, Vec<WalEntry>)>, std::io::Error> {
+    ) -> Result<Vec<(u64, Vec<WalEntry<V, A>>)>, std::io::Error>
+    where
+        V: for<'de> Deserialize<'de>,
+        A: for<'de> Deserialize<'de>,
+    {
         // Check if the WAL directory exists
         if !wal_dir.exists() {
             tracing::info!(

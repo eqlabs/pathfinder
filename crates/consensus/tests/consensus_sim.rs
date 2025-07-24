@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use common::{ConsensusValue, NodeAddress};
 use ed25519_consensus::SigningKey;
-use malachite_signing_ed25519::PublicKey;
-use p2p_proto::common::{Address, Hash};
 use pathfinder_consensus::*;
-use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout, Duration};
 use tracing::{error, info};
@@ -19,8 +17,7 @@ async fn consensus_simulation() {
     const NUM_VALIDATORS: usize = 3;
     const NUM_HEIGHTS: u64 = 10;
 
-    let value_hash = Hash(Felt::from_hex_str("0xabcdef").unwrap());
-    let consensus_value = ConsensusValue::new(value_hash);
+    let consensus_value = ConsensusValue("Hello, world!".to_string());
 
     // Create validators and channels
     let mut validators = vec![];
@@ -35,20 +32,20 @@ async fn consensus_simulation() {
     for i in 1..=NUM_VALIDATORS {
         let sk = SigningKey::new(rand::rngs::OsRng);
         let pk = sk.verification_key();
-        let addr = ValidatorAddress::from(Address(Felt::from_hex_str(&format!("0x{i}")).unwrap()));
+        let addr = NodeAddress(format!("0x{i}"));
         let pubkey = PublicKey::from_bytes(pk.to_bytes());
 
         validator_set.push(Validator {
-            address: addr,
+            address: addr.clone(),
             public_key: pubkey,
             voting_power: 1,
         });
 
         let (tx, rx) = mpsc::unbounded_channel();
-        senders.insert(addr, tx);
-        receivers.insert(addr, rx);
+        senders.insert(addr.clone(), tx);
+        receivers.insert(addr.clone(), rx);
 
-        validators.push((addr, sk));
+        validators.push((addr.clone(), sk));
     }
 
     // Create validator set
@@ -73,8 +70,8 @@ async fn consensus_simulation() {
             let mut current_height = 1;
 
             while current_height <= NUM_HEIGHTS {
-                let height = Height::try_from(current_height).unwrap();
-                let config = Config::new(addr).with_wal_dir(wal_dir.clone());
+                let height = current_height;
+                let config = Config::new(addr.clone()).with_wal_dir(wal_dir.clone());
                 let mut consensus = Consensus::new(config);
                 consensus
                     .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
@@ -97,9 +94,9 @@ async fn consensus_simulation() {
 
                                 let proposal = Proposal {
                                     height: h,
-                                    round: r,
-                                    proposer: addr,
-                                    pol_round: Round::from(0),
+                                    round: Round::new(r),
+                                    proposer: addr.clone(),
+                                    pol_round: Round::nil(),
                                     value: consensus_value.clone(),
                                 };
 
@@ -121,7 +118,7 @@ async fn consensus_simulation() {
                                     pretty_addr(&addr)
                                 );
                                 let mut decisions = decisions.lock().unwrap();
-                                decisions.insert((addr, h), value);
+                                decisions.insert((addr.clone(), h), value);
                             }
 
                             ConsensusEvent::Error(error) => {
@@ -187,7 +184,7 @@ async fn consensus_simulation() {
         let decisions_guard = decisions.lock().unwrap();
         let height_decisions: Vec<_> = decisions_guard
             .iter()
-            .filter(|((_, h), _)| *h == Height::try_from(height).unwrap())
+            .filter(|((_, h), _)| *h == height)
             .map(|(_, hash)| hash)
             .collect();
 
@@ -197,7 +194,7 @@ async fn consensus_simulation() {
     }
 }
 
-fn pretty_addr(addr: &ValidatorAddress) -> String {
+fn pretty_addr(addr: &NodeAddress) -> String {
     let addr_str = addr.to_string();
     addr_str.chars().skip(addr_str.len() - 4).collect()
 }
