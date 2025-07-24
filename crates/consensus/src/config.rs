@@ -3,15 +3,13 @@ use std::time::Duration;
 
 use malachite_types::{ThresholdParams, TimeoutKind};
 
-use crate::{Height, ValidatorAddress};
-
 /// The configuration for the consensus engine.
 #[derive(Clone, Debug, Default)]
-pub struct Config {
+pub struct Config<A> {
     /// The address of the validator.
-    pub address: ValidatorAddress,
+    pub address: A,
     /// The initial height.
-    pub initial_height: Height,
+    pub initial_height: u64,
     /// The threshold parameters.
     pub threshold_params: ThresholdParams,
     /// The timeout configuration.
@@ -20,12 +18,12 @@ pub struct Config {
     pub history_depth: u64,
     /// The directory to store the write-ahead log.
     pub wal_dir: PathBuf,
-}
+} // TODO: Malachite types shouldn't be exposed to the outside! *****
 
-impl Config {
+impl<A: Default> Config<A> {
     /// Create a new consensus config with the default values for a single
     /// validator.
-    pub fn new(address: ValidatorAddress) -> Self {
+    pub fn new(address: A) -> Self {
         Self {
             address,
             history_depth: 10,
@@ -35,7 +33,7 @@ impl Config {
     }
 
     /// Set the initial height.
-    pub fn with_initial_height(mut self, height: Height) -> Self {
+    pub fn with_initial_height(mut self, height: u64) -> Self {
         self.initial_height = height;
         self
     }

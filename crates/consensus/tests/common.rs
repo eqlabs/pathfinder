@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use pathfinder_consensus::{Consensus, ConsensusEvent};
+use pathfinder_consensus::{Consensus, ConsensusEvent, ValidatorAddress, ValuePayload};
 use tokio::time::advance;
 use tracing_subscriber::EnvFilter;
 
@@ -21,14 +21,14 @@ pub fn setup_tracing_full() {
 /// Advances simulated time and polls `Consensus` until a matching event is seen
 /// or max attempts are hit. Returns the matching event if found.
 #[allow(dead_code)]
-pub async fn drive_until<F>(
-    consensus: &mut Consensus,
+pub async fn drive_until<V: ValuePayload + 'static, A: ValidatorAddress + 'static, F>(
+    consensus: &mut Consensus<V, A>,
     tick: Duration,
     max_attempts: usize,
     mut match_fn: F,
-) -> Option<ConsensusEvent>
+) -> Option<ConsensusEvent<V, A>>
 where
-    F: FnMut(&ConsensusEvent) -> bool,
+    F: FnMut(&ConsensusEvent<V, A>) -> bool,
 {
     for _ in 0..max_attempts {
         advance(tick).await;
