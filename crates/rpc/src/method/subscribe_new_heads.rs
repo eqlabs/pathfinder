@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use axum::async_trait;
 use pathfinder_common::BlockNumber;
 use tokio::sync::mpsc;
 
@@ -51,7 +50,6 @@ impl crate::dto::SerializeForVersion for Notification {
 
 const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewHeads";
 
-#[async_trait]
 impl RpcSubscriptionFlow for SubscribeNewHeads {
     type Params = Option<Params>;
     type Notification = Notification;

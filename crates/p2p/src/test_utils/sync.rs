@@ -1,7 +1,6 @@
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
 use futures::future::BoxFuture;
 use futures::{AsyncRead, AsyncWrite};
 use p2p_proto::{ToProtobuf, TryFromProtobuf};
@@ -97,7 +96,6 @@ impl<P, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize>
     }
 }
 
-#[async_trait]
 impl<P, Req, Resp, ProstReq, ProstResp, const RESPONSE_SIZE_LIMIT: usize> Codec
     for TestCodec<P, Req, Resp, ProstReq, ProstResp, RESPONSE_SIZE_LIMIT>
 where

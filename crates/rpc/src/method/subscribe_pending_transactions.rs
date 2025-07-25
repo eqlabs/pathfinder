@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use axum::async_trait;
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockNumber, ContractAddress, TransactionHash};
 use tokio::sync::mpsc;
@@ -59,7 +58,6 @@ impl crate::dto::SerializeForVersion for Notification {
 
 const SUBSCRIPTION_NAME: &str = "starknet_subscriptionPendingTransactions";
 
-#[async_trait]
 impl RpcSubscriptionFlow for SubscribePendingTransactions {
     type Params = Option<Params>;
     type Notification = Notification;

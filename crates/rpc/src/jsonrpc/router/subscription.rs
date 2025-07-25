@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::future::Future;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
@@ -95,7 +96,6 @@ impl Subscriptions {
 ///   This is done to ensure that no blocks are missed between the previous
 ///   catch-up and the subscription.
 /// - Stream the first active update, and then keep streaming the rest.
-#[axum::async_trait]
 pub trait RpcSubscriptionFlow: Send + Sync {
     /// `params` field of the subscription request.
     type Params: crate::dto::DeserializeForVersion + Clone + Send + Sync + 'static;
@@ -120,22 +120,22 @@ pub trait RpcSubscriptionFlow: Send + Sync {
     /// range is inclusive on both ends. If there is no historical data in the
     /// range, return an empty vec. If the subscription endpoint does not
     /// support catching up, leave this method unimplemented.
-    async fn catch_up(
+    fn catch_up(
         _state: &RpcContext,
         _params: &Self::Params,
         _from: BlockNumber,
         _to: BlockNumber,
-    ) -> Result<CatchUp<Self::Notification>, RpcError> {
-        Ok(Default::default())
+    ) -> impl Future<Output = Result<CatchUp<Self::Notification>, RpcError>> + Send {
+        async { Ok(Default::default()) }
     }
 
     /// Subscribe to active updates.
-    async fn subscribe(
+    fn subscribe(
         state: RpcContext,
         version: RpcVersion,
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
-    ) -> Result<(), RpcError>;
+    ) -> impl Future<Output = Result<(), RpcError>> + Send;
 }
 
 pub struct CatchUp<T> {
@@ -900,7 +900,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use axum::async_trait;
     use axum::extract::ws::Message;
     use pathfinder_common::{BlockHash, BlockHeader, BlockNumber};
     use pathfinder_crypto::Felt;
@@ -926,7 +925,6 @@ mod tests {
     async fn test_error_returned_from_catch_up() {
         struct ErrorFromCatchUp;
 
-        #[async_trait]
         impl RpcSubscriptionFlow for ErrorFromCatchUp {
             type Params = Params;
             type Notification = serde_json::Value;
@@ -1004,7 +1002,6 @@ mod tests {
     async fn test_error_returned_from_subscribe() {
         struct ErrorFromSubscribe;
 
-        #[async_trait]
         impl RpcSubscriptionFlow for ErrorFromSubscribe {
             type Params = Params;
             type Notification = serde_json::Value;
@@ -1082,7 +1079,6 @@ mod tests {
     async fn test_max_history_unlimited() {
         struct SubscribeUnlimitedHistory;
 
-        #[async_trait]
         impl RpcSubscriptionFlow for SubscribeUnlimitedHistory {
             type Params = Params;
             type Notification = BlockNumber;
@@ -1193,7 +1189,6 @@ mod tests {
             }
         }
 
-        #[async_trait]
         impl RpcSubscriptionFlow for SubscribeLimitedHistory {
             type Params = ParamsLimitedHistory;
             type Notification = serde_json::Value;
@@ -1309,7 +1304,6 @@ mod tests {
             }
         }
 
-        #[async_trait]
         impl RpcSubscriptionFlow for SubscribeLimitedHistory {
             type Params = ParamsLimitedHistory;
             type Notification = BlockNumber;
