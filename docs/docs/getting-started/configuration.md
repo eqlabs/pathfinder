@@ -27,7 +27,8 @@ docker run \
   -v $HOME/pathfinder:/usr/share/pathfinder/data \
   eqlabs/pathfinder:latest \
   --network mainnet \
-  --monitor-address=0.0.0.0:9000
+  --monitor-address=0.0.0.0:9000 \
+  --rpc.websocket.enabled \
 ```
 
 If you built Pathfinder from source, pass options after `--` so cargo doesn’t parse them:
