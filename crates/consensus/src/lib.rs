@@ -1,3 +1,127 @@
+//! # Pathfinder Consensus
+//!
+//! A Byzantine Fault Tolerant (BFT) consensus engine for Starknet nodes.
+//!
+//! ## Overview
+//!
+//! This crate provides a consensus engine for Starknet nodes that wraps the
+//! Malachite implementation of the Tendermint BFT consensus algorithm. It's
+//! designed to be generic over validator addresses and consensus values, making
+//! it suitable for Starknet's consensus requirements.
+//!
+//! ## Core Concepts
+//!
+//! ### ValidatorAddress Trait
+//!
+//! Your validator address type must implement the `ValidatorAddress` trait,
+//! which requires:
+//! - `Sync + Send`: Thread-safe and sendable across threads
+//! - `Ord + Display + Debug + Default + Clone`: Standard Rust traits for
+//!   ordering, display, debugging, default values, and cloning
+//! - `Into<Vec<u8>>`: Convertible to bytes for serialization
+//! - `Serialize + DeserializeOwned`: Serde serialization support
+//!
+//! ### ValuePayload Trait
+//!
+//! Your consensus value type must implement the `ValuePayload` trait, which
+//! requires:
+//! - `Sync + Send`: Thread-safe and sendable across threads
+//! - `Ord + Display + Debug + Default + Clone`: Standard Rust traits
+//! - `Serialize + DeserializeOwned`: Serde serialization support
+//!
+//! ### Consensus Engine
+//!
+//! The main `Consensus<V, A>` struct is generic over:
+//! - `V`: Your consensus value type (must implement `ValuePayload`)
+//! - `A`: Your validator address type (must implement `ValidatorAddress`)
+//!
+//! ## Usage Example
+//!
+//! ```rust
+//! use pathfinder_consensus::*;
+//! use serde::{Deserialize, Serialize};
+//!
+//! // Define your validator address type
+//! #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+//! struct MyAddress(String);
+//!
+//! impl std::fmt::Display for MyAddress {
+//!     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//!         write!(f, "{}", self.0)
+//!     }
+//! }
+//!
+//! impl From<MyAddress> for Vec<u8> {
+//!     fn from(addr: MyAddress) -> Self {
+//!         addr.0.into_bytes()
+//!     }
+//! }
+//!
+//! // Define your consensus value type
+//! #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+//! struct BlockData(String);
+//!
+//! impl std::fmt::Display for BlockData {
+//!     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//!         write!(f, "{}", self.0)
+//!     }
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // Create configuration
+//!     let my_address = MyAddress("validator_1".to_string());
+//!     let config = Config::new(my_address.clone());
+//!
+//!     // Create consensus engine
+//!     let mut consensus = Consensus::new(config);
+//!
+//!     // Start consensus at height 1
+//!     let validator_set = ValidatorSet::new(vec![Validator::new(
+//!         my_address.clone(),
+//!         PublicKey::from_bytes([0; 32]),
+//!     )]);
+//!
+//!     consensus.handle_command(ConsensusCommand::StartHeight(1, validator_set));
+//!
+//!     // Poll for events
+//!     while let Some(event) = consensus.next_event().await {
+//!         match event {
+//!             ConsensusEvent::RequestProposal { height, round } => {
+//!                 println!("Need to propose at height {}, round {}", height, round);
+//!             }
+//!             ConsensusEvent::Decision { height, value } => {
+//!                 println!("Consensus reached at height {}: {:?}", height, value);
+//!             }
+//!             ConsensusEvent::Gossip(message) => {
+//!                 println!("Need to gossip: {:?}", message);
+//!             }
+//!             ConsensusEvent::Error(error) => {
+//!                 eprintln!("Consensus error: {}", error);
+//!             }
+//!         }
+//!     }
+//! }
+//! ```
+//!
+//! ## Commands and Events
+//!
+//! The consensus engine operates on a command/event model:
+//!
+//! - **Commands**: Send commands to the consensus engine via `handle_command()`
+//! - **Events**: Poll for events from the consensus engine via
+//!   `next_event().await`
+//!
+//! ## Crash Recovery
+//!
+//! The consensus engine supports crash recovery through write-ahead logging:
+//!
+//! ```rust
+//! // Recover from a previous crash
+//! let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
+//! let mut consensus = Consensus::recover(config, validator_sets);
+//! ```
+
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
@@ -15,10 +139,44 @@ mod config;
 mod internal;
 mod wal;
 
-/// A signature for the malachite context.
+/// A cryptographic signature for consensus messages.
+///
+/// This type is used to sign proposals and votes in the consensus protocol
+/// to ensure authenticity and integrity of consensus messages.
 pub type Signature = malachite_signing_ed25519::Signature;
 
-/// A trait for consensusvalidator addresses.
+/// A trait for consensus validator addresses.
+///
+/// This trait defines the requirements for validator address types used in the
+/// consensus engine. Your validator address type must implement all the
+/// required traits to be compatible with the consensus engine.
+///
+/// ## Required Traits
+///
+/// - `Sync + Send`: Thread-safe and sendable across threads
+/// - `Ord + Display + Debug + Default + Clone`: Standard Rust traits for
+///   ordering, display, debugging, default values, and cloning
+/// - `Into<Vec<u8>>`: Convertible to bytes for serialization
+/// - `Serialize + DeserializeOwned`: Serde serialization support
+///
+/// ## Example Implementation
+///
+/// ```rust
+/// #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// struct MyAddress(String);
+///
+/// impl std::fmt::Display for MyAddress {
+///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "{}", self.0)
+///     }
+/// }
+///
+/// impl From<MyAddress> for Vec<u8> {
+///     fn from(addr: MyAddress) -> Self {
+///         addr.0.into_bytes()
+///     }
+/// }
+/// ```
 pub trait ValidatorAddress:
     Sync + Send + Ord + Display + Debug + Default + Clone + Into<Vec<u8>> + Serialize + DeserializeOwned
 {
@@ -38,6 +196,29 @@ impl<T> ValidatorAddress for T where
 }
 
 /// A trait for consensus value payloads.
+///
+/// This trait defines the requirements for consensus value types used in the
+/// consensus engine. Your consensus value type must implement all the required
+/// traits to be compatible with the consensus engine.
+///
+/// ## Required Traits
+///
+/// - `Sync + Send`: Thread-safe and sendable across threads
+/// - `Ord + Display + Debug + Default + Clone`: Standard Rust traits
+/// - `Serialize + DeserializeOwned`: Serde serialization support
+///
+/// ## Example Implementation
+///
+/// ```rust
+/// #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+/// struct BlockData(String);
+///
+/// impl std::fmt::Display for BlockData {
+///     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+///         write!(f, "{}", self.0)
+///     }
+/// }
+/// ```
 pub trait ValuePayload:
     Sync + Send + Ord + Display + Debug + Default + Clone + Serialize + DeserializeOwned
 {
@@ -48,6 +229,40 @@ impl<T> ValuePayload for T where
 }
 
 /// Pathfinder consensus engine.
+///
+/// This is the main consensus engine for Starknet nodes that implements
+/// Byzantine Fault Tolerant (BFT) consensus using the Malachite implementation
+/// of Tendermint. It's generic over validator addresses and consensus values,
+/// making it suitable for Starknet's consensus requirements.
+///
+/// ## Generic Parameters
+///
+/// - `V`: Your consensus value type (must implement `ValuePayload`)
+/// - `A`: Your validator address type (must implement `ValidatorAddress`)
+///
+/// ## Usage
+///
+/// ```rust
+/// let config = Config::new(my_address);
+/// let mut consensus = Consensus::new(config);
+///
+/// // Start consensus at a height
+/// consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+///
+/// // Poll for events
+/// while let Some(event) = consensus.next_event().await {
+///     // Handle events
+/// }
+/// ```
+///
+/// ## Crash Recovery
+///
+/// The consensus engine supports crash recovery through write-ahead logging:
+///
+/// ```rust
+/// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
+/// let mut consensus = Consensus::recover(config, validator_sets);
+/// ```
 pub struct Consensus<V: ValuePayload + 'static, A: ValidatorAddress + 'static> {
     internal: HashMap<u64, InternalConsensus<V, A>>,
     event_queue: VecDeque<ConsensusEvent<V, A>>,
@@ -57,6 +272,18 @@ pub struct Consensus<V: ValuePayload + 'static, A: ValidatorAddress + 'static> {
 
 impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     /// Create a new consensus engine for the current validator.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The consensus configuration containing validator address,
+    ///   timeouts, and other settings
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// let config = Config::new(my_address);
+    /// let mut consensus = Consensus::new(config);
+    /// ```
     pub fn new(config: Config<A>) -> Self {
         Self {
             internal: HashMap::new(),
@@ -66,7 +293,23 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
         }
     }
 
-    /// Recover all heights from the write-ahead log.
+    /// Recover recent heights from the write-ahead log.
+    ///
+    /// This method is used to recover consensus state after a crash or restart.
+    /// It reads the write-ahead log and reconstructs the consensus state for
+    /// all incomplete heights.
+    ///
+    /// ## Arguments
+    ///
+    /// - `config`: The consensus configuration
+    /// - `validator_sets`: A provider for validator sets at different heights
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
+    /// let mut consensus = Consensus::recover(config, validator_sets);
+    /// ```
     pub fn recover<P: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<P>,
@@ -160,6 +403,27 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     }
 
     /// Feed a command into the consensus engine.
+    ///
+    /// This method is the primary way to interact with the consensus engine.
+    /// Commands include starting new heights, submitting proposals, and
+    /// processing votes.
+    ///
+    /// ## Arguments
+    ///
+    /// - `cmd`: The command to process
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// // Start a new height
+    /// consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+    ///
+    /// // Submit a proposal
+    /// consensus.handle_command(ConsensusCommand::Proposal(signed_proposal));
+    ///
+    /// // Process a vote
+    /// consensus.handle_command(ConsensusCommand::Vote(signed_vote));
+    /// ```
     pub fn handle_command(&mut self, cmd: ConsensusCommand<V, A>) {
         match cmd {
             // Start a new height.
@@ -191,6 +455,36 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     }
 
     /// Poll all engines for an event.
+    ///
+    /// This method should be called regularly to process events from the
+    /// consensus engine. Events include requests for proposals, decisions,
+    /// gossip messages, and errors.
+    ///
+    /// ## Returns
+    ///
+    /// Returns `Some(event)` if an event is available, or `None` if no events
+    /// are ready.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// while let Some(event) = consensus.next_event().await {
+    ///     match event {
+    ///         ConsensusEvent::RequestProposal { height, round } => {
+    ///             // Build and submit a proposal
+    ///         }
+    ///         ConsensusEvent::Decision { height, value } => {
+    ///             // Consensus reached, process the value
+    ///         }
+    ///         ConsensusEvent::Gossip(message) => {
+    ///             // Send message to peers
+    ///         }
+    ///         ConsensusEvent::Error(error) => {
+    ///             // Handle error
+    ///         }
+    ///     }
+    /// }
+    /// ```
     pub async fn next_event(&mut self) -> Option<ConsensusEvent<V, A>> {
         let mut finished_heights = Vec::new();
         // Drain each internal engine.
@@ -242,6 +536,22 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
 
     /// Check if a specific height has been finalized (i.e., a decision has been
     /// reached)
+    ///
+    /// ## Arguments
+    ///
+    /// - `height`: The height to check
+    ///
+    /// ## Returns
+    ///
+    /// Returns `true` if the height has been finalized, `false` otherwise.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// if consensus.is_height_finalized(height) {
+    ///     println!("Height {} has been finalized", height);
+    /// }
+    /// ```
     pub fn is_height_finalized(&self, height: u64) -> bool {
         if let Some(engine) = self.internal.get(&height) {
             engine.is_finalized()
@@ -259,18 +569,32 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
 }
 
 /// A round number (or `None` if the round is nil).
+///
+/// This type represents a consensus round number. A round can be either a
+/// specific round number or nil (None), which represents a special state in the
+/// consensus protocol.
+///
+/// ## Example
+///
+/// ```rust
+/// let round = Round::new(5); // Round 5
+/// let nil_round = Round::nil(); // Nil round
+/// ```
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Round(pub Option<u32>);
 
 impl Round {
+    /// Create a new round with the given round number.
     pub fn new(round: u32) -> Self {
         Self(Some(round))
     }
 
+    /// Create a nil round.
     pub fn nil() -> Self {
         Self(None)
     }
 
+    /// Get the round number as a u32, if it's not nil.
     pub fn as_u32(&self) -> Option<u32> {
         self.0
     }
@@ -313,10 +637,15 @@ impl Debug for Round {
 /// round. It contains the proposed block value along with additional metadata.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Proposal<V, A> {
+    /// The blockchain height
     pub height: u64,
+    /// The consensus round number
     pub round: Round,
+    /// The proposed consensus value
     pub value: V,
+    /// The POL round for which the proposal is for
     pub pol_round: Round,
+    /// The address of the proposer
     pub proposer: A,
 }
 
@@ -333,7 +662,9 @@ impl<V: Debug, A: Debug> std::fmt::Debug for Proposal<V, A> {
 /// The type of vote.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum VoteType {
+    /// A preliminary vote
     Prevote,
+    /// A final vote that commits to a value
     Precommit,
 }
 
@@ -344,10 +675,15 @@ pub enum VoteType {
 /// round number, and the block value being voted on.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Vote<V, A> {
+    /// The type of vote (Prevote or Precommit)
     pub r#type: VoteType,
+    /// The blockchain height
     pub height: u64,
+    /// The consensus round number
     pub round: Round,
+    /// The value being voted on (None for nil votes)
     pub value: Option<V>,
+    /// The address of the validator casting the vote
     pub validator_address: A,
 }
 
@@ -366,6 +702,9 @@ impl<V: Debug, A: Debug> std::fmt::Debug for Vote<V, A> {
 }
 
 /// A fully validated, signed proposal ready to enter consensus.
+///
+/// This type wraps a proposal with a cryptographic signature to ensure
+/// authenticity and integrity.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SignedProposal<V, A> {
     pub proposal: Proposal<V, A>,
@@ -373,6 +712,9 @@ pub struct SignedProposal<V, A> {
 }
 
 /// A signed vote.
+///
+/// This type wraps a vote with a cryptographic signature to ensure
+/// authenticity and integrity.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SignedVote<V, A> {
     pub vote: Vote<V, A>,
@@ -394,6 +736,10 @@ impl<V: Debug, A: Debug> std::fmt::Debug for SignedVote<V, A> {
 }
 
 /// A public key for the consensus protocol.
+///
+/// This type is used to verify signatures on proposals and votes in the
+/// consensus protocol. Each validator has an associated public key that is used
+/// to authenticate their messages.
 pub type PublicKey = malachite_signing_ed25519::PublicKey;
 
 /// A validator's voting power.
@@ -405,8 +751,11 @@ pub type VotingPower = u64;
 /// them. The voting power determines their weight in consensus decisions.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Validator<A> {
+    /// The validator's address
     pub address: A,
+    /// The validator's public key for signature verification
     pub public_key: PublicKey,
+    /// The validator's voting power (weight in consensus)
     pub voting_power: VotingPower,
 }
 
@@ -418,6 +767,8 @@ impl<A: Debug> std::fmt::Debug for Validator<A> {
 
 impl<A> Validator<A> {
     /// Create a new validator with the given address and public key.
+    ///
+    /// The voting power defaults to 1.
     pub fn new(address: A, public_key: PublicKey) -> Self {
         Self {
             address,
@@ -427,6 +778,8 @@ impl<A> Validator<A> {
     }
 
     /// Set the voting power for the validator.
+    ///
+    /// This method returns `self` for method chaining.
     pub fn with_voting_power(mut self, voting_power: VotingPower) -> Self {
         self.voting_power = voting_power;
         self
@@ -434,22 +787,33 @@ impl<A> Validator<A> {
 }
 
 /// A validator set represents a group of consensus participants.
+///
+/// The validator set defines who can participate in consensus at a given
+/// height. Each validator in the set has a voting power that determines their
+/// weight in consensus decisions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidatorSet<A> {
-    pub validators: Vec<Validator<A>>, /* > */
+    /// The list of validators in the set
+    pub validators: Vec<Validator<A>>,
 }
 
 impl<A> ValidatorSet<A> {
+    /// Create a new validator set with the given validators.
     pub fn new(validators: Vec<Validator<A>>) -> Self {
         Self { validators }
     }
 
+    /// Get the number of validators in the set.
     pub fn count(&self) -> usize {
         self.validators.len()
     }
 }
 
 /// Commands that the application can send into the consensus engine.
+///
+/// These commands represent the primary interface for interacting with the
+/// consensus engine. They allow the application to start new heights,
+/// submit proposals, and process votes.
 pub enum ConsensusCommand<V, A> {
     /// Start consensus at a given height with the validator set.
     StartHeight(u64, ValidatorSet<A>),
@@ -497,6 +861,9 @@ impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusCommand<V, A> {
 }
 
 /// A message to be gossiped to peers.
+///
+/// These messages represent network communication that needs to be sent to
+/// other validators in the network.
 #[derive(Clone, Debug)]
 pub enum NetworkMessage<V, A> {
     /// A complete, locally validated and signed proposal ready to be gossiped.
@@ -506,14 +873,28 @@ pub enum NetworkMessage<V, A> {
 }
 
 /// Events that the consensus engine emits for the application to handle.
+///
+/// These events represent the output of the consensus engine and tell the
+/// application what actions it needs to take.
 pub enum ConsensusEvent<V, A> {
     /// The consensus wants this message to be gossiped to peers.
+    ///
+    /// The application should send this message to all peers in the network.
     Gossip(NetworkMessage<V, A>),
     /// The consensus needs the app to build and inject a proposal.
+    ///
+    /// The application should create a proposal for the given height and round,
+    /// then submit it to the consensus engine.
     RequestProposal { height: u64, round: u32 },
     /// The consensus has reached a decision and committed a block.
+    ///
+    /// This event indicates that consensus has been reached for the given
+    /// height and the value should be committed to the blockchain.
     Decision { height: u64, value: V },
     /// An internal error occurred in consensus.
+    ///
+    /// The application should handle this error appropriately, possibly by
+    /// logging it or taking corrective action.
     Error(anyhow::Error),
 }
 
@@ -542,15 +923,33 @@ impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusEvent<V, A> {
 ///
 /// This is useful for handling validator set changes across heights.
 pub trait ValidatorSetProvider<A>: Send + Sync {
+    /// Get the validator set for the given height.
+    ///
+    /// ## Arguments
+    ///
+    /// - `height`: The blockchain height
+    ///
+    /// ## Returns
+    ///
+    /// Returns the validator set for the given height.
     fn get_validator_set(&self, height: u64) -> ValidatorSet<A>;
 }
 
 /// A validator set provider that always returns the same validator set.
+///
+/// This is a simple implementation of `ValidatorSetProvider` that returns
+/// the same validator set for all heights. This is useful for testing or
+/// for applications where the validator set doesn't change.
 pub struct StaticValidatorSetProvider<A> {
     validator_set: ValidatorSet<A>,
 }
 
 impl<A> StaticValidatorSetProvider<A> {
+    /// Create a new static validator set provider.
+    ///
+    /// ## Arguments
+    ///
+    /// - `validator_set`: The validator set to return for all heights
     pub fn new(validator_set: ValidatorSet<A>) -> Self {
         Self { validator_set }
     }
