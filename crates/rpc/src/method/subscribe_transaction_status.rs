@@ -6,13 +6,14 @@ use pathfinder_common::{BlockNumber, TransactionHash};
 use reply::transaction_status as status;
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::reply;
+use tokio::sync::watch::Receiver as WatchReceiver;
 use tokio::sync::{broadcast, mpsc};
 use tokio::time::MissedTickBehavior;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
-use crate::{Reorg, RpcVersion};
+use crate::{PendingData, Reorg, RpcVersion};
 
 pub struct SubscribeTransactionStatus;
 
@@ -135,77 +136,26 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                 last_execution_status: None,
                 last_block_number: BlockNumber::GENESIS, // Initial value not important.
             };
+
             let mut pending_data = state.pending_data.0.clone();
+            let storage = state.storage.clone();
+
+            if let Some((block_number, finality_status, execution_status)) =
+                current_known_tx_status(&mut pending_data, storage, tx_hash).await?
+            {
+                if sender
+                    .send(block_number, finality_status, execution_status)
+                    .await
+                    .is_err()
+                {
+                    // Subscription closing.
+                    break;
+                }
+            }
+
             let mut l2_blocks = state.notifications.l2_blocks.subscribe();
             let mut reorgs = state.notifications.reorgs.subscribe();
-            let storage = state.storage.clone();
-            // Check if we have the transaction in our database, and if so, send the
-            // relevant transaction status updates.
-            let (l1_state, tx_with_receipt) =
-                util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
-                    let mut conn = storage.connection().map_err(RpcError::InternalError)?;
-                    let db = conn.transaction().map_err(RpcError::InternalError)?;
-                    let l1_block_number = db.latest_l1_state().map_err(RpcError::InternalError)?;
-                    let tx_with_receipt = db
-                        .transaction_with_receipt(tx_hash)
-                        .map_err(RpcError::InternalError)?;
-                    Ok((l1_block_number, tx_with_receipt))
-                })
-                .await
-                .map_err(|e| RpcError::InternalError(e.into()))??;
-            if let Some((_, receipt, _, block_number)) = tx_with_receipt {
-                // We already have the transaction in the database.
-                if let Some(parent) = block_number.parent() {
-                    // This transaction was pending in the parent block.
-                    if sender
-                        .send(parent, FinalityStatus::Received, None)
-                        .await
-                        .is_err()
-                    {
-                        // Subscription closing.
-                        break;
-                    }
-                }
-                if sender
-                    .send(
-                        block_number,
-                        FinalityStatus::AcceptedOnL2,
-                        Some(receipt.execution_status.clone()),
-                    )
-                    .await
-                    .is_err()
-                {
-                    // Subscription closing.
-                    break;
-                }
-                if let Some(l1_state) = l1_state {
-                    if l1_state.block_number >= block_number {
-                        if sender
-                            .send(
-                                l1_state.block_number,
-                                FinalityStatus::AcceptedOnL1,
-                                Some(receipt.execution_status.clone()),
-                            )
-                            .await
-                            .is_err()
-                        {
-                            // Subscription closing.
-                            break;
-                        }
-                    }
-                }
-            }
-            let pending = pending_data.borrow_and_update().clone();
-            if pending.transactions().iter().any(|tx| tx.hash == tx_hash) {
-                if sender
-                    .send(pending.block_number(), FinalityStatus::Received, None)
-                    .await
-                    .is_err()
-                {
-                    // Subscription closing.
-                    break;
-                }
-            }
+
             // Stream transaction status updates.
             let mut interval = tokio::time::interval(if cfg!(test) {
                 Duration::from_secs(5)
@@ -355,6 +305,65 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     }
 }
 
+/// Check if the transaction is either in the pending data or in the database
+/// and provide the corresponding status.
+async fn current_known_tx_status(
+    pending_data: &mut WatchReceiver<PendingData>,
+    storage: pathfinder_storage::Storage,
+    tx_hash: TransactionHash,
+) -> Result<Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)>, RpcError> {
+    // Check the DB first since, in case the transaction can be found both in the
+    // pending data and DB, the DB would contain "fresher" transaction status
+    // information.
+    let (l1_state, tx_with_receipt) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+        let mut conn = storage.connection().map_err(RpcError::InternalError)?;
+        let db = conn.transaction().map_err(RpcError::InternalError)?;
+        let l1_block_number = db.latest_l1_state().map_err(RpcError::InternalError)?;
+        let tx_with_receipt = db
+            .transaction_with_receipt(tx_hash)
+            .map_err(RpcError::InternalError)?;
+        Ok((l1_block_number, tx_with_receipt))
+    })
+    .await
+    .map_err(|e| RpcError::InternalError(e.into()))??;
+
+    if let Some((_, receipt, _, block_number)) = tx_with_receipt {
+        // We already have the transaction in the database.
+        let execution_status = receipt.execution_status.clone();
+
+        let (block_number, finality_status, execution_status) = match l1_state {
+            Some(l1_state) if l1_state.block_number >= block_number => (
+                // NOTE: This is not necessarily the block in which the transaction was accepted on
+                // L1, but the block at which we are certain that the L1 state contains the
+                // transaction.
+                //
+                // I don't think there is a way for us to provide the information on the former.
+                l1_state.block_number,
+                FinalityStatus::AcceptedOnL1,
+                execution_status,
+            ),
+            _ => (block_number, FinalityStatus::AcceptedOnL2, execution_status),
+        };
+
+        return Ok(Some((
+            block_number,
+            finality_status,
+            Some(execution_status),
+        )));
+    }
+
+    let pending = pending_data.borrow_and_update().clone();
+    if pending.transactions().iter().any(|tx| tx.hash == tx_hash) {
+        return Ok(Some((
+            pending.block_number(),
+            FinalityStatus::Received,
+            None,
+        )));
+    }
+
+    Ok(None)
+}
+
 struct Sender<'a> {
     tx: &'a mpsc::Sender<SubscriptionMessage<Notification>>,
     tx_hash: TransactionHash,
@@ -434,35 +443,20 @@ mod tests {
                 ExecutionStatus::Succeeded,
                 None,
                 |subscription_id| {
-                    vec![
-                        serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "method": "starknet_subscriptionTransactionStatus",
-                            "params": {
-                                "result": {
-                                    "transaction_hash": "0x1",
-                                    "status": {
-                                        "finality_status": "RECEIVED",
-                                    }
-                                },
-                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                            }
-                        }),
-                        serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "method": "starknet_subscriptionTransactionStatus",
-                            "params": {
-                                "result": {
-                                    "transaction_hash": "0x1",
-                                    "status": {
-                                        "finality_status": "ACCEPTED_ON_L2",
-                                        "execution_status": "SUCCEEDED",
-                                    }
-                                },
-                                "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                            }
-                        })
-                    ]
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "SUCCEEDED",
+                                }
+                            },
+                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
+                        }
+                    })
                 },
             )
             .await;
@@ -564,36 +558,21 @@ mod tests {
             },
             None,
             |subscription_id| {
-                vec![
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "RECEIVED",
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "ACCEPTED_ON_L2",
-                                    "execution_status": "REVERTED",
-                                    "failure_reason": "tx revert"
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                ]
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "REVERTED",
+                                "failure_reason": "tx revert"
+                            }
+                        },
+                        "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
+                    }
+                })
             },
         )
         .await;
@@ -609,50 +588,21 @@ mod tests {
                 block_hash: Default::default(),
             }),
             |subscription_id| {
-                vec![
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "RECEIVED",
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "ACCEPTED_ON_L2",
-                                    "execution_status": "SUCCEEDED"
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "ACCEPTED_ON_L1",
-                                    "execution_status": "SUCCEEDED"
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                ]
-            },
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L1",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
+                    }
+                })
+            }
         )
         .await;
     }
@@ -669,51 +619,21 @@ mod tests {
                 block_hash: Default::default(),
             }),
             |subscription_id| {
-                vec![
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "RECEIVED",
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "ACCEPTED_ON_L2",
-                                    "execution_status": "REVERTED",
-                                    "failure_reason": "tx revert"
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                    serde_json::json!({
-                        "jsonrpc": "2.0",
-                        "method": "starknet_subscriptionTransactionStatus",
-                        "params": {
-                            "result": {
-                                "transaction_hash": "0x1",
-                                "status": {
-                                    "finality_status": "ACCEPTED_ON_L1",
-                                    "execution_status": "REVERTED",
-                                    "failure_reason": "tx revert"
-                                }
-                            },
-                            "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
-                        }
-                    }),
-                ]
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L1",
+                                "execution_status": "REVERTED",
+                                "failure_reason": "tx revert"
+                            }
+                        },
+                        "subscription_id": subscription_id.serialize(Serializer::new(RpcVersion::V08)).unwrap(),
+                    }
+                })
             },
         )
         .await;
@@ -757,6 +677,10 @@ mod tests {
                     Block {
                         block_number: BlockNumber::GENESIS + 2,
                         block_hash: BlockHash(Felt::from_u64(2)),
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        }],
                         transaction_receipts: vec![(
                             Receipt {
                                 transaction_hash: TransactionHash(Felt::from_u64(1)),
@@ -800,6 +724,10 @@ mod tests {
                     Block {
                         block_number: BlockNumber::GENESIS + 3,
                         block_hash: BlockHash(Felt::from_u64(3)),
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(5)),
+                            ..Default::default()
+                        }],
                         transaction_receipts: vec![(
                             Receipt {
                                 transaction_hash: TransactionHash(Felt::from_u64(5)),
@@ -820,13 +748,6 @@ mod tests {
                     Block {
                         block_number: BlockNumber::GENESIS + 4,
                         block_hash: BlockHash(Felt::from_u64(4)),
-                        transaction_receipts: vec![(
-                            Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(5)),
-                                ..Default::default()
-                            },
-                            vec![],
-                        )],
                         ..Default::default()
                     }
                     .into(),
@@ -871,7 +792,8 @@ mod tests {
                         "result": {
                             "transaction_hash": "0x1",
                             "status": {
-                                "finality_status": "RECEIVED",
+                                "finality_status": "ACCEPTED_ON_L1",
+                                "execution_status": "SUCCEEDED"
                             }
                         },
                         "subscription_id": subscription_id
@@ -953,6 +875,18 @@ mod tests {
                                 ..Default::default()
                             })
                             .unwrap();
+                            let (transactions, events_per_tx): (Vec<_>, Vec<_>) = block
+                                .transactions
+                                .into_iter()
+                                .zip(block.transaction_receipts)
+                                .map(|(tx, (receipt, events))| ((tx, receipt), events))
+                                .unzip();
+                            db.insert_transaction_data(
+                                block.block_number,
+                                &transactions,
+                                Some(&events_per_tx),
+                            )
+                            .unwrap();
                             db.commit().unwrap();
                         }
                     })
@@ -1004,7 +938,7 @@ mod tests {
     async fn test_transaction_already_exists_in_db(
         execution_status: ExecutionStatus,
         l1_state: Option<EthereumStateUpdate>,
-        expected: impl FnOnce(SubscriptionId) -> Vec<serde_json::Value>,
+        expected: impl FnOnce(SubscriptionId) -> serde_json::Value,
     ) -> (
         RpcRouter,
         mpsc::Receiver<Result<Message, RpcResponse>>,
@@ -1089,14 +1023,14 @@ mod tests {
 
         let subscription_id = crate::dto::Value::new(subscription_id, RpcVersion::V08);
         let subscription_id: SubscriptionId = subscription_id.deserialize().unwrap();
-        for msg in expected(subscription_id) {
-            let status = sender_rx.recv().await.unwrap().unwrap();
-            let json: serde_json::Value = match status {
-                Message::Text(json) => serde_json::from_str(&json).unwrap(),
-                _ => panic!("Expected text message"),
-            };
-            assert_eq!(json, msg);
-        }
+        let expected_msg = expected(subscription_id);
+        let status = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match status {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(json, expected_msg);
+
         // No more messages expected.
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(sender_rx.try_recv().is_err());
