@@ -764,7 +764,7 @@ pub type VotingPower = u64;
 ///
 /// Each validator has an associated address and public key to uniquely identify
 /// them. The voting power determines their weight in consensus decisions.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Validator<A> {
     /// The validator's address
     pub address: A,
@@ -812,9 +812,15 @@ pub struct ValidatorSet<A> {
     pub validators: Vec<Validator<A>>,
 }
 
-impl<A> ValidatorSet<A> {
+impl<A: Ord> ValidatorSet<A> {
     /// Create a new validator set with the given validators.
-    pub fn new(validators: Vec<Validator<A>>) -> Self {
+    pub fn new(validators: impl IntoIterator<Item = Validator<A>>) -> Self {
+        let mut validators: Vec<_> = validators.into_iter().collect();
+        validators.sort();
+        validators.dedup();
+
+        assert!(!validators.is_empty());
+
         Self { validators }
     }
 
