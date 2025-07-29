@@ -47,8 +47,16 @@ pub struct Hashes {
     pub items: Vec<Hash>,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Dummy, Default)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Dummy, Default, Serialize, Deserialize,
+)]
 pub struct Address(pub Felt);
+
+impl std::fmt::Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "0x{}", self.0)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
 #[protobuf(name = "crate::proto::common::ConsensusSignature")]
