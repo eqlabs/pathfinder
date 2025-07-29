@@ -152,6 +152,9 @@ fn sierra_class_as_native(input: CompilerInput) -> Result<NativeCompiledClassV1,
             &sierra_class.entry_points_by_type,
             version_id,
             cairo_native::OptLevel::Default,
+            // `stats` - Passing a [cairo_native::statistics::Statistics] object enables collecting
+            // compilation statistics.
+            None,
         )
     })
     .map_err(|e| StateError::StateReadError(format!("Error compiling native class: {e:?}")))?
