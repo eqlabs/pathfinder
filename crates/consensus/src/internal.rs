@@ -1,5 +1,9 @@
+mod malachite;
+mod wal;
+
 use std::collections::{BinaryHeap, VecDeque};
 
+use malachite::*;
 use malachite_consensus::{
     process,
     Effect,
@@ -10,25 +14,33 @@ use malachite_consensus::{
     Resumable,
     Resume,
     SignedConsensusMsg,
-    State as ConsensusState,
+    State,
 };
 use malachite_signing_ed25519::Signature;
-use malachite_types::{SignedMessage, Timeout, ValidatorSet as _};
+use malachite_types::{Height as _, SignedMessage, ThresholdParams, Timeout, ValuePayload};
 use tokio::time::Instant;
+use wal::*;
 
 use crate::config::TimeoutValues;
-use crate::malachite::MalachiteContext;
-use crate::wal::{convert_wal_entry_to_input, WalEntry, WalSink};
+use crate::wal::{WalEntry, WalSink};
 use crate::{
     ConsensusCommand,
     ConsensusEvent,
-    ConsensusValue,
     NetworkMessage,
     Proposal,
     SignedProposal,
     SignedVote,
     ValidatorSet,
 };
+
+/// The parameters for the internal consensus engine.
+pub struct InternalParams<A> {
+    pub height: u64,
+    pub validator_set: ValidatorSet<A>,
+    pub address: A,
+    pub threshold_params: ThresholdParams,
+    pub value_payload: ValuePayload,
+}
 
 /// The [InternalConsensus] acts as a driver for the Malachite core.
 ///
@@ -37,22 +49,33 @@ use crate::{
 ///
 /// We spawn a new instance of this entity for each height, as we might be
 /// involved in multiple consensus processes at the same time.
-pub struct InternalConsensus {
-    state: ConsensusState<MalachiteContext>,
+pub struct InternalConsensus<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
+{
+    state: State<MalachiteContext<V, A>>,
     metrics: malachite_metrics::Metrics,
-    input_queue: VecDeque<ConsensusCommand>,
-    output_queue: VecDeque<ConsensusEvent>,
+    input_queue: VecDeque<ConsensusCommand<V, A>>,
+    output_queue: VecDeque<ConsensusEvent<V, A>>,
     timeout_manager: TimeoutManager,
-    wal: Box<dyn WalSink>,
+    wal: Box<dyn WalSink<V, A>>,
 }
 
-impl InternalConsensus {
+impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
+    InternalConsensus<V, A>
+{
     pub fn new(
-        params: Params<MalachiteContext>,
+        params: InternalParams<A>,
         timeout_values: TimeoutValues,
-        wal: Box<dyn WalSink>,
+        wal: Box<dyn WalSink<V, A>>,
     ) -> Self {
-        let state = ConsensusState::new(MalachiteContext, params, 128);
+        let params = Params {
+            initial_height: Height::new(params.height),
+            initial_validator_set: params.validator_set.into(),
+            address: ValidatorAddress::from(params.address),
+            threshold_params: params.threshold_params,
+            value_payload: params.value_payload,
+        };
+
+        let state = State::new(MalachiteContext::default(), params, 128);
         Self {
             state,
             metrics: Default::default(),
@@ -67,7 +90,7 @@ impl InternalConsensus {
     }
 
     /// Recover the consensus from a list of write-ahead log entries.
-    pub fn recover_from_wal(&mut self, entries: Vec<WalEntry>) {
+    pub fn recover_from_wal(&mut self, entries: Vec<WalEntry<V, A>>) {
         tracing::debug!(
             validator = %self.state.address(),
             entry_count = entries.len(),
@@ -100,12 +123,12 @@ impl InternalConsensus {
     }
 
     /// Feed a command into the consensus engine.
-    pub fn handle_command(&mut self, cmd: ConsensusCommand) {
+    pub fn handle_command(&mut self, cmd: ConsensusCommand<V, A>) {
         self.input_queue.push_back(cmd);
     }
 
     /// Poll the internal consensus engine for the next event.
-    pub async fn poll_internal(&mut self) -> Option<ConsensusEvent> {
+    pub async fn poll_internal(&mut self) -> Option<ConsensusEvent<V, A>> {
         // Process any timeouts that are due.
         let now = Instant::now();
         while let Some(next) = self.timeout_manager.timeouts.peek() {
@@ -133,26 +156,28 @@ impl InternalConsensus {
             let input = match cmd {
                 ConsensusCommand::Vote(vote) => {
                     tracing::debug!(
-                        validator = %self.state.address(),
+                        validator = ?self.state.address(),
                         vote_type = ?vote.vote.r#type,
-                        from = %vote.vote.validator_address,
+                        from = ?vote.vote.validator_address,
                         height = %vote.vote.height,
-                        round = %vote.vote.round,
+                        round = ?vote.vote.round,
                         "Received vote"
                     );
-                    Input::Vote(convert_vote(vote))
+                    Input::Vote(convert_vote_in(vote))
                 }
                 ConsensusCommand::Proposal(proposal) => {
                     tracing::debug!(
-                        validator = %self.state.address(),
+                        validator = ?self.state.address(),
                         value = ?proposal.proposal.value,
-                        from = %proposal.proposal.proposer,
+                        from = ?proposal.proposal.proposer,
                         height = %proposal.proposal.height,
-                        round = %proposal.proposal.round,
+                        round = ?proposal.proposal.round,
                         "Received proposal"
                     );
-                    let signed_msg =
-                        malachite_types::SignedProposal::new(proposal.proposal, proposal.signature);
+                    let signed_msg = malachite_types::SignedProposal::new(
+                        proposal.proposal.into(),
+                        proposal.signature,
+                    );
                     Input::Proposal(signed_msg)
                 }
                 ConsensusCommand::Propose(proposal) => {
@@ -160,13 +185,13 @@ impl InternalConsensus {
                         validator = %self.state.address(),
                         value = ?proposal.value,
                         height = %proposal.height,
-                        round = %proposal.round,
+                        round = ?proposal.round,
                         "Proposing value"
                     );
                     Input::Propose(LocallyProposedValue::new(
-                        proposal.height,
-                        proposal.round.into_inner(),
-                        proposal.value,
+                        Height::new(proposal.height),
+                        proposal.round.into(),
+                        ConsensusValue::from(proposal.value),
                     ))
                 }
                 ConsensusCommand::StartHeight(height, validators) => {
@@ -176,7 +201,7 @@ impl InternalConsensus {
                         validator_count = validators.count(),
                         "Starting new height"
                     );
-                    Input::StartHeight(height, validators)
+                    Input::StartHeight(Height::new(height), validators.into())
                 }
             };
 
@@ -191,8 +216,8 @@ impl InternalConsensus {
     #[allow(clippy::result_large_err)]
     fn process_input(
         &mut self,
-        input: Input<MalachiteContext>,
-    ) -> Result<(), Error<MalachiteContext>> {
+        input: Input<MalachiteContext<V, A>>,
+    ) -> Result<(), Error<MalachiteContext<V, A>>> {
         let output = &mut self.output_queue;
         let validator_set = self.state.validator_set().clone();
 
@@ -206,20 +231,21 @@ impl InternalConsensus {
 }
 
 #[allow(clippy::result_large_err)]
-fn handle_effect(
-    effect: Effect<MalachiteContext>,
-    validator_set: &ValidatorSet,
+#[allow(clippy::type_complexity)]
+fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
+    effect: Effect<MalachiteContext<V, A>>,
+    validator_set: &malachite::ValidatorSet<V, A>,
     timeout_manager: &mut TimeoutManager,
-    wal: &mut Box<dyn WalSink>,
-    output_queue: &mut VecDeque<ConsensusEvent>,
-) -> Result<Resume<MalachiteContext>, Error<MalachiteContext>> {
+    wal: &mut Box<dyn WalSink<V, A>>,
+    output_queue: &mut VecDeque<ConsensusEvent<V, A>>,
+) -> Result<Resume<MalachiteContext<V, A>>, Error<MalachiteContext<V, A>>> {
     match effect {
         // Start a new round.
         Effect::StartRound(height, round, address, role, resume) => {
             tracing::debug!(
                 height = %height,
                 round = %round,
-                address = %address,
+                address = ?address,
                 role = ?role,
                 "Starting new round"
             );
@@ -238,19 +264,19 @@ fn handle_effect(
             match &msg {
                 SignedConsensusMsg::Proposal(proposal) => {
                     tracing::debug!(
-                        proposer = %proposal.message.proposer,
+                        proposer = ?proposal.message.proposer,
                         "Publishing proposal"
                     );
                 }
                 SignedConsensusMsg::Vote(vote) => {
                     tracing::debug!(
-                        validator = %vote.message.validator_address,
+                        validator = ?vote.message.validator_address,
                         vote_type = ?vote.message.r#type,
                         "Publishing vote"
                     );
                 }
             }
-            let event = convert_publish(msg);
+            let event = create_event(msg);
             output_queue.push_back(event);
             Ok(resume.resume_with(()))
         }
@@ -261,9 +287,10 @@ fn handle_effect(
                 round = %round,
                 "Requesting value"
             );
+            assert!(round.is_defined(), "Round is expected to be defined");
             output_queue.push_back(ConsensusEvent::RequestProposal {
-                height,
-                round: round.into(),
+                height: height.as_u64(),
+                round: round.as_u32().unwrap(),
             });
             Ok(resume.resume_with(()))
         }
@@ -275,13 +302,13 @@ fn handle_effect(
                 "Consensus decided on value"
             );
             output_queue.push_back(ConsensusEvent::Decision {
-                height: cert.height,
-                value: ConsensusValue::new(cert.value_id),
+                height: cert.height.as_u64(),
+                value: cert.value_id.clone(),
             });
             // We append the decision to the WAL so that in case of a crash,
             // we know this height has been finalized.
             wal.append(WalEntry::Decision {
-                height: cert.height,
+                height: cert.height.as_u64(),
                 value: cert.value_id,
             });
             Ok(resume.resume_with(()))
@@ -323,11 +350,11 @@ fn handle_effect(
             output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Proposal(
                 SignedProposal {
                     proposal: Proposal {
-                        height,
+                        height: height.as_u64(),
                         round: round.into(),
                         pol_round: valid_round.into(),
-                        proposer: address,
-                        value: ConsensusValue::new(value_id),
+                        proposer: address.into_inner(),
+                        value: value_id,
                     },
                     signature: Signature::from_bytes([0; 64]), // TODO: Replace with real signature
                 },
@@ -388,32 +415,35 @@ fn handle_effect(
 }
 
 /// Convert a signed consensus message to a consensus event.
-fn convert_publish(msg: SignedConsensusMsg<MalachiteContext>) -> ConsensusEvent {
+fn create_event<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
+    msg: SignedConsensusMsg<MalachiteContext<V, A>>,
+) -> ConsensusEvent<V, A> {
     use crate::NetworkMessage;
 
     let network_msg = match msg {
         SignedConsensusMsg::Proposal(proposal) => NetworkMessage::Proposal(crate::SignedProposal {
-            proposal: proposal.message,
+            proposal: proposal.message.into(),
             signature: proposal.signature,
         }),
-        SignedConsensusMsg::Vote(vote) => {
-            let wire_vote = convert_vote_out(vote);
-            NetworkMessage::Vote(wire_vote)
-        }
+        SignedConsensusMsg::Vote(vote) => NetworkMessage::Vote(convert_vote_out(vote)),
     };
 
     ConsensusEvent::Gossip(network_msg)
 }
 
 /// Convert a signed vote to a Malachite signed vote.
-fn convert_vote(vote: SignedVote) -> malachite_types::SignedVote<MalachiteContext> {
-    malachite_types::SignedVote::new(vote.vote, vote.signature)
+fn convert_vote_in<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
+    vote: SignedVote<V, A>,
+) -> malachite_types::SignedVote<MalachiteContext<V, A>> {
+    malachite_types::SignedVote::new(vote.vote.into(), vote.signature)
 }
 
 /// Convert a Malachite signed vote to a signed vote.
-fn convert_vote_out(vote: malachite_types::SignedVote<MalachiteContext>) -> SignedVote {
+fn convert_vote_out<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
+    vote: malachite_types::SignedVote<MalachiteContext<V, A>>,
+) -> SignedVote<V, A> {
     SignedVote {
-        vote: vote.message,
+        vote: vote.message.into(),
         signature: vote.signature,
     }
 }

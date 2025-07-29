@@ -2,16 +2,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use ed25519_consensus::SigningKey;
-use malachite_signing_ed25519::PublicKey;
-use p2p_proto::common::{Address, Hash};
 use pathfinder_consensus::*;
-use pathfinder_crypto::Felt;
 use tokio::sync::mpsc;
 use tokio::time::{pause, sleep, Duration};
 use tracing::{debug, error, info};
 
 mod common;
-use common::drive_until;
+use common::{drive_until, ConsensusValue, NodeAddress};
 
 #[tokio::test]
 async fn wal_concurrent_heights_retention_test() {
@@ -20,8 +17,7 @@ async fn wal_concurrent_heights_retention_test() {
     const NUM_VALIDATORS: usize = 2;
     const NUM_HEIGHTS: u64 = 15; // More than config.history_depth
 
-    let value_hash = Hash(Felt::from_hex_str("0xabcdef").unwrap());
-    let consensus_value = ConsensusValue::new(value_hash);
+    let consensus_value = ConsensusValue("Hello, world!".to_string());
 
     // Create a temporary directory for WAL files
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
@@ -36,18 +32,18 @@ async fn wal_concurrent_heights_retention_test() {
     for i in 1..=NUM_VALIDATORS {
         let sk = SigningKey::new(rand::rngs::OsRng);
         let pk = sk.verification_key();
-        let addr = ValidatorAddress::from(Address(Felt::from_hex_str(&format!("0x{i}")).unwrap()));
+        let addr = NodeAddress(format!("0x{i}"));
         let pubkey = PublicKey::from_bytes(pk.to_bytes());
 
         validator_set.push(Validator {
-            address: addr,
+            address: addr.clone(),
             public_key: pubkey,
             voting_power: 1,
         });
 
         let (tx, rx) = mpsc::unbounded_channel();
-        senders.insert(addr, tx);
-        receivers.insert(addr, rx);
+        senders.insert(addr.clone(), tx);
+        receivers.insert(addr.clone(), rx);
 
         validators.push((addr, sk));
     }
@@ -69,11 +65,11 @@ async fn wal_concurrent_heights_retention_test() {
         let wal_dir = wal_dir.to_path_buf();
 
         let handle = tokio::spawn(async move {
-            let config = Config::new(addr).with_wal_dir(wal_dir);
+            let config = Config::new(addr.clone()).with_wal_dir(wal_dir);
             let mut consensus = Consensus::new(config);
             // Start all heights up front
             for current_height in 1..=NUM_HEIGHTS {
-                let height = Height::try_from(current_height).unwrap();
+                let height = current_height;
                 consensus
                     .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
             }
@@ -96,9 +92,9 @@ async fn wal_concurrent_heights_retention_test() {
 
                             let proposal = Proposal {
                                 height: h,
-                                round: r,
-                                proposer: addr,
-                                pol_round: Round::from(0),
+                                round: Round::new(r),
+                                proposer: addr.clone(),
+                                pol_round: Round::nil(),
                                 value: consensus_value.clone(),
                             };
 
@@ -120,7 +116,7 @@ async fn wal_concurrent_heights_retention_test() {
                                 pretty_addr(&addr)
                             );
                             let mut decisions = decisions.lock().unwrap();
-                            decisions.insert((addr, h), value);
+                            decisions.insert((addr.clone(), h), value);
                         }
 
                         ConsensusEvent::Error(error) => {
@@ -168,7 +164,7 @@ async fn wal_concurrent_heights_retention_test() {
     );
 }
 
-fn pretty_addr(addr: &ValidatorAddress) -> String {
+fn pretty_addr(addr: &NodeAddress) -> String {
     let addr_str = addr.to_string();
     addr_str.chars().skip(addr_str.len() - 4).collect()
 }
@@ -182,13 +178,10 @@ async fn recover_from_wal_restores_and_continues() {
         Consensus,
         ConsensusCommand,
         ConsensusEvent,
-        ConsensusValue,
-        Height,
         Proposal,
         Round,
         ValidatorSetProvider,
     };
-    use pathfinder_crypto::Felt;
 
     //common::setup_tracing_full();
     pause();
@@ -198,21 +191,21 @@ async fn recover_from_wal_restores_and_continues() {
     let wal_dir = temp_dir.path();
 
     // Static validator
-    let addr = ValidatorAddress::from(Address(Felt::from_hex_str("0x1").unwrap()));
+    let addr = NodeAddress("0x1".to_string());
     let sk = SigningKey::new(rand::rngs::OsRng);
     let pk = sk.verification_key();
     let pubkey = PublicKey::from_bytes(pk.to_bytes());
     let validator = Validator {
-        address: addr,
+        address: addr.clone(),
         public_key: pubkey,
         voting_power: 1,
     };
     let validators = ValidatorSet::new(vec![validator.clone()]);
 
     // Config with temporary WAL directory
-    let config = Config::new(addr).with_wal_dir(wal_dir.to_path_buf());
+    let config = Config::new(addr.clone()).with_wal_dir(wal_dir.to_path_buf());
 
-    let height = Height::try_from(42).unwrap();
+    let height = 42;
 
     // Create and run consensus to log data to WAL
     {
@@ -224,17 +217,18 @@ async fn recover_from_wal_restores_and_continues() {
             &mut consensus,
             Duration::from_secs(1),
             5,
-            |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
-        ).await;
+            |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 0),
+        )
+        .await;
 
         // Send a proposal to enter prevote
-        let value_id = Hash(Felt::from_hex_str("0xabc123").unwrap());
+        let value = ConsensusValue("Hello, world!".to_string());
         let proposal = Proposal {
             height,
             round: Round::new(0),
-            value: ConsensusValue::new(value_id),
-            pol_round: Round::new(0),
-            proposer: addr,
+            value,
+            pol_round: Round::nil(),
+            proposer: addr.clone(),
         };
         let signed = SignedProposal {
             proposal,
@@ -245,9 +239,9 @@ async fn recover_from_wal_restores_and_continues() {
 
     // Create a validator set provider
     #[derive(Clone)]
-    struct StaticSet(ValidatorSet);
-    impl ValidatorSetProvider for StaticSet {
-        fn get_validator_set(&self, _height: &Height) -> ValidatorSet {
+    struct StaticSet(ValidatorSet<NodeAddress>);
+    impl ValidatorSetProvider<NodeAddress> for StaticSet {
+        fn get_validator_set(&self, _height: u64) -> ValidatorSet<NodeAddress> {
             self.0.clone()
         }
     }
@@ -255,7 +249,8 @@ async fn recover_from_wal_restores_and_continues() {
     debug!("---------------------- Recovering from WAL ----------------------");
 
     // Now recover from WAL
-    let mut consensus = Consensus::recover(config.clone(), Arc::new(StaticSet(validators)));
+    let mut consensus: Consensus<ConsensusValue, NodeAddress> =
+        Consensus::recover(config.clone(), Arc::new(StaticSet(validators)));
 
     debug!("------------ Driving consensus post WAL recovery ----------------");
 
@@ -264,8 +259,9 @@ async fn recover_from_wal_restores_and_continues() {
         &mut consensus,
         Duration::from_secs(5),
         10,
-        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == Round::new(0)),
-    ).await;
+        |evt| matches!(evt, ConsensusEvent::RequestProposal { round, .. } if *round == 0),
+    )
+    .await;
 
     assert!(
         event.is_some(),
