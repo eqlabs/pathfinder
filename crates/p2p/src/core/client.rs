@@ -12,24 +12,24 @@ use crate::test_utils;
 /// The core p2p network client.
 #[derive(Clone, Debug)]
 pub struct Client<C> {
-    sender: mpsc::Sender<Command<C>>,
+    sender: mpsc::UnboundedSender<Command<C>>,
     peer_id: PeerId,
 }
 
 impl<C> Client<C> {
-    pub(crate) fn new(sender: mpsc::Sender<Command<C>>, peer_id: PeerId) -> Self {
+    pub(crate) fn new(sender: mpsc::UnboundedSender<Command<C>>, peer_id: PeerId) -> Self {
         Self { sender, peer_id }
     }
 
     pub async fn send(&self, command: C) -> Result<(), SendError<Command<C>>> {
-        self.sender.send(Command::Application(command)).await
+        self.sender.send(Command::Application(command))
     }
 
     pub fn peer_id(&self) -> &PeerId {
         &self.peer_id
     }
 
-    pub fn as_pair(&self) -> (PeerId, mpsc::Sender<Command<C>>) {
+    pub fn as_pair(&self) -> (PeerId, mpsc::UnboundedSender<Command<C>>) {
         (self.peer_id, self.sender.clone())
     }
 
@@ -37,7 +37,6 @@ impl<C> Client<C> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::Listen { addr, sender })
-            .await
             .expect("Command receiver not to be dropped.");
         receiver.await.expect("Sender not to be dropped")
     }
@@ -50,7 +49,6 @@ impl<C> Client<C> {
                 addr,
                 sender,
             })
-            .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
@@ -59,7 +57,6 @@ impl<C> Client<C> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::Disconnect { peer_id, sender })
-            .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }
@@ -73,7 +70,6 @@ impl<C> Client<C> {
         let (sender, mut receiver) = mpsc::channel(1);
         self.sender
             .send(Command::GetClosestPeers { peer, sender })
-            .await
             .expect("Command receiver not to be dropped");
 
         let mut peers = HashSet::new();
@@ -94,7 +90,6 @@ impl<C> Client<C> {
         let (sender, receiver) = oneshot::channel();
         self.sender
             .send(Command::NotUseful { peer_id, sender })
-            .await
             .expect("Command receiver not to be dropped");
         receiver.await.expect("Sender not to be dropped")
     }

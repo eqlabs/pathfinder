@@ -8236,6 +8236,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.13.1",
+ "clap",
  "fake",
  "flate2",
  "futures",
@@ -8255,6 +8256,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
+ "smallvec",
  "test-log",
  "tokio",
  "tokio-stream",
@@ -8427,10 +8429,12 @@ dependencies = [
  "clap",
  "console-subscriber",
  "const-decoder",
+ "ed25519-consensus",
  "fake",
  "flate2",
  "futures",
  "http 1.2.0",
+ "informalsystems-malachitebft-signing-ed25519",
  "ipnet",
  "jemallocator",
  "metrics 0.20.1",
@@ -8443,6 +8447,7 @@ dependencies = [
  "pathfinder-class-hash",
  "pathfinder-common",
  "pathfinder-compiler",
+ "pathfinder-consensus",
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
@@ -10605,9 +10610,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.15.0"
+version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8917285742e9f3e1683f0a9c4e6b57960b7314d0b08d30d1ecd426713ee2eee9"
+checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 dependencies = [
  "serde",
 ]

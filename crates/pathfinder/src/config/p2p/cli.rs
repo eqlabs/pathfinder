@@ -184,7 +184,7 @@ pub(crate) struct P2PSyncCli {
 }
 
 #[derive(clap::Args)]
-pub(crate) struct P2PConsensusCli {
+pub struct P2PConsensusCli {
     #[clap(flatten)]
     pub(super) core: P2PConsensusCoreCli,
 }
