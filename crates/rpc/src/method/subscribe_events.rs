@@ -204,7 +204,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 reorg = reorgs.recv() => {
                     match reorg {
                         Ok(reorg) => {
-                            let block_number = reorg.first_block_number;
+                            let block_number = reorg.starting_block_number;
                             if tx.send(SubscriptionMessage {
                                 notification: Notification::Reorg(reorg),
                                 block_number,
@@ -918,10 +918,10 @@ mod tests {
         retry(|| {
             router.context.notifications.reorgs.send(
                 Reorg {
-                    first_block_number: BlockNumber::new_or_panic(1),
-                    first_block_hash: BlockHash(felt!("0x1")),
-                    last_block_number: BlockNumber::new_or_panic(2),
-                    last_block_hash: BlockHash(felt!("0x2")),
+                    starting_block_number: BlockNumber::new_or_panic(1),
+                    starting_block_hash: BlockHash(felt!("0x1")),
+                    ending_block_number: BlockNumber::new_or_panic(2),
+                    ending_block_hash: BlockHash(felt!("0x2")),
                 }
                 .into(),
             )
@@ -940,10 +940,10 @@ mod tests {
                 "method": "starknet_subscriptionReorg",
                 "params": {
                     "result": {
-                        "first_block_hash": "0x1",
-                        "first_block_number": 1,
-                        "last_block_hash": "0x2",
-                        "last_block_number": 2
+                        "starting_block_hash": "0x1",
+                        "starting_block_number": 1,
+                        "ending_block_hash": "0x2",
+                        "ending_block_number": 2
                     },
                     "subscription_id": subscription_id.to_string()
                 }
