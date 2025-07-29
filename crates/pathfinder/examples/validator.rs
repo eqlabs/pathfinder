@@ -16,8 +16,6 @@ use pathfinder_consensus::{
     Consensus,
     ConsensusCommand,
     ConsensusEvent,
-    ConsensusValue,
-    Height,
     NetworkMessage,
     Proposal,
     Round,
@@ -25,12 +23,12 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
     Validator,
-    ValidatorAddress,
     ValidatorSet,
 };
 use pathfinder_crypto::Felt;
 use pathfinder_lib::config::p2p::{P2PConsensusCli, P2PConsensusConfig};
 use pathfinder_lib::p2p_network::consensus;
+use serde::{Deserialize, Serialize};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
@@ -87,13 +85,37 @@ fn setup_tracing_full() {
         .try_init();
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct ConsensusValue(p2p_proto::common::Hash);
+
+impl std::fmt::Display for ConsensusValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+struct NodeAddress(p2p_proto::common::Address);
+
+impl std::fmt::Display for NodeAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<NodeAddress> for Vec<u8> {
+    fn from(value: NodeAddress) -> Self {
+        value.0 .0.to_be_bytes().to_vec()
+    }
+}
+
 enum ConsensusTaskEvent {
     /// The consensus engine informs us about an event that it wants us to
     /// handle.
-    Event(ConsensusEvent),
+    Event(ConsensusEvent<ConsensusValue, NodeAddress>),
     /// We received an event from the P2P network which has impact on
     /// consensus, so we issue a command to the consensus engine.
-    CommandFromP2P(ConsensusCommand),
+    CommandFromP2P(ConsensusCommand<ConsensusValue, NodeAddress>),
 }
 
 enum P2PTaskEvent {
@@ -106,17 +128,17 @@ enum P2PTaskEvent {
     CacheProposal(HeightAndRound, Vec<ProposalPart>),
     /// The consensus engine decided on the given height and we can finally
     /// removed the proposal that was cached for this height.
-    RemoveProposal(Height),
+    RemoveProposal(u64),
     /// Consensus requested that we gossip a message via the P2P network.
-    GossipRequest(NetworkMessage),
+    GossipRequest(NetworkMessage<ConsensusValue, NodeAddress>),
 }
 
 trait HeightExt {
-    fn height(&self) -> Height;
+    fn height(&self) -> u64;
 }
 
-impl HeightExt for NetworkMessage {
-    fn height(&self) -> Height {
+impl HeightExt for NetworkMessage<ConsensusValue, NodeAddress> {
+    fn height(&self) -> u64 {
         match self {
             NetworkMessage::Proposal(proposal) => proposal.proposal.height,
             NetworkMessage::Vote(vote) => vote.vote.height,
@@ -138,7 +160,7 @@ async fn main() -> anyhow::Result<()> {
         "sepolia" => ChainId::SEPOLIA_TESTNET,
         _ => anyhow::bail!("Unsupported network: {}", network),
     };
-    let validator_address = ValidatorAddress::from(Address(
+    let validator_address = NodeAddress(Address(
         Felt::from_hex_str(&config.validator_address).context(format!(
             "Parsing validator address {}",
             config.validator_address
@@ -156,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
                 })
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
-                .map(|addr| ValidatorAddress::from(Address(addr))),
+                .map(|addr| NodeAddress(Address(addr))),
         )
         .map(|address| {
             let sk = SigningKey::new(rand::rngs::OsRng);
@@ -169,7 +191,7 @@ async fn main() -> anyhow::Result<()> {
                 voting_power: 1,
             }
         })
-        .collect::<Vec<Validator>>();
+        .collect::<Vec<Validator<NodeAddress>>>();
     tracing::trace!("Validators: {:#?}", validators);
 
     let validator_set = ValidatorSet::new(validators);
@@ -223,12 +245,11 @@ async fn main() -> anyhow::Result<()> {
                                 )
                             {
                                 let proposal = Proposal {
-                                    height: Height::try_from(height_and_round.height())
-                                        .expect("Valid block number"),
+                                    height: height_and_round.height(),
                                     round: height_and_round.round().into(),
-                                    value: proposal_commitment.into(),
+                                    value: ConsensusValue(proposal_commitment),
                                     pol_round: Round::nil(),
-                                    proposer: proposer.into(),
+                                    proposer: NodeAddress(proposer),
                                 };
 
                                 let cmd = ConsensusCommand::Proposal(SignedProposal {
@@ -243,7 +264,7 @@ async fn main() -> anyhow::Result<()> {
                             }
                         }
                         Event::Vote(vote) => {
-                            let vote = vote.into();
+                            let vote = p2p_vote_to_consensus_vote(vote);
                             let cmd = ConsensusCommand::Vote(SignedVote {
                                 vote,
                                 signature: Signature::test(), // TODO
@@ -300,7 +321,7 @@ async fn main() -> anyhow::Result<()> {
                         signature: _, /* TODO */
                     }) => {
                         let height_and_round = HeightAndRound::new(
-                            proposal.height.as_inner().get(),
+                            proposal.height,
                             proposal.round.as_u32().expect("Valid round"),
                         );
 
@@ -351,9 +372,9 @@ async fn main() -> anyhow::Result<()> {
                                 *round,
                                 proposal.round.as_u32().expect("Round not to be None")
                             );
-                            assert_ne!(*proposer, Address::from(proposal.proposer));
+                            assert_ne!(*proposer, proposal.proposer.0);
                             *round = proposal.round.as_u32().expect("Round not to be None");
-                            *proposer = proposal.proposer.into();
+                            *proposer = proposal.proposer.0;
                             proposal_parts
                         };
 
@@ -396,7 +417,10 @@ async fn main() -> anyhow::Result<()> {
                     }) => {
                         loop {
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?} ...");
-                            match p2p_client.gossip_vote(vote.clone().into()).await {
+                            match p2p_client
+                                .gossip_vote(consensus_vote_to_p2p_vote(vote.clone()))
+                                .await
+                            {
                                 Ok(()) => {
                                     tracing::info!(
                                         "🖧  ✋ {validator_address} Gossiping vote {vote:?} SUCCESS"
@@ -424,10 +448,10 @@ async fn main() -> anyhow::Result<()> {
 
     let consensus_task_handle = util::task::spawn(async move {
         fn start_height(
-            consensus: &mut Consensus,
-            started_heights: &mut HashSet<Height>,
-            height: Height,
-            validator_set: ValidatorSet,
+            consensus: &mut Consensus<ConsensusValue, NodeAddress>,
+            started_heights: &mut HashSet<u64>,
+            height: u64,
+            validator_set: ValidatorSet<NodeAddress>,
         ) {
             if !started_heights.contains(&height) {
                 started_heights.insert(height);
@@ -468,7 +492,7 @@ async fn main() -> anyhow::Result<()> {
                 0
             });
 
-        let mut current_height = Height::try_from(db_height).expect("Valid block number");
+        let mut current_height = db_height;
         let mut started_heights = HashSet::new();
 
         start_height(
@@ -508,8 +532,8 @@ async fn main() -> anyhow::Result<()> {
 
                             let wire_proposal = sepolia_block_6_based_proposal(
                                 height,
-                                round,
-                                validator_address.into(),
+                                round.into(),
+                                validator_address.0,
                             );
 
                             let ProposalFin {
@@ -518,14 +542,11 @@ async fn main() -> anyhow::Result<()> {
                                 "Proposals produced by our node are always coherent and complete",
                             );
 
-                            let value = ConsensusValue::new(*proposal_commitment);
+                            let value = ConsensusValue(*proposal_commitment);
 
                             tx_to_p2p
                                 .send(P2PTaskEvent::CacheProposal(
-                                    HeightAndRound::new(
-                                        height.as_inner().get(),
-                                        round.as_u32().unwrap_or_default(),
-                                    ),
+                                    HeightAndRound::new(height, round),
                                     wire_proposal,
                                 ))
                                 .await
@@ -533,7 +554,7 @@ async fn main() -> anyhow::Result<()> {
 
                             let proposal = Proposal {
                                 height,
-                                round,
+                                round: round.into(),
                                 proposer: validator_address,
                                 pol_round: Round::nil(),
                                 value,
@@ -556,7 +577,7 @@ async fn main() -> anyhow::Result<()> {
                                 // Record the highest height at which we voted Nil as it may be an
                                 // indication that we're lagging behind the consensus network.
                                 if let NetworkMessage::Vote(SignedVote { vote, .. }) = &msg {
-                                    if vote.value.is_nil() {
+                                    if vote.is_nil() {
                                         last_nil_vote_height = Some(
                                             vote.height
                                                 .max(last_nil_vote_height.unwrap_or_default()),
@@ -592,12 +613,9 @@ async fn main() -> anyhow::Result<()> {
                             assert!(started_heights.remove(&height));
 
                             if height == current_height {
-                                current_height = Height::new(
-                                    current_height
-                                        .as_inner()
-                                        .checked_add(1)
-                                        .expect("Height never reaches i64::MAX"),
-                                );
+                                current_height = current_height
+                                    .checked_add(1)
+                                    .expect("Height never reaches i64::MAX");
                                 start_height(
                                     &mut consensus,
                                     &mut started_heights,
@@ -643,9 +661,7 @@ async fn main() -> anyhow::Result<()> {
                             let last_nil = last_nil_vote_height.take();
 
                             if let Some(last_nil) = last_nil {
-                                if cmd_height.into_inner() > current_height.into_inner() + 0
-                                    && cmd_height.into_inner() > last_nil.into_inner()
-                                {
+                                if cmd_height > current_height && cmd_height > last_nil {
                                     tracing::info!(
                                         "🧠 ⏩  {validator_address} catching up current height \
                                          {current_height} -> {cmd_height}",
@@ -711,10 +727,10 @@ async fn main() -> anyhow::Result<()> {
 fn handle_incoming_proposal_part(
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    cache: &mut BTreeMap<Height, BTreeMap<Round, Vec<ProposalPart>>>,
+    cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
 ) -> anyhow::Result<Option<(Hash, Address)>> {
-    let height = Height::try_from(height_and_round.height()).expect("Valid block number");
-    let round = Round::new(height_and_round.round());
+    let height = height_and_round.height();
+    let round = height_and_round.round().into();
     let proposals_at_height = cache.entry(height).or_default();
     let parts = proposals_at_height.entry(round).or_default();
     match proposal_part {
@@ -778,14 +794,14 @@ fn handle_incoming_proposal_part(
 /// Based on Sepolia Block 6, however with adjustable height, round, and
 /// proposer.
 fn sepolia_block_6_based_proposal(
-    height: Height,
+    height: u64,
     round: Round,
     proposer: Address,
 ) -> Vec<ProposalPart> {
     let round = round.as_u32().expect("Round not to be Nil???");
     vec![
         ProposalPart::Init(ProposalInit {
-            height: height.into_inner().get(),
+            height,
             round,
             valid_round: None, // TODO
             proposer,
@@ -825,7 +841,38 @@ fn sepolia_block_6_based_proposal(
         }]),
         ProposalPart::Fin(ProposalFin {
             // For easy debugging
-            proposal_commitment: Hash(Felt::from_u64(height.as_inner().get())),
+            proposal_commitment: Hash(Felt::from_u64(height)),
         }),
     ]
+}
+
+fn p2p_vote_to_consensus_vote(
+    vote: p2p_proto::consensus::Vote,
+) -> pathfinder_consensus::Vote<ConsensusValue, NodeAddress> {
+    pathfinder_consensus::Vote {
+        r#type: match vote.vote_type {
+            p2p_proto::consensus::VoteType::Prevote => pathfinder_consensus::VoteType::Prevote,
+            p2p_proto::consensus::VoteType::Precommit => pathfinder_consensus::VoteType::Precommit,
+        },
+        height: vote.height,
+        round: vote.round.into(),
+        value: vote.block_hash.map(ConsensusValue),
+        validator_address: NodeAddress(vote.voter),
+    }
+}
+
+fn consensus_vote_to_p2p_vote(
+    vote: pathfinder_consensus::Vote<ConsensusValue, NodeAddress>,
+) -> p2p_proto::consensus::Vote {
+    p2p_proto::consensus::Vote {
+        vote_type: match vote.r#type {
+            pathfinder_consensus::VoteType::Prevote => p2p_proto::consensus::VoteType::Prevote,
+            pathfinder_consensus::VoteType::Precommit => p2p_proto::consensus::VoteType::Precommit,
+        },
+        height: vote.height,
+        round: vote.round.as_u32().expect("Round not to be Nil"),
+        block_hash: vote.value.map(|v| v.0),
+        voter: vote.validator_address.0,
+        extension: None,
+    }
 }
