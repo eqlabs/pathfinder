@@ -208,7 +208,7 @@ pub(crate) fn map_broadcasted_transaction(
         only_query: has_query_version,
         validate: !skip_validate,
         charge_fee: !skip_fee_charge,
-        strict_nonce_check: true,
+        strict_nonce_check: !skip_validate,
     };
 
     let transaction = transaction.clone().into_common(chain_id);
