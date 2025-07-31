@@ -2,6 +2,7 @@ use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 use crate::method::subscribe_events::SubscribeEvents;
 use crate::method::subscribe_new_heads::SubscribeNewHeads;
 use crate::method::subscribe_new_transaction_receipts::SubscribeNewTransactionReceipts;
+use crate::method::subscribe_new_transactions::SubscribeNewTransactions;
 use crate::method::subscribe_pending_transactions::SubscribePendingTransactions;
 use crate::method::subscribe_transaction_status::SubscribeTransactionStatus;
 // re-using v08-specific methods
@@ -41,6 +42,7 @@ pub fn register_routes() -> RpcRouterBuilder {
         .register("starknet_subscribeNewHeads",                   SubscribeNewHeads)
         .register("starknet_subscribePendingTransactions",        SubscribePendingTransactions)
         .register("starknet_subscribeNewTransactionReceipts",     SubscribeNewTransactionReceipts)
+        .register("starknet_subscribeNewTransactions",            SubscribeNewTransactions)
         .register("starknet_subscribeEvents",                     SubscribeEvents)
         .register("starknet_subscribeTransactionStatus",          SubscribeTransactionStatus)
         .register("starknet_specVersion",                         || "0.9.0-rc.2")
