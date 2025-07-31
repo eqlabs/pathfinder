@@ -13,10 +13,19 @@ use crate::RpcVersion;
 
 pub struct SubscribeNewTransactionReceipts;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Params {
     finality_status: Vec<TxnFinalityStatus>,
     sender_address: Option<HashSet<ContractAddress>>,
+}
+
+impl Default for Params {
+    fn default() -> Self {
+        Params {
+            finality_status: vec![TxnFinalityStatus::AcceptedOnL2],
+            sender_address: None,
+        }
+    }
 }
 
 impl Params {
