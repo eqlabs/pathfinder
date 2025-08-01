@@ -745,7 +745,7 @@ fn perform_blockchain_pruning(
         // Not ready to prune yet.
         return Ok(());
     };
-    tracing::info!(%last_kept_block, "Running blockchain pruning relative to {pruning_point_suffix}");
+    tracing::trace!(%last_kept_block, "Running blockchain pruning relative to {pruning_point_suffix}");
 
     let earliest = tx
         .earliest_block_number()
@@ -768,7 +768,7 @@ fn perform_blockchain_pruning(
             blocks_covered += 1;
         }
     }
-    tracing::debug!(elapsed=?start.elapsed(), %blocks_covered, "Blockchain pruning done");
+    tracing::debug!(elapsed=?start.elapsed(), %blocks_covered, %last_kept_block, "Blockchain pruning done");
 
     anyhow::Ok(())
 }
