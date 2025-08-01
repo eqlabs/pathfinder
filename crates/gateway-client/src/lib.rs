@@ -708,6 +708,7 @@ mod tests {
     mod add_transaction {
         use std::collections::HashMap;
 
+        use base64::prelude::*;
         use pathfinder_common::class_definition::{EntryPointType, SelectorAndOffset};
         use pathfinder_common::ContractAddress;
         use starknet_gateway_types::request::add_transaction::CairoContractDefinition;
@@ -883,7 +884,7 @@ mod tests {
                     flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
                 serde_json::to_writer(&mut gzip_encoder, &sierra_program).unwrap();
                 let sierra_program = gzip_encoder.finish().unwrap();
-                let sierra_program = base64::encode(sierra_program);
+                let sierra_program = BASE64_STANDARD.encode(sierra_program);
 
                 let mut entry_points = sierra_class.get_mut("entry_points_by_type").unwrap().take();
 
@@ -965,7 +966,7 @@ mod tests {
                 flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
             serde_json::to_writer(&mut gzip_encoder, program).unwrap();
             let compressed_program = gzip_encoder.finish().unwrap();
-            let program = base64::encode(compressed_program);
+            let program = BASE64_STANDARD.encode(compressed_program);
 
             let entry_points_by_type: HashMap<EntryPointType, Vec<SelectorAndOffset>> =
                 HashMap::from([

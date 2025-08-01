@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
+use base64::prelude::*;
 use pathfinder_common::EventKey;
 use rusqlite::params;
 
@@ -65,7 +66,8 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         let keys: Vec<EventKey> = keys
             .split(' ')
             .map(|key| {
-                let used = base64::decode_config_slice(key, base64::STANDARD, &mut temp)
+                let used = BASE64_STANDARD
+                    .decode_slice(key, &mut temp)
                     .map_err(anyhow::Error::from)?;
                 let key = pathfinder_crypto::Felt::from_be_slice(&temp[..used])
                     .map_err(anyhow::Error::from)?;
