@@ -130,7 +130,7 @@ where
             pending_events: VecDeque::new(),
             inbound_request_id,
             worker_streams: futures_bounded::FuturesMap::new(
-                substream_timeout,
+                move || futures_bounded::Delay::futures_timer(substream_timeout),
                 max_concurrent_streams,
             ),
             response_timeout,
