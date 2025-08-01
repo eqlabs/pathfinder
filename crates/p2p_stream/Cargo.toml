@@ -13,7 +13,7 @@ rust-version = { workspace = true }
 [dependencies]
 async-trait = { workspace = true }
 futures = { workspace = true }
-futures-bounded = { workspace = true }
+futures-bounded = { workspace = true, features = ["futures-timer"] }
 libp2p = { workspace = true, features = ["identify", "noise", "tcp", "tokio"] }
 tokio = { workspace = true, features = ["macros", "time"] }
 tracing = { workspace = true }
@@ -22,7 +22,13 @@ void = { workspace = true }
 [dev-dependencies]
 anyhow = { workspace = true }
 fake = { workspace = true }
-libp2p = { workspace = true, features = ["identify", "noise", "tcp", "tokio", "yamux"] }
+libp2p = { workspace = true, features = [
+    "identify",
+    "noise",
+    "tcp",
+    "tokio",
+    "yamux",
+] }
 libp2p-plaintext = { workspace = true }
 libp2p-swarm-test = { workspace = true }
 rstest = { workspace = true }

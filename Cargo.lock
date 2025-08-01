@@ -5263,6 +5263,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures-bounded"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b604752cefc5aa3ab98992a107a8bd99465d2825c1584e0b60cb6957b21e19d7"
+dependencies = [
+ "futures-timer",
+ "futures-util",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6865,7 +6875,7 @@ dependencies = [
  "asynchronous-codec",
  "either",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
@@ -6925,7 +6935,7 @@ dependencies = [
  "asynchronous-codec",
  "either",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
@@ -6995,7 +7005,7 @@ dependencies = [
  "asynchronous-codec",
  "either",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
@@ -7037,7 +7047,7 @@ dependencies = [
  "either",
  "fnv",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
@@ -7181,7 +7191,7 @@ dependencies = [
  "bytes",
  "either",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "futures-timer",
  "libp2p-core",
  "libp2p-identity",
@@ -7203,7 +7213,7 @@ checksum = "548fe44a80ff275d400f1b26b090d441d83ef73efabbeb6415f4ce37e5aed865"
 dependencies = [
  "async-trait",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.2.4",
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm",
@@ -8232,7 +8242,7 @@ dependencies = [
  "async-trait",
  "fake",
  "futures",
- "futures-bounded",
+ "futures-bounded 0.3.0",
  "libp2p",
  "libp2p-plaintext",
  "libp2p-swarm-test",
