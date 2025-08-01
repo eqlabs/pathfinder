@@ -246,10 +246,10 @@ impl crate::dto::SerializeForVersion for Reorg {
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
-        serializer.serialize_field("first_block_number", &self.first_block_number.get())?;
-        serializer.serialize_field("first_block_hash", &self.first_block_hash)?;
-        serializer.serialize_field("last_block_number", &self.last_block_number.get())?;
-        serializer.serialize_field("last_block_hash", &self.last_block_hash)?;
+        serializer.serialize_field("starting_block_number", &self.starting_block_number.get())?;
+        serializer.serialize_field("starting_block_hash", &self.starting_block_hash)?;
+        serializer.serialize_field("ending_block_number", &self.ending_block_number.get())?;
+        serializer.serialize_field("ending_block_hash", &self.ending_block_hash)?;
         serializer.end()
     }
 }

@@ -767,10 +767,10 @@ mod tests {
                     }
                 })),
                 TestEvent::Reorg(Reorg {
-                    first_block_number: BlockNumber::GENESIS + 4,
-                    first_block_hash: BlockHash(Felt::from_u64(4)),
-                    last_block_number: BlockNumber::GENESIS + 5,
-                    last_block_hash: BlockHash(Felt::from_u64(5)),
+                    starting_block_number: BlockNumber::GENESIS + 4,
+                    starting_block_hash: BlockHash(Felt::from_u64(4)),
+                    ending_block_number: BlockNumber::GENESIS + 5,
+                    ending_block_hash: BlockHash(Felt::from_u64(5)),
                 }),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
@@ -778,10 +778,10 @@ mod tests {
                     "params": {
                         "subscription_id": subscription_id,
                         "result": {
-                            "first_block_number": 4,
-                            "first_block_hash": "0x4",
-                            "last_block_number": 5,
-                            "last_block_hash": "0x5",
+                            "starting_block_number": 4,
+                            "starting_block_hash": "0x4",
+                            "ending_block_number": 5,
+                            "ending_block_hash": "0x5",
                         }
                     }
                 })),

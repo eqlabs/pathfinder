@@ -48,10 +48,14 @@ pub struct Notifications {
 
 #[derive(Debug, Clone)]
 pub struct Reorg {
-    pub first_block_number: BlockNumber,
-    pub first_block_hash: BlockHash,
-    pub last_block_number: BlockNumber,
-    pub last_block_hash: BlockHash,
+    /// First known block of the orphaned chain.
+    pub starting_block_number: BlockNumber,
+    /// [BlockHash] of [Reorg::starting_block_number].
+    pub starting_block_hash: BlockHash,
+    /// Last known block of the orphaned chain.
+    pub ending_block_number: BlockNumber,
+    /// [BlockHash] of [Reorg::ending_block_number].
+    pub ending_block_hash: BlockHash,
 }
 
 impl Default for Notifications {

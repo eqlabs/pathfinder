@@ -1048,7 +1048,7 @@ fn l2_reorg(
     reorg_tail: BlockNumber,
     notifications: &mut Notifications,
 ) -> anyhow::Result<()> {
-    let mut head = transaction
+    let orphan_head = transaction
         .block_id(BlockId::Latest)
         .context("Querying latest block number")?
         .context("Latest block number is none during reorg")?
@@ -1078,13 +1078,13 @@ Blockchain history must include the reorg tail and its parent block to perform a
 Blockchain history must include the reorg tail and its parent block to perform a reorg."
             );
         };
-        revert::revert_starknet_state(transaction, head, target_block, target_header)?;
+        revert::revert_starknet_state(transaction, orphan_head, target_block, target_header)?;
     }
 
-    let head_hash = transaction
-        .block_hash(head.into())
-        .context("Fetching last block hash")?
-        .context("Expected last block hash to exist because reorg tail exists")?;
+    let orphan_head_hash = transaction
+        .block_hash(orphan_head.into())
+        .context("Fetching orphan head hash")?
+        .expect("Orphan head hash should exist because reorg tail exists");
 
     // Purge each block one at a time.
     //
@@ -1094,21 +1094,22 @@ Blockchain history must include the reorg tail and its parent block to perform a
     // This is acceptable performance because reorgs are rare and need not be
     // 100% optimal. However a large reorg could cause a massive memory spike
     // which is not acceptable.
-    while head >= reorg_tail {
+    let mut new_head = orphan_head;
+    while new_head >= reorg_tail {
         transaction
-            .purge_block(head)
-            .with_context(|| format!("Purging block {head} from database"))?;
+            .purge_block(new_head)
+            .with_context(|| format!("Purging block {new_head} from database"))?;
 
         // No further blocks to purge if we just purged genesis.
-        if head == BlockNumber::GENESIS {
+        if new_head == BlockNumber::GENESIS {
             break;
         }
 
-        head -= 1;
+        new_head -= 1;
     }
 
     transaction
-        .reset_in_memory_state(head)
+        .reset_in_memory_state(new_head)
         .context("Resetting in-memory DB state after reorg")?;
 
     // Track combined L1 and L2 state.
@@ -1131,10 +1132,10 @@ Blockchain history must include the reorg tail and its parent block to perform a
         .reorgs
         .send(
             Reorg {
-                first_block_number: reorg_tail,
-                first_block_hash: reorg_tail_hash,
-                last_block_number: head,
-                last_block_hash: head_hash,
+                starting_block_number: reorg_tail,
+                starting_block_hash: reorg_tail_hash,
+                ending_block_number: orphan_head,
+                ending_block_hash: orphan_head_hash,
             }
             .into(),
         )
