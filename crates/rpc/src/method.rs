@@ -29,6 +29,7 @@ pub mod last_l1_accepted_block_hash_and_number;
 pub mod simulate_transactions;
 pub mod subscribe_events;
 pub mod subscribe_new_heads;
+pub mod subscribe_new_transaction_receipts;
 pub mod subscribe_pending_transactions;
 pub mod subscribe_transaction_status;
 pub mod syncing;
