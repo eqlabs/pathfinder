@@ -98,7 +98,7 @@ impl EthereumClient {
     async fn get_finalized_block_number(&self) -> anyhow::Result<L1BlockNumber> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().on_ws(ws).await?;
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
         // Fetch the finalized block number
         provider
             .get_block_by_number(BlockNumberOrTag::Finalized)
@@ -124,7 +124,7 @@ impl EthereumApi for EthereumClient {
     {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().on_ws(ws).await?;
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
         // Fetch the current Starknet state from Ethereum
         let state_update = self.get_starknet_state(address).await?;
@@ -239,7 +239,7 @@ impl EthereumApi for EthereumClient {
     ) -> anyhow::Result<Vec<L1HandlerTransaction>> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().on_ws(ws).await?;
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
         let core_address = Address::new((*address).into());
         let core_contract = StarknetCoreContract::new(core_address, provider.clone());
@@ -304,7 +304,7 @@ impl EthereumApi for EthereumClient {
     async fn get_starknet_state(&self, address: &H160) -> anyhow::Result<EthereumStateUpdate> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().on_ws(ws).await?;
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
         // Create the StarknetCoreContract instance
         let address = Address::new((*address).into());
@@ -321,9 +321,9 @@ impl EthereumApi for EthereumClient {
 
         // Return the state update
         Ok(EthereumStateUpdate {
-            state_root: get_state_root(state_root._0),
-            block_hash: get_block_hash(block_hash._0),
-            block_number: get_block_number(block_number._0),
+            state_root: get_state_root(state_root),
+            block_hash: get_block_hash(block_hash),
+            block_number: get_block_number(block_number),
         })
     }
 
@@ -331,7 +331,7 @@ impl EthereumApi for EthereumClient {
     async fn get_chain(&self) -> anyhow::Result<EthereumChain> {
         // Create a WebSocket connection
         let ws = WsConnect::new(self.url.clone());
-        let provider = ProviderBuilder::new().on_ws(ws).await?;
+        let provider = ProviderBuilder::new().connect_ws(ws).await?;
 
         // Get the chain ID
         let chain_id = provider.get_chain_id().await?;
