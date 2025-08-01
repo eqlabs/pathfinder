@@ -8198,7 +8198,7 @@ version = "0.18.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "fake",
  "flate2",
  "futures",
@@ -8384,7 +8384,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "axum 0.7.9",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bitvec",
  "bytes",
  "clap",
@@ -8524,7 +8524,7 @@ name = "pathfinder-consensus"
 version = "0.18.0"
 dependencies = [
  "anyhow",
- "base64 0.13.1",
+ "base64 0.22.1",
  "ed25519-consensus",
  "informalsystems-malachitebft-core-consensus",
  "informalsystems-malachitebft-core-types",
@@ -8635,7 +8635,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "axum 0.7.9",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bitvec",
  "bytes",
  "cached",
@@ -8706,7 +8706,7 @@ name = "pathfinder-storage"
 version = "0.18.0"
 dependencies = [
  "anyhow",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bincode 2.0.1",
  "bitvec",
  "bloomfilter",
@@ -10730,7 +10730,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
- "base64 0.13.1",
+ "base64 0.22.1",
  "bytes",
  "fake",
  "flate2",

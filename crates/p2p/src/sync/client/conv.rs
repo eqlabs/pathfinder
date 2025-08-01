@@ -6,54 +6,29 @@ use std::borrow::Cow;
 use std::io::Read;
 
 use anyhow::Context;
+use base64::prelude::*;
 use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, SierraEntryPoint};
 use p2p_proto::common::{Address, Hash, Hash256};
 use p2p_proto::receipt::execution_resources::BuiltinCounter;
 use p2p_proto::receipt::{
-    DeclareTransactionReceipt,
-    DeployAccountTransactionReceipt,
-    DeployTransactionReceipt,
-    EthereumAddress,
-    InvokeTransactionReceipt,
-    L1HandlerTransactionReceipt,
-    MessageToL1,
+    DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
+    EthereumAddress, InvokeTransactionReceipt, L1HandlerTransactionReceipt, MessageToL1,
     ReceiptCommon,
 };
 use p2p_proto::transaction::AccountSignature;
 use pathfinder_common::class_definition::{
-    Cairo,
-    SelectorAndFunctionIndex,
-    SelectorAndOffset,
-    Sierra,
+    Cairo, SelectorAndFunctionIndex, SelectorAndOffset, Sierra,
 };
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::{
-    BuiltinCounters,
-    ExecutionResources,
-    ExecutionStatus,
-    L1Gas,
-    L2Gas,
-    L2ToL1Message,
-    Receipt,
+    BuiltinCounters, ExecutionResources, ExecutionStatus, L1Gas, L2Gas, L2ToL1Message, Receipt,
 };
 use pathfinder_common::transaction::{
-    DataAvailabilityMode,
-    DeclareTransactionV0V1,
-    DeclareTransactionV2,
-    DeclareTransactionV3,
-    DeployAccountTransactionV1,
-    DeployAccountTransactionV3,
-    DeployTransactionV0,
-    DeployTransactionV1,
-    InvokeTransactionV0,
-    InvokeTransactionV1,
-    InvokeTransactionV3,
-    L1HandlerTransaction,
-    ResourceBound,
-    ResourceBounds,
-    Transaction,
-    TransactionVariant,
+    DataAvailabilityMode, DeclareTransactionV0V1, DeclareTransactionV2, DeclareTransactionV3,
+    DeployAccountTransactionV1, DeployAccountTransactionV3, DeployTransactionV0,
+    DeployTransactionV1, InvokeTransactionV0, InvokeTransactionV1, InvokeTransactionV3,
+    L1HandlerTransaction, ResourceBound, ResourceBounds, Transaction, TransactionVariant,
 };
 use pathfinder_crypto::Felt;
 use serde::{Deserialize, Serialize};
@@ -431,17 +406,8 @@ impl TryFromDto<p2p_proto::transaction::TransactionVariant> for TransactionVaria
         Self: Sized,
     {
         use p2p_proto::transaction::TransactionVariant::{
-            DeclareV0,
-            DeclareV1,
-            DeclareV2,
-            DeclareV3,
-            Deploy,
-            DeployAccountV1,
-            DeployAccountV3,
-            InvokeV0,
-            InvokeV1,
-            InvokeV3,
-            L1HandlerV0,
+            DeclareV0, DeclareV1, DeclareV2, DeclareV3, Deploy, DeployAccountV1, DeployAccountV3,
+            InvokeV0, InvokeV1, InvokeV3, L1HandlerV0,
         };
         Ok(match dto {
             DeclareV0(x) => Self::DeclareV0(DeclareTransactionV0V1 {
@@ -684,11 +650,8 @@ impl TryFrom<(p2p_proto::receipt::Receipt, TransactionIndex)>
     ) -> anyhow::Result<Self> {
         use p2p_proto::receipt::Receipt::{Declare, Deploy, DeployAccount, Invoke, L1Handler};
         use p2p_proto::receipt::{
-            DeclareTransactionReceipt,
-            DeployAccountTransactionReceipt,
-            DeployTransactionReceipt,
-            InvokeTransactionReceipt,
-            L1HandlerTransactionReceipt,
+            DeclareTransactionReceipt, DeployAccountTransactionReceipt, DeployTransactionReceipt,
+            InvokeTransactionReceipt, L1HandlerTransactionReceipt,
         };
         match dto {
             Invoke(InvokeTransactionReceipt { common })
@@ -891,7 +854,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
 
         let abi = dto.abi;
 
-        let compressed_program = base64::decode(dto.program)?;
+        let compressed_program = BASE64_STANDARD.decode(dto.program)?;
         let gzip_decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed_program));
         let mut program = Vec::new();
         gzip_decoder
@@ -1039,7 +1002,7 @@ impl ToDto<Cairo0Class> for Cairo<'_> {
             flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         serde_json::to_writer(&mut gzip_encoder, &self.program).unwrap();
         let program = gzip_encoder.finish().unwrap();
-        let program = base64::encode(program);
+        let program = BASE64_STANDARD.encode(program);
 
         Cairo0Class {
             abi: self.abi.to_string(),

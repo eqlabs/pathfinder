@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use base64::prelude::*;
 use p2p::libp2p::identity::Keypair;
 use serde::Deserialize;
 use zeroize::Zeroizing;
@@ -10,7 +11,8 @@ pub fn load_or_generate(identity_config_file: Option<PathBuf>) -> anyhow::Result
     Ok(match identity_config_file {
         Some(path) => {
             let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
-            let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
+            let private_key =
+                Zeroizing::new(BASE64_STANDARD.decode(config.private_key.as_bytes())?);
             Keypair::from_protobuf_encoding(&private_key)?
         }
         None => {
