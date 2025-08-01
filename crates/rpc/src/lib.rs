@@ -1167,9 +1167,10 @@ mod tests {
         // "starknet_subscription*" methods are in fact notifications
         &[
             "starknet_subscriptionNewHeads",
-            "starknet_subscriptionPendingTransactions",
             "starknet_subscriptionTransactionStatus",
             "starknet_subscriptionEvents",
+            "starknet_subscriptionNewTransactionReceipts",
+            "starknet_subscriptionNewTransaction",
             "starknet_subscriptionReorg"
         ],
         Api::WebsocketOnly)]
@@ -1184,9 +1185,10 @@ mod tests {
         // "starknet_subscription*" methods are in fact notifications
         &[
             "starknet_subscriptionNewHeads",
-            "starknet_subscriptionPendingTransactions",
             "starknet_subscriptionTransactionStatus",
             "starknet_subscriptionEvents",
+            "starknet_subscriptionNewTransactionReceipts",
+            "starknet_subscriptionNewTransaction",
             "starknet_subscriptionReorg"
         ],
         Api::WebsocketOnly)]

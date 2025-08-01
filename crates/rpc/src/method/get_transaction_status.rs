@@ -68,6 +68,9 @@ pub async fn get_transaction_status(
             .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
         {
             let output = match pending_data.block().finality_status() {
+                // This is not possible here (candidate transactions do not have receipts) but we're
+                // handling it for completeness.
+                crate::dto::TxnFinalityStatus::Candidate => Output::Candidate,
                 crate::dto::TxnFinalityStatus::PreConfirmed => {
                     Output::PreConfirmed((&receipt.execution_status).into())
                 }
