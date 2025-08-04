@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - `rpc.websocket.buffer-capacity`
   - `rpc.websocket.topic-capacity`
+- `starknet_getTransactionStatus` now returns ACCEPTED_* only when that status is known locally, not when it's received from the gateway for an otherwise-unknown transaction.
 
 ### Fixed
 
