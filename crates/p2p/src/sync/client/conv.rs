@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::io::Read;
 
 use anyhow::Context;
+use base64::prelude::*;
 use p2p_proto::class::{Cairo0Class, Cairo1Class, Cairo1EntryPoints, SierraEntryPoint};
 use p2p_proto::common::{Address, Hash, Hash256};
 use p2p_proto::receipt::execution_resources::BuiltinCounter;
@@ -891,7 +892,7 @@ impl TryFromDto<p2p_proto::class::Cairo0Class> for CairoDefinition {
 
         let abi = dto.abi;
 
-        let compressed_program = base64::decode(dto.program)?;
+        let compressed_program = BASE64_STANDARD.decode(dto.program)?;
         let gzip_decoder = flate2::read::GzDecoder::new(std::io::Cursor::new(compressed_program));
         let mut program = Vec::new();
         gzip_decoder
@@ -1039,7 +1040,7 @@ impl ToDto<Cairo0Class> for Cairo<'_> {
             flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         serde_json::to_writer(&mut gzip_encoder, &self.program).unwrap();
         let program = gzip_encoder.finish().unwrap();
-        let program = base64::encode(program);
+        let program = BASE64_STANDARD.encode(program);
 
         Cairo0Class {
             abi: self.abi.to_string(),

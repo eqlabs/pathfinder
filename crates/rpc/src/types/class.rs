@@ -1,6 +1,7 @@
 use std::io::{Cursor, Read};
 
 use anyhow::Context;
+use base64::prelude::*;
 use pathfinder_class_hash::{compute_class_hash, ComputedClassHash};
 use pathfinder_crypto::Felt;
 use pathfinder_serde::U64AsHexStr;
@@ -58,7 +59,7 @@ impl ContractClass {
             let compressed_program = gzip_encoder
                 .finish()
                 .context("Finalizing program compression")?;
-            let encoded_program = base64::encode(compressed_program);
+            let encoded_program = BASE64_STANDARD.encode(compressed_program);
             let program = encoded_program;
 
             Ok(ContractClass::Cairo(CairoContractClass {
@@ -185,7 +186,7 @@ impl TryFrom<SierraContractClass>
         let compressed_program = gzip_encoder
             .finish()
             .context("Finalizing program compression")?;
-        let encoded_program = base64::encode(compressed_program);
+        let encoded_program = BASE64_STANDARD.encode(compressed_program);
 
         Ok(Self {
             sierra_program: encoded_program,
@@ -222,8 +223,9 @@ impl CairoContractClass {
 
     pub fn serialize_to_json(&self) -> anyhow::Result<Vec<u8>> {
         // decode program
-        let decompressor =
-            flate2::read::GzDecoder::new(Cursor::new(base64::decode(&self.program).unwrap()));
+        let decompressor = flate2::read::GzDecoder::new(Cursor::new(
+            BASE64_STANDARD.decode(&self.program).unwrap(),
+        ));
         let mut program = Vec::new();
         decompressor
             .take(pathfinder_common::class_definition::CLASS_DEFINITION_MAX_ALLOWED_SIZE)

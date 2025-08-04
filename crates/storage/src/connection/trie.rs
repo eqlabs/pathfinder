@@ -185,8 +185,8 @@ impl Transaction<'_> {
         before_block: BlockNumber,
     ) -> anyhow::Result<()> {
         let mut stmt = self.inner().prepare_cached(
-            "SELECT block_number 
-            FROM contract_state_hashes 
+            "SELECT block_number
+            FROM contract_state_hashes
             WHERE contract_address = ? AND block_number <= ?
             ORDER BY block_number DESC
             LIMIT 1",
@@ -680,16 +680,16 @@ impl bincode::Encode for TrieStorageIndex {
     }
 }
 
-impl bincode::Decode for TrieStorageIndex {
-    fn decode<D: bincode::de::Decoder>(
+impl<Context> bincode::Decode<Context> for TrieStorageIndex {
+    fn decode<D: bincode::de::Decoder<Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self(u64::decode(decoder)?))
     }
 }
 
-impl<'de> bincode::BorrowDecode<'de> for TrieStorageIndex {
-    fn borrow_decode<D: bincode::de::BorrowDecoder<'de>>(
+impl<'de, Context> bincode::BorrowDecode<'de, Context> for TrieStorageIndex {
+    fn borrow_decode<D: bincode::de::BorrowDecoder<'de, Context = Context>>(
         decoder: &mut D,
     ) -> Result<Self, bincode::error::DecodeError> {
         Ok(Self(u64::borrow_decode(decoder)?))
