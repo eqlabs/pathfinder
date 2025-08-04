@@ -3,6 +3,7 @@
     "amount": "0x0",
     "unit": "WEI"
   },
+  "block_number": 3,
   "events": [
     {
       "data": [],

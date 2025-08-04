@@ -171,7 +171,6 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
             events,
             finality,
         } = self;
-
         let mut serializer = serializer.serialize_struct()?;
 
         serializer.flatten(&TxnReceipt {
@@ -182,7 +181,11 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
         })?;
 
         serializer.serialize_optional("block_hash", block_hash.cloned())?;
-        serializer.serialize_optional("block_number", *block_number)?;
+        if serializer.version == RpcVersion::V09 {
+            serializer.serialize_optional("block_number", *block_number)?;
+        } else if serializer.version != RpcVersion::V09 && block_hash.is_some() {
+            serializer.serialize_optional("block_number", *block_number)?;
+        }
 
         serializer.end()
     }
