@@ -181,9 +181,9 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
         })?;
 
         serializer.serialize_optional("block_hash", block_hash.cloned())?;
-        if serializer.version == RpcVersion::V09 {
-            serializer.serialize_optional("block_number", *block_number)?;
-        } else if serializer.version != RpcVersion::V09 && block_hash.is_some() {
+        if (serializer.version == RpcVersion::V09)
+            || (serializer.version != RpcVersion::V09 && block_hash.is_some())
+        {
             serializer.serialize_optional("block_number", *block_number)?;
         }
 
