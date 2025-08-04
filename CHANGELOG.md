@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `blockifier` has been upgraded to version 0.15.0-rc.2.
 - The default JSON-RPC listen address has been changed to the IPv6 wildcard address in our Docker images. This avoids problems on IPv6-enabled hosts where `localhost` resolves to `::1`.
+- The default JSON-RPC version (served on the '/' route) has been changed to v08.
 - JSON-RPC `starknet_estimateFee` and `starknet_simulateTransactions` now use non-strict nonce checking when using the `SKIP_VALIDATE` flag. That is, the nonce value needs to be larger than the last used value but no exact match is required.
+- `starknet_getTransactionStatus` now returns ACCEPTED_* only when that status is known locally, not when it's received from the gateway for an otherwise-unknown transaction.
 
 ## [0.18.0] - 2025-07-14
 
@@ -29,7 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   - `rpc.websocket.buffer-capacity`
   - `rpc.websocket.topic-capacity`
-- `starknet_getTransactionStatus` now returns ACCEPTED_* only when that status is known locally, not when it's received from the gateway for an otherwise-unknown transaction.
 
 ### Fixed
 
