@@ -33,6 +33,7 @@ pub enum Output {
     },
     Pending {
         receipt: Receipt,
+        block_number: BlockNumber,
         transaction: Transaction,
         events: Vec<Event>,
         finality: dto::TxnFinalityStatus,
@@ -62,12 +63,13 @@ impl crate::dto::SerializeForVersion for Output {
             },
             Output::Pending {
                 receipt,
+                block_number,
                 transaction,
                 events,
                 finality,
             } => dto::TxnReceiptWithBlockInfo {
                 block_hash: None,
-                block_number: None,
+                block_number: Some(*block_number),
                 receipt,
                 transaction,
                 events,
@@ -109,6 +111,7 @@ pub async fn get_transaction_receipt(
         {
             return Ok(Output::Pending {
                 receipt,
+                block_number: pending.block_number(),
                 transaction,
                 events,
                 finality: pending.block().finality_status(),
