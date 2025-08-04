@@ -12,7 +12,9 @@ The WebSocket interface serves the same API versions and extension endpoints as 
 - **JSON-RPC v0.7.1**  
   Accessible at `/ws/rpc/v0_7`.
 - **JSON-RPC v0.8.1**  
-  Accessible at `/rpc/v0_8` and `/ws/rpc/v0_8`.
+  Accessible at `/rpc/v0_8` and `/ws/rpc/v0_8` (deprecated).
+- **JSON-RPC v0.9.0**
+  Accessible at `/rpc/v0_9` and `/ws/rpc/v0_9` (deprecated).
 - **Pathfinder Extension**  
   Exposed via `/ws/rpc/pathfinder/v0_1`
 
