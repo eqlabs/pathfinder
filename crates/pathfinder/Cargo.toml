@@ -32,6 +32,7 @@ ipnet = { workspace = true }
 jemallocator = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+num-traits = { workspace = true }
 p2p = { path = "../p2p" }
 p2p_proto = { path = "../p2p_proto" }
 paste = { workspace = true }

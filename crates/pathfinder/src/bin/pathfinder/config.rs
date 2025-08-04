@@ -129,11 +129,12 @@ Examples:
 
     #[arg(
         long = "sync.poll-interval",
-        long_help = "New block poll interval in seconds",
+        long_help = "New block poll interval in seconds (can use fractions)",
         default_value = "1",
+        value_parser = parse_fractional_seconds,
         env = "PATHFINDER_HEAD_POLL_INTERVAL_SECONDS"
     )]
-    poll_interval: std::num::NonZeroU64,
+    poll_interval: Duration,
 
     #[arg(
         long = "sync.l1-poll-interval",
@@ -460,6 +461,14 @@ fn parse_fee_estimation_epsilon(s: &str) -> Result<Percentage, String> {
         })?;
 
     Ok(Percentage::new(value))
+}
+
+fn parse_fractional_seconds(s: &str) -> Result<Duration, String> {
+    let seconds: f64 = s
+        .parse()
+        .map_err(|_| "Expected a number (f64)".to_string())?;
+    let duration = Duration::try_from_secs_f64(seconds).map_err(|e| e.to_string())?;
+    Ok(duration)
 }
 
 #[derive(clap::Args)]
@@ -897,7 +906,7 @@ impl Config {
                 false => JournalMode::Rollback,
             },
             max_rpc_connections: cli.max_rpc_connections,
-            poll_interval: Duration::from_secs(cli.poll_interval.get()),
+            poll_interval: cli.poll_interval,
             l1_poll_interval: Duration::from_secs(cli.l1_poll_interval.get()),
             color: cli.color,
             log_output_json: cli.log_output_json,
