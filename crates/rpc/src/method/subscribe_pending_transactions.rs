@@ -79,6 +79,16 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
         let mut sent_txs = HashSet::new();
         loop {
             let pending = pending_data.borrow_and_update().clone();
+            // JSON-RPC 0.9.0 has removed `starknet_subscribePendingTransactions`, and
+            // pre-0.9.0 APIs should not have access to pre-confirmed data. That
+            // is, if the update is from a pre-confirmed block, we should just
+            // ignore it. Note that this renders this method mostly useless,
+            // since after the Starknet 0.14.0 update no transactions will be
+            // sent over this subscription.
+            if pending.is_pre_confirmed() {
+                continue;
+            }
+
             if pending.block_number() != last_block {
                 last_block = pending.block_number();
                 sent_txs.clear();
