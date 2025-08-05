@@ -271,6 +271,10 @@ impl PendingData {
     pub fn is_pre_confirmed(&self) -> bool {
         matches!(self.block.as_ref(), PendingBlockVariant::PreConfirmed(_, _))
     }
+
+    pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
+        self.block.finality_status()
+    }
 }
 
 impl PendingWatcher {
