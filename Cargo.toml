@@ -45,6 +45,11 @@ lto = true
 [profile.dev.package.flate2]
 opt-level = 3
 
+[profile.ci-dev]
+inherits = "dev"
+incremental = false
+debug = "line-tables-only"
+
 [workspace.package]
 version = "0.18.0"
 edition = "2021"

@@ -19,7 +19,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
-      CARGO_BUILD_JOBS: 2
       MLIR_SYS_190_PREFIX: "/usr/lib/llvm-19"
       LLVM_SYS_191_PREFIX: "/usr/lib/llvm-19"
       TABLEGEN_190_PREFIX: "/usr/lib/llvm-19"
@@ -53,9 +52,9 @@ jobs:
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
       - name: Compile unit tests with all features enabled
-        run: cargo nextest run --all-targets --all-features --workspace --locked --no-run --timings
+        run: cargo nextest run --cargo-profile ci-dev --all-targets --all-features --workspace --locked --no-run --timings
       - name: Run unit tests with all features enabled
-        run: timeout 10m cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked
+        run: timeout 10m cargo nextest run --cargo-profile ci-dev --no-fail-fast --all-targets --all-features --workspace --locked
       - name: Store timings with all features enabled
         uses: actions/upload-artifact@v4
         with:
@@ -67,7 +66,6 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
-      CARGO_BUILD_JOBS: 2
     steps:
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -90,9 +88,9 @@ jobs:
           rm -rf ~/.cargo/registry
           rm -rf ~/.cargo/git
       - name: Compile unit tests with default features
-        run: cargo nextest run --all-targets --workspace --locked --no-run --timings
+        run: cargo nextest run --cargo-profile ci-dev --all-targets --workspace --locked --no-run --timings
       - name: Run unit tests with default features
-        run: timeout 10m cargo nextest run --no-fail-fast --all-targets --workspace --locked
+        run: timeout 10m cargo nextest run --cargo-profile ci-dev --no-fail-fast --all-targets --workspace --locked
       - name: Store timings with default features
         uses: actions/upload-artifact@v4
         with:
