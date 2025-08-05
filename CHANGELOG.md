@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default JSON-RPC version (served on the '/' route) has been changed to v08.
 - JSON-RPC `starknet_estimateFee` and `starknet_simulateTransactions` now use non-strict nonce checking when using the `SKIP_VALIDATE` flag. That is, the nonce value needs to be larger than the last used value but no exact match is required.
 - `starknet_getTransactionStatus` now returns ACCEPTED_* only when that status is known locally, not when it's received from the gateway for an otherwise-unknown transaction.
+- value of the `--sync.poll-interval` command-line option can now specify fractional seconds
 
 ## [0.18.0] - 2025-07-14
 
