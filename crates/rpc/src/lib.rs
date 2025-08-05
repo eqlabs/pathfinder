@@ -11,7 +11,7 @@ mod pathfinder;
 mod pending;
 #[cfg(test)]
 mod test_setup;
-mod tracker;
+pub mod tracker;
 pub mod types;
 pub mod v06;
 pub mod v07;
@@ -1009,8 +1009,8 @@ pub mod test_utils {
                 contract_nonce_bytes!(b"preconfirmed nonce"),
             );
 
-        let block = crate::pending::PendingBlockVariant::PreConfirmed(
-            crate::pending::PreConfirmedBlock {
+        let block = crate::pending::PendingBlockVariant::PreConfirmed {
+            block: crate::pending::PreConfirmedBlock {
                 number: latest.number + 1,
                 l1_gas_price: GasPrices {
                     price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
@@ -1033,7 +1033,7 @@ pub mod test_utils {
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
             },
             candidate_transactions,
-        );
+        };
 
         // The class definitions must be inserted into the database.
         let state_update_copy = state_update.clone();

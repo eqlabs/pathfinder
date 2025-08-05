@@ -69,3 +69,20 @@ pub use trace_block_transactions::trace_block_transactions;
 pub use trace_transaction::trace_transaction;
 
 const REORG_SUBSCRIPTION_NAME: &str = "starknet_subscriptionReorg";
+
+/// A helper function used in a few RPC methods.
+pub(crate) fn get_latest_block_or_genesis(
+    storage: &pathfinder_storage::Storage,
+) -> anyhow::Result<pathfinder_common::BlockNumber> {
+    use anyhow::Context;
+
+    let mut conn = storage
+        .connection()
+        .context("Failed to open DB connection")?;
+    let db = conn
+        .transaction()
+        .context("Failed to create DB transaction")?;
+    db.block_number(pathfinder_common::BlockId::Latest)
+        .context("Failed to get latest block number")
+        .map(|latest| latest.unwrap_or_default())
+}
