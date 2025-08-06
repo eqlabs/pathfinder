@@ -50,3 +50,7 @@ jobs:
 
           # Finally publish class-hash which depends on common, crypto and serde
           publish_with_retry pathfinder-class-hash
+          sleep 30
+
+          # Publish other crates...
+          publish_with_retry pathfinder-consensus
