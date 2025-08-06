@@ -780,6 +780,18 @@ impl<A: Debug> std::fmt::Debug for Validator<A> {
     }
 }
 
+impl<A: Ord> Ord for Validator<A> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.address.cmp(&other.address)
+    }
+}
+
+impl<A: Ord> PartialOrd for Validator<A> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl<A> Validator<A> {
     /// Create a new validator with the given address and public key.
     ///
@@ -812,9 +824,23 @@ pub struct ValidatorSet<A> {
     pub validators: Vec<Validator<A>>,
 }
 
-impl<A> ValidatorSet<A> {
+impl<A: Ord> ValidatorSet<A> {
     /// Create a new validator set with the given validators.
-    pub fn new(validators: Vec<Validator<A>>) -> Self {
+    ///
+    /// ## Panics
+    ///
+    /// Panics if the validator set is empty. A consensus protocol requires
+    /// at least one validator to function.
+    pub fn new(validators: impl IntoIterator<Item = Validator<A>>) -> Self {
+        let mut validators: Vec<_> = validators.into_iter().collect();
+        validators.sort();
+        validators.dedup();
+
+        assert!(
+            !validators.is_empty(),
+            "Validator set cannot be empty - consensus requires at least one validator"
+        );
+
         Self { validators }
     }
 
