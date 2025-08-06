@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.9.0-rc.1",
+    "version": "0.9.0-rc.3",
     "title": "StarkNet Node API",
     "license": {}
   },
@@ -276,16 +276,7 @@
               },
               "finality_status": {
                 "title": "finality status",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/TXN_STATUS"
-                  },
-                  {
-                    "not": {
-                      "enum": ["RECEIVED", "CANDIDATE"]
-                    }
-                  }
-                ]
+                "$ref": "#/components/schemas/TXN_FINALITY_STATUS"
               },
               "execution_status": {
                 "title": "execution status",
@@ -1239,8 +1230,8 @@
       "BLOCK_TAG": {
         "title": "Block tag",
         "type": "string",
-        "description": "A tag specifying a dynamic reference to a block",
-        "enum": ["latest", "pre_confirmed"]
+        "description": "A tag specifying a dynamic reference to a block. Tag `l1_accepted` refers to the latest Starknet block which was included in a state update on L1 and finalized by the consensus on L1. Tag `latest` refers to the latest Starknet block finalized by the consensus on L2. Tag `pre_confirmed` refers to the block which is currently being built by the block proposer in height `latest` + 1.",
+        "enum": ["l1_accepted", "latest", "pre_confirmed"]
       },
       "SYNC_STATUS": {
         "title": "Sync status",
@@ -1689,10 +1680,7 @@
           "l1_data_gas_price",
           "l1_da_mode",
           "starknet_version"
-        ],
-        "not": {
-          "required": ["block_hash", "new_root"]
-        }
+        ]
       },
       "BLOCK_WITH_TX_HASHES": {
         "title": "Block with transaction hashes",
@@ -3033,10 +3021,10 @@
               },
               "block_number": {
                 "title": "Block number",
-                "$ref": "#/components/schemas/BLOCK_NUMBER",
-                "description": "If this field is missing, it means the receipt belongs to the pre-confirmed block"
+                "$ref": "#/components/schemas/BLOCK_NUMBER"
               }
-            }
+            },
+            "required": ["block_number"]
           }
         ]
       },
@@ -3113,7 +3101,7 @@
           },
           "failure_reason": {
             "title": "failure reason",
-            "description": "the failure reason, only appears if finality_status is REJECTED or execution_status is REVERTED",
+            "description": "the failure reason, only appears if execution_status is REVERTED",
             "type": "string"
           }
         },
@@ -3152,12 +3140,7 @@
       "BLOCK_STATUS": {
         "title": "Block status",
         "type": "string",
-        "enum": [
-          "PRE_CONFIRMED",
-          "ACCEPTED_ON_L2",
-          "ACCEPTED_ON_L1",
-          "REJECTED"
-        ],
+        "enum": ["PRE_CONFIRMED", "ACCEPTED_ON_L2", "ACCEPTED_ON_L1"],
         "description": "The status of the block"
       },
       "FUNCTION_CALL": {

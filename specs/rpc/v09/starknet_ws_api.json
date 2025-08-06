@@ -1,7 +1,7 @@
 {
   "openrpc": "1.3.2",
   "info": {
-    "version": "0.9.0-rc.1",
+    "version": "0.9.0-rc.3",
     "title": "StarkNet WebSocket RPC API",
     "license": {}
   },
@@ -58,7 +58,7 @@
     {
       "name": "starknet_subscribeEvents",
       "summary": "Events subscription",
-      "description": "Creates a WebSocket stream which will fire events for new Starknet events with applied filters",
+      "description": "Creates a WebSocket stream which will fire events for new Starknet events with applied filters. Events are emitted for all events from the specified block_id, up to the latest block",
       "params": [
         {
           "name": "from_address",
@@ -84,6 +84,15 @@
           "schema": {
             "$ref": "#/components/schemas/SUBSCRIPTION_BLOCK_ID"
           }
+        },
+        {
+          "name": "finality_status",
+          "summary": "The finality status of the most recent events to include, default is ACCEPTED_ON_L2",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["PRE_CONFIRMED", "ACCEPTED_ON_L2"]
+          }
         }
       ],
       "result": {
@@ -107,7 +116,7 @@
     {
       "name": "starknet_subscriptionEvents",
       "summary": "New events notification",
-      "description": "Notification to the client of a new event",
+      "description": "Notification to the client of a new event. The event also includes the finality status of the transaction emitting the event",
       "params": [
         {
           "name": "subscription_id",
@@ -118,7 +127,14 @@
         {
           "name": "result",
           "schema": {
-            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
+            "allOf": [
+              {
+                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
+              },
+              {
+                "$ref": "#/components/schemas/TXN_FINALITY_STATUS"
+              }
+            ]
           }
         }
       ],
@@ -167,21 +183,34 @@
       "errors": []
     },
     {
-      "name": "starknet_subscribePendingTransactions",
-      "summary": "New Pending Transactions subscription",
-      "description": "Creates a WebSocket stream which will fire events when a new pending transaction is added. While there is no mempool, this notifies of transactions in the pending block",
+      "name": "starknet_subscribeNewTransactionReceipts",
+      "summary": "New transactions receipts subscription",
+      "description": "Creates a WebSocket stream which will fire events when new transaction receipts are created. The endpoint receives a vector of finality statuses. An event is fired for each finality status update. It is possible for receipts for pre-confirmed transactions to be received multiple times, or not at all.",
       "params": [
         {
-          "name": "transaction_details",
-          "summary": "Get all transaction details, and not only the hash. If not provided, only hash is returned. Default is false",
+          "name": "finality_status",
+          "summary": "A vector of finality statuses to receive updates for, default is [ACCEPTED_ON_L2]",
           "required": false,
           "schema": {
-            "type": "boolean"
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_FINALITY_STATUS"
+                },
+                {
+                  "not": {
+                    "type": "string",
+                    "enum": ["ACCEPTED_ON_L1"]
+                  }
+                }
+              ]
+            }
           }
         },
         {
           "name": "sender_address",
-          "summary": "Filter transactions to only receive notification from address list",
+          "summary": "Filter transaction receipts to only include transactions sent by the specified addresses",
           "required": false,
           "schema": {
             "type": "array",
@@ -204,9 +233,9 @@
       ]
     },
     {
-      "name": "starknet_subscriptionPendingTransactions",
-      "summary": "New pending transaction notification",
-      "description": "Notification to the client of a new pending transaction",
+      "name": "starknet_subscriptionNewTransactionReceipts",
+      "summary": "New transaction receipt notification",
+      "description": "Notification to the client of a new transaction receipt, with its current finality status",
       "params": [
         {
           "name": "subscription_id",
@@ -216,14 +245,84 @@
         },
         {
           "name": "result",
-          "description": "Either a tranasaction hash or full transaction details, based on subscription",
+          "description": "A transaction receipt",
           "schema": {
-            "oneOf": [
-              {
-                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_HASH"
-              },
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_RECEIPT_WITH_BLOCK_INFO"
+          }
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "starknet_subscribeNewTransactions",
+      "summary": "New transactions subscription",
+      "description": "Creates a WebSocket stream which will fire events when new transaction are created. The endpoint receives a vector of finality statuses. An event is fired for each finality status update. It is possible for events for pre-confirmed and candidate transactions to be received multiple times, or not at all.",
+      "params": [
+        {
+          "name": "finality_status",
+          "summary": "A vector of finality statuses to receive updates for, default is [ACCEPTED_ON_L2]",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/TXN_STATUS_WITHOUT_L1"
+              }
+            }
+          }
+        },
+        {
+          "name": "sender_address",
+          "summary": "Filter to only include transactions sent by the specified addresses",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ADDRESS"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "subscription_id",
+        "schema": {
+          "$ref": "#/components/schemas/SUBSCRIPTION_ID"
+        }
+      },
+      "errors": [
+        {
+          "$ref": "#/components/errors/TOO_MANY_ADDRESSES_IN_FILTER"
+        }
+      ]
+    },
+    {
+      "name": "starknet_subscriptionNewTransaction",
+      "summary": "New transaction notification",
+      "description": "Notification to the client of a new transaction, with its current finality status",
+      "params": [
+        {
+          "name": "subscription_id",
+          "schema": {
+            "$ref": "#/components/schemas/SUBSCRIPTION_ID"
+          }
+        },
+        {
+          "name": "result",
+          "description": "A transaction and its current finality status",
+          "schema": {
+            "allOf": [
               {
                 "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_WITH_HASH"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "finality_status": {
+                    "description": "Finality status of the transaction",
+                    "$ref": "#/components/schemas/TXN_STATUS_WITHOUT_L1"
+                  }
+                },
+                "required": ["finality_status"]
               }
             ]
           }
@@ -308,42 +407,38 @@
       },
       "SUBSCRIPTION_BLOCK_ID": {
         "title": "Subscription Block id",
-        "description": "Block hash, number or tag, same as BLOCK_ID, but without 'pending'",
-        "oneOf": [
-          {
-            "title": "Block hash",
-            "type": "object",
-            "properties": {
-              "block_hash": {
-                "title": "Block hash",
-                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_HASH"
-              }
+        "description": "Block hash, number or tag, same as BLOCK_ID, but without 'pre_confirmed' or 'l1_accepted'",
+        "schema": {
+          "title": "Block id",
+          "allOf": [
+            {
+              "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_ID"
             },
-            "required": ["block_hash"]
+            {
+              "not": {
+                "type": "string",
+                "enum": ["l1_accepted", "pre_confirmed"]
+              }
+            }
+          ]
+        }
+      },
+      "TXN_STATUS_WITHOUT_L1": {
+        "title": "Transaction status without ACCEPTED_ON_L1",
+        "description": "Transaction status for new transactions subscription",
+        "allOf": [
+          {
+            "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_STATUS"
           },
           {
-            "title": "Block number",
-            "type": "object",
-            "properties": {
-              "block_number": {
-                "title": "Block number",
-                "$ref": "./api/starknet_api_openrpc.json#/components/schemas/BLOCK_NUMBER"
-              }
-            },
-            "required": ["block_number"]
-          },
-          {
-            "title": "Block tag",
-            "$ref": "#/components/schemas/SUBSCRIPTION_BLOCK_TAG"
+            "not": {
+              "type": "string",
+              "enum": ["ACCEPTED_ON_L1"]
+            }
           }
         ]
       },
-      "SUBSCRIPTION_BLOCK_TAG": {
-        "title": "Subscription Block tag",
-        "type": "string",
-        "description": "Same as BLOCK_TAG, but without 'pending'",
-        "enum": ["latest"]
-      },
+
       "REORG_DATA": {
         "name": "Reorg Data",
         "description": "Data about reorganized blocks, starting and ending block number and hash",
