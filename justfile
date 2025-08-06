@@ -8,12 +8,12 @@ test $RUST_BACKTRACE="1" *args="":
 
 test-all-features $RUST_BACKTRACE="1" *args="":
     cargo nextest run --no-fail-fast --all-targets --all-features --workspace --locked \
-    -E 'not test(/^p2p_network::sync_handlers::tests::prop/)' \
+    -E 'not test(/^p2p_network::sync::sync_handlers::tests::prop/)' \
     {{args}}
 
 proptest $RUST_BACKTRACE="1" *args="":
     cargo nextest run --no-fail-fast --all-targets --features p2p --workspace --locked \
-    -E 'test(/^p2p_network::sync_handlers::tests::prop/)' \
+    -E 'test(/^p2p_network::sync::sync_handlers::tests::prop/)' \
     {{args}}
 
 build:
