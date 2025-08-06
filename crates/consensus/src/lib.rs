@@ -600,6 +600,12 @@ impl Round {
     }
 }
 
+impl From<u32> for Round {
+    fn from(round: u32) -> Self {
+        Self::new(round)
+    }
+}
+
 impl Add<u32> for Round {
     type Output = Self;
 
@@ -698,6 +704,15 @@ impl<V: Debug, A: Debug> std::fmt::Debug for Vote<V, A> {
             "H:{} R:{} {:?} From:{:?} Val:{val}",
             self.height, self.round, self.r#type, self.validator_address
         )
+    }
+}
+
+impl<V, A> Vote<V, A> {
+    /// Check if the vote is nil.
+    ///
+    /// A nil vote is a vote that does not commit to a value.
+    pub fn is_nil(&self) -> bool {
+        self.value.is_none()
     }
 }
 
