@@ -94,7 +94,7 @@ impl From<TxnFinalityStatusWithoutL1Accepted> for TxnFinalityStatus {
 #[derive(Debug)]
 pub struct Notification {
     block_hash: Option<BlockHash>,
-    block_number: Option<BlockNumber>,
+    block_number: BlockNumber,
     receipt: Receipt,
     transaction: Transaction,
     events: Vec<Event>,
@@ -160,7 +160,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
 
                                     let notification = Notification {
                                         block_hash: Some(block.block_hash),
-                                        block_number: Some(block.block_number),
+                                        block_number: block.block_number,
                                         receipt: receipt.clone(),
                                         transaction: transaction.clone(),
                                         events: events.clone(),
@@ -213,7 +213,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
 
                         let notification = Notification {
                             block_hash: None,
-                            block_number: Some(pending.block_number()),
+                            block_number: pending.block_number(),
                             receipt: receipt.clone(),
                             transaction: transaction.clone(),
                             events: events.clone(),

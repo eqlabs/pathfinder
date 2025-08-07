@@ -51,7 +51,7 @@ pub enum TxnFinalityStatus {
 
 pub struct TxnReceiptWithBlockInfo<'a> {
     pub block_hash: Option<&'a BlockHash>,
-    pub block_number: Option<BlockNumber>,
+    pub block_number: BlockNumber,
     pub receipt: &'a Receipt,
     pub transaction: &'a Transaction,
     pub events: &'a [Event],
@@ -187,7 +187,7 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
         if (serializer.version >= RpcVersion::V09)
             || (serializer.version < RpcVersion::V09 && block_hash.is_some())
         {
-            serializer.serialize_optional("block_number", *block_number)?;
+            serializer.serialize_field("block_number", block_number)?;
         }
 
         serializer.end()

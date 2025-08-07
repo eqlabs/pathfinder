@@ -55,7 +55,7 @@ impl crate::dto::SerializeForVersion for Output {
                 finality,
             } => dto::TxnReceiptWithBlockInfo {
                 block_hash: Some(block_hash),
-                block_number: Some(*block_number),
+                block_number: *block_number,
                 receipt,
                 transaction,
                 events,
@@ -69,7 +69,7 @@ impl crate::dto::SerializeForVersion for Output {
                 finality,
             } => dto::TxnReceiptWithBlockInfo {
                 block_hash: None,
-                block_number: Some(*block_number),
+                block_number: *block_number,
                 receipt,
                 transaction,
                 events,
