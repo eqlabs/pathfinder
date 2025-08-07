@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 
+use base64::prelude::{Engine as _, BASE64_STANDARD};
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::core::upgrade;
@@ -70,7 +71,8 @@ async fn main() -> anyhow::Result<()> {
     let keypair = match &args.identity_config_file {
         Some(path) => {
             let config = Zeroizing::new(IdentityConfig::from_file(path.as_path())?);
-            let private_key = Zeroizing::new(base64::decode(config.private_key.as_bytes())?);
+            let private_key =
+                Zeroizing::new(BASE64_STANDARD.decode(config.private_key.as_bytes())?);
             Keypair::from_protobuf_encoding(&private_key)?
         }
         None => {
