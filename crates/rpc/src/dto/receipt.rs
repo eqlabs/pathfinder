@@ -181,8 +181,11 @@ impl SerializeForVersion for TxnReceiptWithBlockInfo<'_> {
         })?;
 
         serializer.serialize_optional("block_hash", block_hash.cloned())?;
-        if (serializer.version == RpcVersion::V09)
-            || (serializer.version != RpcVersion::V09 && block_hash.is_some())
+        // Block number is required for V09 and later versions. For older versions
+        // we only ever serialize it if `block_hash` is present, that is, the block is
+        // finalized.
+        if (serializer.version >= RpcVersion::V09)
+            || (serializer.version < RpcVersion::V09 && block_hash.is_some())
         {
             serializer.serialize_optional("block_number", *block_number)?;
         }
