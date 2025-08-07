@@ -8,6 +8,8 @@ use std::time::Duration;
 
 use clap::{ArgAction, CommandFactory, Parser};
 use pathfinder_common::{AllowedOrigins, StarknetVersion};
+#[cfg(feature = "p2p")]
+use pathfinder_crypto::Felt;
 use pathfinder_executor::{VersionedConstants, VersionedConstantsMap};
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
@@ -186,6 +188,14 @@ Examples:
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
     p2p_consensus: (),
+
+    #[cfg(feature = "p2p")]
+    #[clap(flatten)]
+    consensus: ConsensusCli,
+
+    #[cfg(not(feature = "p2p"))]
+    #[clap(skip)]
+    consensus: (),
 
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
@@ -495,6 +505,12 @@ fn parse_fractional_seconds(s: &str) -> Result<Duration, String> {
     Ok(duration)
 }
 
+#[cfg(feature = "p2p")]
+fn parse_felt(s: &str) -> Result<Felt, String> {
+    let felt = Felt::from_hex_str(s).map_err(|e| ToString::to_string(&e))?;
+    Ok(felt)
+}
+
 #[derive(clap::Args)]
 struct NetworkCli {
     #[arg(
@@ -578,6 +594,50 @@ struct NativeExecutionCli {
         env = "PATHFINDER_RPC_NATIVE_EXECUTION_CLASS_CACHE_SIZE"
     )]
     class_cache_size: NonZeroUsize,
+}
+
+#[cfg(feature = "p2p")]
+#[derive(clap::Args)]
+struct ConsensusCli {
+    #[arg(
+        long = "consensus.enable",
+        long_help = "Enable Starknet consensus node (validator).",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_CONSENSUS_ENABLE",
+    )]
+    is_enabled: bool,
+
+    #[arg(
+        long = "consensus.proposer-address",
+        long_help = "Address of the sole proposer for the consensus protocol.",
+        value_name = "ADDRESS",
+        value_parser = parse_felt,
+        env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESS",
+        required_if_eq("is_enabled", "true"),
+    )]
+    proposer_address: Option<Felt>,
+
+    #[arg(
+        long = "consensus.my-validator-address",
+        long_help = "Address of this validator node.",
+        value_name = "ADDRESS",
+        value_parser = parse_felt,
+        env = "PATHFINDER_CONSENSUS_MY_VALIDATOR_ADDRESS",
+        required_if_eq("is_enabled", "true"),
+    )]
+    my_validator_address: Option<Felt>,
+
+    #[arg(
+        long = "consensus.validator-addresses",
+        long_help = "Addresses of other validators, ie. excluding our own node.",
+        value_name = "ADDRESS_LIST",
+        value_parser = parse_felt,
+        value_delimiter = ',',
+        env = "PATHFINDER_CONSENSUS_VALIDATOR_ADDRESSES",
+        required_if_eq("is_enabled", "true"),
+    )]
+    validator_addresses: Vec<Felt>,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
