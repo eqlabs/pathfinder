@@ -335,9 +335,7 @@ async fn main() -> anyhow::Result<()> {
                             proposal_parts
                         } else {
                             // TODO this is here to catch a very rare case which I'm almost
-                            // sure occurred at least once during tests on my machine. Once I'm sure
-                            // if it's a real concern or not the panic will be removed and
-                            // the case handled correctly (if it really occurs).
+                            // sure occurred at least once during tests on my machine.
                             tracing::warn!(
                                 "Engine requested gossiping a proposal for {height_and_round} via \
                                  ConsensusEvent::Gossip but we did not create it due to missing \
