@@ -83,7 +83,6 @@ assert_matches = { workspace = true }
 const-decoder = { workspace = true }
 ed25519-consensus = "2.1.0"
 flate2 = { workspace = true }
-malachite-signing-ed25519 = { package = "informalsystems-malachitebft-signing-ed25519", version = "0.3" }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
