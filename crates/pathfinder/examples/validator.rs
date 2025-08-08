@@ -1,3 +1,47 @@
+//! This example integrates the following crates:
+//! - `pathfinder-consensus`, the Tendermint consensus engine,
+//! - `p2p`, the consensus network layer for Starknet.
+//!
+//! Running a single instance of this example constitutes a single node in the
+//! consensus network. Given at least three instances we can reach consensus on
+//! the mock proposal and move to the next height. This example does not use a
+//! genuine pathfinder database but instead uses a text file to save the current
+//! height, so that we can restart the example and continue from the last
+//! "committed" height.
+//!
+//! In order to run the example, one must generate the identity files for all
+//! actors first, including the bootstrap node:
+//!
+//! ```bash
+//! cargo run --release -p p2p --example generate_key > id_boot.json
+//! # Repeat for Alice, Bob, Charlie, etc.
+//! ```
+//! Then run the bootstrap node:
+//!
+//! ```bash
+//! cargo run -p p2p --example bootstrap -- \
+//! --network=sepolia-testnet \
+//! --listen-on=/ip4/127.0.0.1/tcp/50000 \
+//! --identity-config-file=./id_boot.json \
+//! --bootstrap-interval-seconds=5 \
+//! --pretty-log \
+//! 2>&1 | tee boot.log
+//! ```
+//! And finally run the consensus nodes (Alice 0x1, Bob 0x2, Charlie 0x3, etc.):
+//!
+//! ```bash
+//! cargo run --release -F p2p --example validator -- \
+//! --validator-address=0x1 \
+//! --validators=0x2,0x3,0x4 \
+//! --wal-directory=./wal-alice \
+//! --db-file=./db-alice \
+//! --p2p.consensus.identity-config-file=./id_alice.json \
+//! --p2p.consensus.listen-on=/ip4/127.0.0.1/tcp/50001 \
+//! --p2p.consensus.experimental.direct-connection-timeout=1 \
+//! --p2p.consensus.experimental.eviction-timeout=1 \
+//! --p2p.consensus.bootstrap-addresses=/ip4/127.0.0.1/tcp/50000/p2p/12D3KooWBYBUYATSEHVBhzkZphehnGNnUR4kvi1uchCcw9FW64jA \
+//! 2>&1 | tee alice.log
+//! ```
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
