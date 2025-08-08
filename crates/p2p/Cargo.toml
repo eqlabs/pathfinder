@@ -11,7 +11,6 @@ rust-version = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 base64 = { workspace = true }
-clap = { workspace = true, features = ["derive", "env", "wrap_help"] }
 fake = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
@@ -55,6 +54,8 @@ util = { path = "../util" }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+# `clap` is here only due to the boot node example and should be removed once the example is removed.
+clap = { workspace = true, features = ["derive", "env"] }
 fake = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
