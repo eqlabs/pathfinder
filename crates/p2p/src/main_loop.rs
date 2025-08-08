@@ -22,6 +22,25 @@ use crate::{ApplicationBehaviour, EmptyResultSender};
 ///
 /// It's generic over the application specific P2P `ApplicationBehaviour`, which
 /// defines the commands and events that the application behaviour can handle.
+///
+/// ### Important
+///
+/// The current implementation uses a pair of unbounded channels in opposing
+/// directions to accept incoming commands from a client and emit async events
+/// that correspond to events from the p2p network. Previously it was possible
+/// for these channels to enter a deadlock when an previously emitted event has
+/// not been taken from the event channel yet and in the meantime a command was
+/// sent to the main loop and just after that another event on the network
+/// occurred. The solution can be to either implement a mutually exclusive
+/// "half duplex" channel pair that occupy the same buffer or use channel
+/// implementations that do not `await` on `send()`. The latter solution is lock
+/// free however we must ensure that there is rate limiting employed on the
+/// network layer side so that the event channel does not actually grow
+/// indefinitely in some situations.
+///
+/// TODO Determine a safe maximum size for the channels using stress tests with
+/// network layer rate limiting in place and replace them with fixed size
+/// channels of sufficient size.
 pub struct MainLoop<B>
 where
     B: ApplicationBehaviour,
