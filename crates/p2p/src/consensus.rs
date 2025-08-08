@@ -54,10 +54,6 @@ pub enum Event {
     Vote(Vote),
 }
 
-/// Configuration for the consensus P2P network.
-#[derive(Default)]
-pub struct Config {}
-
 /// The state of the consensus P2P network.
 #[derive(Default, Debug)]
 pub struct State {
@@ -513,10 +509,9 @@ mod tests {
     ) {
         let keypair = Keypair::generate_ed25519();
         let core_config = Config::for_test();
-        let consensus_config = consensus::Config::default();
         let chain_id = ChainId::MAINNET;
 
-        new_consensus(keypair, core_config, consensus_config, chain_id)
+        new_consensus(keypair, core_config, chain_id)
     }
 
     fn create_proposal_stream(
