@@ -1,7 +1,5 @@
 #[cfg(feature = "p2p")]
 mod sync_handlers;
-#[cfg(feature = "p2p")]
-use inner::start_inner;
 use p2p::sync::client::peer_agnostic::Client;
 use pathfinder_common::ChainId;
 use pathfinder_storage::Storage;
@@ -14,7 +12,7 @@ pub async fn start(
     storage: Storage,
     config: P2PSyncConfig,
 ) -> (JoinHandle<anyhow::Result<()>>, Option<Client>) {
-    start_inner(chain_id, storage, config)
+    inner::start(chain_id, storage, config)
         .await
         .unwrap_or_else(|error| {
             (
@@ -51,7 +49,7 @@ mod inner {
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]
-    pub(super) async fn start_inner(
+    pub(super) async fn start(
         chain_id: ChainId,
         storage: Storage,
         config: P2PSyncConfig,
@@ -197,10 +195,14 @@ mod inner {
 }
 
 #[cfg(not(feature = "p2p"))]
-async fn start_inner(
-    _: ChainId,
-    _: Storage,
-    _: P2PSyncConfig,
-) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
-    Ok((tokio::task::spawn(futures::future::pending()), None))
+mod inner {
+    use super::*;
+
+    pub(super) async fn start(
+        _: ChainId,
+        _: Storage,
+        _: P2PSyncConfig,
+    ) -> anyhow::Result<(JoinHandle<anyhow::Result<()>>, Option<Client>)> {
+        Ok((tokio::task::spawn(futures::future::pending()), None))
+    }
 }

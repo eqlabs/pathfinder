@@ -1,5 +1,3 @@
-#[cfg(feature = "p2p")]
-use inner::start_inner;
 use p2p::consensus::{Client, Event};
 use pathfinder_common::ChainId;
 use tokio::sync::mpsc;
@@ -13,14 +11,16 @@ type ConsensusHandle = (
 );
 
 pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHandle {
-    start_inner(chain_id, config).await.unwrap_or_else(|error| {
-        (
-            tokio::task::spawn(std::future::ready(Err(
-                error.context("Consensus P2P failed to start")
-            ))),
-            None,
-        )
-    })
+    inner::start(chain_id, config)
+        .await
+        .unwrap_or_else(|error| {
+            (
+                tokio::task::spawn(std::future::ready(Err(
+                    error.context("Consensus P2P failed to start")
+                ))),
+                None,
+            )
+        })
 }
 
 #[cfg(feature = "p2p")]
@@ -37,7 +37,7 @@ mod inner {
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]
-    pub(super) async fn start_inner(
+    pub(super) async fn start(
         chain_id: ChainId,
         config: P2PConsensusConfig,
     ) -> anyhow::Result<ConsensusHandle> {
@@ -120,12 +120,16 @@ mod inner {
 }
 
 #[cfg(not(feature = "p2p"))]
-async fn start_inner(
-    _: ChainId,
-    _: P2PConsensusConfig,
-) -> anyhow::Result<(
-    JoinHandle<anyhow::Result<()>>,
-    Option<(mpsc::UnboundedReceiver<Event>, Client)>,
-)> {
-    Ok((tokio::task::spawn(futures::future::pending()), None))
+mod inner {
+    use super::*;
+
+    pub(super) async fn start(
+        _: ChainId,
+        _: P2PConsensusConfig,
+    ) -> anyhow::Result<(
+        JoinHandle<anyhow::Result<()>>,
+        Option<(mpsc::UnboundedReceiver<Event>, Client)>,
+    )> {
+        Ok((tokio::task::spawn(futures::future::pending()), None))
+    }
 }
