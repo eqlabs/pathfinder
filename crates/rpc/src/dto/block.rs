@@ -212,11 +212,11 @@ impl crate::dto::SerializeForVersion
         let (block_number, pending_block) = *self;
 
         match pending_block {
-            crate::pending::PendingBlockVariant::Pending(pending_block) => {
-                (block_number, pending_block).serialize(serializer)
+            crate::pending::PendingBlockVariant::Pending(block) => {
+                (block_number, block).serialize(serializer)
             }
-            crate::pending::PendingBlockVariant::PreConfirmed(pre_confirmed_block, _) => {
-                pre_confirmed_block.serialize(serializer)
+            crate::pending::PendingBlockVariant::PreConfirmed { block, .. } => {
+                block.serialize(serializer)
             }
         }
     }

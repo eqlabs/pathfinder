@@ -250,6 +250,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     } else {
         context
     };
+    let submitted_tx_tracker = context.submission_tracker.clone();
 
     let default_version = match config.rpc_root_version {
         config::RootRpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
@@ -300,6 +301,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
             ethereum.client,
             sync_state.clone(),
             &config,
+            submitted_tx_tracker,
             tx_pending,
             notifications,
             gateway_public_key,
@@ -462,6 +464,7 @@ fn start_sync(
     ethereum_client: EthereumClient,
     sync_state: Arc<SyncState>,
     config: &config::Config,
+    submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
@@ -475,6 +478,7 @@ fn start_sync(
             ethereum_client,
             sync_state,
             config,
+            submitted_tx_tracker,
             tx_pending,
             notifications,
             gateway_public_key,
@@ -501,6 +505,7 @@ fn start_sync(
     ethereum_client: EthereumClient,
     sync_state: Arc<SyncState>,
     config: &config::Config,
+    submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
@@ -513,6 +518,7 @@ fn start_sync(
         ethereum_client,
         sync_state,
         config,
+        submitted_tx_tracker,
         tx_pending,
         notifications,
         gateway_public_key,
@@ -526,6 +532,7 @@ fn start_feeder_gateway_sync(
     ethereum_client: EthereumClient,
     sync_state: Arc<SyncState>,
     config: &config::Config,
+    submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     tx_pending: tokio::sync::watch::Sender<pathfinder_rpc::PendingData>,
     notifications: Notifications,
     gateway_public_key: pathfinder_common::PublicKey,
@@ -541,6 +548,7 @@ fn start_feeder_gateway_sync(
         head_poll_interval: config.poll_interval,
         l1_poll_interval: config.l1_poll_interval,
         pending_data: tx_pending,
+        submitted_tx_tracker,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
         block_cache_size: 1_000,

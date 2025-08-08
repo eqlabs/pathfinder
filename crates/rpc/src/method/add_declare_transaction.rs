@@ -326,9 +326,10 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-            context
-                .submission_tracker
-                .insert_key(response.transaction_hash);
+            context.submission_tracker.insert(
+                response.transaction_hash,
+                super::get_latest_block_or_genesis(&context.storage)?,
+            );
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,
@@ -355,9 +356,10 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-            context
-                .submission_tracker
-                .insert_key(response.transaction_hash);
+            context.submission_tracker.insert(
+                response.transaction_hash,
+                super::get_latest_block_or_genesis(&context.storage)?,
+            );
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,
@@ -388,9 +390,10 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
-            context
-                .submission_tracker
-                .insert_key(response.transaction_hash);
+            context.submission_tracker.insert(
+                response.transaction_hash,
+                super::get_latest_block_or_genesis(&context.storage)?,
+            );
             Ok(Output {
                 transaction_hash: response.transaction_hash,
                 class_hash: response.class_hash,

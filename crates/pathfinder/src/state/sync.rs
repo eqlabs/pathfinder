@@ -81,6 +81,7 @@ pub struct SyncContext<G, E> {
     pub head_poll_interval: Duration,
     pub l1_poll_interval: Duration,
     pub pending_data: WatchSender<PendingData>,
+    pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     pub block_validation_mode: l2::BlockValidationMode,
     pub notifications: Notifications,
     pub block_cache_size: usize,
@@ -158,6 +159,7 @@ where
         head_poll_interval,
         l1_poll_interval: _,
         pending_data,
+        submitted_tx_tracker,
         block_validation_mode: _,
         notifications,
         block_cache_size,
@@ -239,6 +241,7 @@ where
     let consumer_context = ConsumerContext {
         storage: storage.clone(),
         state,
+        submitted_tx_tracker,
         pending_data,
         verify_tree_hashes: context.verify_tree_hashes,
         notifications,
@@ -407,6 +410,7 @@ where
 struct ConsumerContext {
     pub storage: Storage,
     pub state: Arc<SyncState>,
+    pub submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker,
     pub pending_data: WatchSender<PendingData>,
     pub verify_tree_hashes: bool,
     pub notifications: Notifications,
@@ -420,6 +424,7 @@ async fn consumer(
     let ConsumerContext {
         storage,
         state,
+        submitted_tx_tracker,
         pending_data,
         verify_tree_hashes,
         mut notifications,
@@ -587,6 +592,7 @@ async fn consumer(
                         .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
                     next_number = reorg_tail;
+                    submitted_tx_tracker.clear();
 
                     let new_head = match reorg_tail {
                         BlockNumber::GENESIS => None,
@@ -1618,6 +1624,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1671,6 +1678,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1738,6 +1746,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1790,6 +1799,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1831,6 +1841,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1875,6 +1886,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -1922,6 +1934,7 @@ mod tests {
         let context = ConsumerContext {
             storage,
             state: Arc::new(SyncState::default()),
+            submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(10, 10),
             pending_data: tx,
             verify_tree_hashes: false,
             notifications: Default::default(),
@@ -2083,6 +2096,9 @@ mod tests {
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2139,6 +2155,9 @@ mod tests {
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
@@ -2237,6 +2256,9 @@ mod tests {
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2260,6 +2282,9 @@ mod tests {
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2288,6 +2313,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2332,6 +2360,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2358,6 +2389,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage,
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications,
@@ -2412,6 +2446,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
@@ -2529,6 +2566,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
@@ -2614,6 +2654,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
@@ -2647,6 +2690,9 @@ Blockchain history must include the reorg tail and its parent block to perform a
             let context = ConsumerContext {
                 storage: storage.clone(),
                 state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
                 pending_data: tx,
                 verify_tree_hashes: false,
                 notifications: Default::default(),
