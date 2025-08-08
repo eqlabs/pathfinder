@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
+use crate::dto::{NewTxnFinalityStatus, TxnFinalityStatus};
 use crate::error::ApplicationError;
 use crate::jsonrpc::{CatchUp, RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::method::get_events::EmittedEvent;
@@ -20,6 +21,7 @@ pub struct Params {
     from_address: Option<ContractAddress>,
     keys: Option<Vec<Vec<EventKey>>>,
     block_id: Option<SubscriptionBlockId>,
+    finality_status: NewTxnFinalityStatus,
 }
 
 impl Params {
@@ -54,7 +56,15 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
             // Params are optional.
             return Ok(None);
         }
+        let version = value.version;
         value.deserialize_map(|value| {
+            let finality_status = if version < RpcVersion::V09 {
+                NewTxnFinalityStatus::default()
+            } else {
+                value
+                    .deserialize_optional("finality_status")?
+                    .unwrap_or_default()
+            };
             Ok(Some(Params {
                 from_address: value
                     .deserialize_optional("from_address")?
@@ -63,14 +73,46 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                     value.deserialize_array(|value| Ok(EventKey(value.deserialize()?)))
                 })?,
                 block_id: value.deserialize_optional("block_id")?,
+                finality_status,
             }))
         })
     }
 }
 
 #[derive(Debug)]
+pub struct EventWithFinality {
+    event: crate::method::get_events::EmittedEvent,
+    finality: TxnFinalityStatus,
+}
+
+impl EventWithFinality {
+    fn new(
+        event: crate::method::get_events::EmittedEvent,
+        finality: TxnFinalityStatus,
+    ) -> EventWithFinality {
+        Self { event, finality }
+    }
+}
+
+impl crate::dto::SerializeForVersion for EventWithFinality {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        let mut serializer = serializer.serialize_struct()?;
+
+        serializer.flatten(&self.event)?;
+        if serializer.version >= RpcVersion::V09 {
+            serializer.serialize_field("finality_status", &self.finality)?;
+        }
+
+        serializer.end()
+    }
+}
+
+#[derive(Debug)]
 pub enum Notification {
-    EmittedEvent(crate::method::get_events::EmittedEvent),
+    EmittedEvent(EventWithFinality),
     Reorg(Arc<Reorg>),
 }
 
@@ -124,7 +166,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
     ) -> Result<CatchUp<Self::Notification>, RpcError> {
         let params = params.clone().unwrap_or_default();
         let storage = state.storage.clone();
-        let (events, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
+        let (events, last_l1_block, last_block) = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
             let mut conn = storage.connection().map_err(RpcError::InternalError)?;
             let db = conn.transaction().map_err(RpcError::InternalError)?;
 
@@ -149,7 +191,9 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 }
             }
 
-            let events = db
+            let last_l1_block = db.l1_l2_pointer().map_err(RpcError::InternalError)?;
+
+            let (events, last_block) = db
                 .events_in_range(
                     from,
                     to,
@@ -158,7 +202,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                 )
                 .map_err(RpcError::InternalError)?;
 
-            Ok(events)
+            Ok((events, last_l1_block, last_block))
         })
         .await
         .map_err(|e| RpcError::InternalError(e.into()))??;
@@ -166,8 +210,20 @@ impl RpcSubscriptionFlow for SubscribeEvents {
             .into_iter()
             .map(|event| {
                 let block_number = event.block_number;
+                let finality = if let Some(last_l1) = last_l1_block {
+                    if block_number <= last_l1 {
+                        TxnFinalityStatus::AcceptedOnL1
+                    } else {
+                        TxnFinalityStatus::AcceptedOnL2
+                    }
+                } else {
+                    TxnFinalityStatus::AcceptedOnL2
+                };
                 SubscriptionMessage {
-                    notification: Notification::EmittedEvent(event.into()),
+                    notification: Notification::EmittedEvent(EventWithFinality::new(
+                        event.into(),
+                        finality,
+                    )),
                     block_number,
                     subscription_name: SUBSCRIPTION_NAME,
                 }
@@ -254,15 +310,16 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         continue;
                                     }
                                     sent_txs.insert(receipt.transaction_hash);
+                                    let emitted = EmittedEvent {
+                                        data: event.data.clone(),
+                                        keys: event.keys.clone(),
+                                        from_address: event.from_address,
+                                        block_hash: Some(block_hash),
+                                        block_number: Some(block_number),
+                                        transaction_hash: receipt.transaction_hash,
+                                    };
                                     if tx.send(SubscriptionMessage {
-                                        notification: Notification::EmittedEvent(EmittedEvent {
-                                            data: event.data.clone(),
-                                            keys: event.keys.clone(),
-                                            from_address: event.from_address,
-                                            block_hash: Some(block_hash),
-                                            block_number: Some(block_number),
-                                            transaction_hash: receipt.transaction_hash,
-                                        }),
+                                        notification: Notification::EmittedEvent(EventWithFinality::new(emitted, TxnFinalityStatus::AcceptedOnL2)),
                                         block_number,
                                         subscription_name: SUBSCRIPTION_NAME,
                                     }).await.is_err() {
@@ -288,13 +345,14 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                     }
 
                     let pending = pending_data.borrow_and_update().clone();
-                    if pending.is_pre_confirmed() {
-                        // Ignore pre-confirmed data as it might never actually finalize.
+                    // pre-confirmed data is returned only if explicitly requested
+                    if pending.is_pre_confirmed() && !params.finality_status.is_pre_confirmed() {
                         continue;
                     }
 
                     tracing::trace!(block_number=%pending.block_number(), "Received pending block update");
 
+                    let finality = pending.finality_status();
                     let block_number = pending.block_number();
                     if block_number != current_block {
                         tracing::trace!(
@@ -323,15 +381,16 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 transaction_hash=%receipt.transaction_hash,
                                 "Sending event"
                             );
+                            let emitted = EmittedEvent {
+                                data: event.data.clone(),
+                                keys: event.keys.clone(),
+                                from_address: event.from_address,
+                                block_hash: None,
+                                block_number: Some(block_number),
+                                transaction_hash: receipt.transaction_hash,
+                            };
                             if tx.send(SubscriptionMessage {
-                                notification: Notification::EmittedEvent(EmittedEvent {
-                                    data: event.data.clone(),
-                                    keys: event.keys.clone(),
-                                    from_address: event.from_address,
-                                    block_hash: None,
-                                    block_number: Some(block_number),
-                                    transaction_hash: receipt.transaction_hash,
-                                }),
+                                notification: Notification::EmittedEvent(EventWithFinality::new(emitted, finality)),
                                 block_number,
                                 subscription_name: SUBSCRIPTION_NAME,
                             }).await.is_err() {
@@ -399,7 +458,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
         for i in 0..num_blocks {
-            let expected = sample_event_message(i, subscription_id);
+            let expected = sample_event_message(i, subscription_id, RpcVersion::V08);
             let event = sender_rx.recv().await.unwrap().unwrap();
             let json: serde_json::Value = match event {
                 Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -417,7 +476,7 @@ mod tests {
             })
             .await
             .unwrap();
-            let expected = sample_event_message(i, subscription_id);
+            let expected = sample_event_message(i, subscription_id, RpcVersion::V08);
             let event = sender_rx.recv().await.unwrap().unwrap();
             let json: serde_json::Value = match event {
                 Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -438,7 +497,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x16",
+                "from_address": "0xdc",
             }
         );
         receiver_tx
@@ -463,7 +522,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -485,7 +544,7 @@ mod tests {
             .l2_blocks
             .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -530,7 +589,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -552,7 +611,7 @@ mod tests {
             .l2_blocks
             .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -572,7 +631,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x16",
+                "from_address": "0xdc",
                 "keys": [["0x16"], [], ["0x17", "0x18"]],
             }
         );
@@ -598,7 +657,7 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -620,7 +679,7 @@ mod tests {
             .l2_blocks
             .send(sample_block(0x16).into())
             .unwrap();
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -666,7 +725,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
 
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -708,7 +767,7 @@ mod tests {
             1
         );
 
-        let expected = sample_event_message(next_block_number, subscription_id);
+        let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V08);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -754,7 +813,7 @@ mod tests {
             _ => panic!("Expected text message"),
         };
 
-        let expected = sample_event_message(0x16, subscription_id);
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V09);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -786,7 +845,7 @@ mod tests {
         assert_eq!(num_receivers, 1);
 
         // Expect `num_blocks + 1` (new block) and not `num_blocks` (pending data).
-        let expected = sample_event_message(next_block_number, subscription_id);
+        let expected = sample_event_message(next_block_number, subscription_id, RpcVersion::V09);
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
             Message::Text(json) => serde_json::from_str(&json).unwrap(),
@@ -794,6 +853,82 @@ mod tests {
         };
         assert_eq!(json, expected);
         assert!(sender_rx.is_empty());
+    }
+
+    #[tokio::test]
+    async fn include_pre_confirmed_data_when_asked() {
+        let num_blocks = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
+        let (router, pending_data_tx) = setup(num_blocks, RpcVersion::V09).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        let params = serde_json::json!(
+            {
+                "block_id": {"block_number": 0},
+                "keys": [["0x16", format!("{:x}", num_blocks), format!("{:x}", num_blocks + 1)]],
+                "finality_status": "PRE_CONFIRMED",
+            }
+        );
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeEvents",
+                    "params": params
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V09);
+        let event = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match event {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(json, expected);
+
+        // Send pre-confirmed data.
+        pending_data_tx
+            .send(crate::PendingData::from_pre_confirmed_block(
+                sample_pre_confirmed_block(num_blocks),
+                BlockNumber::new_or_panic(num_blocks),
+            ))
+            .unwrap();
+        let event = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match event {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+
+        let expected = serde_json::json!({
+            "jsonrpc":"2.0",
+            "method":"starknet_subscriptionEvents",
+            "params": {
+                "result": {
+                    "block_number": 34,
+                    "data": ["0x24", "0x25", "0x27"],
+                    "finality_status": "PRE_CONFIRMED",
+                    "from_address": "0x154",
+                    "keys": ["0x22", "0x23", "0x24"],
+                    "transaction_hash": "0x84d0"
+                },
+                "subscription_id": subscription_id.to_string()
+            }
+        });
+        assert_eq!(json, expected);
     }
 
     #[tokio::test]
@@ -905,7 +1040,7 @@ mod tests {
                     "result": {
                         "block_hash": "0x0",
                         "block_number": 0,
-                        "data": ["0x0", "0x1", "0x2"],
+                        "data": ["0x2", "0x3", "0x5"],
                         "from_address": "0x0",
                         "keys": ["0x0", "0x1", "0x2"],
                         "transaction_hash": "0x0"
@@ -1046,7 +1181,7 @@ mod tests {
 
     fn sample_header(block_number: u64) -> BlockHeader {
         BlockHeader {
-            hash: BlockHash(Felt::from_u64(block_number)),
+            hash: BlockHash(Felt::from_u64(100 * block_number)),
             number: BlockNumber::new_or_panic(block_number),
             ..Default::default()
         }
@@ -1055,11 +1190,11 @@ mod tests {
     fn sample_event(block_number: u64) -> Event {
         Event {
             data: vec![
-                EventData(Felt::from_u64(block_number)),
-                EventData(Felt::from_u64(block_number + 1)),
                 EventData(Felt::from_u64(block_number + 2)),
+                EventData(Felt::from_u64(block_number + 3)),
+                EventData(Felt::from_u64(block_number + 5)),
             ],
-            from_address: ContractAddress(Felt::from_u64(block_number)),
+            from_address: ContractAddress(Felt::from_u64(10 * block_number)),
             keys: vec![
                 EventKey(Felt::from_u64(block_number)),
                 EventKey(Felt::from_u64(block_number + 1)),
@@ -1070,14 +1205,14 @@ mod tests {
 
     fn sample_transaction(block_number: u64) -> Transaction {
         Transaction {
-            hash: TransactionHash(Felt::from_u64(block_number)),
+            hash: TransactionHash(Felt::from_u64(1000 * block_number)),
             variant: TransactionVariant::DeclareV0(Default::default()),
         }
     }
 
     fn sample_receipt(block_number: u64) -> Receipt {
         Receipt {
-            transaction_hash: TransactionHash(Felt::from_u64(block_number)),
+            transaction_hash: TransactionHash(Felt::from_u64(1000 * block_number)),
             transaction_index: TransactionIndex::new_or_panic(0),
             ..Default::default()
         }
@@ -1085,7 +1220,7 @@ mod tests {
 
     fn sample_block(block_number: u64) -> Block {
         Block {
-            block_hash: BlockHash(Felt::from_u64(block_number)),
+            block_hash: BlockHash(Felt::from_u64(100 * block_number)),
             block_number: BlockNumber::new_or_panic(block_number),
             transaction_receipts: vec![(
                 sample_receipt(block_number),
@@ -1118,27 +1253,35 @@ mod tests {
         }
     }
 
-    fn sample_event_message(block_number: u64, subscription_id: u64) -> serde_json::Value {
+    fn sample_event_message(
+        block_number: u64,
+        subscription_id: u64,
+        version: RpcVersion,
+    ) -> serde_json::Value {
+        let mut result = serde_json::json!({
+            "keys": [
+                Felt::from_u64(block_number),
+                Felt::from_u64(block_number + 1),
+                Felt::from_u64(block_number + 2),
+            ],
+            "data": [
+                Felt::from_u64(block_number + 2),
+                Felt::from_u64(block_number + 3),
+                Felt::from_u64(block_number + 5),
+            ],
+            "from_address": Felt::from_u64(10 * block_number),
+            "block_number": block_number,
+            "block_hash": Felt::from_u64(100 * block_number),
+            "transaction_hash": Felt::from_u64(1000 * block_number),
+        });
+        if version >= RpcVersion::V09 {
+            result["finality_status"] = "ACCEPTED_ON_L2".into();
+        }
         serde_json::json!({
             "jsonrpc":"2.0",
             "method":"starknet_subscriptionEvents",
             "params": {
-                "result": {
-                    "keys": [
-                        Felt::from_u64(block_number),
-                        Felt::from_u64(block_number + 1),
-                        Felt::from_u64(block_number + 2),
-                    ],
-                    "data": [
-                        Felt::from_u64(block_number),
-                        Felt::from_u64(block_number + 1),
-                        Felt::from_u64(block_number + 2),
-                    ],
-                    "from_address": Felt::from_u64(block_number),
-                    "block_number": block_number,
-                    "block_hash": Felt::from_u64(block_number),
-                    "transaction_hash": Felt::from_u64(block_number),
-                },
+                "result": result,
                 "subscription_id": subscription_id.to_string()
             }
         })
@@ -1148,7 +1291,7 @@ mod tests {
         block_number: u64,
         subscription_id: u64,
     ) -> serde_json::Value {
-        let mut message = sample_event_message(block_number, subscription_id);
+        let mut message = sample_event_message(block_number, subscription_id, RpcVersion::V08);
         message["params"]["result"]
             .as_object_mut()
             .unwrap()
