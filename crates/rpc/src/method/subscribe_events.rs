@@ -497,7 +497,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x16",
+                "from_address": "0xdc",
             }
         );
         receiver_tx
@@ -631,7 +631,7 @@ mod tests {
         let params = serde_json::json!(
             {
                 "block_id": {"block_number": 0},
-                "from_address": "0x16",
+                "from_address": "0xdc",
                 "keys": [["0x16"], [], ["0x17", "0x18"]],
             }
         );
@@ -964,7 +964,7 @@ mod tests {
                     "result": {
                         "block_hash": "0x0",
                         "block_number": 0,
-                        "data": ["0x0", "0x1", "0x2"],
+                        "data": ["0x2", "0x3", "0x5"],
                         "from_address": "0x0",
                         "keys": ["0x0", "0x1", "0x2"],
                         "transaction_hash": "0x0"
@@ -1105,7 +1105,7 @@ mod tests {
 
     fn sample_header(block_number: u64) -> BlockHeader {
         BlockHeader {
-            hash: BlockHash(Felt::from_u64(block_number)),
+            hash: BlockHash(Felt::from_u64(100 * block_number)),
             number: BlockNumber::new_or_panic(block_number),
             ..Default::default()
         }
@@ -1114,11 +1114,11 @@ mod tests {
     fn sample_event(block_number: u64) -> Event {
         Event {
             data: vec![
-                EventData(Felt::from_u64(block_number)),
-                EventData(Felt::from_u64(block_number + 1)),
                 EventData(Felt::from_u64(block_number + 2)),
+                EventData(Felt::from_u64(block_number + 3)),
+                EventData(Felt::from_u64(block_number + 5)),
             ],
-            from_address: ContractAddress(Felt::from_u64(block_number)),
+            from_address: ContractAddress(Felt::from_u64(10 * block_number)),
             keys: vec![
                 EventKey(Felt::from_u64(block_number)),
                 EventKey(Felt::from_u64(block_number + 1)),
@@ -1129,14 +1129,14 @@ mod tests {
 
     fn sample_transaction(block_number: u64) -> Transaction {
         Transaction {
-            hash: TransactionHash(Felt::from_u64(block_number)),
+            hash: TransactionHash(Felt::from_u64(1000 * block_number)),
             variant: TransactionVariant::DeclareV0(Default::default()),
         }
     }
 
     fn sample_receipt(block_number: u64) -> Receipt {
         Receipt {
-            transaction_hash: TransactionHash(Felt::from_u64(block_number)),
+            transaction_hash: TransactionHash(Felt::from_u64(1000 * block_number)),
             transaction_index: TransactionIndex::new_or_panic(0),
             ..Default::default()
         }
@@ -1144,7 +1144,7 @@ mod tests {
 
     fn sample_block(block_number: u64) -> Block {
         Block {
-            block_hash: BlockHash(Felt::from_u64(block_number)),
+            block_hash: BlockHash(Felt::from_u64(100 * block_number)),
             block_number: BlockNumber::new_or_panic(block_number),
             transaction_receipts: vec![(
                 sample_receipt(block_number),
@@ -1189,14 +1189,14 @@ mod tests {
                 Felt::from_u64(block_number + 2),
             ],
             "data": [
-                Felt::from_u64(block_number),
-                Felt::from_u64(block_number + 1),
                 Felt::from_u64(block_number + 2),
+                Felt::from_u64(block_number + 3),
+                Felt::from_u64(block_number + 5),
             ],
-            "from_address": Felt::from_u64(block_number),
+            "from_address": Felt::from_u64(10 * block_number),
             "block_number": block_number,
-            "block_hash": Felt::from_u64(block_number),
-            "transaction_hash": Felt::from_u64(block_number),
+            "block_hash": Felt::from_u64(100 * block_number),
+            "transaction_hash": Felt::from_u64(1000 * block_number),
         });
         if version >= RpcVersion::V09 {
             result["finality_status"] = "ACCEPTED_ON_L2".into();
