@@ -81,7 +81,6 @@ zstd = { workspace = true }
 [dev-dependencies]
 assert_matches = { workspace = true }
 const-decoder = { workspace = true }
-ed25519-consensus = "2.1.0"
 flate2 = { workspace = true }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
