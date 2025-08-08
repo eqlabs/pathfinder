@@ -856,6 +856,82 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn include_pre_confirmed_data_when_asked() {
+        let num_blocks = SubscribeEvents::CATCH_UP_BATCH_SIZE + 10;
+        let (router, pending_data_tx) = setup(num_blocks, RpcVersion::V09).await;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        let params = serde_json::json!(
+            {
+                "block_id": {"block_number": 0},
+                "keys": [["0x16", format!("{:x}", num_blocks), format!("{:x}", num_blocks + 1)]],
+                "finality_status": "PRE_CONFIRMED",
+            }
+        );
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeEvents",
+                    "params": params
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => panic!("Expected text message"),
+        };
+
+        let expected = sample_event_message(0x16, subscription_id, RpcVersion::V09);
+        let event = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match event {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(json, expected);
+
+        // Send pre-confirmed data.
+        pending_data_tx
+            .send(crate::PendingData::from_pre_confirmed_block(
+                sample_pre_confirmed_block(num_blocks),
+                BlockNumber::new_or_panic(num_blocks),
+            ))
+            .unwrap();
+        let event = sender_rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match event {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+
+        let expected = serde_json::json!({
+            "jsonrpc":"2.0",
+            "method":"starknet_subscriptionEvents",
+            "params": {
+                "result": {
+                    "block_number": 34,
+                    "data": ["0x24", "0x25", "0x27"],
+                    "finality_status": "PRE_CONFIRMED",
+                    "from_address": "0x154",
+                    "keys": ["0x22", "0x23", "0x24"],
+                    "transaction_hash": "0x84d0"
+                },
+                "subscription_id": subscription_id.to_string()
+            }
+        });
+        assert_eq!(json, expected);
+    }
+
+    #[tokio::test]
     async fn too_many_keys_filter() {
         let (router, _pending_data_tx) =
             setup(SubscribeEvents::CATCH_UP_BATCH_SIZE + 10, RpcVersion::V08).await;
