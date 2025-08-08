@@ -5,7 +5,6 @@ use std::time::Duration;
 use anyhow::Context;
 use clap::Parser;
 use ed25519_consensus::SigningKey;
-use malachite_signing_ed25519::PublicKey;
 use p2p::consensus::{Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
@@ -18,6 +17,7 @@ use pathfinder_consensus::{
     ConsensusEvent,
     NetworkMessage,
     Proposal,
+    PublicKey,
     Round,
     Signature,
     SignedProposal,
