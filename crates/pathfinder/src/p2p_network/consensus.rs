@@ -73,12 +73,8 @@ mod inner {
             predefined_peers.swap_remove(my_idx);
         }
 
-        let (core_client, p2p_events, p2p_main_loop) = p2p::new_consensus(
-            keypair,
-            core_config,
-            p2p::consensus::Config {/*TODO*/},
-            chain_id,
-        );
+        let (core_client, p2p_events, p2p_main_loop) =
+            p2p::new_consensus(keypair, core_config, chain_id);
 
         let main_loop_handle = { util::task::spawn(p2p_main_loop.run().map(Ok)) };
 

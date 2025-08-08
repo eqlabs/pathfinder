@@ -46,7 +46,6 @@ pub fn new_sync(
 pub fn new_consensus(
     keypair: Keypair,
     core_config: core::Config,
-    _consensus_config: consensus::Config,
     chain_id: ChainId,
 ) -> (
     core::Client<consensus::Command>,
