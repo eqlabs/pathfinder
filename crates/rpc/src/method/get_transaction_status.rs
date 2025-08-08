@@ -156,16 +156,49 @@ pub async fn get_transaction_status(
                     }
                 }
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
-                (GatewayFinalityStatus::AcceptedOnL1 | GatewayFinalityStatus::AcceptedOnL2, _) => {
-                    // This node doesn't have the accepted
-                    // transaction, meaning it's been proposed by some
-                    // other node & our view of the client's account
-                    // (in particular its nonce) is out of
-                    // date. Proposing the next transaction would fail
-                    // on the nonce mismatch. Encourage the client to
-                    // try somewhere else, hopefully where they did
-                    // last time (or later, after we update).
-                    Err(Error::TxnHashNotFound)
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Reverted) => {
+                    if context
+                        .submission_tracker
+                        .contains_key(&input.transaction_hash)
+                    {
+                        Ok(Output::AcceptedOnL1(TxnExecutionStatus::Reverted {
+                            reason: tx.tx_revert_reason,
+                        }))
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
+                }
+                (GatewayFinalityStatus::AcceptedOnL1, GatewayExecutionStatus::Succeeded) => {
+                    if context
+                        .submission_tracker
+                        .contains_key(&input.transaction_hash)
+                    {
+                        Ok(Output::AcceptedOnL1(TxnExecutionStatus::Succeeded))
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
+                }
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Reverted) => {
+                    if context
+                        .submission_tracker
+                        .contains_key(&input.transaction_hash)
+                    {
+                        Ok(Output::AcceptedOnL2(TxnExecutionStatus::Reverted {
+                            reason: tx.tx_revert_reason,
+                        }))
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
+                }
+                (GatewayFinalityStatus::AcceptedOnL2, GatewayExecutionStatus::Succeeded) => {
+                    if context
+                        .submission_tracker
+                        .contains_key(&input.transaction_hash)
+                    {
+                        Ok(Output::AcceptedOnL2(TxnExecutionStatus::Succeeded))
+                    } else {
+                        Err(Error::TxnHashNotFound)
+                    }
                 }
             }
         });
