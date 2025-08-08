@@ -42,6 +42,8 @@ pub enum Notification {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalityStatus {
     Received,
+    Candidate,
+    PreConfirmed,
     AcceptedOnL2,
     AcceptedOnL1,
     Rejected { reason: Option<String> },
@@ -83,6 +85,8 @@ impl crate::dto::SerializeForVersion for Notification {
                     "finality_status",
                     &match self.finality_status {
                         FinalityStatus::Received => "RECEIVED",
+                        FinalityStatus::Candidate => "CANDIDATE",
+                        FinalityStatus::PreConfirmed => "PRE_CONFIRMED",
                         FinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
                         FinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
                         FinalityStatus::Rejected { .. } => "REJECTED",
@@ -386,28 +390,41 @@ fn pending_data_tx_status(
     pending_data: &PendingData,
     tx_hash: TransactionHash,
 ) -> Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)> {
+    let block_number = pending_data.block_number();
     match pending_data.block().as_ref() {
         PendingBlockVariant::Pending(block) => {
             find_tx_receipt(&block.transaction_receipts, tx_hash).map(|receipt| {
                 (
-                    pending_data.block_number(),
+                    block_number,
                     FinalityStatus::AcceptedOnL2,
                     Some(receipt.execution_status.clone()),
                 )
             })
         }
-        PendingBlockVariant::PreConfirmed { block, .. }
-            if block.transactions.iter().any(|tx| tx.hash == tx_hash) =>
-        {
-            Some((pending_data.block_number(), FinalityStatus::Received, None))
-        }
         PendingBlockVariant::PreConfirmed {
+            block,
             candidate_transactions,
-            ..
-        } if candidate_transactions.iter().any(|tx| tx.hash == tx_hash) => {
-            Some((pending_data.block_number(), FinalityStatus::Received, None))
+        } => {
+            let is_candidate = candidate_transactions.iter().any(|tx| tx.hash == tx_hash);
+            if is_candidate {
+                return Some((block_number, FinalityStatus::Candidate, None));
+            }
+
+            let is_pre_confirmed = block.transactions.iter().any(|tx| tx.hash == tx_hash);
+            if is_pre_confirmed {
+                let execution_status = find_tx_receipt(&block.transaction_receipts, tx_hash)
+                    .expect("Pre-confirmed transaction should have a receipt")
+                    .execution_status
+                    .clone();
+                return Some((
+                    block_number,
+                    FinalityStatus::PreConfirmed,
+                    Some(execution_status),
+                ));
+            }
+
+            None
         }
-        _ => None,
     }
 }
 
@@ -468,9 +485,11 @@ impl FinalityStatus {
     pub fn as_num(&self) -> u8 {
         match self {
             FinalityStatus::Received => 0,
-            FinalityStatus::AcceptedOnL2 => 1,
-            FinalityStatus::AcceptedOnL1 => 2,
-            FinalityStatus::Rejected { .. } => 3,
+            FinalityStatus::Candidate => 1,
+            FinalityStatus::PreConfirmed => 2,
+            FinalityStatus::AcceptedOnL2 => 3,
+            FinalityStatus::AcceptedOnL1 => 4,
+            FinalityStatus::Rejected { .. } => 5,
         }
     }
 }
@@ -1024,7 +1043,8 @@ mod tests {
                         "result": {
                             "transaction_hash": "0x1",
                             "status": {
-                                "finality_status": "RECEIVED",
+                                "finality_status": "PRE_CONFIRMED",
+                                "execution_status": "SUCCEEDED"
                             }
                         },
                         "subscription_id": subscription_id
@@ -1110,7 +1130,7 @@ mod tests {
                         "result": {
                             "transaction_hash": "0x1",
                             "status": {
-                                "finality_status": "RECEIVED",
+                                "finality_status": "CANDIDATE",
                             }
                         },
                         "subscription_id": subscription_id
