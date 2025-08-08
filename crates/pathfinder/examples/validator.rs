@@ -208,10 +208,8 @@ async fn main() -> anyhow::Result<()> {
     // either when we gossip them or when decision is made at the same height.
     let mut incoming_proposals_cache = BTreeMap::new();
     // Events that are produced by the P2p task consumed by the consensus task.
-    // TODO channel size
     let (tx_to_consensus, mut rx_from_p2p) = mpsc::channel::<ConsensusTaskEvent>(10);
     // Events that are produced by the consensus task and consumed by the P2P task.
-    // TODO channel size
     let (tx_to_p2p, mut rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
 
     let p2p_task_handle = util::task::spawn(async move {
@@ -254,7 +252,7 @@ async fn main() -> anyhow::Result<()> {
 
                                 let cmd = ConsensusCommand::Proposal(SignedProposal {
                                     proposal,
-                                    signature: Signature::test(), // TODO
+                                    signature: Signature::test(),
                                 });
 
                                 tx_to_consensus
@@ -267,7 +265,7 @@ async fn main() -> anyhow::Result<()> {
                             let vote = p2p_vote_to_consensus_vote(vote);
                             let cmd = ConsensusCommand::Vote(SignedVote {
                                 vote,
-                                signature: Signature::test(), // TODO
+                                signature: Signature::test(),
                             });
 
                             tx_to_consensus
@@ -318,7 +316,7 @@ async fn main() -> anyhow::Result<()> {
                 P2PTaskEvent::GossipRequest(msg) => match msg {
                     NetworkMessage::Proposal(SignedProposal {
                         proposal,
-                        signature: _, /* TODO */
+                        signature: _,
                     }) => {
                         let height_and_round = HeightAndRound::new(
                             proposal.height,
@@ -403,16 +401,13 @@ async fn main() -> anyhow::Result<()> {
                                     tracing::error!(
                                         "Error gossiping proposal for {height_and_round}: {error}"
                                     );
-                                    // TODO Unrecoverable?
+                                    // TODO implement proper error handling policy
                                     return;
                                 }
                             }
                         }
                     }
-                    NetworkMessage::Vote(SignedVote {
-                        vote,
-                        signature: _, /* TODO */
-                    }) => {
+                    NetworkMessage::Vote(SignedVote { vote, signature: _ }) => {
                         loop {
                             tracing::info!("🖧  ✋ {validator_address} Gossiping vote {vote:?} ...");
                             match p2p_client
@@ -433,7 +428,7 @@ async fn main() -> anyhow::Result<()> {
                                 }
                                 Err(error) => {
                                     tracing::error!("Error gossiping {vote:?}: {error}");
-                                    // TODO Unrecoverable?
+                                    // TODO implement proper error handling policy
                                     return;
                                 }
                             }
@@ -759,8 +754,7 @@ fn handle_incoming_proposal_part(
             }
         }
         ProposalPart::TransactionBatch(_) => {
-            // TODO check if there a length limit for the batch at network
-            // level?
+            // TODO check if there is a length limit for the batch at network level
             if parts.len() >= 2 {
                 parts.push(proposal_part);
                 // TODO send for execution
@@ -801,7 +795,7 @@ fn sepolia_block_6_based_proposal(
         ProposalPart::Init(ProposalInit {
             height,
             round,
-            valid_round: None, // TODO
+            valid_round: None,
             proposer,
         }),
         // Some "real" payload
