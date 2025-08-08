@@ -157,15 +157,10 @@ pub async fn get_transaction_status(
                 }
                 (GatewayFinalityStatus::Received, _) => Ok(Output::Received),
                 (GatewayFinalityStatus::AcceptedOnL1 | GatewayFinalityStatus::AcceptedOnL2, _) => {
-                    // This node doesn't have the accepted
-                    // transaction, meaning it's been proposed by some
-                    // other node & our view of the client's account
-                    // (in particular its nonce) is out of
-                    // date. Proposing the next transaction would fail
-                    // on the nonce mismatch. Encourage the client to
-                    // try somewhere else, hopefully where they did
-                    // last time (or later, after we update).
-                    Err(Error::TxnHashNotFound)
+                    // The transaction might be accepted, but it
+                    // isn't in local storage (yet). Make the
+                    // client wait some more...
+                    Ok(Output::Received)
                 }
             }
         });
