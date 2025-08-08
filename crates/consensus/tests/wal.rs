@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use ed25519_consensus::SigningKey;
 use pathfinder_consensus::*;
 use tokio::sync::mpsc;
 use tokio::time::{pause, sleep, Duration};

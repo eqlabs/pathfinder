@@ -8370,7 +8370,6 @@ dependencies = [
  "clap",
  "console-subscriber",
  "const-decoder",
- "ed25519-consensus",
  "fake",
  "flate2",
  "futures",
