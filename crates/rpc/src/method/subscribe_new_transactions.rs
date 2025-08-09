@@ -113,7 +113,7 @@ impl crate::dto::SerializeForVersion for Notification {
     }
 }
 
-const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewTransactions";
+const SUBSCRIPTION_NAME: &str = "starknet_subscriptionNewTransaction";
 
 impl RpcSubscriptionFlow for SubscribeNewTransactions {
     type Params = Option<Params>;
@@ -885,7 +885,7 @@ mod tests {
     ) -> serde_json::Value {
         serde_json::json!({
             "jsonrpc":"2.0",
-            "method":"starknet_subscriptionNewTransactions",
+            "method":"starknet_subscriptionNewTransaction",
             "params": {
                 "result": {
                     "class_hash": "0x0",
@@ -909,7 +909,7 @@ mod tests {
     ) -> serde_json::Value {
         serde_json::json!({
             "jsonrpc":"2.0",
-            "method":"starknet_subscriptionNewTransactions",
+            "method":"starknet_subscriptionNewTransaction",
             "params": {
                 "result": {
                     "class_hash": "0x0",
@@ -933,7 +933,7 @@ mod tests {
     ) -> serde_json::Value {
         serde_json::json!({
             "jsonrpc":"2.0",
-            "method":"starknet_subscriptionNewTransactions",
+            "method":"starknet_subscriptionNewTransaction",
             "params": {
                 "result": {
                     "class_hash": "0x0",

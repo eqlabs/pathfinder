@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `starknet_getTransactionStatus` now returns ACCEPTED_* only when that status is known locally, not when it's received from the gateway for an otherwise-unknown transaction.
 - value of the `--sync.poll-interval` command-line option can now specify fractional seconds
 
+### Fixed
+
+- RPC method name `starknet_subscriptionNewTransactions` should be `starknet_subscriptionNewTransaction`.
+
 ## [0.18.0] - 2025-07-14
 
 ### Added
