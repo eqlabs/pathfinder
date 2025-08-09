@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use ed25519_consensus::SigningKey;
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -12,6 +11,7 @@ use pathfinder_consensus::{
     Signature,
     SignedProposal,
     SignedVote,
+    SigningKey,
     Validator,
     ValidatorSet,
     Vote,

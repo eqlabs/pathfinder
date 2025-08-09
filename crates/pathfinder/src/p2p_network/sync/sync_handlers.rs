@@ -36,7 +36,7 @@ const MAX_COUNT_IN_TESTS: u64 = 10;
 #[cfg(test)]
 const MAX_BLOCKS_COUNT: u64 = MAX_COUNT_IN_TESTS;
 
-pub async fn get_headers(
+pub(crate) async fn get_headers(
     storage: Storage,
     request: BlockHeadersRequest,
     tx: futures::channel::mpsc::Sender<BlockHeadersResponse>,
@@ -44,7 +44,7 @@ pub async fn get_headers(
     spawn_blocking_get(request, storage, blocking::get_headers, tx).await
 }
 
-pub async fn get_classes(
+pub(crate) async fn get_classes(
     storage: Storage,
     request: ClassesRequest,
     tx: futures::channel::mpsc::Sender<ClassesResponse>,
@@ -52,7 +52,7 @@ pub async fn get_classes(
     spawn_blocking_get(request, storage, blocking::get_classes, tx).await
 }
 
-pub async fn get_state_diffs(
+pub(crate) async fn get_state_diffs(
     storage: Storage,
     request: StateDiffsRequest,
     tx: futures::channel::mpsc::Sender<StateDiffsResponse>,
@@ -60,7 +60,7 @@ pub async fn get_state_diffs(
     spawn_blocking_get(request, storage, blocking::get_state_diffs, tx).await
 }
 
-pub async fn get_transactions(
+pub(crate) async fn get_transactions(
     storage: Storage,
     request: TransactionsRequest,
     tx: futures::channel::mpsc::Sender<TransactionsResponse>,
@@ -68,7 +68,7 @@ pub async fn get_transactions(
     spawn_blocking_get(request, storage, blocking::get_transactions, tx).await
 }
 
-pub async fn get_events(
+pub(crate) async fn get_events(
     storage: Storage,
     request: EventsRequest,
     tx: futures::channel::mpsc::Sender<EventsResponse>,

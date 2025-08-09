@@ -1,16 +1,22 @@
 //! Consensus behaviour and other related utilities for the consensus p2p
 //! network.
+use std::collections::HashMap;
+
+use libp2p::gossipsub::PublishError;
+use p2p_proto::consensus::{ProposalPart, Vote};
+use pathfinder_common::ContractAddress;
+use smallvec::SmallVec;
+use stream::{StreamMessage, StreamMessageBody, StreamState};
+use tokio::sync::mpsc::Sender;
+
 mod behaviour;
+mod client;
 mod height_and_round;
 mod stream;
 
-use std::collections::HashMap;
-
 pub use behaviour::Behaviour;
-use height_and_round::HeightAndRound;
-use p2p_proto::consensus::{ProposalPart, Vote};
-use pathfinder_common::ContractAddress;
-use stream::{StreamMessage, StreamMessageBody, StreamState};
+pub use client::Client;
+pub use height_and_round::HeightAndRound;
 
 /// The topic for proposal messages in the consensus network.
 pub const TOPIC_PROPOSALS: &str = "consensus_proposals";
@@ -24,9 +30,16 @@ pub type ValidatorAddress = ContractAddress;
 #[derive(Debug, Clone)]
 pub enum Command {
     /// A proposal (part) for a new block.
-    Proposal(HeightAndRound, ProposalPart),
+    Proposal {
+        height_and_round: HeightAndRound,
+        proposal: Vec<ProposalPart>,
+        done_tx: Sender<Result<(), PublishError>>,
+    },
     /// A vote for a proposal.
-    Vote(Vote),
+    Vote {
+        vote: Vote,
+        done_tx: Sender<Result<(), PublishError>>,
+    },
     /// Test command to create a proposal stream.
     #[cfg(test)]
     TestProposalStream(HeightAndRound, Vec<ProposalPart>, bool),
@@ -41,12 +54,8 @@ pub enum Event {
     Vote(Vote),
 }
 
-/// Configuration for the consensus P2P network.
-#[derive(Default)]
-pub struct Config {}
-
 /// The state of the consensus P2P network.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct State {
     /// The active streams of the consensus P2P network.
     active_streams: HashMap<HeightAndRound, StreamState<ProposalPart>>,
@@ -66,8 +75,8 @@ pub fn create_outgoing_proposal_message(
     state: &mut State,
     height_and_round: HeightAndRound,
     proposal: ProposalPart,
-) -> Vec<StreamMessage<ProposalPart>> {
-    let mut messages = Vec::with_capacity(2);
+) -> SmallVec<[StreamMessage<ProposalPart>; 2]> {
+    let mut messages = SmallVec::with_capacity(2);
 
     // Get or create stream state
     let stream_state = state
@@ -448,11 +457,16 @@ mod tests {
                 extension: None,
             },
         ];
-
+        let mut rxs = Vec::new();
         // Send votes from node1
         for vote in &votes {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            rxs.push(rx);
             node1_client
-                .send(Command::Vote(vote.clone()))
+                .send(Command::Vote {
+                    vote: vote.clone(),
+                    done_tx: tx,
+                })
                 .await
                 .unwrap();
         }
@@ -482,19 +496,22 @@ mod tests {
             expected_votes.is_empty(),
             "Some expected votes were not received"
         );
+        assert!(
+            rxs.iter_mut().all(|rx| { rx.try_recv().is_ok() }),
+            "Not all confirmations were received"
+        );
     }
 
     async fn create_test_node() -> (
         core::Client<consensus::Command>,
-        mpsc::Receiver<consensus::Event>,
+        mpsc::UnboundedReceiver<consensus::Event>,
         main_loop::MainLoop<consensus::Behaviour>,
     ) {
         let keypair = Keypair::generate_ed25519();
         let core_config = Config::for_test();
-        let consensus_config = consensus::Config::default();
         let chain_id = ChainId::MAINNET;
 
-        new_consensus(keypair, core_config, consensus_config, chain_id)
+        new_consensus(keypair, core_config, chain_id)
     }
 
     fn create_proposal_stream(

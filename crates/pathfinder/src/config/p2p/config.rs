@@ -34,7 +34,7 @@ pub struct P2PSyncConfig {
 
 #[derive(Clone)]
 pub struct P2PConsensusConfig {
-    pub _core: P2PCoreConfig,
+    pub core: P2PCoreConfig,
 }
 
 /// Generates an `impl From` implementation for a given `target` that converts
@@ -52,7 +52,7 @@ macro_rules! impl_from_p2p_cli {
                     let parse_multiaddr_vec = |field: &str, multiaddrs: Vec<String>| -> Vec<Multiaddr> {
                         multiaddrs
                             .into_iter()
-                            .map(|addr| Multiaddr::from_str(&addr))
+                            .map(|addr| Multiaddr::from_str(addr.trim()))
                             .collect::<Result<Vec<_>>>()
                             .unwrap_or_else(|error| {
                                 Cli::command()
@@ -178,10 +178,10 @@ fn parse_l1_checkpoint_or_exit(
 }
 
 impl P2PConsensusConfig {
-    pub(crate) fn parse_or_exit(args: P2PConsensusCli) -> Self {
+    pub fn parse_or_exit(args: P2PConsensusCli) -> Self {
         Self {
             // SAFETY: core conversion is safe because we exit the process on error
-            _core: args.core.into(),
+            core: args.core.into(),
         }
     }
 }

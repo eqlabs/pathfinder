@@ -85,6 +85,7 @@ flate2 = { workspace = true }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-consensus = { path = "../consensus" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [
@@ -99,3 +100,7 @@ starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 warp = { workspace = true }
+
+[[example]]
+name = "validator"
+required-features = ["p2p"]
