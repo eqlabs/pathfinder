@@ -327,7 +327,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     }
 }
 
-/// Check if the transaction is either in the in the database, pending data or
+/// Check if the transaction is either in the database, pending data or
 /// in the [submitted transactions](tracker::SubmittedTransactionTracker) and
 /// provide the corresponding status.
 async fn current_known_tx_status(
