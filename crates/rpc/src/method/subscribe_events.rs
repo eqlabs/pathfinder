@@ -297,7 +297,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                 current_block = block_number;
                             }
                             for (receipt, events) in block.transaction_receipts.iter() {
-                                if sent_txs.contains(&receipt.transaction_hash) {
+                                if sent_txs.contains(&(receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2)) {
                                     tracing::trace!(
                                         transaction_hash=%receipt.transaction_hash,
                                         "Transaction already sent, skipping"
@@ -309,7 +309,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                     if !params.matches(event) {
                                         continue;
                                     }
-                                    sent_txs.insert(receipt.transaction_hash);
+                                    sent_txs.insert((receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2));
                                     let emitted = EmittedEvent {
                                         data: event.data.clone(),
                                         keys: event.keys.clone(),
@@ -364,7 +364,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         current_block = block_number;
                     }
                     for (receipt, events) in pending.transaction_receipts_and_events().iter() {
-                        if sent_txs.contains(&receipt.transaction_hash) {
+                        if sent_txs.contains(&(receipt.transaction_hash, finality)) {
                             tracing::trace!(
                                 transaction_hash=%receipt.transaction_hash,
                                 "Transaction already sent, skipping"
@@ -376,7 +376,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                             if !params.matches(event) {
                                 continue;
                             }
-                            sent_txs.insert(receipt.transaction_hash);
+                            sent_txs.insert((receipt.transaction_hash, finality));
                             tracing::trace!(
                                 transaction_hash=%receipt.transaction_hash,
                                 "Sending event"
