@@ -1,7 +1,7 @@
 {
   "openrpc": "1.3.2",
   "info": {
-    "version": "0.9.0-rc.3",
+    "version": "0.9.0",
     "title": "StarkNet WebSocket RPC API",
     "license": {}
   },
@@ -58,7 +58,7 @@
     {
       "name": "starknet_subscribeEvents",
       "summary": "Events subscription",
-      "description": "Creates a WebSocket stream which will fire events for new Starknet events with applied filters. Events are emitted for all events from the specified block_id, up to the latest block",
+      "description": "Creates a WebSocket stream which will fire events for new Starknet events with applied filters. Events are emitted for all events from the specified block_id, up to the latest block. If PRE_CONFIRMED finality status is provided, events might appear multiple times, for each finality status update. If a single event is required, ACCEPTED_ON_L2 must be selected (the default).",
       "params": [
         {
           "name": "from_address",
@@ -87,7 +87,7 @@
         },
         {
           "name": "finality_status",
-          "summary": "The finality status of the most recent events to include, default is ACCEPTED_ON_L2",
+          "summary": "The finality status of the most recent events to include, default is ACCEPTED_ON_L2. If PRE_CONFIRMED finality is selected, events might appear multiple times, once for each finality status update.",
           "required": false,
           "schema": {
             "type": "string",
@@ -132,7 +132,14 @@
                 "$ref": "./api/starknet_api_openrpc.json#/components/schemas/EMITTED_EVENT"
               },
               {
-                "$ref": "#/components/schemas/TXN_FINALITY_STATUS"
+                "type": "object",
+                "properties": {
+                  "finality_status": {
+                    "description": "Finality status of the transaction",
+                    "$ref": "./api/starknet_api_openrpc.json#/components/schemas/TXN_FINALITY_STATUS"
+                  }
+                },
+                "required": ["finality_status"]
               }
             ]
           }
@@ -265,9 +272,7 @@
           "schema": {
             "type": "array",
             "items": {
-              "items": {
-                "$ref": "#/components/schemas/TXN_STATUS_WITHOUT_L1"
-              }
+              "$ref": "#/components/schemas/TXN_STATUS_WITHOUT_L1"
             }
           }
         },
@@ -377,7 +382,6 @@
       ]
     }
   ],
-
   "components": {
     "schemas": {
       "FELT": {
@@ -438,7 +442,6 @@
           }
         ]
       },
-
       "REORG_DATA": {
         "name": "Reorg Data",
         "description": "Data about reorganized blocks, starting and ending block number and hash",

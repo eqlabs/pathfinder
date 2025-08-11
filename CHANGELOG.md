@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Pathfinder now implements the final JSON-RPC 0.9.0 specification.
 - `blockifier` has been upgraded to version 0.15.0-rc.2.
 - The default JSON-RPC listen address has been changed to the IPv6 wildcard address in our Docker images. This avoids problems on IPv6-enabled hosts where `localhost` resolves to `::1`.
 - The default JSON-RPC version (served on the '/' route) has been changed to v08.
