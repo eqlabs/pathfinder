@@ -44,12 +44,13 @@ pub struct PreConfirmedBlock {
     )>,
 }
 
-type CandidateTransactions = Vec<pathfinder_common::transaction::Transaction>;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum PendingBlockVariant {
     Pending(PendingBlock),
-    PreConfirmed(PreConfirmedBlock, CandidateTransactions),
+    PreConfirmed {
+        block: PreConfirmedBlock,
+        candidate_transactions: Vec<pathfinder_common::transaction::Transaction>,
+    },
 }
 
 impl Default for PendingBlockVariant {
@@ -62,7 +63,7 @@ impl PendingBlockVariant {
     pub fn transactions(&self) -> &[pathfinder_common::transaction::Transaction] {
         match self {
             PendingBlockVariant::Pending(block) => &block.transactions,
-            PendingBlockVariant::PreConfirmed(block, _) => &block.transactions,
+            PendingBlockVariant::PreConfirmed { block, .. } => &block.transactions,
         }
     }
 
@@ -74,14 +75,14 @@ impl PendingBlockVariant {
     )] {
         match self {
             PendingBlockVariant::Pending(block) => &block.transaction_receipts,
-            PendingBlockVariant::PreConfirmed(block, _) => &block.transaction_receipts,
+            PendingBlockVariant::PreConfirmed { block, .. } => &block.transaction_receipts,
         }
     }
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
         match self {
             PendingBlockVariant::Pending(_) => crate::dto::TxnFinalityStatus::AcceptedOnL2,
-            PendingBlockVariant::PreConfirmed(_, _) => crate::dto::TxnFinalityStatus::PreConfirmed,
+            PendingBlockVariant::PreConfirmed { .. } => crate::dto::TxnFinalityStatus::PreConfirmed,
         }
     }
 }
@@ -165,10 +166,10 @@ impl PendingData {
         };
 
         Self {
-            block: Arc::new(PendingBlockVariant::PreConfirmed(
+            block: Arc::new(PendingBlockVariant::PreConfirmed {
                 block,
                 candidate_transactions,
-            )),
+            }),
             state_update: Arc::new(state_update),
             number,
         }
@@ -210,7 +211,7 @@ impl PendingData {
                 state_diff_commitment: Default::default(),
                 state_diff_length: Default::default(),
             },
-            PendingBlockVariant::PreConfirmed(block, _) => BlockHeader {
+            PendingBlockVariant::PreConfirmed { block, .. } => BlockHeader {
                 parent_hash: pathfinder_common::BlockHash::ZERO, /* Pre-confirmed blocks do not
                                                                   * have a parent hash. */
                 number: self.number,
@@ -262,14 +263,18 @@ impl PendingData {
     pub fn candidate_transactions(&self) -> Option<&[pathfinder_common::transaction::Transaction]> {
         match self.block.as_ref() {
             PendingBlockVariant::Pending(_) => None,
-            PendingBlockVariant::PreConfirmed(_, candidate_transactions) => {
-                Some(candidate_transactions)
-            }
+            PendingBlockVariant::PreConfirmed {
+                candidate_transactions,
+                ..
+            } => Some(candidate_transactions),
         }
     }
 
     pub fn is_pre_confirmed(&self) -> bool {
-        matches!(self.block.as_ref(), PendingBlockVariant::PreConfirmed(_, _))
+        matches!(
+            self.block.as_ref(),
+            PendingBlockVariant::PreConfirmed { .. }
+        )
     }
 
     pub fn finality_status(&self) -> crate::dto::TxnFinalityStatus {
@@ -349,7 +354,10 @@ impl PendingWatcher {
                 transaction_receipts: vec![],
             };
             PendingData {
-                block: Arc::new(PendingBlockVariant::PreConfirmed(block, vec![])),
+                block: Arc::new(PendingBlockVariant::PreConfirmed {
+                    block,
+                    candidate_transactions: vec![],
+                }),
                 state_update: StateUpdate::default()
                     .with_parent_state_commitment(latest.state_commitment)
                     .into(),
@@ -375,7 +383,7 @@ impl PendingWatcher {
             // Older versions did have the semantics that expected that pending block
             // contents are L2_ACCEPTED, which is not the case for the pre-confirmed
             // block.
-            PendingBlockVariant::PreConfirmed(_, _) if rpc_version >= RpcVersion::V09 => {
+            PendingBlockVariant::PreConfirmed { .. } if rpc_version >= RpcVersion::V09 => {
                 if data.block_number() == latest.number + 1 {
                     // The parent state commitment is only available here. The task polling the
                     // pre-confirmed block has no access to the parent block header, thus it
@@ -392,7 +400,7 @@ impl PendingWatcher {
                     empty_pre_confirmed_data(&latest)
                 }
             }
-            PendingBlockVariant::PreConfirmed(_, _) => empty_pending_data(&latest),
+            PendingBlockVariant::PreConfirmed { .. } => empty_pending_data(&latest),
         };
 
         Ok(pending_data)
@@ -466,8 +474,8 @@ mod tests {
 
     fn valid_pre_confirmed_block(latest: &BlockHeader) -> PendingData {
         PendingData {
-            block: PendingBlockVariant::PreConfirmed(
-                PreConfirmedBlock {
+            block: PendingBlockVariant::PreConfirmed {
+                block: PreConfirmedBlock {
                     number: latest.number + 1,
                     l1_gas_price: Default::default(),
                     l1_data_gas_price: Default::default(),
@@ -480,8 +488,8 @@ mod tests {
                     transactions: vec![],
                     transaction_receipts: vec![],
                 },
-                vec![],
-            )
+                candidate_transactions: vec![],
+            }
             .into(),
             state_update: StateUpdate::default()
                 .with_contract_nonce(
@@ -677,7 +685,10 @@ mod tests {
             transaction_receipts: vec![],
         };
         PendingData {
-            block: Arc::new(PendingBlockVariant::PreConfirmed(block, vec![])),
+            block: Arc::new(PendingBlockVariant::PreConfirmed {
+                block,
+                candidate_transactions: vec![],
+            }),
             state_update: StateUpdate::default().into(),
             number: latest.number + 1,
         }

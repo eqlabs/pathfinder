@@ -543,8 +543,8 @@ mod tests {
             state_update: StateUpdate,
         ) -> PendingData {
             PendingData::from_parts(
-                crate::pending::PendingBlockVariant::PreConfirmed(
-                    crate::pending::PreConfirmedBlock {
+                crate::pending::PendingBlockVariant::PreConfirmed {
+                    block: crate::pending::PreConfirmedBlock {
                         number: last_block_header.number + 1,
                         l1_gas_price: GasPrices {
                             price_in_wei: last_block_header.eth_l1_gas_price,
@@ -565,8 +565,8 @@ mod tests {
                         starknet_version: last_block_header.starknet_version,
                         l1_da_mode: L1DataAvailabilityMode::Blob.into(),
                     },
-                    vec![],
-                ),
+                    candidate_transactions: vec![],
+                },
                 state_update,
                 last_block_header.number + 1,
             )

@@ -13,7 +13,8 @@ use tokio::time::MissedTickBehavior;
 use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
-use crate::{PendingData, Reorg, RpcVersion};
+use crate::pending::PendingBlockVariant;
+use crate::{tracker, PendingData, Reorg, RpcVersion};
 
 pub struct SubscribeTransactionStatus;
 
@@ -41,6 +42,8 @@ pub enum Notification {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalityStatus {
     Received,
+    Candidate,
+    PreConfirmed,
     AcceptedOnL2,
     AcceptedOnL1,
     Rejected { reason: Option<String> },
@@ -82,6 +85,8 @@ impl crate::dto::SerializeForVersion for Notification {
                     "finality_status",
                     &match self.finality_status {
                         FinalityStatus::Received => "RECEIVED",
+                        FinalityStatus::Candidate => "CANDIDATE",
+                        FinalityStatus::PreConfirmed => "PRE_CONFIRMED",
                         FinalityStatus::AcceptedOnL2 => "ACCEPTED_ON_L2",
                         FinalityStatus::AcceptedOnL1 => "ACCEPTED_ON_L1",
                         FinalityStatus::Rejected { .. } => "REJECTED",
@@ -141,10 +146,16 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
             let storage = state.storage.clone();
 
             if let Some((block_number, finality_status, execution_status)) =
-                current_known_tx_status(&mut pending_data, storage, tx_hash).await?
+                current_known_tx_status(
+                    storage,
+                    &mut pending_data,
+                    &state.submission_tracker,
+                    tx_hash,
+                )
+                .await?
             {
                 if sender
-                    .send(block_number, finality_status, execution_status)
+                    .send_and_update(block_number, finality_status, execution_status)
                     .await
                     .is_err()
                 {
@@ -171,7 +182,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                 if matches!(status.execution_status, Some(status::ExecutionStatus::Rejected)) {
                                     // Transaction has been rejected.
                                     sender
-                                        .send(BlockNumber::GENESIS, FinalityStatus::Rejected {
+                                        .send_and_update(BlockNumber::GENESIS, FinalityStatus::Rejected {
                                             reason: status.tx_failure_reason.map(|reason| reason.error_message)
                                         }, None)
                                         .await
@@ -218,13 +229,15 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                             break 'reorg;
                         }
                         let pending = pending_data.borrow_and_update().clone();
-                        if pending
-                            .transactions()
-                            .iter()
-                            .any(|tx| tx.hash == tx_hash)
+                        if let Some((block, finality_status, execution_status)) =
+                            pending_data_tx_status(&pending, tx_hash)
                         {
                             if sender
-                                .send(pending.block_number(), FinalityStatus::Received, None)
+                                .send_and_update(
+                                    block,
+                                    finality_status,
+                                    execution_status
+                                )
                                 .await
                                 .is_err()
                             {
@@ -236,24 +249,18 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                     l2_block = l2_blocks.recv() => {
                         match l2_block {
                             Ok(l2_block) => {
-                                let receipt = l2_block.transaction_receipts.iter().find(|(receipt, _)| {
-                                    receipt.transaction_hash == tx_hash
-                                });
-                                if let Some((receipt, _)) = receipt {
-                                    // Send both received and accepted updates.
+                                // Perform a series of checks in the order that they are supposed
+                                // to be transmitted. Perform it all in one place so that it is
+                                // ensured that the user will always get them in the correct
+                                // order.
+
+                                // 1. Submitted transactions.
+                                if let Some(block) = state.submission_tracker.get(&tx_hash) {
                                     if sender
-                                        .send(l2_block.block_number, FinalityStatus::Received, None)
-                                        .await
-                                        .is_err()
-                                    {
-                                        // Subscription closing.
-                                        break;
-                                    }
-                                    if sender
-                                        .send(
-                                            l2_block.block_number,
-                                            FinalityStatus::AcceptedOnL2,
-                                            Some(receipt.execution_status.clone())
+                                        .send_and_update(
+                                            block,
+                                            FinalityStatus::Received,
+                                            None
                                         )
                                         .await
                                         .is_err()
@@ -262,9 +269,24 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                         break;
                                     }
                                 }
-                                // Check if our transaction has been confirmed on L1. This is done
-                                // here because it guarantees that the ACCEPTED_ON_L2 update will be
-                                // sent before the ACCEPTED_ON_L1 update.
+
+                                // 2. Transactions accepted on L2.
+                                if let Some(receipt) = find_tx_receipt(&l2_block.transaction_receipts, tx_hash) {
+                                    if sender
+                                        .send_and_update(
+                                            l2_block.block_number,
+                                            FinalityStatus::AcceptedOnL2,
+                                            Some(receipt.execution_status.clone()),
+                                        )
+                                        .await
+                                        .is_err()
+                                    {
+                                        // Subscription closing.
+                                        break;
+                                    }
+                                }
+
+                                // 3. Transactions accepted on L1.
                                 let storage = state.storage.clone();
                                 let l1_state = util::task::spawn_blocking(move |_| -> Result<_, RpcError> {
                                     let mut conn = storage.connection().map_err(RpcError::InternalError)?;
@@ -275,7 +297,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                 if let Some(l1_state) = l1_state {
                                     if l1_state.block_number >= sender.last_block_number && sender.last_execution_status.is_some() {
                                         if sender
-                                            .send(
+                                            .send_and_update(
                                                 l1_state.block_number,
                                                 FinalityStatus::AcceptedOnL1,
                                                 sender.last_execution_status.clone(),
@@ -305,11 +327,13 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
     }
 }
 
-/// Check if the transaction is either in the pending data or in the database
-/// and provide the corresponding status.
+/// Check if the transaction is either in the database, pending data or
+/// in the [submitted transactions](tracker::SubmittedTransactionTracker) and
+/// provide the corresponding status.
 async fn current_known_tx_status(
-    pending_data: &mut WatchReceiver<PendingData>,
     storage: pathfinder_storage::Storage,
+    pending_data: &mut WatchReceiver<PendingData>,
+    submission_tracker: &tracker::SubmittedTransactionTracker,
     tx_hash: TransactionHash,
 ) -> Result<Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)>, RpcError> {
     // Check the DB first since, in case the transaction can be found both in the
@@ -353,15 +377,68 @@ async fn current_known_tx_status(
     }
 
     let pending = pending_data.borrow_and_update().clone();
-    if pending.transactions().iter().any(|tx| tx.hash == tx_hash) {
-        return Ok(Some((
-            pending.block_number(),
-            FinalityStatus::Received,
-            None,
-        )));
-    }
+    let status = pending_data_tx_status(&pending, tx_hash).or_else(|| {
+        submission_tracker
+            .get(&tx_hash)
+            .map(|block| (block, FinalityStatus::Received, None))
+    });
 
-    Ok(None)
+    Ok(status)
+}
+
+fn pending_data_tx_status(
+    pending_data: &PendingData,
+    tx_hash: TransactionHash,
+) -> Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)> {
+    let block_number = pending_data.block_number();
+    match pending_data.block().as_ref() {
+        PendingBlockVariant::Pending(block) => {
+            find_tx_receipt(&block.transaction_receipts, tx_hash).map(|receipt| {
+                (
+                    block_number,
+                    FinalityStatus::AcceptedOnL2,
+                    Some(receipt.execution_status.clone()),
+                )
+            })
+        }
+        PendingBlockVariant::PreConfirmed {
+            block,
+            candidate_transactions,
+        } => {
+            let is_candidate = candidate_transactions.iter().any(|tx| tx.hash == tx_hash);
+            if is_candidate {
+                return Some((block_number, FinalityStatus::Candidate, None));
+            }
+
+            let is_pre_confirmed = block.transactions.iter().any(|tx| tx.hash == tx_hash);
+            if is_pre_confirmed {
+                let execution_status = find_tx_receipt(&block.transaction_receipts, tx_hash)
+                    .expect("Pre-confirmed transaction should have a receipt")
+                    .execution_status
+                    .clone();
+                return Some((
+                    block_number,
+                    FinalityStatus::PreConfirmed,
+                    Some(execution_status),
+                ));
+            }
+
+            None
+        }
+    }
+}
+
+fn find_tx_receipt(
+    receipts: &[(
+        pathfinder_common::receipt::Receipt,
+        Vec<pathfinder_common::event::Event>,
+    )],
+    tx_hash: TransactionHash,
+) -> Option<&pathfinder_common::receipt::Receipt> {
+    receipts
+        .iter()
+        .find(|(receipt, _)| receipt.transaction_hash == tx_hash)
+        .map(|(receipt, _)| receipt)
 }
 
 struct Sender<'a> {
@@ -373,7 +450,7 @@ struct Sender<'a> {
 }
 
 impl Sender<'_> {
-    async fn send(
+    async fn send_and_update(
         &mut self,
         block_number: BlockNumber,
         finality_status: FinalityStatus,
@@ -408,9 +485,11 @@ impl FinalityStatus {
     pub fn as_num(&self) -> u8 {
         match self {
             FinalityStatus::Received => 0,
-            FinalityStatus::AcceptedOnL2 => 1,
-            FinalityStatus::AcceptedOnL1 => 2,
-            FinalityStatus::Rejected { .. } => 3,
+            FinalityStatus::Candidate => 1,
+            FinalityStatus::PreConfirmed => 2,
+            FinalityStatus::AcceptedOnL2 => 3,
+            FinalityStatus::AcceptedOnL1 => 4,
+            FinalityStatus::Rejected { .. } => 5,
         }
     }
 }
@@ -427,7 +506,7 @@ mod tests {
     use pathfinder_ethereum::EthereumStateUpdate;
     use pathfinder_storage::StorageBuilder;
     use pretty_assertions_sorted::assert_eq;
-    use starknet_gateway_types::reply::{Block, PendingBlock};
+    use starknet_gateway_types::reply::{Block, PendingBlock, PreConfirmedBlock};
     use tokio::sync::mpsc;
 
     use crate::context::{RpcContext, WebsocketContext};
@@ -435,6 +514,8 @@ mod tests {
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse, RpcRouter};
     use crate::{v08, PendingData, Reorg, RpcVersion, SubscriptionId};
+
+    const TARGET_TX_HASH: TransactionHash = TransactionHash(Felt::from_u64(1));
 
     #[tokio::test]
     async fn transaction_already_exists_in_db_accepted_on_l2_succeeded() {
@@ -649,6 +730,14 @@ mod tests {
                             hash: TransactionHash(Felt::from_u64(2)),
                             variant: Default::default(),
                         }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TransactionHash(Felt::from_u64(2)),
+                                execution_status: ExecutionStatus::Succeeded,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
                         ..Default::default()
                     },
                     StateUpdate::default(),
@@ -665,9 +754,17 @@ mod tests {
                 TestEvent::Pending(PendingData::from_pending_block(
                     PendingBlock {
                         transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(1)),
+                            hash: TARGET_TX_HASH,
                             variant: Default::default(),
                         }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                execution_status: ExecutionStatus::Succeeded,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
                         ..Default::default()
                     },
                     StateUpdate::default(),
@@ -678,12 +775,12 @@ mod tests {
                         block_number: BlockNumber::GENESIS + 2,
                         block_hash: BlockHash(Felt::from_u64(2)),
                         transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(1)),
+                            hash: TARGET_TX_HASH,
                             ..Default::default()
                         }],
                         transaction_receipts: vec![(
                             Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(1)),
+                                transaction_hash: TARGET_TX_HASH,
                                 ..Default::default()
                             },
                             vec![],
@@ -699,21 +796,8 @@ mod tests {
                         "result": {
                             "transaction_hash": "0x1",
                             "status": {
-                                "finality_status": "RECEIVED",
-                            }
-                        },
-                        "subscription_id": subscription_id
-                    }
-                })),
-                TestEvent::Message(serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "method": "starknet_subscriptionTransactionStatus",
-                    "params": {
-                        "result": {
-                            "transaction_hash": "0x1",
-                            "status": {
                                 "finality_status": "ACCEPTED_ON_L2",
-                                "execution_status": "SUCCEEDED"
+                                "execution_status": "SUCCEEDED",
                             }
                         },
                         "subscription_id": subscription_id
@@ -804,6 +888,419 @@ mod tests {
         .await;
     }
 
+    #[tokio::test]
+    async fn transaction_found_in_pending_block() {
+        test_transaction_status_streaming(|subscription_id| {
+            vec![
+                TestEvent::Pending(PendingData::from_pending_block(
+                    PendingBlock {
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(2)),
+                            variant: Default::default(),
+                        }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TransactionHash(Felt::from_u64(2)),
+                                execution_status: ExecutionStatus::Succeeded,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    },
+                    StateUpdate::default(),
+                    BlockNumber::GENESIS + 1,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 1,
+                        block_hash: BlockHash(Felt::from_u64(1)),
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Pending(PendingData::from_pending_block(
+                    PendingBlock {
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            variant: Default::default(),
+                        }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                execution_status: ExecutionStatus::Succeeded,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    },
+                    StateUpdate::default(),
+                    BlockNumber::GENESIS + 2,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 2,
+                        block_hash: BlockHash(Felt::from_u64(2)),
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            ..Default::default()
+                        }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "SUCCEEDED",
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+            ]
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_found_in_pre_confirmed_block() {
+        test_transaction_status_streaming(|subscription_id| {
+            vec![
+                TestEvent::Pending(PendingData::from_pre_confirmed_block(
+                    PreConfirmedBlock {
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(2)),
+                            variant: Default::default(),
+                        }],
+                        ..Default::default()
+                    },
+                    BlockNumber::GENESIS + 1,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 1,
+                        block_hash: BlockHash(Felt::from_u64(1)),
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Pending(PendingData::from_pre_confirmed_block(
+                    PreConfirmedBlock {
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            variant: Default::default(),
+                        }],
+                        // The fact that the receipt is present for this transaction means that it
+                        // belongs to the pre-confirmed block.
+                        transaction_receipts: vec![Some((
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
+                            vec![],
+                        ))],
+                        ..Default::default()
+                    },
+                    BlockNumber::GENESIS + 2,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 2,
+                        block_hash: BlockHash(Felt::from_u64(2)),
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            ..Default::default()
+                        }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "PRE_CONFIRMED",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+            ]
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_found_in_candidate_transactions() {
+        test_transaction_status_streaming(|subscription_id| {
+            vec![
+                TestEvent::Pending(PendingData::from_pre_confirmed_block(
+                    PreConfirmedBlock {
+                        transactions: vec![Transaction {
+                            hash: TransactionHash(Felt::from_u64(2)),
+                            variant: Default::default(),
+                        }],
+                        ..Default::default()
+                    },
+                    BlockNumber::GENESIS + 1,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 1,
+                        block_hash: BlockHash(Felt::from_u64(1)),
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Pending(PendingData::from_pre_confirmed_block(
+                    PreConfirmedBlock {
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            variant: Default::default(),
+                        }],
+                        // The fact that the receipt is missing for this transaction means that it
+                        // belongs to the candidate transactions.
+                        transaction_receipts: vec![None],
+                        ..Default::default()
+                    },
+                    BlockNumber::GENESIS + 2,
+                )),
+                TestEvent::L2Block(
+                    Block {
+                        block_number: BlockNumber::GENESIS + 2,
+                        block_hash: BlockHash(Felt::from_u64(2)),
+                        transactions: vec![Transaction {
+                            hash: TARGET_TX_HASH,
+                            ..Default::default()
+                        }],
+                        transaction_receipts: vec![(
+                            Receipt {
+                                transaction_hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            },
+                            vec![],
+                        )],
+                        ..Default::default()
+                    }
+                    .into(),
+                ),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "CANDIDATE",
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+                TestEvent::Message(serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "method": "starknet_subscriptionTransactionStatus",
+                    "params": {
+                        "result": {
+                            "transaction_hash": "0x1",
+                            "status": {
+                                "finality_status": "ACCEPTED_ON_L2",
+                                "execution_status": "SUCCEEDED"
+                            }
+                        },
+                        "subscription_id": subscription_id
+                    }
+                })),
+            ]
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn transaction_found_in_submission_tracker() {
+        let (router, pending_sender) = setup().await;
+        tokio::task::spawn_blocking({
+            let storage = router.context.storage.clone();
+            move || {
+                let mut conn = storage.connection().unwrap();
+                let db = conn.transaction().unwrap();
+                db.insert_block_header(&BlockHeader {
+                    hash: BlockHash::ZERO,
+                    number: BlockNumber::GENESIS,
+                    parent_hash: BlockHash::ZERO,
+                    ..Default::default()
+                })
+                .unwrap();
+                db.commit().unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        let tx_hash = TARGET_TX_HASH;
+        let (sender_tx, mut sender_rx) = mpsc::channel(1024);
+        let (receiver_tx, receiver_rx) = mpsc::channel(1024);
+
+        // Begin the subscription.
+        handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
+        let params = serde_json::json!(
+            {"transaction_hash": tx_hash}
+        );
+        receiver_tx
+            .send(Ok(Message::Text(
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "starknet_subscribeTransactionStatus",
+                    "params": params
+                })
+                .to_string(),
+            )))
+            .await
+            .unwrap();
+        let res = sender_rx.recv().await.unwrap().unwrap();
+        let subscription_id = match res {
+            Message::Text(json) => {
+                let mut json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].take()
+            }
+            _ => panic!("Expected text message"),
+        };
+
+        // Place something into the submission tracker.
+        router.context.submission_tracker.insert(
+            TARGET_TX_HASH,
+            crate::method::get_latest_block_or_genesis(&router.context.storage).unwrap(),
+        );
+
+        // Verify the transaction status subscription.
+        handle_test_events(
+            |subscription_id| {
+                vec![
+                    TestEvent::Pending(PendingData::from_pending_block(
+                        // Irrelevant pending update.
+                        PendingBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(2)),
+                                variant: Default::default(),
+                            }],
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(2)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        },
+                        StateUpdate::default(),
+                        BlockNumber::GENESIS + 1,
+                    )),
+                    // Irrelevant block update.
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 1,
+                            block_hash: BlockHash(Felt::from_u64(1)),
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::L2Block(
+                        Block {
+                            block_number: BlockNumber::GENESIS + 2,
+                            block_hash: BlockHash(Felt::from_u64(2)),
+                            transactions: vec![Transaction {
+                                hash: TARGET_TX_HASH,
+                                ..Default::default()
+                            }],
+                            transaction_receipts: vec![(
+                                Receipt {
+                                    transaction_hash: TARGET_TX_HASH,
+                                    ..Default::default()
+                                },
+                                vec![],
+                            )],
+                            ..Default::default()
+                        }
+                        .into(),
+                    ),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "RECEIVED",
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                    TestEvent::Message(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "method": "starknet_subscriptionTransactionStatus",
+                        "params": {
+                            "result": {
+                                "transaction_hash": "0x1",
+                                "status": {
+                                    "finality_status": "ACCEPTED_ON_L2",
+                                    "execution_status": "SUCCEEDED"
+                                }
+                            },
+                            "subscription_id": subscription_id
+                        }
+                    })),
+                ]
+            },
+            subscription_id,
+            router,
+            pending_sender,
+            sender_rx,
+        )
+        .await;
+    }
+
     async fn test_transaction_status_streaming(
         events: impl FnOnce(serde_json::Value) -> Vec<TestEvent>,
     ) {
@@ -825,7 +1322,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let tx_hash = TransactionHash(Felt::from_u64(1));
+        let tx_hash = TARGET_TX_HASH;
         let (sender_tx, mut sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
         handle_json_rpc_socket(router.clone(), sender_tx, receiver_rx);
@@ -854,6 +1351,17 @@ mod tests {
             }
             _ => panic!("Expected text message"),
         };
+
+        handle_test_events(events, subscription_id, router, pending_sender, sender_rx).await;
+    }
+
+    async fn handle_test_events(
+        events: impl FnOnce(serde_json::Value) -> Vec<TestEvent>,
+        subscription_id: serde_json::Value,
+        router: RpcRouter,
+        pending_sender: tokio::sync::watch::Sender<PendingData>,
+        mut sender_rx: mpsc::Receiver<Result<Message, RpcResponse>>,
+    ) {
         for event in events(subscription_id) {
             match event {
                 TestEvent::Pending(pending_data) => {
@@ -930,6 +1438,7 @@ mod tests {
                 }
             }
         }
+
         // No more messages expected.
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(sender_rx.try_recv().is_err());
@@ -946,7 +1455,7 @@ mod tests {
         SubscriptionId,
     ) {
         let (router, pending_sender) = setup().await;
-        let tx_hash = TransactionHash(Felt::from_u64(1));
+        let tx_hash = TARGET_TX_HASH;
         let block_number = BlockNumber::new_or_panic(1);
         tokio::task::spawn_blocking({
             let storage = router.context.storage.clone();

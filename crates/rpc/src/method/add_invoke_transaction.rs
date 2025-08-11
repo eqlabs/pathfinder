@@ -117,6 +117,12 @@ pub enum AddInvokeTransactionError {
     UnexpectedError(String),
 }
 
+impl From<anyhow::Error> for AddInvokeTransactionError {
+    fn from(e: anyhow::Error) -> Self {
+        AddInvokeTransactionError::UnexpectedError(e.to_string())
+    }
+}
+
 impl From<AddInvokeTransactionError> for crate::error::ApplicationError {
     fn from(value: AddInvokeTransactionError) -> Self {
         match value {
@@ -188,9 +194,10 @@ pub async fn add_invoke_transaction(
 ) -> Result<Output, AddInvokeTransactionError> {
     let Transaction::Invoke(tx) = input.invoke_transaction;
     let response = add_invoke_transaction_impl(&context, tx).await?;
-    context
-        .submission_tracker
-        .insert_key(response.transaction_hash);
+    context.submission_tracker.insert(
+        response.transaction_hash,
+        super::get_latest_block_or_genesis(&context.storage)?,
+    );
     Ok(Output {
         transaction_hash: response.transaction_hash,
     })

@@ -109,6 +109,12 @@ pub enum AddDeployAccountTransactionError {
     UnexpectedError(String),
 }
 
+impl From<anyhow::Error> for AddDeployAccountTransactionError {
+    fn from(value: anyhow::Error) -> Self {
+        AddDeployAccountTransactionError::UnexpectedError(value.to_string())
+    }
+}
+
 impl From<AddDeployAccountTransactionError> for crate::error::ApplicationError {
     fn from(value: AddDeployAccountTransactionError) -> Self {
         use AddDeployAccountTransactionError::*;
@@ -181,9 +187,10 @@ pub async fn add_deploy_account_transaction(
     };
     let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
     let response = add_deploy_account_transaction_impl(&context, tx).await?;
-    context
-        .submission_tracker
-        .insert_key(response.transaction_hash);
+    context.submission_tracker.insert(
+        response.transaction_hash,
+        super::get_latest_block_or_genesis(&context.storage)?,
+    );
     Ok(Output {
         transaction_hash: response.transaction_hash,
         contract_address,
