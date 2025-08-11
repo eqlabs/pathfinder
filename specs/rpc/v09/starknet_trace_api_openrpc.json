@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0-rc1",
   "info": {
-    "version": "0.9.0-rc.3",
+    "version": "0.9.0",
     "title": "StarkNet Trace API",
     "license": {}
   },
