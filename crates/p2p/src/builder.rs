@@ -60,7 +60,7 @@ impl<B> Builder<B, AppBehaviourSet> {
         self,
     ) -> (
         Client<<B as ApplicationBehaviour>::Command>,
-        mpsc::Receiver<<B as ApplicationBehaviour>::Event>,
+        mpsc::UnboundedReceiver<<B as ApplicationBehaviour>::Event>,
         MainLoop<B>,
     )
     where
@@ -102,7 +102,7 @@ impl<B> Builder<B, AppBehaviourSet> {
             swarm::Config::with_tokio_executor(),
         );
 
-        let (event_sender, event_receiver) = mpsc::channel(1);
+        let (event_sender, event_receiver) = mpsc::unbounded_channel();
         let (main_loop, command_sender) = MainLoop::new(swarm, event_sender);
         let client = Client::new(command_sender, local_peer_id);
 
@@ -121,7 +121,7 @@ impl ApplicationBehaviour for dummy::Behaviour {
         &mut self,
         _: <Self as NetworkBehaviour>::ToSwarm,
         _: &mut Self::State,
-        _: mpsc::Sender<Self::Event>,
+        _: mpsc::UnboundedSender<Self::Event>,
     ) {
     }
 }

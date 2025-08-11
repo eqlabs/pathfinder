@@ -284,6 +284,32 @@ impl ProtobufSerializable for ProposalPart {
     }
 }
 
+impl ProposalPart {
+    pub fn as_init(&self) -> Option<&ProposalInit> {
+        if let Self::Init(init) = self {
+            Some(init)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_init_mut(&mut self) -> Option<&mut ProposalInit> {
+        if let Self::Init(init) = self {
+            Some(init)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_fin(&self) -> Option<&ProposalFin> {
+        if let Self::Fin(fin) = self {
+            Some(fin)
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use pathfinder_crypto::Felt;

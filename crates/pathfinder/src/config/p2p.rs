@@ -4,6 +4,8 @@ pub(super) mod cli;
 mod config;
 
 #[cfg(feature = "p2p")]
+pub use cli::P2PConsensusCli;
+#[cfg(feature = "p2p")]
 pub use config::{P2PConsensusConfig, P2PSyncConfig};
 
 #[cfg(not(feature = "p2p"))]

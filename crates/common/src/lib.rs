@@ -290,6 +290,10 @@ impl BlockNumber {
         self == &Self::GENESIS
     }
 
+    pub fn checked_add(&self, rhs: u64) -> Option<Self> {
+        Self::new(self.0.checked_add(rhs)?)
+    }
+
     pub fn checked_sub(&self, rhs: u64) -> Option<Self> {
         self.0.checked_sub(rhs).map(Self)
     }

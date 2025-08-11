@@ -16,12 +16,12 @@ pub mod types;
 
 #[derive(Clone, Debug)]
 pub struct Client {
-    sender: mpsc::Sender<core::Command<Command>>,
+    sender: mpsc::UnboundedSender<core::Command<Command>>,
     local_peer_id: PeerId,
 }
 
-impl From<(PeerId, mpsc::Sender<core::Command<Command>>)> for Client {
-    fn from((peer_id, sender): (PeerId, mpsc::Sender<core::Command<Command>>)) -> Self {
+impl From<(PeerId, mpsc::UnboundedSender<core::Command<Command>>)> for Client {
+    fn from((peer_id, sender): (PeerId, mpsc::UnboundedSender<core::Command<Command>>)) -> Self {
         Self {
             sender,
             local_peer_id: peer_id,
@@ -43,7 +43,6 @@ macro_rules! impl_send {
                     request,
                     sender,
                 }))
-                .await
                 .expect("Command receiver not to be dropped");
             receiver.await.expect("Sender not to be dropped")
         }

@@ -1,0 +1,135 @@
+use p2p::consensus::{Client, Event};
+use pathfinder_common::ChainId;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+
+use crate::config::p2p::P2PConsensusConfig;
+
+type ConsensusHandle = (
+    JoinHandle<anyhow::Result<()>>,
+    Option<(mpsc::UnboundedReceiver<Event>, Client)>,
+);
+
+pub async fn start(chain_id: ChainId, config: P2PConsensusConfig) -> ConsensusHandle {
+    inner::start(chain_id, config)
+        .await
+        .unwrap_or_else(|error| {
+            (
+                tokio::task::spawn(std::future::ready(Err(
+                    error.context("Consensus P2P failed to start")
+                ))),
+                None,
+            )
+        })
+}
+
+#[cfg(feature = "p2p")]
+mod inner {
+    use std::time::Duration;
+
+    use anyhow::Context;
+    use futures::FutureExt;
+    use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
+    use pathfinder_common::ChainId;
+
+    use super::*;
+    use crate::config::p2p::P2PConsensusConfig;
+    use crate::p2p_network::identity;
+
+    #[tracing::instrument(name = "p2p", skip_all)]
+    pub(super) async fn start(
+        chain_id: ChainId,
+        config: P2PConsensusConfig,
+    ) -> anyhow::Result<ConsensusHandle> {
+        let core_config = p2p::core::Config {
+            direct_connection_timeout: config.core.direct_connection_timeout,
+            relay_connection_timeout: Duration::from_secs(10),
+            max_inbound_direct_peers: config.core.max_inbound_direct_connections,
+            max_inbound_relayed_peers: config.core.max_inbound_relayed_connections,
+            max_outbound_peers: config.core.max_outbound_connections,
+            ip_whitelist: config.core.ip_whitelist,
+            bootstrap_period: Some(Duration::from_secs(2 * 60)),
+            eviction_timeout: config.core.eviction_timeout,
+            inbound_connections_rate_limit: p2p::core::config::RateLimit {
+                max: 10,
+                interval: Duration::from_secs(1),
+            },
+            kad_name: config.core.kad_name,
+        };
+        let keypair = identity::load_or_generate(config.core.identity_config_file)?;
+        let listen_on = config.core.listen_on;
+        let bootstrap_addresses = config.core.bootstrap_addresses;
+        let mut predefined_peers = config.core.predefined_peers;
+
+        let my_peer_id = keypair.public().to_peer_id();
+        tracing::info!(%my_peer_id, "🖧 Starting consensus P2P");
+
+        // In testing it is convenient to paste the entire list of peers into their
+        // configs without having to remove the peer ID of the configured peer.
+        if let Some(my_idx) = predefined_peers.iter().position(|addr| {
+            addr.iter()
+                .any(|p| matches!(p, Protocol::P2p(peer_id) if peer_id == my_peer_id))
+        }) {
+            predefined_peers.swap_remove(my_idx);
+        }
+
+        let (core_client, p2p_events, p2p_main_loop) =
+            p2p::new_consensus(keypair, core_config, chain_id);
+
+        let main_loop_handle = { util::task::spawn(p2p_main_loop.run().map(Ok)) };
+
+        for addr in listen_on {
+            core_client
+                .start_listening(addr.clone())
+                .await
+                .with_context(|| format!("Starting consensus P2P listener: {addr}"))?;
+        }
+
+        let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
+            addr.iter()
+                .find_map(|p| match p {
+                    Protocol::P2p(peer_id) => Some(peer_id),
+                    _ => None,
+                })
+                .ok_or_else(|| anyhow::anyhow!(msg))
+        };
+
+        for bootstrap_address in bootstrap_addresses {
+            let peer_id = ensure_peer_id_in_multiaddr(
+                &bootstrap_address,
+                "Bootstrap addresses must include peer ID",
+            )?;
+            core_client.dial(peer_id, bootstrap_address.clone()).await?;
+            core_client
+                .start_listening(bootstrap_address.clone().with(Protocol::P2pCircuit))
+                .await
+                .context("Starting relay listener")?;
+        }
+
+        for peer in predefined_peers {
+            let peer_id =
+                ensure_peer_id_in_multiaddr(&peer, "Predefined peers must include peer ID")?;
+            core_client.dial(peer_id, peer).await?;
+        }
+
+        Ok((
+            main_loop_handle,
+            Some((p2p_events, Client::from(core_client.as_pair()))),
+        ))
+    }
+}
+
+#[cfg(not(feature = "p2p"))]
+mod inner {
+    use super::*;
+
+    pub(super) async fn start(
+        _: ChainId,
+        _: P2PConsensusConfig,
+    ) -> anyhow::Result<(
+        JoinHandle<anyhow::Result<()>>,
+        Option<(mpsc::UnboundedReceiver<Event>, Client)>,
+    )> {
+        Ok((tokio::task::spawn(futures::future::pending()), None))
+    }
+}

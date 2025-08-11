@@ -29,25 +29,58 @@ impl ApplicationBehaviour for Behaviour {
     type Event = consensus::Event;
     type State = consensus::State;
 
+    #[tracing::instrument(skip(self, state))]
     async fn handle_command(&mut self, command: Self::Command, state: &mut Self::State) {
         use consensus::Command as ConsensusCommand;
         match command {
-            ConsensusCommand::Proposal(height_and_round, proposal_part) => {
-                let stream_msgs =
-                    create_outgoing_proposal_message(state, height_and_round, proposal_part);
+            ConsensusCommand::Proposal {
+                height_and_round,
+                proposal,
+                done_tx,
+            } => {
+                let stream_msgs = proposal
+                    .into_iter()
+                    .flat_map(|proposal_part| {
+                        create_outgoing_proposal_message(state, height_and_round, proposal_part)
+                    })
+                    .collect::<Vec<_>>();
+
+                let mut tx_result = Ok(());
                 for msg in stream_msgs {
                     let topic = IdentTopic::new(TOPIC_PROPOSALS);
+
                     if let Err(e) = self.gossipsub.publish(topic, msg.to_protobuf_bytes()) {
-                        error!("Failed to publish proposal message: {}", e);
+                        error!(
+                            "Failed to publish proposal message, stream id {}, message id {}, \
+                             error {e:?}",
+                            msg.stream_id, msg.message_id
+                        );
+                        tx_result = Err(e);
+                        break;
                     }
                 }
+                done_tx
+                    .send(tx_result)
+                    .await
+                    .expect("Receiver not to be dropped");
             }
-            ConsensusCommand::Vote(vote) => {
+            ConsensusCommand::Vote { vote, done_tx } => {
+                let cloned_vote = vote.clone();
                 let data = vote.to_protobuf_bytes();
                 let topic = IdentTopic::new(TOPIC_VOTES);
-                if let Err(e) = self.gossipsub.publish(topic, data) {
-                    error!("Failed to publish vote message: {}", e);
-                }
+
+                let tx_result = self
+                    .gossipsub
+                    .publish(topic, data)
+                    .inspect_err(|e| {
+                        error!("Failed to publish vote message {cloned_vote:?}, error {e:?}");
+                    })
+                    .map(|_| ());
+
+                done_tx
+                    .send(tx_result)
+                    .await
+                    .expect("Receiver not to be dropped");
             }
             #[cfg(test)]
             ConsensusCommand::TestProposalStream(height_and_round, proposal_stream, shuffle) => {
@@ -73,11 +106,12 @@ impl ApplicationBehaviour for Behaviour {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn handle_event(
         &mut self,
         event: BehaviourEvent,
         state: &mut Self::State,
-        event_sender: mpsc::Sender<Self::Event>,
+        event_sender: mpsc::UnboundedSender<Self::Event>,
     ) {
         use gossipsub::Event::*;
         let BehaviourEvent::Gossipsub(e) = event;
@@ -91,7 +125,7 @@ impl ApplicationBehaviour for Behaviour {
                     if let Ok(stream_msg) = StreamMessage::from_protobuf_bytes(&message.data) {
                         let events = handle_incoming_proposal_message(state, stream_msg);
                         for event in events {
-                            let _ = event_sender.send(event).await;
+                            let _ = event_sender.send(event);
                         }
                     } else {
                         error!("Failed to parse proposal message with id: {}", message_id);
@@ -99,7 +133,7 @@ impl ApplicationBehaviour for Behaviour {
                 }
                 TOPIC_VOTES => {
                     if let Ok(vote) = Vote::from_protobuf_bytes(&message.data) {
-                        let _ = event_sender.send(Event::Vote(vote)).await;
+                        let _ = event_sender.send(Event::Vote(vote));
                     } else {
                         error!("Failed to parse vote message with id: {}", message_id);
                     }

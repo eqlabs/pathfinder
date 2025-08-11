@@ -34,7 +34,7 @@ pub fn new_sync(
     chain_id: ChainId,
 ) -> (
     core::Client<sync::Command>,
-    mpsc::Receiver<sync::Event>,
+    mpsc::UnboundedReceiver<sync::Event>,
     main_loop::MainLoop<sync::Behaviour>,
 ) {
     Builder::new(keypair, core_config, chain_id)
@@ -46,11 +46,10 @@ pub fn new_sync(
 pub fn new_consensus(
     keypair: Keypair,
     core_config: core::Config,
-    _consensus_config: consensus::Config,
     chain_id: ChainId,
 ) -> (
     core::Client<consensus::Command>,
-    mpsc::Receiver<consensus::Event>,
+    mpsc::UnboundedReceiver<consensus::Event>,
     main_loop::MainLoop<consensus::Behaviour>,
 ) {
     Builder::new(keypair.clone(), core_config, chain_id)
@@ -75,7 +74,7 @@ mod builder_phase {
 /// sync, consensus) to define their p2p protocol logic.
 pub trait ApplicationBehaviour: NetworkBehaviour {
     /// The type of commands that can be sent to the p2p network.
-    type Command;
+    type Command: std::fmt::Debug;
     /// The type of events that the p2p network can emit to the outside world.
     type Event;
     /// State needed to track pending network operations and their responses.
@@ -93,7 +92,7 @@ pub trait ApplicationBehaviour: NetworkBehaviour {
         &mut self,
         event: <Self as NetworkBehaviour>::ToSwarm,
         state: &mut Self::State,
-        event_sender: mpsc::Sender<Self::Event>,
+        event_sender: mpsc::UnboundedSender<Self::Event>,
     ) -> impl Future<Output = ()> + Send;
 }
 

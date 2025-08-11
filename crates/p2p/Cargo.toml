@@ -44,6 +44,7 @@ rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha3 = { workspace = true }
+smallvec = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
@@ -53,6 +54,8 @@ util = { path = "../util" }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+# `clap` is here only due to the boot node example and should be removed once the example is removed.
+clap = { workspace = true, features = ["derive", "env"] }
 fake = { workspace = true }
 pretty_assertions_sorted = { workspace = true }
 rstest = { workspace = true }
