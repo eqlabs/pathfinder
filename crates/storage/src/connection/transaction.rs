@@ -313,9 +313,11 @@ impl Transaction<'_> {
             return Ok(None);
         };
 
-        let Some(events) = self.query_events_by_block(block_number)? else {
-            return Ok(None);
-        };
+        // We explicitly do _not_ stop here on no events: empty blocks are valid and
+        // fairly common since Starknet 0.14.0.
+        let events = self
+            .query_events_by_block(block_number)?
+            .unwrap_or_default();
 
         let transaction_hashes = self
             .query_transaction_hashes_by_block(block_number)
