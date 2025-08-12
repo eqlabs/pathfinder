@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 # Our Dockerfile relies on the PATHFINDER_FORCE_VERSION build-time variable being set.
 # This is required so that we don't have to copy the .git directory into the layer which
 # might cause caches to be invalidated even if that's unnecessary.
