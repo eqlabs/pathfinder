@@ -12,7 +12,7 @@ FROM --platform=$BUILDPLATFORM lukemathwalker/cargo-chef:0.1.72-rust-1.88.0-slim
 WORKDIR /usr/src/pathfinder
 
 FROM --platform=$BUILDPLATFORM cargo-chef AS rust-planner
-COPY . .
+COPY --exclude=rust-toolchain.toml . .
 # carg-chef prepare examines your project and builds a recipe that captures
 # the set of information required to build your dependencies.
 RUN cargo chef prepare --recipe-path recipe.json
@@ -30,7 +30,7 @@ COPY ./build/cargo-chef-cook.sh ./cargo-chef-cook.sh
 RUN TARGETARCH=${TARGETARCH} ./cargo-chef-cook.sh --profile release-lto --recipe-path recipe.json --package pathfinder --bin pathfinder ${CARGO_EXTRA_ARGS}
 
 # Compile the actual libraries and binary now
-COPY . .
+COPY --exclude=rust-toolchain.toml . .
 ARG PATHFINDER_FORCE_VERSION
 COPY ./build/cargo-build.sh ./cargo-build.sh
 RUN TARGETARCH=${TARGETARCH} \
