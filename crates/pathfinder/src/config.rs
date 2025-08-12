@@ -640,6 +640,16 @@ struct ConsensusCli {
         required_if_eq("is_enabled", "true"),
     )]
     validator_addresses: Vec<Felt>,
+
+    #[arg(
+        long = "consensus.wal-directory",
+        long_help = "Consensus WAL directory.",
+        value_name = "DIR",
+        value_hint = clap::ValueHint::DirPath,
+        default_value = "./wal",
+        required_if_eq("is_enabled", "true"),
+    )]
+    wal_directory: Option<PathBuf>,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
@@ -870,9 +880,11 @@ pub struct NativeExecutionConfig;
 #[cfg(feature = "p2p")]
 #[derive(Clone)]
 pub struct ConsensusConfig {
+    /// Initially there will only be one proposer, operated by StarkWare.
     pub proposer_address: ContractAddress,
     pub my_validator_address: ContractAddress,
     pub validator_addresses: Vec<ContractAddress>,
+    pub wal_directory: PathBuf,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1013,6 +1025,9 @@ impl ConsensusConfig {
                 .into_iter()
                 .map(ContractAddress)
                 .collect(),
+            wal_directory: args
+                .wal_directory
+                .expect("Clap requires this to be set if `is_enabled` is true"),
         })
     }
 }
