@@ -617,6 +617,12 @@ impl ContractAddress {
     }
 }
 
+impl From<ContractAddress> for Vec<u8> {
+    fn from(value: ContractAddress) -> Self {
+        value.0.to_be_bytes().to_vec()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AllowedOrigins {
     Any,
