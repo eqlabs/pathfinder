@@ -1362,6 +1362,13 @@ mod tests {
         pending_sender: tokio::sync::watch::Sender<PendingData>,
         mut sender_rx: mpsc::Receiver<Result<Message, RpcResponse>>,
     ) {
+        while router.context.notifications.l2_blocks.receiver_count() == 0
+            || router.context.notifications.reorgs.receiver_count() == 0
+        {
+            // Make sure that the receiver task is set up before sending notifications.
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+
         for event in events(subscription_id) {
             match event {
                 TestEvent::Pending(pending_data) => {
@@ -1400,6 +1407,7 @@ mod tests {
                     })
                     .await
                     .unwrap();
+
                     router
                         .context
                         .notifications
