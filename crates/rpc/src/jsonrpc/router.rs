@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 
+use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::{State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -186,11 +187,11 @@ pub async fn rpc_handler(
     State(state): State<RpcRouter>,
     headers: http::HeaderMap,
     method: http::Method,
-    ws: Option<WebSocketUpgrade>,
+    ws: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
     body: axum::body::Bytes,
 ) -> impl axum::response::IntoResponse {
     match ws {
-        Some(ws) => {
+        Ok(ws) => {
             if state.context.websocket.is_none() {
                 return StatusCode::FORBIDDEN.into_response();
             }
@@ -200,7 +201,7 @@ pub async fn rpc_handler(
                 handle_json_rpc_socket(state, ws_tx, ws_rx);
             })
         }
-        None => {
+        Err(_) => {
             if method != http::Method::POST {
                 return StatusCode::METHOD_NOT_ALLOWED.into_response();
             }

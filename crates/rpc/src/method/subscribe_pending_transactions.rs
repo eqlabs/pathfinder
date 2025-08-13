@@ -173,7 +173,8 @@ mod tests {
                 "id": 1,
                 "method": "starknet_subscribePendingTransactions",
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -262,7 +263,8 @@ mod tests {
                     "transaction_details": true
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -315,7 +317,8 @@ mod tests {
                     "sender_address": ["0x1"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -364,7 +367,8 @@ mod tests {
                     "sender_address": ["0x1", "0x2"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
