@@ -428,7 +428,7 @@ mod tests {
         let url = spawn_server(router).await.replace("http", "ws");
         let (mut ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
         ws.send(tokio_tungstenite::tungstenite::Message::Text(
-            request.to_string(),
+            request.to_string().into(),
         ))
         .await
         .unwrap();
@@ -662,7 +662,7 @@ mod tests {
                 .await
                 .unwrap();
             ws.send(tokio_tungstenite::tungstenite::Message::Text(
-                request.to_string(),
+                request.to_string().into(),
             ))
             .await
             .unwrap();

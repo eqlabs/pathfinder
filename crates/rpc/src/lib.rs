@@ -1393,7 +1393,7 @@ mod tests {
                     }
                 });
 
-                stream.send(Message::Text(request.to_string())).await.unwrap();
+                stream.send(Message::Text(request.to_string().into())).await.unwrap();
                 let res: Message = stream.next().await.unwrap().unwrap();
                 let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
 
@@ -1419,7 +1419,7 @@ mod tests {
                     }
                 });
 
-                stream.send(Message::Text(request.to_string())).await.unwrap();
+                stream.send(Message::Text(request.to_string().into())).await.unwrap();
                 let res = stream.next().await.unwrap().unwrap();
                 let res: serde_json::Value = serde_json::from_str(&res.to_string()).unwrap();
 
