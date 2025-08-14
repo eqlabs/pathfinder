@@ -56,7 +56,11 @@ mod inner {
             },
             kad_name: config.core.kad_name,
         };
-        let keypair = identity::load_or_generate(config.core.identity_config_file)?;
+        let keypair = identity::load_or_generate(config.core.identity_config_file.clone())
+            .context(format!(
+                "Loading identity file: {:?}",
+                config.core.identity_config_file
+            ))?;
         let listen_on = config.core.listen_on;
         let bootstrap_addresses = config.core.bootstrap_addresses;
         let mut predefined_peers = config.core.predefined_peers;
@@ -99,17 +103,24 @@ mod inner {
                 &bootstrap_address,
                 "Bootstrap addresses must include peer ID",
             )?;
-            core_client.dial(peer_id, bootstrap_address.clone()).await?;
             core_client
-                .start_listening(bootstrap_address.clone().with(Protocol::P2pCircuit))
+                .dial(peer_id, bootstrap_address.clone())
                 .await
-                .context("Starting relay listener")?;
+                .context(format!("Dialing boot node: {bootstrap_address}"))?;
+            let relay_listener_address = bootstrap_address.clone().with(Protocol::P2pCircuit);
+            core_client
+                .start_listening(relay_listener_address.clone())
+                .await
+                .context(format!("Starting relay listener: {relay_listener_address}"))?;
         }
 
         for peer in predefined_peers {
             let peer_id =
                 ensure_peer_id_in_multiaddr(&peer, "Predefined peers must include peer ID")?;
-            core_client.dial(peer_id, peer).await?;
+            core_client
+                .dial(peer_id, peer.clone())
+                .await
+                .context(format!("Dialing predefined peer: {peer}"))?;
         }
 
         Ok((

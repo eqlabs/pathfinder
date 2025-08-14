@@ -242,7 +242,14 @@ async fn main() -> anyhow::Result<()> {
 
     let p2p_config = P2PConsensusConfig::parse_or_exit(config.consensus);
     let (p2p_main_loop_handle, client) = consensus::start(chain_id, p2p_config).await;
-    let (mut p2p_event_rx, p2p_client) = client.context("Starting P2P consensus client")?;
+    let Some((mut p2p_event_rx, p2p_client)) = client else {
+        // `None` means that the p2p stack failed to initialize, so we want to extract
+        // the real cause of the failure.
+        return Err(p2p_main_loop_handle
+            .await
+            .expect("Joining a ready future")
+            .expect_err("P2P main loop init failure"));
+    };
     // Cache for proposals that we created and are waiting to be gossiped upon a
     // command from the consensus engine. Once the proposal is gossiped, it is
     // removed from the cache.
