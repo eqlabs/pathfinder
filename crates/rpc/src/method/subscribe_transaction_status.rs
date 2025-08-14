@@ -1192,7 +1192,8 @@ mod tests {
                     "method": "starknet_subscribeTransactionStatus",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1337,7 +1338,8 @@ mod tests {
                     "method": "starknet_subscribeTransactionStatus",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1515,7 +1517,8 @@ mod tests {
                     "method": "starknet_subscribeTransactionStatus",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();

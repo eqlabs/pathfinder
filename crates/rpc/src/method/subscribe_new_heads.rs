@@ -241,7 +241,8 @@ mod tests {
                     "method": "starknet_subscribeNewHeads",
                     "params": {"block_id": {"block_number": 0}}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -329,7 +330,8 @@ mod tests {
                     "id": 1,
                     "method": "starknet_subscribeNewHeads",
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -388,7 +390,8 @@ mod tests {
                     "params": {},
                     "method": "starknet_subscribeNewHeads",
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -443,7 +446,8 @@ mod tests {
                 "method": "starknet_unsubscribe",
                 "params": {"subscription_id": subscription_id.0.to_string()}
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -487,7 +491,8 @@ mod tests {
                     "method": "starknet_subscribeNewHeads",
                     "params": {"block_id": "pending"}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -571,7 +576,8 @@ mod tests {
                     "method": "starknet_subscribeNewHeads",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();

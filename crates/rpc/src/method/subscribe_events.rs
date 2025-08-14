@@ -443,7 +443,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -508,7 +509,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -575,7 +577,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -643,7 +646,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -710,7 +714,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -798,7 +803,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -877,7 +883,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -971,7 +978,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": params
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1010,7 +1018,8 @@ mod tests {
                     "id": 1,
                     "method": "starknet_subscribeEvents",
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1102,7 +1111,8 @@ mod tests {
                     "method": "starknet_subscribeEvents",
                     "params": {"block_id": "pending"}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();

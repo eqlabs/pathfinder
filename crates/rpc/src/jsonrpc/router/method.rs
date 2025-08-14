@@ -3,7 +3,7 @@
 use std::future::Future;
 use std::marker::PhantomData;
 
-use axum::async_trait;
+use async_trait::async_trait;
 use serde_json::value::RawValue;
 use tracing::Instrument;
 
@@ -23,7 +23,7 @@ use crate::jsonrpc::router::RpcEndpointInner;
 use crate::jsonrpc::{RpcError, RpcResponse};
 use crate::RpcVersion;
 
-#[axum::async_trait]
+#[async_trait]
 pub(super) trait RpcMethodEndpoint: Send + Sync {
     async fn invoke<'a>(
         &self,
@@ -114,7 +114,7 @@ where
             _marker: PhantomData<(Input, Output, Error)>,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F, Input, Output, Error, Fut> RpcMethodEndpoint for Helper<F, Input, Output, Error>
         where
             F: Fn(RpcContext, Input, RpcVersion) -> Fut + Sync + Send,
@@ -163,7 +163,7 @@ where
             _marker: PhantomData<(Input, Output, Error)>,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F, Input, Output, Error, Fut> RpcMethodEndpoint for Helper<F, Input, Output, Error>
         where
             F: Fn(RpcContext, Input) -> Fut + Sync + Send,
@@ -212,7 +212,7 @@ where
             _marker: PhantomData<(Input, Output, Error)>,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F, Input, Output, Error, Fut> RpcMethodEndpoint for Helper<F, Input, Output, Error>
         where
             F: Fn(Input) -> Fut + Sync + Send,
@@ -260,7 +260,7 @@ where
             _marker: PhantomData<(Output, Error)>,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F, Output, Error, Fut> RpcMethodEndpoint for Helper<F, Output, Error>
         where
             F: Fn(RpcContext) -> Fut + Sync + Send,
@@ -311,7 +311,7 @@ where
             _marker: PhantomData<(Output, Error)>,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F, Output, Error, Fut> RpcMethodEndpoint for Helper<F, Output, Error>
         where
             F: Fn() -> Fut + Sync + Send,
@@ -358,7 +358,7 @@ where
             f: F,
         }
 
-        #[axum::async_trait]
+        #[async_trait]
         impl<F> RpcMethodEndpoint for Helper<F>
         where
             F: Fn() -> &'static str + Sync + Send,

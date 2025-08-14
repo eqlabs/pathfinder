@@ -1,9 +1,9 @@
-use std::borrow::Cow;
 use std::future::Future;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
-use axum::extract::ws::{close_code, CloseFrame, Message, WebSocket};
+use async_trait::async_trait;
+use axum::extract::ws::{close_code, CloseFrame, Message, Utf8Bytes, WebSocket};
 use dashmap::DashMap;
 use futures::{SinkExt, StreamExt};
 use pathfinder_common::BlockNumber;
@@ -21,7 +21,7 @@ use crate::types::request::SubscriptionBlockId;
 use crate::{RpcVersion, SubscriptionId};
 
 /// See [`RpcSubscriptionFlow`].
-#[axum::async_trait]
+#[async_trait]
 pub(super) trait RpcSubscriptionEndpoint: Send + Sync {
     // Start the subscription.
     async fn invoke(&self, params: InvokeParams) -> Result<tokio::task::JoinHandle<()>, RpcError>;
@@ -170,7 +170,7 @@ pub struct SubscriptionMessage<T> {
     pub subscription_name: &'static str,
 }
 
-#[axum::async_trait]
+#[async_trait]
 impl<T> RpcSubscriptionEndpoint for T
 where
     T: RpcSubscriptionFlow + 'static,
@@ -434,7 +434,7 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
                         // Ignore the error since we're shutting down anyway.
                         let _ = ws_sender.send(Message::Close(Some(CloseFrame {
                             code: close_code::NORMAL,
-                            reason:  Cow::Borrowed("Server shutdown"),
+                            reason:  Utf8Bytes::from_static("Server shutdown"),
                         }))).await.ok();
                         break;
                     }
@@ -450,13 +450,9 @@ pub fn split_ws(ws: WebSocket, version: RpcVersion) -> (WsSender, WsReceiver) {
                                 }
                             }
                             Err(e) => {
+                                let data = serde_json::to_string(&e.serialize(crate::dto::Serializer::new(version)).unwrap()).unwrap();
                                 if let Err(e) = ws_sender
-                                    .send(Message::Text(
-                                        serde_json::to_string(
-                                            &e.serialize(crate::dto::Serializer::new(version)).unwrap(),
-                                        )
-                                        .unwrap(),
-                                    ))
+                                    .send(Message::Text(data.into()))
                                     .await
                                 {
                                     tracing::debug!(error=?e, "Error sending websocket error message");
@@ -492,8 +488,8 @@ pub fn handle_json_rpc_socket(
     util::task::spawn(async move {
         loop {
             let request = match ws_rx.recv().await {
-                Some(Ok(Message::Text(msg))) => msg,
-                Some(Ok(Message::Binary(bytes))) => match String::from_utf8(bytes) {
+                Some(Ok(Message::Text(msg))) => msg.as_str().to_string(),
+                Some(Ok(Message::Binary(bytes))) => match String::from_utf8(bytes.to_vec()) {
                     Ok(msg) => msg,
                     Err(e) => {
                         if let Err(e) = ws_tx
@@ -558,14 +554,14 @@ pub fn handle_json_rpc_socket(
                 .await
                 {
                     Ok(Some(response)) | Err(response) => {
+                        let data = serde_json::to_string(
+                            &response
+                                .serialize(crate::dto::Serializer::new(state.version))
+                                .unwrap(),
+                        ).unwrap();
                         if let Err(e) = ws_tx
                             .send(Ok(Message::Text(
-                                serde_json::to_string(
-                                    &response
-                                        .serialize(crate::dto::Serializer::new(state.version))
-                                        .unwrap(),
-                                )
-                                .unwrap(),
+                                data.into()
                             )))
                             .await
                         {
@@ -650,8 +646,9 @@ pub fn handle_json_rpc_socket(
                     })
                     .collect::<Vec<_>>();
 
+                let data = serde_json::to_string(&values).unwrap();
                 if let Err(e) = ws_tx
-                    .send(Ok(Message::Text(serde_json::to_string(&values).unwrap())))
+                    .send(Ok(Message::Text(data.into())))
                     .await
                 {
                     // Connection is closing.
@@ -826,7 +823,7 @@ impl<T: crate::dto::SerializeForVersion> SubscriptionSender<T> {
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
-            .send(Ok(Message::Text(data)))
+            .send(Ok(Message::Text(data.into())))
             .await
             .map_err(|_| mpsc::error::SendError(()))
     }
@@ -848,7 +845,7 @@ impl<T: crate::dto::SerializeForVersion> SubscriptionSender<T> {
         .unwrap();
         let data = serde_json::to_string(&notification).unwrap();
         self.tx
-            .send(Ok(Message::Text(data)))
+            .send(Ok(Message::Text(data.into())))
             .await
             .map_err(|_| mpsc::error::SendError(()))
     }
@@ -966,7 +963,8 @@ mod tests {
                     "method": "test",
                     "params": {}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1043,7 +1041,8 @@ mod tests {
                     "method": "test",
                     "params": {}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1137,7 +1136,8 @@ mod tests {
                     "method": "test",
                     "params": {}
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1243,7 +1243,8 @@ mod tests {
                         "from_block": bad_starting_block,
                     }
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();
@@ -1370,7 +1371,8 @@ mod tests {
                         "from_block": valid_starting_block,
                     }
                 })
-                .to_string(),
+                .to_string()
+                .into(),
             )))
             .await
             .unwrap();

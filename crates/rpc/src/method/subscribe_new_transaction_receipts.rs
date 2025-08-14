@@ -319,7 +319,8 @@ mod tests {
                     "finality_status": ["ACCEPTED_ON_L2", "PRE_CONFIRMED"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -399,7 +400,8 @@ mod tests {
                     "finality_status": ["ACCEPTED_ON_L2", "PRE_CONFIRMED"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -450,7 +452,8 @@ mod tests {
                     "finality_status": ["ACCEPTED_ON_L2", "PRE_CONFIRMED"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -505,7 +508,8 @@ mod tests {
                     "finality_status": ["ACCEPTED_ON_L2", "PRE_CONFIRMED"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
@@ -618,7 +622,8 @@ mod tests {
                     "finality_status": ["ACCEPTED_ON_L2"]
                 }
             })
-            .to_string(),
+            .to_string()
+            .into(),
         )))
         .await
         .unwrap();
