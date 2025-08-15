@@ -48,20 +48,28 @@ pub fn new(
     chain_id: ChainId,
     proposal_init: ProposalInit,
 ) -> anyhow::Result<ValidatorBlockInfoStage> {
-    // TODO(validator) how can we validate the proposal init?
-    Ok(ValidatorBlockInfoStage {
-        chain_id,
-        proposal_height: BlockNumber::new(proposal_init.height)
-            .context("ProposalInit height exceeds i64::MAX")?,
-    })
+    ValidatorBlockInfoStage::new(chain_id, proposal_init)
 }
 
+#[derive(Debug)]
 pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
     proposal_height: BlockNumber,
 }
 
 impl ValidatorBlockInfoStage {
+    pub fn new(
+        chain_id: ChainId,
+        proposal_init: ProposalInit,
+    ) -> anyhow::Result<ValidatorBlockInfoStage> {
+        // TODO(validator) how can we validate the proposal init?
+        Ok(ValidatorBlockInfoStage {
+            chain_id,
+            proposal_height: BlockNumber::new(proposal_init.height)
+                .context("ProposalInit height exceeds i64::MAX")?,
+        })
+    }
+
     pub fn validate_block_info(
         self,
         block_info: BlockInfo,

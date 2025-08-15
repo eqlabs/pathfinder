@@ -17,7 +17,7 @@ use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -31,8 +31,10 @@ use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
+use crate::validator::ValidatorBlockInfoStage;
 
 pub fn spawn(
+    chain_id: ChainId,
     validator_address: ContractAddress,
     p2p_client: Client,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
@@ -73,6 +75,7 @@ pub fn spawn(
                         Event::Proposal(height_and_round, proposal_part) => {
                             if let Ok(Some((proposal_commitment, proposer))) =
                                 handle_incoming_proposal_part(
+                                    chain_id,
                                     height_and_round,
                                     proposal_part,
                                     &mut incoming_proposals_cache,
@@ -281,6 +284,7 @@ pub fn spawn(
 }
 
 fn handle_incoming_proposal_part(
+    chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
@@ -290,10 +294,11 @@ fn handle_incoming_proposal_part(
     let proposals_at_height = cache.entry(height).or_default();
     let parts = proposals_at_height.entry(round).or_default();
     match proposal_part {
-        ProposalPart::Init(_) => {
+        ProposalPart::Init(ref prop_init) => {
             if parts.is_empty() {
+                let proposal_init = prop_init.clone();
                 parts.push(proposal_part);
-                // TODO send for validation or validate in place
+                let _ = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
                 Ok(None)
             } else {
                 Err(anyhow::anyhow!(
