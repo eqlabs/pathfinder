@@ -315,6 +315,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         let wal_directory = config.data_directory.join("consensus").join("wal");
         if !wal_directory.exists() {
             std::fs::DirBuilder::new()
+                .recursive(true)
                 .create(&wal_directory)
                 .context("Creating consensus wal directory")?;
         }
