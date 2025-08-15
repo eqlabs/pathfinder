@@ -7,7 +7,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::{ArgAction, CommandFactory, Parser};
+#[cfg(feature = "p2p")]
+use pathfinder_common::ContractAddress;
 use pathfinder_common::{AllowedOrigins, StarknetVersion};
+#[cfg(feature = "p2p")]
+use pathfinder_crypto::Felt;
 use pathfinder_executor::{VersionedConstants, VersionedConstantsMap};
 use pathfinder_storage::JournalMode;
 use reqwest::Url;
@@ -186,6 +190,14 @@ Examples:
     #[cfg(not(feature = "p2p"))]
     #[clap(skip)]
     p2p_consensus: (),
+
+    #[cfg(feature = "p2p")]
+    #[clap(flatten)]
+    consensus: ConsensusCli,
+
+    #[cfg(not(feature = "p2p"))]
+    #[clap(skip)]
+    consensus: (),
 
     #[cfg(feature = "p2p")]
     #[clap(flatten)]
@@ -495,6 +507,12 @@ fn parse_fractional_seconds(s: &str) -> Result<Duration, String> {
     Ok(duration)
 }
 
+#[cfg(feature = "p2p")]
+fn parse_felt(s: &str) -> Result<Felt, String> {
+    let felt = Felt::from_hex_str(s).map_err(|e| ToString::to_string(&e))?;
+    Ok(felt)
+}
+
 #[derive(clap::Args)]
 struct NetworkCli {
     #[arg(
@@ -578,6 +596,50 @@ struct NativeExecutionCli {
         env = "PATHFINDER_RPC_NATIVE_EXECUTION_CLASS_CACHE_SIZE"
     )]
     class_cache_size: NonZeroUsize,
+}
+
+#[cfg(feature = "p2p")]
+#[derive(clap::Args)]
+struct ConsensusCli {
+    #[arg(
+        long = "consensus.enable",
+        long_help = "Enable Starknet consensus node (validator).",
+        action = clap::ArgAction::Set,
+        default_value = "false",
+        env = "PATHFINDER_CONSENSUS_ENABLE",
+    )]
+    is_enabled: bool,
+
+    #[arg(
+        long = "consensus.proposer-address",
+        long_help = "Address of the sole proposer for the consensus protocol.",
+        value_name = "ADDRESS",
+        value_parser = parse_felt,
+        env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESS",
+        required_if_eq("is_enabled", "true"),
+    )]
+    proposer_address: Option<Felt>,
+
+    #[arg(
+        long = "consensus.my-validator-address",
+        long_help = "Address of this validator node.",
+        value_name = "ADDRESS",
+        value_parser = parse_felt,
+        env = "PATHFINDER_CONSENSUS_MY_VALIDATOR_ADDRESS",
+        required_if_eq("is_enabled", "true"),
+    )]
+    my_validator_address: Option<Felt>,
+
+    #[arg(
+        long = "consensus.validator-addresses",
+        long_help = "Addresses of other validators, ie. excluding our own node.",
+        value_name = "ADDRESS_LIST",
+        value_parser = parse_felt,
+        value_delimiter = ',',
+        env = "PATHFINDER_CONSENSUS_VALIDATOR_ADDRESSES",
+        required_if_eq("is_enabled", "true"),
+    )]
+    validator_addresses: Vec<Felt>,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
@@ -769,6 +831,7 @@ pub struct Config {
     pub native_execution: NativeExecutionConfig,
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
+    pub consensus: Option<ConsensusConfig>,
 }
 
 pub struct Ethereum {
@@ -803,6 +866,19 @@ pub struct NativeExecutionConfig {
 #[cfg(not(feature = "cairo-native"))]
 #[derive(Clone)]
 pub struct NativeExecutionConfig;
+
+#[cfg(feature = "p2p")]
+#[derive(Clone)]
+pub struct ConsensusConfig {
+    /// Initially there will only be one proposer, operated by StarkWare.
+    pub proposer_address: ContractAddress,
+    pub my_validator_address: ContractAddress,
+    pub validator_addresses: Vec<ContractAddress>,
+}
+
+#[cfg(not(feature = "p2p"))]
+#[derive(Clone)]
+pub struct ConsensusConfig;
 
 impl NetworkConfig {
     fn from_components(args: NetworkCli) -> Option<Self> {
@@ -905,6 +981,43 @@ impl NativeExecutionConfig {
     }
 }
 
+#[cfg(not(feature = "p2p"))]
+impl ConsensusConfig {
+    fn parse_or_exit(_: ()) -> Option<Self> {
+        None
+    }
+}
+
+#[cfg(feature = "p2p")]
+impl ConsensusConfig {
+    fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
+        if args.validator_addresses.len() < 2 {
+            Cli::command()
+                .error(
+                    clap::error::ErrorKind::ValueValidation,
+                    "At least 3 validator addresses are required (including this node's address).",
+                )
+                .exit();
+        }
+
+        args.is_enabled.then_some(Self {
+            proposer_address: ContractAddress(
+                args.proposer_address
+                    .expect("Clap requires this to be set if `is_enabled` is true"),
+            ),
+            my_validator_address: ContractAddress(
+                args.my_validator_address
+                    .expect("Clap requires this to be set if `is_enabled` is true"),
+            ),
+            validator_addresses: args
+                .validator_addresses
+                .into_iter()
+                .map(ContractAddress)
+                .collect(),
+        })
+    }
+}
+
 impl Config {
     #[cfg_attr(not(feature = "cairo-native"), allow(clippy::unit_arg))]
     pub fn parse() -> Self {
@@ -961,6 +1074,7 @@ impl Config {
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
+            consensus: ConsensusConfig::parse_or_exit(cli.consensus),
         }
     }
 }
