@@ -289,9 +289,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await;
 
+    let chain_id = pathfinder_context.network_id;
     let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
-        p2p_network::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone())
-            .await;
+        p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -321,7 +321,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
 
         if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
-            consensus::start(consensus_config, wal_directory, client, event_rx)
+            consensus::start(consensus_config, chain_id, wal_directory, client, event_rx)
         } else {
             ConsensusTaskHandles::pending()
         }
