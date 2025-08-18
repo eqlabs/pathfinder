@@ -188,6 +188,13 @@ impl Transaction<'_> {
             )
             .context("Deleting block from trie_class_removals table")?;
 
+        self.inner()
+            .execute(
+                "UPDATE class_definitions SET block_number = NULL WHERE block_number = ?",
+                params![&block],
+            )
+            .context("Removing class definitions for purged block")?;
+
         Ok(())
     }
 

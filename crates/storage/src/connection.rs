@@ -119,7 +119,7 @@ impl Transaction<'_> {
     // the real implementations be kept in separate files with more reasonable
     // LOC counts and easier test oversight.
 
-    fn inner(&self) -> &rusqlite::Transaction<'_> {
+    pub(crate) fn inner(&self) -> &rusqlite::Transaction<'_> {
         &self.transaction
     }
 
