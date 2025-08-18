@@ -32,6 +32,7 @@ use pathfinder_common::{
 use pathfinder_executor::types::{
     to_starknet_api_transaction,
     BlockInfoPriceConverter,
+    ConsensusPriceConverter,
     LegacyPriceConverter,
 };
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
@@ -137,6 +138,84 @@ impl ValidatorBlockInfoStage {
                 workaround_l1_data_gas_price_fri,
             }),
             workaround_starknet_version,
+        )
+        .context("Creating internal BlockInfo representation")?;
+
+        let block_executor = BlockExecutor::new(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            db_conn,
+        )
+        .context("Creating BlockExecutor")?;
+
+        Ok(ValidatorTransactionBatchStage {
+            chain_id,
+            block_info,
+            block_executor,
+            transactions: Vec::new(),
+            receipts: Vec::new(),
+            events: Vec::new(),
+        })
+    }
+
+    pub fn validate_consensus_block_info(
+        self,
+        block_info: BlockInfo,
+        db_conn: pathfinder_storage::Connection,
+    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
+        let _span = tracing::debug_span!(
+            "Validator::validate_block_info",
+            height = %block_info.height,
+            timestamp = %block_info.timestamp,
+            builder = %block_info.builder.0,
+        )
+        .entered();
+
+        let Self {
+            chain_id,
+            proposal_height,
+        } = self;
+
+        anyhow::ensure!(
+            proposal_height == block_info.height,
+            "ProposalInit height does not match BlockInfo height: {} != {}",
+            proposal_height,
+            block_info.height,
+        );
+
+        // TODO(validator) validate block info (timestamp, gas prices)
+
+        let BlockInfo {
+            height,
+            timestamp,
+            builder,
+            l1_da_mode,
+            l2_gas_price_fri,
+            l1_gas_price_wei,
+            l1_data_gas_price_wei,
+            eth_to_fri_rate,
+        } = block_info;
+
+        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
+            height,
+            timestamp,
+            SequencerAddress(builder.0),
+            match l1_da_mode {
+                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
+                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
+                    L1DataAvailabilityMode::Calldata
+                }
+            },
+            BlockInfoPriceConverter::Consensus(ConsensusPriceConverter {
+                l2_gas_price_fri,
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                eth_to_fri_rate,
+            }),
+            StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
+                                                * somewhere... */
         )
         .context("Creating internal BlockInfo representation")?;
 

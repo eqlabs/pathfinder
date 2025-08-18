@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
+use anyhow::Context;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
@@ -15,6 +16,7 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
+use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
@@ -25,6 +27,7 @@ pub fn spawn(
     chain_id: ChainId,
     validator_address: ContractAddress,
     p2p_client: Client,
+    storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
@@ -67,6 +70,7 @@ pub fn spawn(
                                     height_and_round,
                                     proposal_part,
                                     &mut incoming_proposals_cache,
+                                    &storage,
                                 )
                             {
                                 let proposal = Proposal {
@@ -276,6 +280,7 @@ fn handle_incoming_proposal_part(
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
+    storage: &Storage,
 ) -> anyhow::Result<Option<(Hash, ContractAddress)>> {
     let height = height_and_round.height();
     let round = height_and_round.round().into();
@@ -296,10 +301,20 @@ fn handle_incoming_proposal_part(
                 ))
             }
         }
-        ProposalPart::BlockInfo(_) => {
+        ProposalPart::BlockInfo(ref block_info) => {
             if parts.len() == 1 {
+                let proposal_init = parts
+                    .first()
+                    .and_then(ProposalPart::as_init)
+                    .expect("First part to be Init")
+                    .clone();
+                let block_info = block_info.clone();
                 parts.push(proposal_part);
-                // TODO send for validation or validate in place
+                let db_conn = storage
+                    .connection()
+                    .context("Creating database connection")?;
+                let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
+                let _ = validator.validate_consensus_block_info(block_info, db_conn)?;
                 Ok(None)
             } else {
                 Err(anyhow::anyhow!(
