@@ -482,6 +482,11 @@ impl ValidatorFinalizeStage {
     }
 }
 
+pub enum ValidatorStage {
+    BlockInfo(ValidatorBlockInfoStage),
+    TransactionBatch(Box<ValidatorTransactionBatchStage>),
+}
+
 /// Maps consensus transaction to a pair of:
 /// - common transaction, which is used for verifying the transaction hash
 /// - executor transaction, which is used for executing the transaction
