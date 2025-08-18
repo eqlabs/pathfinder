@@ -102,8 +102,6 @@ pub fn spawn(
             validator_set.clone(),
         );
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
         loop {
             let consensus_task_event = tokio::select! {
                 consensus_event = consensus.next_event() => {
