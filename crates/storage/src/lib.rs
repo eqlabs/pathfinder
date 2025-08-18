@@ -13,6 +13,7 @@ mod connection;
 pub mod fake;
 mod params;
 mod schema;
+pub use schema::revision_0073::reorg_regression_checks;
 pub mod test_utils;
 
 use std::num::NonZeroU32;
