@@ -61,7 +61,7 @@ enum P2PTaskEvent {
     /// cache it for gossiping when the engine requests so.
     CacheProposal(HeightAndRound, Vec<ProposalPart>),
     /// The consensus engine decided on the given height and we can finally
-    /// removed the proposal that was cached for this height.
+    /// remove the proposal that was cached for this height.
     RemoveProposal(u64),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
