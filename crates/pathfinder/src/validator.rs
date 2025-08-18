@@ -29,7 +29,11 @@ use pathfinder_common::{
     StateCommitment,
     TransactionHash,
 };
-use pathfinder_executor::types::to_starknet_api_transaction;
+use pathfinder_executor::types::{
+    to_starknet_api_transaction,
+    BlockInfoPriceConverter,
+    LegacyPriceConverter,
+};
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
@@ -111,7 +115,7 @@ impl ValidatorBlockInfoStage {
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
+            eth_to_fri_rate: _,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
@@ -124,14 +128,15 @@ impl ValidatorBlockInfoStage {
                     L1DataAvailabilityMode::Calldata
                 }
             },
-            l2_gas_price_fri,
-            l1_gas_price_wei,
-            l1_data_gas_price_wei,
-            eth_to_fri_rate,
+            BlockInfoPriceConverter::Legacy(LegacyPriceConverter {
+                l2_gas_price_fri,
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                workaround_l2_gas_price_wei,
+                workaround_l1_gas_price_fri,
+                workaround_l1_data_gas_price_fri,
+            }),
             workaround_starknet_version,
-            workaround_l2_gas_price_wei,
-            workaround_l1_gas_price_fri,
-            workaround_l1_data_gas_price_fri,
         )
         .context("Creating internal BlockInfo representation")?;
 
