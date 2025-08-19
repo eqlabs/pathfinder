@@ -8564,7 +8564,6 @@ dependencies = [
  "informalsystems-malachitebft-core-types",
  "informalsystems-malachitebft-metrics",
  "informalsystems-malachitebft-signing-ed25519",
- "p2p_proto",
  "pathfinder-common",
  "pathfinder-crypto",
  "rand 0.8.5",
