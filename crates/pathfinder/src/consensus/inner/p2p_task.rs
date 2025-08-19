@@ -1,3 +1,15 @@
+//! This task:
+//! 1. handles events from the P2P network, for example a vote or a proposal has
+//!    been received
+//! 2. handles requests from the consensus task, for example to gossip a
+//!    proposal or a vote
+//! 3. issues commands to the consensus engine, for example to process a
+//!    proposal or a vote received from the P2P network
+//! 4. caches proposals that we created and are waiting to be gossiped upon when
+//!    the consensus task requests so
+//! 5. caches proposals that we received from other validators and may need to
+//!    be proposed by us in another round at the same height
+
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 

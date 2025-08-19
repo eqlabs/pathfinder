@@ -1,11 +1,22 @@
+//! This task:
+//! 1. handles requests from the consensus engine, for example to propose a new
+//!    block
+//! 2. handles requests from the P2P task, for example a vote or a proposal has
+//!    been received and needs to be processed by the consensus engine
+//! 3. issues commands to the consensus engine, for example to start a new
+//!    height, or a vote has been received from the P2P network and needs to be
+//!    processed by the consensus engine
+//! 4. issues commands to the P2P task, for example to gossip a proposal or a
+//!    vote
+
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use p2p::consensus::HeightAndRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{felt, ContractAddress};
+use pathfinder_common::ContractAddress;
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -36,6 +47,7 @@ pub fn spawn(
     current_height_file.pop();
     current_height_file = current_height_file.join("current_height");
 
+    // TODO Current height should be retrieved from WAL. Related issue: https://github.com/eqlabs/pathfinder/issues/2931
     let mut current_height = std::fs::read_to_string(&current_height_file)
         .unwrap_or_else(|e| {
             tracing::warn!(
@@ -68,9 +80,8 @@ pub fn spawn(
 
         // A validator that joins the consensus network and is lagging behind will vote
         // Nil for its current height, because the consensus network is already at a
-        // higher height. This is a workaround for the missing sync/catch-up mechanism
-        // that we'll have in pathfinder, once this tool is actually merged into
-        // pathfinder.
+        // higher height. This is a workaround for the missing sync/catch-up mechanism.
+        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
         let validator_address = config.my_validator_address;
@@ -122,6 +133,9 @@ pub fn spawn(
                     tracing::info!("🧠 ℹ️  {validator_address} consensus event: {event:?}");
 
                     match event {
+                        // The consensus engine wants us to propose a block for the given height and
+                        // round. We create a proposal, feed its commitment back to the engine, and
+                        // cache the proposal for gossiping when the engine requests so.
                         ConsensusEvent::RequestProposal { height, round, .. } => {
                             tracing::info!(
                                 "🧠 🔍 {validator_address} is proposing at height {height}, round \
@@ -164,6 +178,8 @@ pub fn spawn(
 
                             consensus.handle_command(ConsensusCommand::Propose(proposal));
                         }
+                        // The consensus engine wants us to gossip a message via the P2P consensus
+                        // network.
                         ConsensusEvent::Gossip(msg) => {
                             // TODO Sometimes the engine requests gossiping votes for heights that
                             // are a few steps behind the current height and have already been
@@ -195,6 +211,7 @@ pub fn spawn(
                                 );
                             }
                         }
+                        // Consensus has been reached for the given height and value.
                         ConsensusEvent::Decision { height, value } => {
                             tracing::info!(
                                 "🧠 ✅ {validator_address} decided on {value:?} at height {height}"
@@ -313,6 +330,10 @@ fn sepolia_block_6_based_proposal(
 ) -> Vec<ProposalPart> {
     let round = round.as_u32().expect("Round not to be Nil???");
     let proposer = Address(proposer.0);
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     vec![
         ProposalPart::Init(ProposalInit {
             height,
@@ -323,13 +344,13 @@ fn sepolia_block_6_based_proposal(
         // Some "real" payload
         ProposalPart::BlockInfo(BlockInfo {
             height: 0,
-            timestamp: 1700483673,
+            timestamp,
             builder: proposer,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
-            l1_gas_price_wei: 1000000018,
+            l1_gas_price_wei: 1000000000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 0,
+            eth_to_fri_rate: 1000000000,
         }),
         ProposalPart::TransactionBatch(vec![p2p_proto::consensus::Transaction {
             txn: p2p_proto::consensus::TransactionVariant::L1HandlerV0(
