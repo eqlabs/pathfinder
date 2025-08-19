@@ -142,11 +142,8 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let wire_proposal = sepolia_block_6_based_proposal(
-                                height,
-                                round.into(),
-                                validator_address,
-                            );
+                            let wire_proposal =
+                                dummy_proposal(height, round.into(), validator_address);
 
                             let ProposalFin {
                                 proposal_commitment,
@@ -321,13 +318,7 @@ fn start_height(
     }
 }
 
-/// Based on Sepolia Block 6, however with adjustable height, round, and
-/// proposer.
-fn sepolia_block_6_based_proposal(
-    height: u64,
-    round: Round,
-    proposer: ContractAddress,
-) -> Vec<ProposalPart> {
+fn dummy_proposal(height: u64, round: Round, proposer: ContractAddress) -> Vec<ProposalPart> {
     let round = round.as_u32().expect("Round not to be Nil???");
     let proposer = Address(proposer.0);
     let timestamp = SystemTime::now()
@@ -341,9 +332,8 @@ fn sepolia_block_6_based_proposal(
             valid_round: None,
             proposer,
         }),
-        // Some "real" payload
         ProposalPart::BlockInfo(BlockInfo {
-            height: 0,
+            height,
             timestamp,
             builder: proposer,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
@@ -352,28 +342,7 @@ fn sepolia_block_6_based_proposal(
             l1_data_gas_price_wei: 1,
             eth_to_fri_rate: 1000000000,
         }),
-        ProposalPart::TransactionBatch(vec![p2p_proto::consensus::Transaction {
-            txn: p2p_proto::consensus::TransactionVariant::L1HandlerV0(
-                p2p_proto::transaction::L1HandlerV0 {
-                    nonce: Felt::ZERO,
-                    address: Address(felt!(
-                        "0x04C5772D1914FE6CE891B64EB35BF3522AEAE1315647314AAC58B01137607F3F"
-                    )),
-                    entry_point_selector: felt!(
-                        "0x02D757788A8D8D6F21D1CD40BCE38A8222D70654214E96FF95D8086E684FBEE5"
-                    ),
-                    calldata: vec![
-                        felt!("0x0000000000000000000000008453FC6CD1BCFE8D4DFC069C400B433054D47BDC"),
-                        felt!("0x043ABAA073C768EBF039C0C4F46DB9ACC39E9EC165690418060A652AAB39E7D8"),
-                        felt!("0x0000000000000000000000000000000000000000000000000DE0B6B3A7640000"),
-                        Felt::ZERO,
-                    ],
-                },
-            ),
-            transaction_hash: Hash(felt!(
-                "0x0785C2ADA3F53FBC66078D47715C27718F92E6E48B96372B36E5197DE69B82B5"
-            )),
-        }]),
+        ProposalPart::TransactionBatch(vec![]),
         ProposalPart::Fin(ProposalFin {
             // For easy debugging
             proposal_commitment: Hash(Felt::from_u64(height)),
