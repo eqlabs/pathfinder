@@ -11,6 +11,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
@@ -29,6 +30,7 @@ use pathfinder_consensus::{
     Round,
     SignedVote,
     SigningKey,
+    StaticValidatorSetProvider,
     Validator,
     ValidatorSet,
 };
@@ -45,6 +47,7 @@ pub fn spawn(
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    /*
     let mut current_height_file = wal_directory.clone();
     current_height_file.pop();
     current_height_file = current_height_file.join("current_height");
@@ -66,26 +69,9 @@ pub fn spawn(
             );
             0
         });
+    */
 
     util::task::spawn(async move {
-        let mut consensus = Consensus::new(
-            Config::new(config.my_validator_address)
-                .with_wal_dir(wal_directory)
-                .with_history_depth(
-                    // TODO: We don't support round certificates yet, and we want to limit
-                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
-                    // engines which are finalized because the effect `CancelAllTimeouts` is only
-                    // triggered upon a new round or a new height.
-                    0,
-                ),
-        );
-
-        // A validator that joins the consensus network and is lagging behind will vote
-        // Nil for its current height, because the consensus network is already at a
-        // higher height. This is a workaround for the missing sync/catch-up mechanism.
-        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
-        let mut last_nil_vote_height = None;
-
         let validator_address = config.my_validator_address;
 
         let validators = std::iter::once(validator_address)
@@ -105,7 +91,40 @@ pub fn spawn(
 
         let validator_set = ValidatorSet::new(validators);
 
-        tracing::trace!("Validator set: {:#?}", validator_set);
+        let mut consensus = Consensus::recover(
+            Config::new(config.my_validator_address)
+                .with_wal_dir(wal_directory)
+                .with_history_depth(
+                    // TODO: We don't support round certificates yet, and we want to limit
+                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
+                    // engines which are finalized because the effect `CancelAllTimeouts` is only
+                    // triggered upon a new round or a new height.
+                    0,
+                ),
+            // TODO use a dynamic validator set provider, once fetching the validator set from the
+            // staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
+            Arc::new(StaticValidatorSetProvider::new(validator_set.clone())),
+        );
+
+        let mut current_height = consensus.current_height().unwrap_or_default();
+
+        // let mut consensus = Consensus::new(
+        //     Config::new(config.my_validator_address)
+        //         .with_wal_dir(wal_directory)
+        //         .with_history_depth(
+        //             // TODO: We don't support round certificates yet, and we want to
+        // limit             // rebroadcasting to a minimum. Rebroadcast
+        // timeouts will happen for historical             // engines which are
+        // finalized because the effect `CancelAllTimeouts` is only
+        // // triggered upon a new round or a new height.             0,
+        //         ),
+        // );
+
+        // A validator that joins the consensus network and is lagging behind will vote
+        // Nil for its current height, because the consensus network is already at a
+        // higher height. This is a workaround for the missing sync/catch-up mechanism.
+        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
+        let mut last_nil_vote_height = None;
 
         let mut started_heights = HashSet::new();
 
@@ -241,11 +260,13 @@ pub fn spawn(
                                 do_update
                             });
 
+                            /*
                             let current_height_file = current_height_file.clone();
                             let _ = util::task::spawn_blocking(move |_| {
                                 std::fs::write(current_height_file, current_height.to_string())
                             })
                             .await;
+                            */
 
                             assert!(started_heights.remove(&height));
 

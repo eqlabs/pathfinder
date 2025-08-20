@@ -571,6 +571,11 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
             false
         }
     }
+
+    /// Get the current highest height being tracked by the consensus engine.
+    pub fn current_height(&self) -> Option<u64> {
+        self.internal.keys().max().copied()
+    }
 }
 
 /// A round number (or `None` if the round is nil).
