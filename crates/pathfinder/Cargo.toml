@@ -13,7 +13,7 @@ path = "src/lib.rs"
 [features]
 cairo-native = ["pathfinder-executor/cairo-native"]
 tokio-console = ["console-subscriber", "tokio/tracing"]
-p2p = []
+p2p = ["pathfinder-consensus"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -39,6 +39,7 @@ pathfinder-block-hashes = { path = "../block-hashes" }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-consensus = { path = "../consensus", optional = true }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-executor = { path = "../executor" }
@@ -85,7 +86,6 @@ flate2 = { workspace = true }
 mockall = { workspace = true }
 pathfinder-common = { path = "../common", features = ["full-serde"] }
 pathfinder-compiler = { path = "../compiler" }
-pathfinder-consensus = { path = "../consensus" }
 pathfinder-executor = { path = "../executor" }
 pathfinder-rpc = { path = "../rpc" }
 pathfinder-storage = { path = "../storage", features = [

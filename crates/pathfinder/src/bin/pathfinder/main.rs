@@ -13,8 +13,9 @@ use config::BlockchainHistory;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use pathfinder_common::{BlockNumber, Chain, ChainId, EthereumChain};
 use pathfinder_ethereum::{EthereumApi, EthereumClient};
+use pathfinder_lib::consensus::ConsensusTaskHandles;
 use pathfinder_lib::state::SyncContext;
-use pathfinder_lib::{config, monitoring, p2p_network, state};
+use pathfinder_lib::{config, consensus, monitoring, p2p_network, state};
 use pathfinder_rpc::context::{EthContractAddresses, WebsocketContext};
 use pathfinder_rpc::{Notifications, SyncState};
 use pathfinder_storage::Storage;
@@ -288,7 +289,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await;
 
-    let (consensus_p2p_handle, _consensus_p2p_client_and_event_rx) =
+    let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
         p2p_network::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone())
             .await;
 
@@ -308,6 +309,24 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )
     } else {
         tokio::task::spawn(futures::future::pending())
+    };
+
+    let consensus_handles = if let Some(consensus_config) = config.consensus {
+        let wal_directory = config.data_directory.join("consensus").join("wal");
+        if !wal_directory.exists() {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .create(&wal_directory)
+                .context("Creating consensus wal directory")?;
+        }
+
+        if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
+            consensus::start(consensus_config, wal_directory, client, event_rx)
+        } else {
+            ConsensusTaskHandles::pending()
+        }
+    } else {
+        ConsensusTaskHandles::pending()
     };
 
     let rpc_handle = if config.is_rpc_enabled {
@@ -335,12 +354,19 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
+    let ConsensusTaskHandles {
+        consensus_p2p_event_processing_handle: p2p_event_processing_handle,
+        consensus_engine_handle,
+    } = consensus_handles;
+
     // Monitor our critical spawned process tasks.
     let main_result = tokio::select! {
-        result = sync_handle => handle_critical_task_result("Sync", result),
+        result = sync_handle => handle_critical_task_result("Feeder gateway sync", result),
         result = rpc_handle => handle_critical_task_result("RPC", result),
-        result = sync_p2p_handle => handle_critical_task_result("Sync P2P", result),
-        result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P", result),
+        result = sync_p2p_handle => handle_critical_task_result("Sync P2P network and handlers", result),
+        result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P network", result),
+        result = p2p_event_processing_handle => handle_critical_task_result("Consensus P2P event processing", result),
+        result = consensus_engine_handle => handle_critical_task_result("Consensus engine", result),
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received");
             Ok(())

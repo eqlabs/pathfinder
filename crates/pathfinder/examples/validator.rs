@@ -258,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
     // proposed by us in another round at the same height. The proposals are removed
     // either when we gossip them or when decision is made at the same height.
     let mut incoming_proposals_cache = BTreeMap::new();
-    // Events that are produced by the P2p task consumed by the consensus task.
+    // Events that are produced by the P2P task and consumed by the consensus task.
     let (tx_to_consensus, mut rx_from_p2p) = mpsc::channel::<ConsensusTaskEvent>(10);
     // Events that are produced by the consensus task and consumed by the P2P task.
     let (tx_to_p2p, mut rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
