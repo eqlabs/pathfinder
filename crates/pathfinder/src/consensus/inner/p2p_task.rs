@@ -5,8 +5,8 @@
 //!    proposal or a vote
 //! 3. issues commands to the consensus engine, for example to process a
 //!    proposal or a vote received from the P2P network
-//! 4. caches proposals that we created and are waiting to be gossiped upon when
-//!    the consensus task requests so
+//! 4. caches proposals that we created and are waiting to be gossiped when the
+//!    consensus task requests so
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
