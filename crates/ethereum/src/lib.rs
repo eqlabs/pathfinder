@@ -224,7 +224,7 @@ impl EthereumApi for EthereumClient {
                         }
                         None => {
                             tracing::debug!("L1 finalized block channel closed");
-                            return Err(anyhow::anyhow!("L1 finalized block channel closed"));
+                            anyhow::bail!("L1 finalized block channel closed");
                         }
                     }
                 }

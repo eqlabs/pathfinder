@@ -3,7 +3,7 @@ use crate::context::RpcContext;
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Output {
     highest_decided_height: Option<pathfinder_common::BlockNumber>,
-    highest_decided_value: Option<pathfinder_common::BlockHash>,
+    highest_decided_value: Option<pathfinder_common::ProposalCommitment>,
 }
 
 crate::error::generate_rpc_error_subset!(Error);

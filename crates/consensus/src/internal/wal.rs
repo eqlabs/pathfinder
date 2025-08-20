@@ -142,9 +142,9 @@ pub(crate) fn convert_wal_entry_to_input<V: crate::ValuePayload, A: crate::Valid
                     malachite_types::Validity::Invalid
                 },
             };
-            let peer_id = malachite_consensus::PeerId::from_bytes(&proposer.into())
-                .expect("Invalid proposer address");
-            Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Sync(peer_id))
+            // TODO Differentiate between consensus and sync proposed values once catch up
+            // using sync protocol is implemented, related issue https://github.com/eqlabs/pathfinder/issues/2934
+            Input::ProposedValue(proposed_value, malachite_types::ValueOrigin::Consensus)
         }
         _ => unreachable!(),
     }

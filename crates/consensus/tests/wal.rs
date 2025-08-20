@@ -109,13 +109,17 @@ async fn wal_concurrent_heights_retention_test() {
                             }
                         }
 
-                        ConsensusEvent::Decision { height: h, value } => {
+                        ConsensusEvent::Decision {
+                            height: h,
+                            round: r,
+                            value,
+                        } => {
                             info!(
-                                "✅ {} decided on {value:?} at height {h}",
+                                "✅ {} decided on {value:?} at height {h} round {r}",
                                 pretty_addr(&addr)
                             );
                             let mut decisions = decisions.lock().unwrap();
-                            decisions.insert((addr.clone(), h), value);
+                            decisions.insert((addr.clone(), h, r), value);
                         }
 
                         ConsensusEvent::Error(error) => {

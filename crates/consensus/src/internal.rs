@@ -290,7 +290,7 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
             assert!(round.is_defined(), "Round is expected to be defined");
             output_queue.push_back(ConsensusEvent::RequestProposal {
                 height: height.as_u64(),
-                round: round.as_u32().unwrap(),
+                round: round.as_u32().expect("Round is not Nil"),
             });
             Ok(resume.resume_with(()))
         }
@@ -303,6 +303,7 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
             );
             output_queue.push_back(ConsensusEvent::Decision {
                 height: cert.height.as_u64(),
+                round: cert.round.as_u32().expect("Round is not Nil"),
                 value: cert.value_id.clone(),
             });
             // We append the decision to the WAL so that in case of a crash,

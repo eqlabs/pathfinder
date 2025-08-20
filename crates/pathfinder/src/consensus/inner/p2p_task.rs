@@ -14,11 +14,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use anyhow::Context;
+use futures::future::Either;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{ChainId, ContractAddress};
+use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -33,7 +34,13 @@ use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
-use crate::validator::{ValidatorBlockInfoStage, ValidatorStage, ValidatorTransactionBatchStage};
+use crate::validator::{
+    FinalizedBlock,
+    ValidatorBlockInfoStage,
+    ValidatorFinalizeStage,
+    ValidatorStage,
+    ValidatorTransactionBatchStage,
+};
 
 pub fn spawn(
     chain_id: ChainId,
@@ -48,6 +55,9 @@ pub fn spawn(
     // command from the consensus engine. Once the proposal is gossiped, it is
     // removed from the cache.
     let mut my_proposals_cache = HashMap::new();
+    // Cache for finalized blocks that we created from our proposals and are
+    // waiting to be committed to the database once consensus is reached.
+    let mut my_finalized_blocks_cache = HashMap::new();
     // Cache for proposals that we received from other validators and may need to be
     // proposed by us in another round at the same height. The proposals are removed
     // either when we gossip them or when decision is made at the same height.
@@ -133,7 +143,7 @@ pub fn spawn(
                         }
                     }
                 }
-                P2PTaskEvent::CacheProposal(height_and_round, proposal_parts) => {
+                P2PTaskEvent::CacheProposal(height_and_round, proposal_parts, finalized_block) => {
                     let ProposalFin {
                         proposal_commitment,
                     } = proposal_parts
@@ -149,27 +159,11 @@ pub fn spawn(
                     let duplicate_encountered = my_proposals_cache
                         .insert(height_and_round, proposal_parts)
                         .is_some();
+                    my_finalized_blocks_cache.insert(height_and_round, finalized_block);
 
                     if duplicate_encountered {
                         tracing::warn!("Duplicate proposal cache request for {height_and_round}!");
                     }
-                }
-                P2PTaskEvent::RemoveProposal(height) => {
-                    tracing::info!(
-                        "🖧  🗑️ {validator_address} removing incoming proposals from cache for \
-                         height {height} ..."
-                    );
-
-                    let removed = incoming_proposals_cache.remove(&height).map(|x| {
-                        x.into_keys()
-                            .map(|k| k.as_u32().expect("Round not to be None"))
-                            .collect::<Vec<_>>()
-                    });
-
-                    tracing::debug!(
-                        "🖧  🗑️ {validator_address} removing incoming proposals from cache for \
-                         height {height} DONE, removed rounds: {removed:?}",
-                    );
                 }
                 P2PTaskEvent::GossipRequest(msg) => match msg {
                     NetworkMessage::Proposal(SignedProposal {
@@ -186,7 +180,7 @@ pub fn spawn(
                         {
                             // TODO we're assuming that all proposals are valid and any failure
                             // to reach consensus in round 0
-                            // always yields reproposing the same
+                            // always yields re-proposing the same
                             // proposal in following rounds. This will change once proposal
                             // validation is integrated.
                             proposal_parts
@@ -297,6 +291,105 @@ pub fn spawn(
                         }
                     }
                 },
+                P2PTaskEvent::CommitBlock(height_and_round, value) => {
+                    tracing::info!(
+                        "🖧  💾 {validator_address} Finalizing and committing block at \
+                         {height_and_round} to the database ...",
+                    );
+                    let stopwatch = std::time::Instant::now();
+                    let storage = storage.clone();
+
+                    let finalized_block = match my_finalized_blocks_cache.remove(&height_and_round)
+                    {
+                        // Our own proposal is already executed and finalized.
+                        Some(block) => Either::Left(block),
+                        // Incoming proposal has been executed and needs to be finalized now.
+                        None => {
+                            let Some(validator) = validator_cache.remove(&height_and_round) else {
+                                anyhow::bail!(
+                                    "No ValidatorFinalizeStage for height and round \
+                                     {height_and_round}",
+                                );
+                            };
+                            let ValidatorStage::Finalize(validator) = validator else {
+                                anyhow::bail!(
+                                    "Wrong validator stage for height and round {height_and_round}",
+                                );
+                            };
+                            Either::Right(validator)
+                        }
+                    };
+
+                    util::task::spawn_blocking(move |_| {
+                        let FinalizedBlock {
+                            header,
+                            state_update,
+                            transactions_and_receipts,
+                            events,
+                        } = match finalized_block {
+                            Either::Left(block) => block,
+                            Either::Right(validator) => validator.finalize(storage.clone())?,
+                        };
+
+                        debug_assert_eq!(value.0 .0, header.state_diff_commitment.0);
+
+                        let mut db_conn = storage
+                            .connection()
+                            .context("Creating database connection")?;
+                        let db_txn = db_conn
+                            .transaction()
+                            .context("Creating database transaction")?;
+                        let block_number = header.number;
+                        db_txn
+                            .insert_block_header(&header)
+                            .context("Inserting block header")?;
+                        db_txn
+                            .insert_state_update_data(block_number, &state_update)
+                            .context("Inserting state update")?;
+                        db_txn
+                            .insert_transaction_data(
+                                block_number,
+                                &transactions_and_receipts,
+                                Some(&events),
+                            )
+                            .context("Inserting transactions, receipts and events")?;
+                        db_txn.commit().context("Committing database transaction")?;
+
+                        Ok::<(), anyhow::Error>(())
+                    })
+                    .await??;
+                    tracing::info!(
+                        "🖧  💾 {validator_address} Finalized and committed block at \
+                         {height_and_round} to the database in {} ms",
+                        stopwatch.elapsed().as_millis()
+                    );
+
+                    let removed = my_finalized_blocks_cache
+                        .iter()
+                        .filter_map(|(hnr, _)| {
+                            (hnr.height() == height_and_round.height()).then_some(hnr.round())
+                        })
+                        .collect::<Vec<_>>();
+                    my_finalized_blocks_cache
+                        .retain(|hnr, _| hnr.height() != height_and_round.height());
+                    tracing::debug!(
+                        "🖧  🗑️ {validator_address} removed my finalized blocks from cache for \
+                         height {} and rounds: {removed:?}",
+                        height_and_round.height()
+                    );
+
+                    let removed = incoming_proposals_cache
+                        .remove(&height_and_round.height())
+                        .unwrap_or_default()
+                        .into_keys()
+                        .map(|round| round.as_u32().expect("Round not to be None"))
+                        .collect::<Vec<_>>();
+                    tracing::debug!(
+                        "🖧  🗑️ {validator_address} removed incoming proposals from cache for \
+                         height {} and rounds: {removed:?}",
+                        height_and_round.height()
+                    );
+                }
             }
         }
     })
@@ -309,7 +402,7 @@ async fn handle_incoming_proposal_part(
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
     storage: &Storage,
-) -> anyhow::Result<Option<(Hash, ContractAddress)>> {
+) -> anyhow::Result<Option<(ProposalCommitment, ContractAddress)>> {
     let height = height_and_round.height();
     let round = height_and_round.round().into();
     let proposals_at_height = cache.entry(height).or_default();
@@ -317,11 +410,11 @@ async fn handle_incoming_proposal_part(
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {
             if !parts.is_empty() {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Unexpected proposal Init for height and round {} at position {}",
                     height_and_round,
                     parts.len()
-                ));
+                );
             }
 
             let proposal_init = prop_init.clone();
@@ -332,25 +425,25 @@ async fn handle_incoming_proposal_part(
         }
         ProposalPart::BlockInfo(ref block_info) => {
             if parts.len() != 1 {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Unexpected proposal BlockInfo for height and round {} at position {}",
                     height_and_round,
                     parts.len()
-                ));
+                );
             }
 
             let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "No ValidatorBlockInfoStage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
             let ValidatorStage::BlockInfo(validator) = validator_stage else {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Wrong validator stage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
             let block_info = block_info.clone();
@@ -368,32 +461,32 @@ async fn handle_incoming_proposal_part(
         ProposalPart::TransactionBatch(ref tx_batch) => {
             // TODO check if there is a length limit for the batch at network level
             if parts.len() < 2 {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Unexpected proposal TransactionBatch for height and round {} at position {}",
                     height_and_round,
                     parts.len()
-                ));
+                );
             }
 
             let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "No ValidatorTransactionBatchStage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
             let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "Wrong validator stage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
             let transactions = tx_batch.clone();
             parts.push(proposal_part);
             let validator = util::task::spawn_blocking(move |_| {
                 validator.execute_transactions(transactions)?;
-                Ok::<Box<ValidatorTransactionBatchStage>, anyhow::Error>(validator)
+                anyhow::Ok::<Box<ValidatorTransactionBatchStage>>(validator)
             })
             .await??;
             validator_cache.insert(
@@ -406,17 +499,17 @@ async fn handle_incoming_proposal_part(
             proposal_commitment,
         }) => {
             let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                return Err(anyhow::anyhow!(
+                anyhow::bail!(
                     "No ValidatorTransactionBatchStage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
-            let ValidatorStage::TransactionBatch(_validator) = validator_stage else {
-                return Err(anyhow::anyhow!(
+            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
+                anyhow::bail!(
                     "Wrong validator stage for height and round {}",
                     height_and_round
-                ));
+                );
             };
 
             parts.push(proposal_part);
@@ -426,11 +519,19 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
-            // util::task::spawn_blocking(move |_|
-            // validator.consensus_finalize(proposal_commitment)).await??;
+            let validator = util::task::spawn_blocking(move |_| {
+                let validator = validator.consensus_finalize(proposal_commitment)?;
+                anyhow::Ok::<ValidatorFinalizeStage>(validator)
+            })
+            .await
+            .context("Joining blocking task")?
+            .context("Verifying proposal commitment")?;
+            validator_cache.insert(height_and_round, ValidatorStage::Finalize(validator));
 
-            // TODO validate commitment
-            Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
+            Ok(Some((
+                ProposalCommitment(proposal_commitment.0),
+                ContractAddress(proposer.0),
+            )))
         }
         ProposalPart::TransactionsFin(_transactions_fin) => {
             // TODO
@@ -453,7 +554,9 @@ fn p2p_vote_to_consensus_vote(
         },
         height: vote.block_number,
         round: vote.round.into(),
-        value: vote.proposal_commitment.map(ConsensusValue),
+        value: vote
+            .proposal_commitment
+            .map(|h| ConsensusValue(ProposalCommitment(h.0))),
         validator_address: ContractAddress(vote.voter.0),
     }
 }
@@ -468,7 +571,7 @@ fn consensus_vote_to_p2p_vote(
         },
         block_number: vote.height,
         round: vote.round.as_u32().expect("Round not to be Nil"),
-        proposal_commitment: vote.value.map(|v| v.0),
+        proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
     }
 }
