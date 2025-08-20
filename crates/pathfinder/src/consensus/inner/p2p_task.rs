@@ -377,6 +377,20 @@ fn handle_incoming_proposal_part(
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                return Err(anyhow::anyhow!(
+                    "No ValidatorTransactionBatchStage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
+                return Err(anyhow::anyhow!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                ));
+            };
+
             parts.push(proposal_part);
             let ProposalPart::Init(ProposalInit { proposer, .. }) =
                 parts.first().expect("Proposal Init")
@@ -384,6 +398,7 @@ fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
+            let _new_validator = validator.consensus_finalize(proposal_commitment)?;
             // TODO validate commitment
             Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
         }
