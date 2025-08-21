@@ -1001,29 +1001,32 @@ impl ConsensusConfig {
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
     fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
-        if args.validator_addresses.len() < 2 {
-            Cli::command()
-                .error(
-                    clap::error::ErrorKind::ValueValidation,
-                    "At least 3 validator addresses are required (including this node's address).",
-                )
-                .exit();
-        }
+        args.is_enabled.then(|| {
+            if args.validator_addresses.len() < 2 {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ValueValidation,
+                        "At least 3 validator addresses are required (including this node's \
+                         address).",
+                    )
+                    .exit();
+            }
 
-        args.is_enabled.then_some(Self {
-            proposer_address: ContractAddress(
-                args.proposer_address
-                    .expect("Clap requires this to be set if `is_enabled` is true"),
-            ),
-            my_validator_address: ContractAddress(
-                args.my_validator_address
-                    .expect("Clap requires this to be set if `is_enabled` is true"),
-            ),
-            validator_addresses: args
-                .validator_addresses
-                .into_iter()
-                .map(ContractAddress)
-                .collect(),
+            Self {
+                proposer_address: ContractAddress(
+                    args.proposer_address
+                        .expect("Clap requires this to be set if `is_enabled` is true"),
+                ),
+                my_validator_address: ContractAddress(
+                    args.my_validator_address
+                        .expect("Clap requires this to be set if `is_enabled` is true"),
+                ),
+                validator_addresses: args
+                    .validator_addresses
+                    .into_iter()
+                    .map(ContractAddress)
+                    .collect(),
+            }
         })
     }
 }
