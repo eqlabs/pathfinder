@@ -181,20 +181,20 @@ pub(crate) fn map_gateway_trace(
     transaction: pathfinder_common::transaction::Transaction,
     trace: starknet_gateway_types::trace::TransactionTrace,
 ) -> anyhow::Result<pathfinder_executor::types::TransactionTrace> {
-    let validate_invocation_resources = trace
+    let (validate_invocation_resources, validate_invocation_gas_consumed) = trace
         .validate_invocation
         .as_ref()
-        .map(|i| i.execution_resources)
+        .map(|i| (i.execution_resources, i.gas_consumed))
         .unwrap_or_default();
-    let function_invocation_resources = trace
+    let (function_invocation_resources, function_invocation_gas_consumed) = trace
         .function_invocation
         .as_ref()
-        .map(|i| i.execution_resources)
+        .map(|i| (i.execution_resources, i.gas_consumed))
         .unwrap_or_default();
-    let fee_transfer_invocation_resources = trace
+    let (fee_transfer_invocation_resources, fee_transfer_gas_consumed) = trace
         .fee_transfer_invocation
         .as_ref()
-        .map(|i| i.execution_resources)
+        .map(|i| (i.execution_resources, i.gas_consumed))
         .unwrap_or_default();
 
     let computation_resources = pathfinder_executor::types::ComputationResources {
@@ -321,21 +321,28 @@ pub(crate) fn map_gateway_trace(
             .total_gas_consumed
             .unwrap_or_default()
             .l1_data_gas;
-    let l2_gas = validate_invocation_resources
-        .total_gas_consumed
-        .unwrap_or_default()
-        .l2_gas
-        .unwrap_or_default()
-        + function_invocation_resources
+    let validate_invocation_l2_gas = validate_invocation_gas_consumed.unwrap_or_else(|| {
+        validate_invocation_resources
             .total_gas_consumed
             .unwrap_or_default()
             .l2_gas
             .unwrap_or_default()
-        + fee_transfer_invocation_resources
+    });
+    let function_invocation_l2_gas = function_invocation_gas_consumed.unwrap_or_else(|| {
+        function_invocation_resources
             .total_gas_consumed
             .unwrap_or_default()
             .l2_gas
-            .unwrap_or_default();
+            .unwrap_or_default()
+    });
+    let fee_transfer_l2_gas = fee_transfer_gas_consumed.unwrap_or_else(|| {
+        fee_transfer_invocation_resources
+            .total_gas_consumed
+            .unwrap_or_default()
+            .l2_gas
+            .unwrap_or_default()
+    });
+    let l2_gas = validate_invocation_l2_gas + function_invocation_l2_gas + fee_transfer_l2_gas;
     let execution_resources = pathfinder_executor::types::ExecutionResources {
         computation_resources,
         // These values are not available in the gateway trace.
