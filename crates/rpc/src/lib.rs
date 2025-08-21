@@ -170,6 +170,7 @@ impl RpcServer {
         let v08_routes = v08::register_routes().build(self.context.clone());
         let v09_routes = v09::register_routes().build(self.context.clone());
         let pathfinder_routes = pathfinder::register_routes().build(self.context.clone());
+        let unstable_routes = pathfinder::unstable::register_routes().build(self.context.clone());
 
         let default_router = match self.default_version {
             RpcVersion::V06 => v06_routes.clone(),
@@ -196,7 +197,9 @@ impl RpcServer {
             .with_state(v09_routes.clone())
             .route("/rpc/pathfinder/v0.1", post(rpc_handler))
             .route("/rpc/pathfinder/v0_1", post(rpc_handler))
-            .with_state(pathfinder_routes.clone());
+            .with_state(pathfinder_routes.clone())
+            .route("/rpc/pathfinder/unstable", post(rpc_handler))
+            .with_state(unstable_routes.clone());
 
         let router = if self.context.websocket.is_some() {
             router
