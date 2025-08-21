@@ -55,15 +55,15 @@
       "CONSTRUCTOR": [],
       "EXTERNAL": [
         {
-          "offset": 117,
+          "offset": "0x75",
           "selector": "0x26813d396fdb198e9ead934e4f7a592a8b88a059e45ab0eb6ee53494e8d45b0"
         },
         {
-          "offset": 85,
+          "offset": "0x55",
           "selector": "0x3033d3588abc2928b334742248e380daa139fc6b2bba31d609282d2c641a450"
         },
         {
-          "offset": 61,
+          "offset": "0x3d",
           "selector": "0x34c4c150632e67baf44fc50e9a685184d72a822510a26a66f72058b5e7b2892"
         }
       ],

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - JSON-RPC response reflects an inconsistent state after receiving a notification over a Websocket subscription.
+- `starknet_getClassAt` now returns `DEPRECATED_CAIRO_ENTRY_POINT.offset` as a hex string instead of an integer. This change aligns the response format with the specification, which expects `NUM_AS_HEX` for this field.
 
 ## [0.19.0] - 2025-08-12
 
