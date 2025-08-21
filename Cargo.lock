@@ -790,15 +790,14 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "apollo_compilation_utils"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5db3eb3162549ca55a24fcc902b90a6ece672aec83ca870cd75695300433da39"
+checksum = "33c7351331466698b7d18032e66a7ba37785113b2e4a48f54d54f5568df70d6c"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-sierra 2.12.0-dev.1",
  "cairo-lang-starknet-classes",
  "cairo-lang-utils 2.12.0-dev.1",
- "cairo-native",
  "rlimit",
  "serde",
  "serde_json",
@@ -810,25 +809,34 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce72f98e94e249a95dd1bdc95aaf326b4a14c930d8b948864f08734f6526556c"
+checksum = "b863cac2edbf5a124b67a1f5e9250df9ab4f0bafd976517847ffedbdb5dc953e"
 dependencies = [
  "apollo_compilation_utils",
- "apollo_config",
+ "apollo_compile_to_native_types",
  "apollo_infra_utils",
  "cairo-lang-starknet-classes",
  "cairo-native",
- "serde",
  "tempfile",
+]
+
+[[package]]
+name = "apollo_compile_to_native_types"
+version = "0.15.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3941d3477c65251d88c5f2e30cf37f4519c0f9cf5332042f7a75ade4dcad2885"
+dependencies = [
+ "apollo_config",
+ "serde",
  "validator",
 ]
 
 [[package]]
 name = "apollo_config"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c345b809e6590f25e4cf078006665125b07385c2f633d20d4fb9cab2fb49ce20"
+checksum = "483cc6b6cb527b70d759431e8afa4e77228de139eb7a4fc07e200a25e5ff46ce"
 dependencies = [
  "apollo_infra_utils",
  "clap",
@@ -845,10 +853,11 @@ dependencies = [
 
 [[package]]
 name = "apollo_infra_utils"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fdb3fb6422e6ebf266e6c0d3bfc64b7c1847620548a8010da5fb71213075456"
+checksum = "cc215a265d7e1120532f86a0a92b6118b975ea776d313a2203fbef9294c9d8ef"
 dependencies = [
+ "apollo_proc_macros",
  "assert-json-diff",
  "colored 3.0.0",
  "num_enum",
@@ -863,15 +872,27 @@ dependencies = [
 
 [[package]]
 name = "apollo_metrics"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a36e50d43a288fb99669cc3f97b42433bc5c077cfac4f218dfcd0cc64ba10464"
+checksum = "00d819befc97f0ad6b7ab85546f2dc3546fb4e0faab4b330c3c46824309257c8"
 dependencies = [
  "indexmap 2.10.0",
  "metrics 0.24.2",
  "num-traits",
  "paste",
  "regex",
+]
+
+[[package]]
+name = "apollo_proc_macros"
+version = "0.15.0-rc.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26c08dffd7cc954176640782fd55ce45724412dbedc77ea0b6b27330b95ffd92"
+dependencies = [
+ "lazy_static",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.105",
 ]
 
 [[package]]
@@ -1942,13 +1963,14 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbaf04063930d0b2a0cbcb1760a2d1a58abdea5ee0ce78ca261d79f9bfc3430a"
+checksum = "56888e7ed4421c6eeb2b0bc44a715b24cd1d9d3cc6b06e1e80b6688d5b93a313"
 dependencies = [
  "anyhow",
  "apollo_compilation_utils",
  "apollo_compile_to_native",
+ "apollo_compile_to_native_types",
  "apollo_config",
  "apollo_infra_utils",
  "apollo_metrics",
@@ -1989,9 +2011,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier_test_utils"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5812279370f6be789f435ae91dcfdd22f4b5405f2ec2895475a6d65f7e5cbc65"
+checksum = "81be5b363638f8618dda40b810bd768e5cdfa3bc8810a04c37db6d994e87f9d3"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-starknet-classes",
@@ -3876,9 +3898,9 @@ dependencies = [
 
 [[package]]
 name = "cairo-native"
-version = "0.5.0-rc.6"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a0d61db673287e071a97aca5b1127dddd40f97d8247818f2d5d37ba94a78c74"
+checksum = "4d714224a1280776d90422e631790c0138d138a80b8e16231829dacea13c8289"
 dependencies = [
  "anyhow",
  "aquamarine",
@@ -3932,9 +3954,9 @@ dependencies = [
 
 [[package]]
 name = "cairo-vm"
-version = "2.2.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d2a2f6d93aa279509d396d6f5c1992fa63d7d32c2b8d61ffa3398617c2cd0cd"
+checksum = "2afc2bb5cf948599994a1f1634edc81934c3952e2f32c8e49efbde63d767fa69"
 dependencies = [
  "anyhow",
  "bincode 2.0.1",
@@ -10807,9 +10829,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.15.0-rc.2"
+version = "0.15.0-rc.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0d5bda9bfa1cf2a0903c975b3b6918dddf3197b467d8de3a1e61c8760bcb2cb"
+checksum = "649b7ef2bacdcef1ce3e0b474cafd206e3f8d8050e9e0a7eec69f291a2748e80"
 dependencies = [
  "apollo_infra_utils",
  "base64 0.13.1",
@@ -10838,6 +10860,7 @@ dependencies = [
  "strum 0.25.0",
  "strum_macros 0.25.3",
  "thiserror 1.0.69",
+ "time",
 ]
 
 [[package]]
