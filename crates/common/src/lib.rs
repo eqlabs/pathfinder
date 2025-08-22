@@ -670,6 +670,12 @@ pub fn calculate_class_commitment_leaf_hash(
     )
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ConsensusInfo {
+    pub highest_decided_height: BlockNumber,
+    pub highest_decided_value: BlockHash,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{felt, CallParam, ClassHash, ContractAddress, ContractAddressSalt};
