@@ -9,7 +9,7 @@ use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::ConsensusTaskHandles;
 use crate::config::ConsensusConfig;
@@ -39,12 +39,15 @@ pub fn start(
         rx_from_consensus,
     );
 
+    let (info_watch_tx, consensus_info_watch) = watch::channel(None);
+
     let consensus_engine_handle =
-        consensus_task::spawn(config, wal_directory, tx_to_p2p, rx_from_p2p);
+        consensus_task::spawn(config, wal_directory, tx_to_p2p, rx_from_p2p, info_watch_tx);
 
     ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
         consensus_engine_handle,
+        consensus_info_watch: Some(consensus_info_watch),
     }
 }
 
