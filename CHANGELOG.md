@@ -7,6 +7,17 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- `blockifier` has been upgraded to version 0.15.0-rc.3.
+
+### Fixed
+
+- JSON-RPC response reflects an inconsistent state after receiving a notification over a Websocket subscription.
+- `starknet_getClassAt` now returns `DEPRECATED_CAIRO_ENTRY_POINT.offset` as a hex string instead of an integer. This change aligns the response format with the specification, which expects `NUM_AS_HEX` for this field.
+
 ## [0.19.0] - 2025-08-12
 
 ### Changed

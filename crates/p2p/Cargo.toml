@@ -34,7 +34,7 @@ libp2p = { workspace = true, features = [
 ] }
 p2p_proto = { path = "../p2p_proto" }
 p2p_stream = { path = "../p2p_stream" }
-pathfinder-common = { version = "0.19.0", path = "../common" }
+pathfinder-common = { path = "../common" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-tagged = { path = "../tagged" }
 pathfinder-tagged-debug-derive = { path = "../tagged-debug-derive" }

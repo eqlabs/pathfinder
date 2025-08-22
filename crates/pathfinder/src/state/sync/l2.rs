@@ -2506,7 +2506,7 @@ mod tests {
                     assert_eq!(tail, BLOCK0_NUMBER);
                     let mut conn = storage.connection().unwrap();
                     let tx = conn.transaction().unwrap();
-                    l2_reorg(&tx, tail, &mut pathfinder_rpc::Notifications::default()).unwrap();
+                    l2_reorg(&tx, tail).unwrap();
                     tx.commit().unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(),
@@ -2859,7 +2859,7 @@ mod tests {
                     assert_eq!(tail, BLOCK1_NUMBER);
                     let mut conn = storage.connection().unwrap();
                     let tx = conn.transaction().unwrap();
-                    l2_reorg(&tx, tail, &mut pathfinder_rpc::Notifications::default()).unwrap();
+                    l2_reorg(&tx, tail).unwrap();
                     tx.commit().unwrap();
                 });
                 assert_matches!(rx_event.recv().await.unwrap(), SyncEvent::Block((block, _), state_update, _, _, _) => {

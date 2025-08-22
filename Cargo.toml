@@ -58,7 +58,7 @@ rust-version = "1.83"
 authors = ["Equilibrium Labs <info@equilibrium.co>"]
 
 [workspace.dependencies]
-anyhow = "1.0.75"
+anyhow = "1.0.99"
 ark-ff = "0.5.0"
 assert_matches = "1.5.0"
 async-trait = "0.1.73"
@@ -66,21 +66,21 @@ axum = "0.8.4"
 base64 = "0.22.1"
 bincode = "2.0.1"
 bitvec = "1.0.1"
-blockifier = { version = "0.15.0-rc.2", features = ["node_api", "reexecution"] }
-bloomfilter = "1.0.12"
+blockifier = { version = "0.15.0-rc.3", features = ["node_api", "reexecution"] }
+bloomfilter = "1.0.16"
 bytes = "1.4.0"
 cached = "0.44.0"
 # This one needs to match the version used by blockifier
 cairo-lang-starknet-classes = "=2.12.0-dev.1"
 # This one needs to match the version used by blockifier
-cairo-native = "0.5.0-rc.5"
+cairo-native = "0.6.0"
 # This one needs to match the version used by blockifier
-cairo-vm = "=2.2.0"
+cairo-vm = "=2.3.1"
 casm-compiler-v1_0_0-alpha6 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-alpha.6" }
 casm-compiler-v1_0_0-rc0 = { package = "cairo-lang-starknet", git = "https://github.com/starkware-libs/cairo", tag = "v1.0.0-rc0" }
 casm-compiler-v1_1_1 = { package = "cairo-lang-starknet", version = "=1.1.1" }
 casm-compiler-v2 = { package = "cairo-lang-starknet", version = "=2.12.0-dev.1" }
-clap = "4.1.13"
+clap = "4.5.45"
 console-subscriber = "0.4.1"
 const-decoder = "0.4.0"
 const_format = "0.2.31"
@@ -111,7 +111,7 @@ num-traits = "0.2.19"
 paste = "1.0.14"
 pretty_assertions_sorted = "1.2.3"
 primitive-types = "0.12.1"
-proc-macro2 = "1.0.66"
+proc-macro2 = "1.0.97"
 proptest = "1.2.0"
 prost = "0.13.0"
 prost-build = "0.13.0"
@@ -121,8 +121,8 @@ r2d2 = "0.8.10"
 r2d2_sqlite = "0.31.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-rayon = "1.8.0"
-reqwest = { version = "0.12.5", default-features = false, features = [
+rayon = "1.11.0"
+reqwest = { version = "0.12.23", default-features = false, features = [
     "http2",
     "rustls-tls-native-roots",
     "charset",
@@ -131,25 +131,25 @@ rstest = "0.18.2"
 rusqlite = "0.37.0"
 semver = "1.0.18"
 serde = "1.0.192"
-serde_json = "1.0.105"
+serde_json = "1.0.142"
 serde_with = "3.7.0"
 sha2 = "0.10.7"
 sha3 = "0.10"
 smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
-starknet_api = "0.15.0-rc.2"
+starknet_api = "0.15.0-rc.3"
 # This one needs to match the version used by blockifier
 starknet-types-core = "=0.1.8"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
-thiserror = "1.0.48"
+thiserror = "2.0.14"
 time = "0.3.36"
-tokio = "1.45.0"
+tokio = "1.47"
 tokio-retry = "0.3.0"
 tokio-stream = "0.1.14"
-tokio-tungstenite = "0.21"
-tokio-util = { version = "0.7.13", features = ["rt"] }
+tokio-tungstenite = "0.27"
+tokio-util = { version = "0.7.16", features = ["rt"] }
 tower = { version = "0.4.13", default-features = false }
 tower-http = { version = "0.5.2", default-features = false }
 tracing = "0.1.37"

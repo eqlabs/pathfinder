@@ -50,7 +50,7 @@ pub enum SyncEvent {
     ),
     /// An L2 reorg was detected, contains the reorg-tail which
     /// indicates the oldest block which is now invalid
-    /// i.e. reorg-tail + 1 should be the new head.
+    /// i.e. reorg-tail - 1 should be the new head.
     Reorg(BlockNumber),
     /// A new unique L2 Cairo 0.x class was found.
     CairoClass {
@@ -489,11 +489,13 @@ async fn consumer(
 
             let pruning_event = PruningEvent::from_sync_event(&event);
 
-            match event {
+            let notification = match event {
                 L1Update(update) => {
                     tracing::trace!("Updating L1 sync to block {}", update.block_number);
                     l1_update(&tx, &update)?;
                     tracing::info!("L1 sync updated to block {}", update.block_number);
+
+                    None
                 }
                 Block(
                     (block, (tx_comm, ev_comm, rc_comm)),
@@ -517,9 +519,9 @@ async fn consumer(
                         .map(|x| x.1.storage.len())
                         .sum();
                     let update_t = std::time::Instant::now();
-                    l2_update(
+                    let block_header = l2_update(
                         &tx,
-                        *block,
+                        block.as_ref(),
                         tx_comm,
                         rc_comm,
                         ev_comm,
@@ -528,7 +530,6 @@ async fn consumer(
                         *state_diff_commitment,
                         verify_tree_hashes,
                         storage.clone(),
-                        &mut notifications,
                     )
                     .with_context(|| format!("Update L2 state to {block_number}"))?;
                     let block_time = last_block_start.elapsed();
@@ -585,10 +586,12 @@ async fn consumer(
                             );
                         }
                     }
+
+                    Some(Notification::L2Block(block, block_header.into()))
                 }
                 Reorg(reorg_tail) => {
                     tracing::trace!("Reorg L2 state to block {}", reorg_tail);
-                    l2_reorg(&tx, reorg_tail, &mut notifications)
+                    let reorg = l2_reorg(&tx, reorg_tail)
                         .with_context(|| format!("Reorg L2 state to {reorg_tail:?}"))?;
 
                     next_number = reorg_tail;
@@ -604,6 +607,8 @@ async fn consumer(
                         }
                         None => tracing::info!("L2 reorg occurred, new L2 head is genesis"),
                     }
+
+                    Some(Notification::L2Reorg(reorg))
                 }
                 CairoClass { definition, hash } => {
                     tracing::trace!("Inserting new Cairo class with hash: {hash}");
@@ -611,6 +616,8 @@ async fn consumer(
                         .context("Inserting new cairo class")?;
 
                     tracing::debug!(%hash, "Inserted new Cairo class");
+
+                    None
                 }
                 SierraClass {
                     sierra_definition,
@@ -628,6 +635,8 @@ async fn consumer(
                     .context("Inserting sierra class")?;
 
                     tracing::debug!(sierra=%sierra_hash, casm=%casm_hash, "Inserted new Sierra class");
+
+                    None
                 }
                 Pending((pending_block, pending_state_update)) => {
                     tracing::trace!("Updating pending data");
@@ -645,6 +654,8 @@ async fn consumer(
                         pending_data.send_replace(data);
                         tracing::debug!("Updated pending data");
                     }
+
+                    None
                 }
                 PreConfirmed((block_number, pre_confirmed_block)) => {
                     let (latest_block_number, _) = tx
@@ -661,13 +672,25 @@ async fn consumer(
                         pending_data.send_replace(pending);
                         tracing::debug!(%block_number, %number_of_transactions, "Updated pre-confirmed data");
                     }
+
+                    None
                 }
-            }
+            };
 
             if let Some(pruning_event) = pruning_event {
                 perform_blockchain_pruning(pruning_event, &tx).context("Pruning database")?;
             }
-            tx.commit().context("Committing database transaction")
+            let commit_result = tx.commit().context("Committing database transaction");
+
+            // Now that the changes have been committed to storage we can send out the
+            // notification. It is important that this is only ever dont _after_
+            // the commit otherwise clients could potentially see inconsistent
+            // state.
+            if let Some(notification) = notification {
+                send_notification(notification, &mut notifications);
+            }
+
+            commit_result
         })?;
     }
 
@@ -903,7 +926,7 @@ fn l1_update(transaction: &Transaction<'_>, update: &EthereumStateUpdate) -> any
 #[allow(clippy::too_many_arguments)]
 fn l2_update(
     transaction: &Transaction<'_>,
-    block: Block,
+    block: &Block,
     transaction_commitment: TransactionCommitment,
     receipt_commitment: ReceiptCommitment,
     event_commitment: EventCommitment,
@@ -914,8 +937,7 @@ fn l2_update(
     // we need this so that we can create extra read-only transactions for
     // parallel contract state updates
     storage: Storage,
-    notifications: &mut Notifications,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<BlockHeader> {
     let (storage_commitment, class_commitment) = update_starknet_state(
         transaction,
         (&state_update).into(),
@@ -1033,27 +1055,42 @@ fn l2_update(
         }
     }
 
-    notifications
-        .block_headers
-        .send(header.into())
-        // Ignore errors in case nobody is listening. New listeners may subscribe in the
-        // future.
-        .ok();
-    notifications
-        .l2_blocks
-        .send(block.into())
-        // Ignore errors in case nobody is listening. New listeners may subscribe in the
-        // future.
-        .ok();
-
-    Ok(())
+    Ok(header)
 }
 
-fn l2_reorg(
-    transaction: &Transaction<'_>,
-    reorg_tail: BlockNumber,
-    notifications: &mut Notifications,
-) -> anyhow::Result<()> {
+enum Notification {
+    L2Block(Box<Block>, Box<BlockHeader>),
+    L2Reorg(Reorg),
+}
+
+fn send_notification(notification: Notification, notifications: &mut Notifications) {
+    match notification {
+        Notification::L2Block(block, header) => {
+            notifications
+                .block_headers
+                .send(header.into())
+                // Ignore errors in case nobody is listening. New listeners may subscribe in the
+                // future.
+                .ok();
+            notifications
+                .l2_blocks
+                .send(block.into())
+                // Ignore errors in case nobody is listening. New listeners may subscribe in the
+                // future.
+                .ok();
+        }
+        Notification::L2Reorg(reorg) => {
+            notifications
+                .reorgs
+                .send(reorg.into())
+                // Ignore errors in case nobody is listening. New listeners may subscribe in the
+                // future.
+                .ok();
+        }
+    }
+}
+
+fn l2_reorg(transaction: &Transaction<'_>, reorg_tail: BlockNumber) -> anyhow::Result<Reorg> {
     let orphan_head = transaction
         .block_id(BlockId::Latest)
         .context("Querying latest block number")?
@@ -1134,22 +1171,12 @@ Blockchain history must include the reorg tail and its parent block to perform a
         }
     }
 
-    notifications
-        .reorgs
-        .send(
-            Reorg {
-                starting_block_number: reorg_tail,
-                starting_block_hash: reorg_tail_hash,
-                ending_block_number: orphan_head,
-                ending_block_hash: orphan_head_hash,
-            }
-            .into(),
-        )
-        // Ignore errors in case nobody is listening. New listeners may subscribe in the
-        // future.
-        .ok();
-
-    Ok(())
+    Ok(Reorg {
+        starting_block_number: reorg_tail,
+        starting_block_hash: reorg_tail_hash,
+        ending_block_number: orphan_head,
+        ending_block_hash: orphan_head_hash,
+    })
 }
 
 #[cfg(test)]
@@ -1950,7 +1977,55 @@ mod tests {
 
         use super::*;
 
-        pub fn one_non_prunable_block() -> Vec<StateUpdate> {
+        struct ReorgRegressionData {
+            state_updates: Vec<StateUpdate>,
+            reorg_tail: BlockNumber,
+            removed_class_hash: ClassHash,
+        }
+
+        impl ReorgRegressionData {
+            fn new() -> Self {
+                let contract1 = contract_address_bytes!(b"contract 1");
+                let class1 = class_hash_bytes!(b"class 1");
+                let class2 = class_hash_bytes!(b"class 2");
+                let class3 = class_hash_bytes!(b"class 3");
+
+                let state_updates = vec![
+                    StateUpdate::default(),
+                    StateUpdate::default()
+                        .with_declared_cairo_class(class1)
+                        .with_declared_cairo_class(class2),
+                    StateUpdate::default()
+                        .with_deployed_contract(contract1, class1)
+                        .with_state_commitment(state_commitment!(
+                            "0x049EA1B5F078CA95BEAEF0880401AE973BCB702F116E98F7F5F63ECAF1F8036B"
+                        )),
+                    StateUpdate::default()
+                        .with_contract_nonce(contract1, contract_nonce!("0x1"))
+                        .with_replaced_class(contract1, class2)
+                        .with_state_commitment(state_commitment!(
+                            "0x038EEAFDC5F7CC010DB030EFEBFDFB3512EE43361C0C6E326DBA0C6D118D799E"
+                        )),
+                    StateUpdate::default()
+                        .with_declared_cairo_class(class3)
+                        .with_contract_nonce(contract1, contract_nonce!("0x2"))
+                        .with_state_commitment(state_commitment!(
+                            "0x0292FFCDA8FB1ADEED42CD1411E3235B4F0D739D1DD0E0D7D4DBD4C2D6283565"
+                        )),
+                    StateUpdate::default().with_state_commitment(state_commitment!(
+                        "0x0292FFCDA8FB1ADEED42CD1411E3235B4F0D739D1DD0E0D7D4DBD4C2D6283565"
+                    )),
+                ];
+
+                Self {
+                    state_updates,
+                    reorg_tail: BlockNumber::new_or_panic(3),
+                    removed_class_hash: class3,
+                }
+            }
+        }
+
+        fn one_non_prunable_block() -> Vec<StateUpdate> {
             let contract1 = contract_address_bytes!(b"contract 1");
             let contract2 = contract_address_bytes!(b"contract 2");
             let class1 = class_hash_bytes!(b"class 1");
@@ -1987,7 +2062,7 @@ mod tests {
             ]
         }
 
-        pub fn one_non_prunable_block_for_each_update() -> Vec<StateUpdate> {
+        fn one_non_prunable_block_for_each_update() -> Vec<StateUpdate> {
             let contract1 = contract_address_bytes!(b"contract 1");
             let contract2 = contract_address_bytes!(b"contract 2");
             let class1 = class_hash_bytes!(b"class 1");
@@ -2032,7 +2107,7 @@ mod tests {
             ]
         }
 
-        pub fn state_update_reconstruction() -> Vec<StateUpdate> {
+        fn state_update_reconstruction() -> Vec<StateUpdate> {
             let contract1 = contract_address_bytes!(b"contract 1");
             let class1 = class_hash_bytes!(b"class 1");
             let class2 = class_hash_bytes!(b"class 2");
@@ -2709,6 +2784,86 @@ Blockchain history must include the reorg tail and its parent block to perform a
                 )
                 .unwrap();
             assert!(!first_filter_exists);
+        }
+
+        /// A regression test related to block purging behavior during reorg
+        /// that was affected by the database migration where blockchain
+        /// [pruning](pathfinder_storage::pruning) was introduced, not to
+        /// pruning itself.
+        #[tokio::test(flavor = "multi_thread")]
+        async fn reorg_purging_regression() {
+            let storage = StorageBuilder::in_memory_with_trie_pruning_and_pool_size(
+                pathfinder_storage::TriePruneMode::Archive,
+                std::num::NonZeroU32::new(5).unwrap(),
+            )
+            .unwrap();
+            let mut connection = storage.connection().unwrap();
+
+            let (event_tx, event_rx) = tokio::sync::mpsc::channel(100);
+
+            let reorg_regression_data = ReorgRegressionData::new();
+
+            let removed_class_hash = SierraHash(reorg_regression_data.removed_class_hash.0);
+            let sierra_definition = b"sierra definition".to_vec();
+            let casm_definition = b"casm definition".to_vec();
+            let casm_hash = casm_hash_bytes!(b"casm hash");
+
+            // Add the class definition.
+            event_tx
+                .send(SyncEvent::SierraClass {
+                    sierra_definition,
+                    sierra_hash: removed_class_hash,
+                    casm_definition,
+                    casm_hash,
+                })
+                .await
+                .unwrap();
+
+            // Send block updates.
+            let blocks = block_data_with_state_updates(reorg_regression_data.state_updates);
+            for (a, b, c, d, e) in blocks {
+                event_tx
+                    .send(SyncEvent::Block(a, b, c, d, e))
+                    .await
+                    .unwrap();
+            }
+
+            event_tx
+                .send(SyncEvent::Reorg(reorg_regression_data.reorg_tail))
+                .await
+                .unwrap();
+            // Close the event channel which allows the consumer task to exit.
+            drop(event_tx);
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            let context = ConsumerContext {
+                storage,
+                state: Arc::new(SyncState::default()),
+                submitted_tx_tracker: pathfinder_rpc::tracker::SubmittedTransactionTracker::new(
+                    10, 10,
+                ),
+                pending_data: tx,
+                verify_tree_hashes: false,
+                notifications: Default::default(),
+            };
+
+            let (tx, _rx) = tokio::sync::watch::channel(Default::default());
+            consumer(event_rx, context, tx).await.unwrap();
+
+            let mut tx = connection.transaction().unwrap();
+            use pathfinder_storage::reorg_regression_checks;
+            assert!(reorg_regression_checks::contract_updates_deleted(
+                &mut tx,
+                reorg_regression_data.reorg_tail
+            ));
+            assert!(reorg_regression_checks::nonce_updates_deleted(
+                &mut tx,
+                reorg_regression_data.reorg_tail
+            ));
+            assert!(reorg_regression_checks::class_definition_removed(
+                &mut tx,
+                reorg_regression_data.removed_class_hash
+            ));
         }
     }
 }

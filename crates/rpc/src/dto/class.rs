@@ -100,7 +100,7 @@ impl SerializeForVersion for &types::ContractEntryPoint {
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         let mut serializer = serializer.serialize_struct()?;
 
-        serializer.serialize_field("offset", &self.offset)?;
+        serializer.serialize_field("offset", &U64Hex(self.offset))?;
         serializer.serialize_field("selector", &self.selector)?;
 
         serializer.end()

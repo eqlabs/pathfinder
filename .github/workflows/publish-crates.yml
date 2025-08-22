@@ -52,5 +52,5 @@ jobs:
           publish_with_retry pathfinder-class-hash
           sleep 30
 
-          # Publish other crates...
+          # Publish consensus
           publish_with_retry pathfinder-consensus

@@ -28,17 +28,18 @@ impl Transaction<'_> {
 
         self.inner()
             .execute(
-                r"INSERT OR IGNORE INTO class_definitions (hash,  definition) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO class_definitions (hash, definition) VALUES (?, ?)",
                 params![sierra_hash, &sierra_definition],
             )
             .context("Inserting sierra definition")?;
 
         self.inner()
             .execute(
-                r"INSERT OR REPLACE INTO casm_definitions
+                r"
+                INSERT OR REPLACE INTO casm_definitions
                 (hash, definition, compiled_class_hash)
-            VALUES
-                (:hash, :definition, :compiled_class_hash)",
+                VALUES (:hash, :definition, :compiled_class_hash)
+                ",
                 named_params! {
                     ":hash": sierra_hash,
                     ":definition": &casm_definition,

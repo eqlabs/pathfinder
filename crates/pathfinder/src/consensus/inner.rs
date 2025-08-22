@@ -23,8 +23,10 @@ pub fn start(
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
+    // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_consensus, rx_from_p2p) = mpsc::channel::<ConsensusTaskEvent>(10);
     // Events that are produced by the consensus task and consumed by the P2P task.
+    // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
@@ -66,7 +68,7 @@ enum P2PTaskEvent {
     /// cache it for gossiping when the engine requests so.
     CacheProposal(HeightAndRound, Vec<ProposalPart>),
     /// The consensus engine decided on the given height and we can finally
-    /// removed the proposal that was cached for this height.
+    /// remove the proposal that was cached for this height.
     RemoveProposal(u64),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
