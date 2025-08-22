@@ -26,18 +26,23 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
         )
         .context("Preparing load_events_stmt")?;
 
-    let latest = tx
+    // Known aggregate Bloom filter range affected by the reorg.
+    let corrupted_aggregate_filter_from_block = BlockNumber::new_or_panic(1490944);
+    let corrupted_aggregate_filter_to_block =
+        corrupted_aggregate_filter_from_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
+
+    let Some(latest) = tx
         .query_row(
             "SELECT number FROM block_headers ORDER BY number DESC LIMIT 1",
             [],
             |row| row.get_block_number(0),
         )
-        .context("Querying latest block number")?;
-
-    // Known aggregate Bloom filter range affected by the reorg.
-    let corrupted_aggregate_filter_from_block = BlockNumber::new_or_panic(1490944);
-    let corrupted_aggregate_filter_to_block =
-        corrupted_aggregate_filter_from_block + AGGREGATE_BLOOM_BLOCK_RANGE_LEN - 1;
+        .optional()
+        .context("Querying latest block number")?
+    else {
+        // Empty database, nothing to repair.
+        return Ok(());
+    };
 
     if corrupted_aggregate_filter_from_block > latest {
         // This DB instance has not reached the corrupted aggregate filter range.
