@@ -581,6 +581,8 @@ impl BloomFilter {
     }
 }
 
+/// An [AggregateBloom] filter that is currently being constructed and will be
+/// stored into the DB once the chain head goes past its range.
 pub(crate) struct RunningEventFilter {
     pub(crate) filter: AggregateBloom,
     pub(crate) next_block: BlockNumber,
@@ -664,7 +666,7 @@ impl RunningEventFilter {
         )?;
         let mut load_events_stmt = tx.prepare(
             r"
-            SELECT events
+            SELECT block_number, events
             FROM transactions
             WHERE block_number >= :first_running_event_filter_block
             ",
@@ -699,7 +701,7 @@ impl RunningEventFilter {
             "Rebuilding running event filter: 0.00% (0/{}) blocks covered",
             total_blocks_to_cover
         );
-        let rebuilt_filters: Vec<Option<BloomFilter>> = load_events_stmt
+        let rebuilt_filters: Vec<Option<(BlockNumber, BloomFilter)>> = load_events_stmt
             .query_and_then(
             named_params![":first_running_event_filter_block": &first_running_event_filter_block],
             |row| {
@@ -715,8 +717,9 @@ impl RunningEventFilter {
 
                 covered_blocks += 1;
 
-                let Some(events) = row
-                    .get_optional_blob(0)?
+                let block_number = row.get_block_number(0)?;
+                let events = row
+                    .get_optional_blob(1)?
                     .map(|events_blob| -> anyhow::Result<_> {
                         let events = transaction::compression::decompress_events(events_blob)
                             .context("Decompressing events")?;
@@ -734,8 +737,8 @@ impl RunningEventFilter {
                             .flatten()
                             .map(Event::from)
                             .collect::<Vec<_>>()
-                    })
-                else {
+                    });
+                let Some(events) = events else {
                     return Ok(None);
                 };
 
@@ -745,7 +748,7 @@ impl RunningEventFilter {
                     bloom.set_address(&event.from_address);
                 }
 
-                Ok(Some(bloom))
+                Ok(Some((block_number, bloom)))
             },
         )
         .context("Querying events to rebuild")?
@@ -757,19 +760,18 @@ impl RunningEventFilter {
 
         let mut filter = AggregateBloom::new(first_running_event_filter_block);
 
-        for (block, block_bloom_filter) in rebuilt_filters.iter().enumerate() {
-            let Some(bloom) = block_bloom_filter else {
+        for block_bloom_filter in rebuilt_filters {
+            let Some((block_number, bloom)) = block_bloom_filter else {
                 // Reached the end of P2P (checkpoint) synced events.
                 break;
             };
 
-            let block_number = first_running_event_filter_block + block as u64;
-            filter.insert(bloom, block_number);
+            filter.insert(&bloom, block_number);
         }
 
         Ok(Self {
             filter,
-            next_block: first_running_event_filter_block + rebuilt_filters.len() as u64,
+            next_block: latest + 1,
         })
     }
 }
