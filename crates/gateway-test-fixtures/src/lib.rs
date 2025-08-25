@@ -224,4 +224,8 @@ pub mod traces {
     pub const TESTNET_TX_0_0: &[u8] = bytes_fixture!("traces/transaction_testnet_0_0.json");
     pub const TESTNET_TX_899_517_0: &[u8] =
         bytes_fixture!("traces/transaction_testnet_889_517_0.json");
+    // full tx hash is
+    // 0x6a4a9c4f1a530f7d6dd7bba9b71f090a70d1e3bbde80998fde11a08aab8b282
+    pub const SEPOLIA_TESTNET_TX_0X6A4A: &[u8] =
+        bytes_fixture!("traces/transaction_sepolia_testnet_0x6a4a.json");
 }

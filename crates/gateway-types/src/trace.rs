@@ -66,6 +66,10 @@ pub struct FunctionInvocation {
     pub execution_resources: ExecutionResources,
     #[serde(default)]
     pub failed: bool,
+    #[serde(default)]
+    pub gas_consumed: Option<u128>,
+    #[serde(default)]
+    pub cairo_native: bool,
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
@@ -114,7 +118,11 @@ mod tests {
     }
 
     mod transactions {
-        use starknet_gateway_test_fixtures::traces::{TESTNET_TX_0_0, TESTNET_TX_899_517_0};
+        use starknet_gateway_test_fixtures::traces::{
+            SEPOLIA_TESTNET_TX_0X6A4A,
+            TESTNET_TX_0_0,
+            TESTNET_TX_899_517_0,
+        };
 
         use super::*;
 
@@ -127,6 +135,11 @@ mod tests {
         fn parse_889_517() {
             // The latest block trace on testnet at the time.
             serde_json::from_slice::<TransactionTrace>(TESTNET_TX_899_517_0).unwrap();
+        }
+
+        #[test]
+        fn parse_0x6a4a() {
+            serde_json::from_slice::<TransactionTrace>(SEPOLIA_TESTNET_TX_0X6A4A).unwrap();
         }
     }
 }
