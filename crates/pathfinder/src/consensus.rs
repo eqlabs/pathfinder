@@ -38,9 +38,9 @@ pub fn start(
     inner::start(
         config,
         chain_id,
+        storage,
         wal_directory,
         p2p_client,
-        storage,
         p2p_event_rx,
     )
 }

@@ -17,9 +17,9 @@ use crate::config::ConsensusConfig;
 pub fn start(
     config: ConsensusConfig,
     chain_id: ChainId,
+    storage: Storage,
     wal_directory: PathBuf,
     p2p_client: Client,
-    storage: Storage,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.

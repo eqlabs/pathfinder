@@ -14,7 +14,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use anyhow::Context;
-
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
