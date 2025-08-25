@@ -176,6 +176,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
             interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
             loop {
                 tokio::select! {
+                    biased;
                     _ = interval.tick() => {
                         match state.sequencer.transaction_status(params.transaction_hash).await {
                             Ok(status) => {
