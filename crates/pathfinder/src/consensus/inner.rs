@@ -5,8 +5,9 @@ use std::path::PathBuf;
 
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
+use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -15,6 +16,8 @@ use crate::config::ConsensusConfig;
 
 pub fn start(
     config: ConsensusConfig,
+    chain_id: ChainId,
+    storage: Storage,
     wal_directory: PathBuf,
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
@@ -27,8 +30,10 @@ pub fn start(
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
 
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
+        chain_id,
         config.my_validator_address,
         p2p_client,
+        storage,
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
