@@ -1,0 +1,223 @@
+{
+  "validate_invocation": {
+    "caller_address": "0x0",
+    "contract_address": "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+    "calldata": [
+      "0x1",
+      "0x6b74c515944ef1ef630ee1cf08a22e110c39e217fa15554a089182a11f78ed",
+      "0xc844fd57777b0cd7e75c8ea68deec0adf964a6308da7a58de32364b7131cc8",
+      "0x13",
+      "0x41bbf1eff2ac123d9e01004a385329369cbc1c309838562f030b3faa2caa4",
+      "0x54103",
+      "0x7e430a7a59836b5969859b25379c640a8ccb66fb142606d7acb1a5563c2ad9",
+      "0x6600d829",
+      "0x103020400000000000000000000000000000000000000000000000000000000",
+      "0x4",
+      "0x5f5e100",
+      "0x5f60fc2",
+      "0x5f60fc2",
+      "0x5f6570d",
+      "0xa07695b6574c60c37",
+      "0x1",
+      "0x2",
+      "0x7afe11c6cdf846e8e33ff55c6e8310293b81aa58da4618af0c2fb29db2515c7",
+      "0x1200966b0f9a5cd1bf7217b202c3a4073a1ff583e4779a3a3ffb97a532fe0c",
+      "0x2cb74dff29a13dd5d855159349ec92f943bacf0547ff3734e7d84a15d08cbc5",
+      "0x460769330eab4b3269a5c07369382fcc09fbfc92458c63f77292425c72272f9",
+      "0x10ebdb197fd1017254b927b01073c64a368db45534413b539895768e57b72ba",
+      "0x2e7dc996ebf724c1cf18d668fc3455df4245749ebc0724101cbc6c9cb13c962"
+    ],
+    "call_type": "CALL",
+    "class_hash": "0x66559c86e66214ba1bc5d6512f6411aa066493e6086ff5d54f41a970d47fc5a",
+    "selector": "0x162da33a4585851fe8d3af3c2a9c60b557814e221e0d4f30ff0b2189d9c7775",
+    "entry_point_type": "EXTERNAL",
+    "result": [
+      "0x56414c4944"
+    ],
+    "failed": false,
+    "gas_consumed": 109510,
+    "execution_resources": {
+      "builtin_instance_counter": {
+        "range_check_builtin": 22,
+        "ec_op_builtin": 3
+      },
+      "n_memory_holes": 15,
+      "n_steps": 862
+    },
+    "internal_calls": [],
+    "events": [],
+    "messages": [],
+    "cairo_native": false
+  },
+  "function_invocation": {
+    "caller_address": "0x0",
+    "contract_address": "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+    "calldata": [
+      "0x1",
+      "0x6b74c515944ef1ef630ee1cf08a22e110c39e217fa15554a089182a11f78ed",
+      "0xc844fd57777b0cd7e75c8ea68deec0adf964a6308da7a58de32364b7131cc8",
+      "0x13",
+      "0x41bbf1eff2ac123d9e01004a385329369cbc1c309838562f030b3faa2caa4",
+      "0x54103",
+      "0x7e430a7a59836b5969859b25379c640a8ccb66fb142606d7acb1a5563c2ad9",
+      "0x6600d829",
+      "0x103020400000000000000000000000000000000000000000000000000000000",
+      "0x4",
+      "0x5f5e100",
+      "0x5f60fc2",
+      "0x5f60fc2",
+      "0x5f6570d",
+      "0xa07695b6574c60c37",
+      "0x1",
+      "0x2",
+      "0x7afe11c6cdf846e8e33ff55c6e8310293b81aa58da4618af0c2fb29db2515c7",
+      "0x1200966b0f9a5cd1bf7217b202c3a4073a1ff583e4779a3a3ffb97a532fe0c",
+      "0x2cb74dff29a13dd5d855159349ec92f943bacf0547ff3734e7d84a15d08cbc5",
+      "0x460769330eab4b3269a5c07369382fcc09fbfc92458c63f77292425c72272f9",
+      "0x10ebdb197fd1017254b927b01073c64a368db45534413b539895768e57b72ba",
+      "0x2e7dc996ebf724c1cf18d668fc3455df4245749ebc0724101cbc6c9cb13c962"
+    ],
+    "call_type": "CALL",
+    "class_hash": "0x66559c86e66214ba1bc5d6512f6411aa066493e6086ff5d54f41a970d47fc5a",
+    "selector": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+    "entry_point_type": "EXTERNAL",
+    "result": [
+      "0x1",
+      "0x0"
+    ],
+    "failed": false,
+    "gas_consumed": 1145430,
+    "execution_resources": {
+      "builtin_instance_counter": {
+        "range_check_builtin": 296,
+        "ec_op_builtin": 6,
+        "bitwise_builtin": 2,
+        "pedersen_builtin": 18
+      },
+      "n_memory_holes": 283,
+      "n_steps": 7812
+    },
+    "internal_calls": [
+      {
+        "caller_address": "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+        "contract_address": "0x6b74c515944ef1ef630ee1cf08a22e110c39e217fa15554a089182a11f78ed",
+        "calldata": [
+          "0x41bbf1eff2ac123d9e01004a385329369cbc1c309838562f030b3faa2caa4",
+          "0x54103",
+          "0x7e430a7a59836b5969859b25379c640a8ccb66fb142606d7acb1a5563c2ad9",
+          "0x6600d829",
+          "0x103020400000000000000000000000000000000000000000000000000000000",
+          "0x4",
+          "0x5f5e100",
+          "0x5f60fc2",
+          "0x5f60fc2",
+          "0x5f6570d",
+          "0xa07695b6574c60c37",
+          "0x1",
+          "0x2",
+          "0x7afe11c6cdf846e8e33ff55c6e8310293b81aa58da4618af0c2fb29db2515c7",
+          "0x1200966b0f9a5cd1bf7217b202c3a4073a1ff583e4779a3a3ffb97a532fe0c",
+          "0x2cb74dff29a13dd5d855159349ec92f943bacf0547ff3734e7d84a15d08cbc5",
+          "0x460769330eab4b3269a5c07369382fcc09fbfc92458c63f77292425c72272f9",
+          "0x10ebdb197fd1017254b927b01073c64a368db45534413b539895768e57b72ba",
+          "0x2e7dc996ebf724c1cf18d668fc3455df4245749ebc0724101cbc6c9cb13c962"
+        ],
+        "call_type": "CALL",
+        "class_hash": "0x18734719577f055f2a4f405bd8f0030b9e4588379ec2d5f85c084ad5e06eab8",
+        "selector": "0xc844fd57777b0cd7e75c8ea68deec0adf964a6308da7a58de32364b7131cc8",
+        "entry_point_type": "EXTERNAL",
+        "result": [],
+        "failed": false,
+        "gas_consumed": 947640,
+        "execution_resources": {
+          "builtin_instance_counter": {
+            "bitwise_builtin": 2,
+            "range_check_builtin": 253,
+            "pedersen_builtin": 18,
+            "ec_op_builtin": 6
+          },
+          "n_memory_holes": 214,
+          "n_steps": 6318
+        },
+        "internal_calls": [],
+        "events": [
+          {
+            "order": 0,
+            "keys": [
+              "0x19e22f866f4c5aead2809bf160d2b29e921e335d899979732101c6f3c38ff81"
+            ],
+            "data": [
+              "0x20ed",
+              "0x5f60fc2",
+              "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+              "0x6600d829",
+              "0x103020400000000000000000000000000000000000000000000000000000000",
+              "0x4",
+              "0x5f5e100",
+              "0x5f60fc2",
+              "0x5f60fc2",
+              "0x5f6570d",
+              "0xa07695b6574c60c37",
+              "0x1",
+              "0x41bbf1eff2ac123d9e01004a385329369cbc1c309838562f030b3faa2caa4",
+              "0x54103",
+              "0x0"
+            ]
+          }
+        ],
+        "messages": [],
+        "cairo_native": false
+      }
+    ],
+    "events": [],
+    "messages": [],
+    "cairo_native": false
+  },
+  "fee_transfer_invocation": {
+    "caller_address": "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+    "contract_address": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+    "calldata": [
+      "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+      "0x6a25583aab3700",
+      "0x0"
+    ],
+    "call_type": "CALL",
+    "class_hash": "0x5327164fa21dca89a92e8eae8a5b7ab90f58373e71f0a16d285e5a4abe5a3cf",
+    "selector": "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+    "entry_point_type": "EXTERNAL",
+    "result": [
+      "0x1"
+    ],
+    "failed": false,
+    "gas_consumed": 241680,
+    "execution_resources": {
+      "builtin_instance_counter": {
+        "range_check_builtin": 37,
+        "pedersen_builtin": 4
+      },
+      "n_memory_holes": 56,
+      "n_steps": 1705
+    },
+    "internal_calls": [],
+    "events": [
+      {
+        "order": 0,
+        "keys": [
+          "0x99cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"
+        ],
+        "data": [
+          "0x143fe26927dd6a302522ea1cd6a821ab06b3753194acee38d88a85c93b3cbc6",
+          "0x1176a1bd84444c89232ec27754698e5d2e7e1a7f1539f12027f28b23ec9f3d8",
+          "0x6a25583aab3700",
+          "0x0"
+        ]
+      }
+    ],
+    "messages": [],
+    "cairo_native": false
+  },
+  "signature": [
+    "0x665f0c67ed4d9565f63857b1a55974b98b2411f579c53c9f903fd21a3edb3d1",
+    "0x549c4480aba4753c58f757c92b5a1d3d67b2ced4bf06076825af3f52f738d6d"
+  ]
+}
