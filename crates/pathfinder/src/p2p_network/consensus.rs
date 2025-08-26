@@ -98,20 +98,39 @@ mod inner {
                 .ok_or_else(|| anyhow::anyhow!(msg))
         };
 
+        let mut success = false;
         for bootstrap_address in bootstrap_addresses {
-            let peer_id = ensure_peer_id_in_multiaddr(
+            let peer_id = match ensure_peer_id_in_multiaddr(
                 &bootstrap_address,
                 "Bootstrap addresses must include peer ID",
-            )?;
-            core_client
-                .dial(peer_id, bootstrap_address.clone())
-                .await
-                .context(format!("Dialing boot node: {bootstrap_address}"))?;
+            ) {
+                Ok(id) => id,
+                Err(e) => {
+                    tracing::warn!("Invalid bootstrap address {bootstrap_address}: {e:#}");
+                    continue;
+                }
+            };
+
+            match core_client.dial(peer_id, bootstrap_address.clone()).await {
+                Ok(_) => {
+                    success = true;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed dialing {bootstrap_address}: {e:#}");
+                    continue;
+                }
+            };
+
             let relay_listener_address = bootstrap_address.clone().with(Protocol::P2pCircuit);
-            core_client
+            if let Err(e) = core_client
                 .start_listening(relay_listener_address.clone())
                 .await
-                .context(format!("Starting relay listener: {relay_listener_address}"))?;
+            {
+                tracing::warn!("Failed starting relay listener on {relay_listener_address}: {e:#}");
+            }
+        }
+        if !success {
+            anyhow::bail!("Failed to dial any configured bootstrap node")
         }
 
         for peer in predefined_peers {
