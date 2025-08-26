@@ -1,3 +1,9 @@
+use pathfinder_common::transaction::{
+    DeclareTransactionV0V1,
+    DeclareTransactionV2,
+    DeclareTransactionV3,
+    TransactionVariant,
+};
 use pathfinder_common::{ClassHash, TransactionHash};
 use starknet_gateway_client::GatewayApi;
 use starknet_gateway_types::error::SequencerError;
@@ -317,7 +323,7 @@ pub async fn add_declare_transaction(
                     add_transaction::Declare::V1(add_transaction::DeclareV0V1V2 {
                         version: tx.version,
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         contract_class: ContractDefinition::Cairo(contract_definition),
                         sender_address: tx.sender_address,
                         nonce: tx.nonce,
@@ -326,9 +332,17 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
+            let new_tx = DeclareTransactionV0V1 {
+                class_hash: response.class_hash,
+                max_fee: tx.max_fee,
+                nonce: tx.nonce,
+                signature: tx.signature,
+                sender_address: tx.sender_address,
+            };
             context.submission_tracker.insert(
                 response.transaction_hash,
                 super::get_latest_block_or_genesis(&context.storage)?,
+                TransactionVariant::DeclareV1(new_tx),
             );
             Ok(Output {
                 transaction_hash: response.transaction_hash,
@@ -347,7 +361,7 @@ pub async fn add_declare_transaction(
                     add_transaction::Declare::V2(add_transaction::DeclareV0V1V2 {
                         version: tx.version,
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         contract_class: ContractDefinition::Sierra(contract_definition),
                         sender_address: tx.sender_address,
                         nonce: tx.nonce,
@@ -356,9 +370,18 @@ pub async fn add_declare_transaction(
                     input.token,
                 )
                 .await?;
+            let new_tx = DeclareTransactionV2 {
+                class_hash: response.class_hash,
+                max_fee: tx.max_fee,
+                nonce: tx.nonce,
+                signature: tx.signature,
+                sender_address: tx.sender_address,
+                compiled_class_hash: tx.compiled_class_hash,
+            };
             context.submission_tracker.insert(
                 response.transaction_hash,
                 super::get_latest_block_or_genesis(&context.storage)?,
+                TransactionVariant::DeclareV2(new_tx),
             );
             Ok(Output {
                 transaction_hash: response.transaction_hash,
@@ -375,24 +398,38 @@ pub async fn add_declare_transaction(
                 .sequencer
                 .add_declare_transaction(
                     add_transaction::Declare::V3(add_transaction::DeclareV3 {
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: tx.nonce,
                         nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
                         fee_data_availability_mode: tx.fee_data_availability_mode.into(),
                         resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
-                        paymaster_data: tx.paymaster_data,
+                        paymaster_data: tx.paymaster_data.clone(),
                         contract_class: contract_definition,
                         compiled_class_hash: tx.compiled_class_hash,
                         sender_address: tx.sender_address,
-                        account_deployment_data: tx.account_deployment_data,
+                        account_deployment_data: tx.account_deployment_data.clone(),
                     }),
                     input.token,
                 )
                 .await?;
+            let new_tx = DeclareTransactionV3 {
+                class_hash: response.class_hash,
+                nonce: tx.nonce,
+                nonce_data_availability_mode: tx.nonce_data_availability_mode,
+                fee_data_availability_mode: tx.fee_data_availability_mode,
+                resource_bounds: tx.resource_bounds,
+                tip: tx.tip,
+                paymaster_data: tx.paymaster_data,
+                signature: tx.signature,
+                account_deployment_data: tx.account_deployment_data,
+                sender_address: tx.sender_address,
+                compiled_class_hash: tx.compiled_class_hash,
+            };
             context.submission_tracker.insert(
                 response.transaction_hash,
                 super::get_latest_block_or_genesis(&context.storage)?,
+                TransactionVariant::DeclareV3(new_tx),
             );
             Ok(Output {
                 transaction_hash: response.transaction_hash,

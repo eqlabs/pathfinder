@@ -1,3 +1,9 @@
+use pathfinder_common::transaction::{
+    InvokeTransactionV0,
+    InvokeTransactionV1,
+    InvokeTransactionV3,
+    TransactionVariant,
+};
 use pathfinder_common::TransactionHash;
 use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
@@ -193,73 +199,112 @@ pub async fn add_invoke_transaction(
     input: Input,
 ) -> Result<Output, AddInvokeTransactionError> {
     let Transaction::Invoke(tx) = input.invoke_transaction;
-    let response = add_invoke_transaction_impl(&context, tx).await?;
+    let (transaction_hash, variant) = add_invoke_transaction_impl(&context, tx).await?;
     context.submission_tracker.insert(
-        response.transaction_hash,
+        transaction_hash,
         super::get_latest_block_or_genesis(&context.storage)?,
+        variant,
     );
-    Ok(Output {
-        transaction_hash: response.transaction_hash,
-    })
+    Ok(Output { transaction_hash })
 }
 
 pub(crate) async fn add_invoke_transaction_impl(
     context: &RpcContext,
     tx: BroadcastedInvokeTransaction,
-) -> Result<starknet_gateway_types::reply::add_transaction::InvokeResponse, SequencerError> {
+) -> Result<(TransactionHash, TransactionVariant), SequencerError> {
     use starknet_gateway_types::request::add_transaction;
 
-    match tx {
+    let success = match tx {
         BroadcastedInvokeTransaction::V0(tx) => {
-            context
+            let response = context
                 .sequencer
                 .add_invoke_transaction(add_transaction::InvokeFunction::V0(
                     add_transaction::InvokeFunctionV0V1 {
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: None,
                         sender_address: tx.contract_address,
                         entry_point_selector: Some(tx.entry_point_selector),
-                        calldata: tx.calldata,
+                        calldata: tx.calldata.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = InvokeTransactionV0 {
+                calldata: tx.calldata,
+                sender_address: tx.contract_address,
+                entry_point_selector: tx.entry_point_selector,
+                entry_point_type: None,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::InvokeV0(new_tx),
+            )
         }
         BroadcastedInvokeTransaction::V1(tx) => {
-            context
+            let response = context
                 .sequencer
                 .add_invoke_transaction(add_transaction::InvokeFunction::V1(
                     add_transaction::InvokeFunctionV0V1 {
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: Some(tx.nonce),
                         sender_address: tx.sender_address,
                         entry_point_selector: None,
-                        calldata: tx.calldata,
+                        calldata: tx.calldata.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = InvokeTransactionV1 {
+                calldata: tx.calldata,
+                sender_address: tx.sender_address,
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: tx.nonce,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::InvokeV1(new_tx),
+            )
         }
         BroadcastedInvokeTransaction::V3(tx) => {
-            context
+            let response = context
                 .sequencer
                 .add_invoke_transaction(add_transaction::InvokeFunction::V3(
                     add_transaction::InvokeFunctionV3 {
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: tx.nonce,
                         nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
                         fee_data_availability_mode: tx.fee_data_availability_mode.into(),
                         resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
-                        paymaster_data: tx.paymaster_data,
+                        paymaster_data: tx.paymaster_data.clone(),
                         sender_address: tx.sender_address,
-                        calldata: tx.calldata,
-                        account_deployment_data: tx.account_deployment_data,
+                        calldata: tx.calldata.clone(),
+                        account_deployment_data: tx.account_deployment_data.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = InvokeTransactionV3 {
+                signature: tx.signature,
+                nonce: tx.nonce,
+                nonce_data_availability_mode: tx.nonce_data_availability_mode,
+                fee_data_availability_mode: tx.fee_data_availability_mode,
+                resource_bounds: tx.resource_bounds,
+                tip: tx.tip,
+                paymaster_data: tx.paymaster_data,
+                account_deployment_data: tx.account_deployment_data,
+                calldata: tx.calldata,
+                sender_address: tx.sender_address,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::InvokeV3(new_tx),
+            )
         }
-    }
+    };
+    Ok(success)
 }
 
 impl crate::dto::SerializeForVersion for Output {
