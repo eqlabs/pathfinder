@@ -69,7 +69,7 @@ impl From<Cairo1RevertFrame> for Frame {
             storage_address: ContractAddress(value.contract_address.0.into_felt()),
             // FIXME: what should we do here if the frame has no class hash?
             class_hash: ClassHash(value.class_hash.unwrap_or_default().0.into_felt()),
-            selector: Some(EntryPoint(value.selector.0.into_felt())),
+            selector: value.selector.map(|s| EntryPoint(s.0.into_felt())),
         })
     }
 }
