@@ -1,13 +1,15 @@
 use std::collections::{BTreeSet, HashSet};
+use std::sync::Arc;
 
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockNumber, ContractAddress};
 use tokio::sync::mpsc;
 
+use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::dto::TransactionWithHash;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
-use crate::RpcVersion;
+use crate::{Reorg, RpcVersion};
 
 pub struct SubscribeNewTransactions;
 
@@ -103,12 +105,43 @@ impl crate::dto::DeserializeForVersion for TxnFinalityStatusWithoutL1Accepted {
 }
 
 #[derive(Debug)]
-pub struct Notification {
+pub enum Notification {
+    EmittedTransaction(Box<TransactionWithFinality>),
+    Reorg(Arc<Reorg>),
+}
+
+#[derive(Debug)]
+pub struct TransactionWithFinality {
     transaction: Transaction,
     finality: TxnFinalityStatusWithoutL1Accepted,
 }
 
+impl Notification {
+    fn new_transaction(tx: Transaction, finality: TxnFinalityStatusWithoutL1Accepted) -> Self {
+        Notification::EmittedTransaction(Box::new(TransactionWithFinality {
+            transaction: tx,
+            finality,
+        }))
+    }
+
+    fn new_reorg(reorg: Arc<Reorg>) -> Self {
+        Notification::Reorg(reorg)
+    }
+}
+
 impl crate::dto::SerializeForVersion for Notification {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        match self {
+            Notification::EmittedTransaction(tx) => tx.serialize(serializer),
+            Notification::Reorg(reorg) => reorg.serialize(serializer),
+        }
+    }
+}
+
+impl crate::dto::SerializeForVersion for TransactionWithFinality {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -134,6 +167,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
     ) -> Result<(), RpcError> {
         let params = params.unwrap_or_default();
         let mut blocks = state.notifications.l2_blocks.subscribe();
+        let mut reorgs = state.notifications.reorgs.subscribe();
         let mut pending_data = state.pending_data.0.clone();
         let submission_tracker = state.submission_tracker.clone();
         let mut received_watcher = submission_tracker.subscribe();
@@ -151,6 +185,28 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
 
         loop {
             tokio::select! {
+                reorg = reorgs.recv() => {
+                    match reorg {
+                        Ok(reorg) => {
+                            let block_number = reorg.starting_block_number;
+                            if tx.send(SubscriptionMessage {
+                                notification: Notification::new_reorg(reorg),
+                                block_number,
+                                subscription_name: REORG_SUBSCRIPTION_NAME,
+                            }).await.is_err() {
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                "Error receiving reorg from notifications channel, node might be \
+                                 lagging: {:?}",
+                                e
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
                 block = blocks.recv() => {
                     match block {
                         Err(e) => {
@@ -167,10 +223,10 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                                         continue;
                                     }
 
-                                    let notification = Notification {
-                                        transaction: transaction.clone(),
-                                        finality: TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
-                                    };
+                                    let notification = Notification::new_transaction(
+                                        transaction.clone(),
+                                        TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
+                                    );
                                     if tx
                                         .send(SubscriptionMessage {
                                             notification,
@@ -218,10 +274,10 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                             continue;
                         }
 
-                        let notification = Notification {
-                            transaction: transaction.clone(),
-                            finality: finality_status,
-                        };
+                        let notification = Notification::new_transaction(
+                            transaction.clone(),
+                            finality_status,
+                        );
                         pre_confirmed_sent_txs.insert((transaction.hash, finality_status));
                         if tx
                             .send(SubscriptionMessage {
@@ -259,13 +315,13 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                             continue;
                         }
 
-                        let notification = Notification {
-                            transaction: Transaction {
+                        let notification = Notification::new_transaction(
+                            Transaction {
                                 hash: *hash,
                                 variant,
                             },
-                            finality: TxnFinalityStatusWithoutL1Accepted::Received,
-                        };
+                            TxnFinalityStatusWithoutL1Accepted::Received,
+                        );
                         if tx
                             .send(SubscriptionMessage {
                                 notification,
@@ -295,6 +351,8 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use axum::extract::ws::Message;
     use pathfinder_common::macro_prelude::*;
     use pathfinder_common::prelude::*;
@@ -309,7 +367,7 @@ mod tests {
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
     use crate::tracker::SubmittedTransactionTracker;
-    use crate::{v09, Notifications, PendingData, RpcVersion};
+    use crate::{v09, Notifications, PendingData, Reorg, RpcVersion};
 
     #[test]
     fn parse_params() {
@@ -1047,6 +1105,99 @@ mod tests {
             ))
             .unwrap();
         assert_recv_nothing(&mut rx).await;
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn reorg() {
+        let Setup {
+            tx,
+            mut rx,
+            #[allow(unused_variables)]
+            pending_data_tx,
+            submission_tracker: _,
+            notifications,
+        } = setup();
+        tx.send(Ok(Message::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_subscribeNewTransactions",
+                "params": {
+                    "finality_status": ["ACCEPTED_ON_L2"]
+                }
+            })
+            .to_string()
+            .into(),
+        )))
+        .await
+        .unwrap();
+        let response = rx.recv().await.unwrap().unwrap();
+        let subscription_id = match response {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().to_string()
+            }
+            _ => {
+                panic!("Expected text message");
+            }
+        };
+
+        retry(|| {
+            notifications.reorgs.send(
+                Reorg {
+                    starting_block_number: BlockNumber::new_or_panic(1),
+                    starting_block_hash: BlockHash(felt!("0x1")),
+                    ending_block_number: BlockNumber::new_or_panic(2),
+                    ending_block_hash: BlockHash(felt!("0x2")),
+                }
+                .into(),
+            )
+        })
+        .await
+        .unwrap();
+        let res = rx.recv().await.unwrap().unwrap();
+        let json: serde_json::Value = match res {
+            Message::Text(json) => serde_json::from_str(&json).unwrap(),
+            _ => panic!("Expected text message"),
+        };
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "starknet_subscriptionReorg",
+                "params": {
+                    "result": {
+                        "starting_block_hash": "0x1",
+                        "starting_block_number": 1,
+                        "ending_block_hash": "0x2",
+                        "ending_block_number": 2
+                    },
+                    "subscription_id": subscription_id
+                }
+            })
+        );
+    }
+
+    // Retry to let other tasks make progress.
+    async fn retry<T, E>(cb: impl Fn() -> Result<T, E>) -> Result<T, E>
+    where
+        E: std::fmt::Debug,
+    {
+        const RETRIES: u64 = 25;
+        for i in 0..RETRIES {
+            match cb() {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    if i == RETRIES - 1 {
+                        return Err(e);
+                    }
+                    tokio::time::sleep(Duration::from_secs(i)).await;
+                }
+            }
+        }
+        unreachable!()
     }
 
     async fn recv(rx: &mut mpsc::Receiver<Result<Message, RpcResponse>>) -> serde_json::Value {
