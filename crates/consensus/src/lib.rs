@@ -826,7 +826,7 @@ impl<A: Clone + Ord> ValidatorSet<A> {
             .map(|v| (v.address.clone(), v))
             .collect();
         assert!(!validators.is_empty());
-        let validators = validators.into_iter().map(|(_, v)| v).collect();
+        let validators = validators.into_values().collect();
         Self { validators }
     }
 
