@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
@@ -102,9 +102,10 @@ pub fn spawn(
                 }
             })
             .collect::<Vec<Validator<_>>>();
-        tracing::trace!("Validators: {:#?}", validators);
 
         let validator_set = ValidatorSet::new(validators);
+
+        tracing::trace!("Validator set: {:#?}", validator_set);
 
         let mut started_heights = HashSet::new();
 
@@ -223,6 +224,7 @@ pub fn spawn(
                             ))?;
                             let reported_value = BlockHash(value.0 .0);
 
+                            let stopper = Instant::now();
                             info_watch_tx.send_if_modified(|info| {
                                 let do_update = match info {
                                     Some(info) => {
@@ -239,6 +241,11 @@ pub fn spawn(
                                 }
                                 do_update
                             });
+                            tracing::info!(
+                                "💥💥💥 🧠 ℹ️  {validator_address} consensus info WATCH updated \
+                                 after {} ms",
+                                stopper.elapsed().as_millis()
+                            );
 
                             let current_height_file = current_height_file.clone();
                             let _ = util::task::spawn_blocking(move |_| {
@@ -323,7 +330,7 @@ pub fn spawn(
 
             // Malachite is coroutine based, otherwise we starve other futures
             // in the outer select.
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     })
 }

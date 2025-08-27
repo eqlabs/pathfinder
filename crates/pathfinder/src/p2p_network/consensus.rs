@@ -103,10 +103,25 @@ mod inner {
                 &bootstrap_address,
                 "Bootstrap addresses must include peer ID",
             )?;
-            core_client
-                .dial(peer_id, bootstrap_address.clone())
-                .await
-                .context(format!("Dialing boot node: {bootstrap_address}"))?;
+            // TODO: Use exponential backoff with a max retry limit, at least one boot node
+            // needs to be reachable for the node to be useful.
+            // https://github.com/eqlabs/pathfinder/issues/2937
+            loop {
+                let dial_result = core_client.dial(peer_id, bootstrap_address.clone()).await;
+
+                match dial_result {
+                    Ok(_) => break,
+                    Err(error) => {
+                        tracing::warn!(
+                            %bootstrap_address,
+                            %error,
+                            "Failed to dial bootstrap node, retrying",
+                        );
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+
             let relay_listener_address = bootstrap_address.clone().with(Protocol::P2pCircuit);
             core_client
                 .start_listening(relay_listener_address.clone())

@@ -10,7 +10,16 @@ crate::error::generate_rpc_error_subset!(Error);
 
 pub async fn consensus_info(context: RpcContext) -> Result<Output, Error> {
     Ok(if let Some(watch) = context.consensus_info_watch {
-        if let Some(info) = *watch.borrow() {
+        let stopper = tokio::time::Instant::now();
+        let borrow_ref = watch.borrow();
+        let info = *borrow_ref;
+        drop(borrow_ref);
+        tracing::info!(
+            "Consensus info RPC WATCH accessed after {} ms",
+            stopper.elapsed().as_millis()
+        );
+
+        if let Some(info) = info {
             Output {
                 highest_decided_height: Some(info.highest_decided_height),
                 highest_decided_value: Some(info.highest_decided_value),
