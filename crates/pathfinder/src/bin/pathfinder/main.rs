@@ -229,6 +229,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let rpc_config = pathfinder_rpc::context::RpcConfig {
         batch_concurrency_limit: config.rpc_batch_concurrency_limit,
+        disable_batch_requests: config.disable_batch_requests,
         get_events_event_filter_block_range_limit: config.get_events_event_filter_block_range_limit,
         fee_estimation_epsilon: config.fee_estimation_epsilon,
         versioned_constants_map: config.versioned_constants_map.clone(),

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `--rpc.disable-batch-requests` CLI option, for instances not wishing to support batch requests.
+
+## [0.20.0] - 2025-08-26
+
 ### Changed
 
 - `blockifier` has been upgraded to version 0.15.0-rc.3.
