@@ -8,6 +8,7 @@ use http::StatusCode;
 use serde::Deserialize;
 use tokio::time::sleep;
 
+#[ignore = "Sort out CI for this test, https://github.com/eqlabs/pathfinder/issues/2977"]
 #[tokio::test]
 async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
     const NUM_NODES: usize = 3;
