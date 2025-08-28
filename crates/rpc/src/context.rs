@@ -66,6 +66,7 @@ impl EthContractAddresses {
 #[derive(Clone)]
 pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
+    pub disable_batch_requests: bool,
     pub get_events_event_filter_block_range_limit: NonZeroUsize,
     pub fee_estimation_epsilon: Percentage,
     pub versioned_constants_map: VersionedConstantsMap,
@@ -218,6 +219,7 @@ impl RpcContext {
 
         let config = RpcConfig {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
+            disable_batch_requests: false,
             get_events_event_filter_block_range_limit: NonZeroUsize::new(1000).unwrap(),
             fee_estimation_epsilon: Percentage::new(10),
             versioned_constants_map: Default::default(),

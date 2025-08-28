@@ -244,6 +244,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     rpc_batch_concurrency_limit: NonZeroUsize,
 
     #[arg(
+        long = "rpc.disable-batch-requests",
+        long_help = "Disable serving batch requests to JSON-RPC API.",
+        default_value = "false",
+        env = "PATHFINDER_RPC_DISABLE_BATCH_REQUESTS",
+        value_name = "BOOL"
+    )]
+    disable_batch_requests: bool,
+
+    #[arg(
         long = "sync.enable",
         long_help = "Enable syncing the chain",
         env = "PATHFINDER_SYNC_ENABLED",
@@ -815,6 +824,7 @@ pub struct Config {
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
     pub rpc_batch_concurrency_limit: NonZeroUsize,
+    pub disable_batch_requests: bool,
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
@@ -1053,6 +1063,7 @@ impl Config {
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
             rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
+            disable_batch_requests: cli.disable_batch_requests,
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,
