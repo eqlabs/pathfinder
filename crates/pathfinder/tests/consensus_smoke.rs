@@ -1,3 +1,13 @@
+//! Build pathfinder in debug:
+//! ```
+//! cargo build -p pathfinder --bin pathfinder -F p2p
+//! ```
+//!
+//! Run the test:
+//! ```
+//! cargo test --test consensus_smoke -p pathfinder -F p2p -- --nocapture --ignored
+//! ```
+
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
