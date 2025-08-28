@@ -1002,12 +1002,21 @@ impl ConsensusConfig {
 impl ConsensusConfig {
     fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
         args.is_enabled.then(|| {
-            if args.validator_addresses.len() < 2 {
+            if std::iter::once(
+                &args
+                    .my_validator_address
+                    .expect("Clap requires this to be set if `is_enabled` is true"),
+            )
+            .chain(args.validator_addresses.iter())
+            .collect::<HashSet<_>>()
+            .len()
+                < 3
+            {
                 Cli::command()
                     .error(
                         clap::error::ErrorKind::ValueValidation,
-                        "At least 3 validator addresses are required (including this node's \
-                         address).",
+                        "At least 3 unique validator addresses are required (including this \
+                         node's validator address).",
                     )
                     .exit();
             }
