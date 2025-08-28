@@ -115,10 +115,7 @@ async fn wait_for_height(rpc_port: u16, height: u64, poll_interval: Duration) {
             },
         } = reply.json::<Reply>().await.unwrap();
 
-        println!(
-            "Node on port {rpc_port} highest_decided_height: {:?}",
-            highest_decided_height
-        );
+        println!("Node on port {rpc_port} highest_decided_height: {highest_decided_height:?}");
 
         if let Some(highest_decided_height) = highest_decided_height {
             if highest_decided_height >= height {
@@ -160,7 +157,7 @@ struct Config<'a> {
 }
 
 impl PathfinderInstance {
-    fn spawn(config: Config) -> anyhow::Result<Self> {
+    fn spawn(config: Config<'_>) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_file = config.test_dir.join(format!("db-{}", config.name));
         let stdout_file = File::create(config.test_dir.join(format!("{}_stdout.log", config.name)))
@@ -205,7 +202,7 @@ impl PathfinderInstance {
                     config
                         .validator_addresses
                         .iter()
-                        .map(|a| format!("0x{}", a))
+                        .map(|a| format!("0x{a}"))
                         .collect::<Vec<_>>()
                         .join(",")
                 )
