@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
@@ -224,7 +224,6 @@ pub fn spawn(
                             ))?;
                             let reported_value = BlockHash(value.0 .0);
 
-                            let stopper = Instant::now();
                             info_watch_tx.send_if_modified(|info| {
                                 let do_update = match info {
                                     Some(info) => {
@@ -325,7 +324,7 @@ pub fn spawn(
 
             // Malachite is coroutine based, otherwise we starve other futures
             // in the outer select.
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
 }
