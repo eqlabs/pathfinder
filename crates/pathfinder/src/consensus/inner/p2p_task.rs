@@ -33,7 +33,7 @@ use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
-use crate::validator::{ValidatorBlockInfoStage, ValidatorStage};
+use crate::validator::{ValidatorBlockInfoStage, ValidatorStage, ValidatorTransactionBatchStage};
 
 pub fn spawn(
     chain_id: ChainId,
@@ -87,6 +87,7 @@ pub fn spawn(
                                     &mut validator_cache,
                                     &storage,
                                 )
+                                .await
                             {
                                 let proposal = Proposal {
                                     height: height_and_round.height(),
@@ -290,7 +291,7 @@ pub fn spawn(
     })
 }
 
-fn handle_incoming_proposal_part(
+async fn handle_incoming_proposal_part(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
@@ -379,7 +380,11 @@ fn handle_incoming_proposal_part(
 
             let transactions = tx_batch.clone();
             parts.push(proposal_part);
-            validator.execute_transactions(transactions)?;
+            let validator = util::task::spawn_blocking(move |_| {
+                validator.execute_transactions(transactions)?;
+                Ok::<Box<ValidatorTransactionBatchStage>, anyhow::Error>(validator)
+            })
+            .await??;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(validator),
@@ -410,7 +415,9 @@ fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
-            let _new_validator = validator.consensus_finalize(proposal_commitment)?;
+            util::task::spawn_blocking(move |_| validator.consensus_finalize(proposal_commitment))
+                .await??;
+
             // TODO validate commitment
             Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
         }
