@@ -241,11 +241,6 @@ pub fn spawn(
                                 }
                                 do_update
                             });
-                            tracing::info!(
-                                "💥💥💥 🧠 ℹ️  {validator_address} consensus info WATCH updated \
-                                 after {} ms",
-                                stopper.elapsed().as_millis()
-                            );
 
                             let current_height_file = current_height_file.clone();
                             let _ = util::task::spawn_blocking(move |_| {
