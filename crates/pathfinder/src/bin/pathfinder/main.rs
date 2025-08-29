@@ -183,6 +183,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
+    // like p2p_storage
+    let consensus_storage = storage_manager
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
+        .context(
+            r"Creating database connection pool for consensus
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
 
     let shutdown_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
@@ -322,7 +331,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
 
         if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
-            consensus::start(consensus_config, chain_id, wal_directory, client, event_rx)
+            consensus::start(
+                consensus_config,
+                chain_id,
+                wal_directory,
+                client,
+                consensus_storage,
+                event_rx,
+            )
         } else {
             ConsensusTaskHandles::pending()
         }

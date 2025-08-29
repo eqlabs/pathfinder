@@ -143,6 +143,45 @@ impl ConsensusPriceConverter {
 }
 
 impl BlockInfoPriceConverter {
+    pub fn consensus(
+        l2_gas_price_fri: u128,
+        l1_gas_price_wei: u128,
+        l1_data_gas_price_wei: u128,
+        eth_to_fri_rate: u128,
+    ) -> Self {
+        // TODO(validator) obviously incorrect, but better than dividing by zero...
+        let cooked_rate = if eth_to_fri_rate == 0 {
+            tracing::error!("zero ETH/FRI rate");
+            1
+        } else {
+            eth_to_fri_rate
+        };
+        Self::Consensus(ConsensusPriceConverter {
+            l2_gas_price_fri,
+            l1_gas_price_wei,
+            l1_data_gas_price_wei,
+            eth_to_fri_rate: cooked_rate,
+        })
+    }
+
+    pub fn legacy(
+        l2_gas_price_fri: u128,
+        l1_gas_price_wei: u128,
+        l1_data_gas_price_wei: u128,
+        workaround_l2_gas_price_wei: u128,
+        workaround_l1_gas_price_fri: u128,
+        workaround_l1_data_gas_price_fri: u128,
+    ) -> Self {
+        Self::Legacy(LegacyPriceConverter {
+            l2_gas_price_fri,
+            l1_gas_price_wei,
+            l1_data_gas_price_wei,
+            workaround_l2_gas_price_wei,
+            workaround_l1_gas_price_fri,
+            workaround_l1_data_gas_price_fri,
+        })
+    }
+
     pub fn strk_l1_gas_price(&self) -> GasPrice {
         let raw = match self {
             Self::Legacy(legacy) => legacy.strk_l1_gas_price(),

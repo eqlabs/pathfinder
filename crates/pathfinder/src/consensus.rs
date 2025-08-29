@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use p2p::consensus::{Client, Event};
 use pathfinder_common::ChainId;
+use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
 use crate::config::ConsensusConfig;
@@ -31,9 +32,17 @@ pub fn start(
     chain_id: ChainId,
     wal_directory: PathBuf,
     p2p_client: Client,
+    storage: Storage,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
 ) -> ConsensusTaskHandles {
-    inner::start(config, chain_id, wal_directory, p2p_client, p2p_event_rx)
+    inner::start(
+        config,
+        chain_id,
+        storage,
+        wal_directory,
+        p2p_client,
+        p2p_event_rx,
+    )
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -43,6 +52,7 @@ mod inner {
     pub fn start(
         _: ConsensusConfig,
         _: ChainId,
+        _: Storage,
         _: PathBuf,
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,
