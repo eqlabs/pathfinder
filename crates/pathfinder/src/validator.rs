@@ -412,7 +412,7 @@ impl ValidatorTransactionBatchStage {
         proposal_commitment: Hash,
     ) -> anyhow::Result<ValidatorFinalizeStage> {
         let _span = tracing::debug_span!(
-            "Validator::finalize1",
+            "Validator::consensus_finalize",
             height = %self.block_info.number,
             num_transactions = %self.transactions.len(),
         )
