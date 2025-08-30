@@ -13,11 +13,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
+use anyhow::Context;
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -27,14 +28,18 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
+use pathfinder_storage::Storage;
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
+use crate::validator::{ValidatorBlockInfoStage, ValidatorStage, ValidatorTransactionBatchStage};
 
 pub fn spawn(
+    chain_id: ChainId,
     validator_address: ContractAddress,
     p2p_client: Client,
+    storage: Storage,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
@@ -47,6 +52,8 @@ pub fn spawn(
     // proposed by us in another round at the same height. The proposals are removed
     // either when we gossip them or when decision is made at the same height.
     let mut incoming_proposals_cache = BTreeMap::new();
+    // TODO validators are long-lived but not persisted
+    let mut validator_cache = HashMap::new();
 
     util::task::spawn(async move {
         loop {
@@ -71,30 +78,45 @@ pub fn spawn(
 
                     match event {
                         Event::Proposal(height_and_round, proposal_part) => {
-                            if let Ok(Some((proposal_commitment, proposer))) =
-                                handle_incoming_proposal_part(
-                                    height_and_round,
-                                    proposal_part,
-                                    &mut incoming_proposals_cache,
-                                )
+                            match handle_incoming_proposal_part(
+                                chain_id,
+                                height_and_round,
+                                proposal_part,
+                                &mut incoming_proposals_cache,
+                                &mut validator_cache,
+                                &storage,
+                            )
+                            .await
                             {
-                                let proposal = Proposal {
-                                    height: height_and_round.height(),
-                                    round: height_and_round.round().into(),
-                                    value: ConsensusValue(proposal_commitment),
-                                    pol_round: Round::nil(),
-                                    proposer,
-                                };
+                                Ok(Some((proposal_commitment, proposer))) => {
+                                    let proposal = Proposal {
+                                        height: height_and_round.height(),
+                                        round: height_and_round.round().into(),
+                                        value: ConsensusValue(proposal_commitment),
+                                        pol_round: Round::nil(),
+                                        proposer,
+                                    };
 
-                                let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                    proposal,
-                                    signature: Signature::test(),
-                                });
+                                    let cmd = ConsensusCommand::Proposal(SignedProposal {
+                                        proposal,
+                                        signature: Signature::test(),
+                                    });
 
-                                tx_to_consensus
-                                    .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                    .await
-                                    .expect("Receiver not to be dropped");
+                                    tx_to_consensus
+                                        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                        .await
+                                        .expect("Receiver not to be dropped");
+                                }
+                                Ok(None) => {
+                                    // Still waiting for more parts to complete
+                                    // the proposal.
+                                }
+                                Err(error) => {
+                                    tracing::warn!(
+                                        "Error handling incoming proposal part for \
+                                         {height_and_round}: {error:#?}"
+                                    );
+                                }
                             }
                         }
                         Event::Vote(vote) => {
@@ -280,65 +302,132 @@ pub fn spawn(
     })
 }
 
-fn handle_incoming_proposal_part(
+async fn handle_incoming_proposal_part(
+    chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
+    validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
+    storage: &Storage,
 ) -> anyhow::Result<Option<(Hash, ContractAddress)>> {
     let height = height_and_round.height();
     let round = height_and_round.round().into();
     let proposals_at_height = cache.entry(height).or_default();
     let parts = proposals_at_height.entry(round).or_default();
     match proposal_part {
-        ProposalPart::Init(_) => {
-            if parts.is_empty() {
-                parts.push(proposal_part);
-                // TODO send for validation or validate in place
-                Ok(None)
-            } else {
-                Err(anyhow::anyhow!(
+        ProposalPart::Init(ref prop_init) => {
+            if !parts.is_empty() {
+                return Err(anyhow::anyhow!(
                     "Unexpected proposal Init for height and round {} at position {}",
-                    height,
+                    height_and_round,
                     parts.len()
-                ))
+                ));
             }
+
+            let proposal_init = prop_init.clone();
+            parts.push(proposal_part);
+            let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
+            validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
+            Ok(None)
         }
-        ProposalPart::BlockInfo(_) => {
-            if parts.len() == 1 {
-                parts.push(proposal_part);
-                // TODO send for validation or validate in place
-                Ok(None)
-            } else {
-                Err(anyhow::anyhow!(
+        ProposalPart::BlockInfo(ref block_info) => {
+            if parts.len() != 1 {
+                return Err(anyhow::anyhow!(
                     "Unexpected proposal BlockInfo for height and round {} at position {}",
-                    height,
+                    height_and_round,
                     parts.len()
-                ))
+                ));
             }
+
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                return Err(anyhow::anyhow!(
+                    "No ValidatorBlockInfoStage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let ValidatorStage::BlockInfo(validator) = validator_stage else {
+                return Err(anyhow::anyhow!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let block_info = block_info.clone();
+            parts.push(proposal_part);
+            let db_conn = storage
+                .connection()
+                .context("Creating database connection")?;
+            let new_validator = validator.validate_consensus_block_info(block_info, db_conn)?;
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::TransactionBatch(Box::new(new_validator)),
+            );
+            Ok(None)
         }
-        ProposalPart::TransactionBatch(_) => {
+        ProposalPart::TransactionBatch(ref tx_batch) => {
             // TODO check if there is a length limit for the batch at network level
-            if parts.len() >= 2 {
-                parts.push(proposal_part);
-                // TODO send for execution
-                Ok(None)
-            } else {
-                Err(anyhow::anyhow!(
+            if parts.len() < 2 {
+                return Err(anyhow::anyhow!(
                     "Unexpected proposal TransactionBatch for height and round {} at position {}",
-                    height,
+                    height_and_round,
                     parts.len()
-                ))
+                ));
             }
+
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                return Err(anyhow::anyhow!(
+                    "No ValidatorTransactionBatchStage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
+                return Err(anyhow::anyhow!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let transactions = tx_batch.clone();
+            parts.push(proposal_part);
+            let validator = util::task::spawn_blocking(move |_| {
+                validator.execute_transactions(transactions)?;
+                Ok::<Box<ValidatorTransactionBatchStage>, anyhow::Error>(validator)
+            })
+            .await??;
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::TransactionBatch(validator),
+            );
+            Ok(None)
         }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                return Err(anyhow::anyhow!(
+                    "No ValidatorTransactionBatchStage for height and round {}",
+                    height_and_round
+                ));
+            };
+
+            let ValidatorStage::TransactionBatch(_validator) = validator_stage else {
+                return Err(anyhow::anyhow!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                ));
+            };
+
             parts.push(proposal_part);
             let ProposalPart::Init(ProposalInit { proposer, .. }) =
                 parts.first().expect("Proposal Init")
             else {
                 unreachable!("Proposal Init is inserted first");
             };
+
+            // util::task::spawn_blocking(move |_|
+            // validator.consensus_finalize(proposal_commitment)).await??;
 
             // TODO validate commitment
             Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
