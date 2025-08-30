@@ -63,7 +63,7 @@ pub enum KnownStarknetErrorCode {
     #[serde(rename = "StarknetErrorCode.TRANSACTION_FAILED")]
     TransactionFailed,
     #[serde(rename = "StarknetErrorCode.UNINITIALIZED_CONTRACT")]
-    UninitializedContract,
+    UninitalizedContract,
     #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_BLOCK_HASH")]
     OutOfRangeBlockHash,
     #[serde(rename = "StarknetErrorCode.OUT_OF_RANGE_TRANSACTION_HASH")]
