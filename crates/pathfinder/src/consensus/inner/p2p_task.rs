@@ -78,34 +78,45 @@ pub fn spawn(
 
                     match event {
                         Event::Proposal(height_and_round, proposal_part) => {
-                            if let Ok(Some((proposal_commitment, proposer))) =
-                                handle_incoming_proposal_part(
-                                    chain_id,
-                                    height_and_round,
-                                    proposal_part,
-                                    &mut incoming_proposals_cache,
-                                    &mut validator_cache,
-                                    &storage,
-                                )
-                                .await
+                            match handle_incoming_proposal_part(
+                                chain_id,
+                                height_and_round,
+                                proposal_part,
+                                &mut incoming_proposals_cache,
+                                &mut validator_cache,
+                                &storage,
+                            )
+                            .await
                             {
-                                let proposal = Proposal {
-                                    height: height_and_round.height(),
-                                    round: height_and_round.round().into(),
-                                    value: ConsensusValue(proposal_commitment),
-                                    pol_round: Round::nil(),
-                                    proposer,
-                                };
+                                Ok(Some((proposal_commitment, proposer))) => {
+                                    let proposal = Proposal {
+                                        height: height_and_round.height(),
+                                        round: height_and_round.round().into(),
+                                        value: ConsensusValue(proposal_commitment),
+                                        pol_round: Round::nil(),
+                                        proposer,
+                                    };
 
-                                let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                    proposal,
-                                    signature: Signature::test(),
-                                });
+                                    let cmd = ConsensusCommand::Proposal(SignedProposal {
+                                        proposal,
+                                        signature: Signature::test(),
+                                    });
 
-                                tx_to_consensus
-                                    .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                    .await
-                                    .expect("Receiver not to be dropped");
+                                    tx_to_consensus
+                                        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                        .await
+                                        .expect("Receiver not to be dropped");
+                                }
+                                Ok(None) => {
+                                    // Still waiting for more parts to complete
+                                    // the proposal.
+                                }
+                                Err(error) => {
+                                    tracing::warn!(
+                                        "Error handling incoming proposal part for \
+                                         {height_and_round}: {error:#?}"
+                                    );
+                                }
                             }
                         }
                         Event::Vote(vote) => {
@@ -401,7 +412,7 @@ async fn handle_incoming_proposal_part(
                 ));
             };
 
-            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
+            let ValidatorStage::TransactionBatch(_validator) = validator_stage else {
                 return Err(anyhow::anyhow!(
                     "Wrong validator stage for height and round {}",
                     height_and_round
@@ -415,8 +426,8 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
-            util::task::spawn_blocking(move |_| validator.consensus_finalize(proposal_commitment))
-                .await??;
+            // util::task::spawn_blocking(move |_|
+            // validator.consensus_finalize(proposal_commitment)).await??;
 
             // TODO validate commitment
             Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
