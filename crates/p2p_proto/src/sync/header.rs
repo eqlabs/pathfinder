@@ -4,20 +4,12 @@ use fake::{Dummy, Fake, Faker};
 use pathfinder_tagged::Tagged;
 use pathfinder_tagged_debug_derive::TaggedDebug;
 
-use crate::common::{
-    Address,
-    BlockId,
-    ConsensusSignature,
-    Hash,
-    Iteration,
-    L1DataAvailabilityMode,
-    Patricia,
-    StateDiffCommitment,
-};
+use crate::common::{Address, BlockId, ConsensusSignature, Hash, L1DataAvailabilityMode, Patricia};
+use crate::sync::common::{Iteration, StateDiffCommitment};
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, TaggedDebug)]
-#[protobuf(name = "crate::proto::header::SignedBlockHeader")]
+#[protobuf(name = "crate::proto::sync::header::SignedBlockHeader")]
 pub struct SignedBlockHeader {
     pub block_hash: Hash,
     pub parent_hash: Hash,
@@ -30,10 +22,10 @@ pub struct SignedBlockHeader {
     pub events: Patricia,
     pub receipts: Hash,
     pub protocol_version: String,
-    pub gas_price_fri: u128,
-    pub gas_price_wei: u128,
-    pub data_gas_price_fri: u128,
-    pub data_gas_price_wei: u128,
+    pub l1_gas_price_fri: u128,
+    pub l1_gas_price_wei: u128,
+    pub l1_data_gas_price_fri: u128,
+    pub l1_data_gas_price_wei: u128,
     #[optional]
     pub l2_gas_price_fri: Option<u128>,
     #[optional]
@@ -49,7 +41,7 @@ pub enum NewBlock {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::header::BlockHeadersRequest")]
+#[protobuf(name = "crate::proto::sync::header::BlockHeadersRequest")]
 pub struct BlockHeadersRequest {
     pub iteration: Iteration,
 }
@@ -78,10 +70,10 @@ impl<T> Dummy<T> for SignedBlockHeader {
             events: Faker.fake_with_rng(rng),
             receipts: Faker.fake_with_rng(rng),
             protocol_version: Faker.fake_with_rng(rng),
-            gas_price_fri: Faker.fake_with_rng(rng),
-            gas_price_wei: Faker.fake_with_rng(rng),
-            data_gas_price_fri: Faker.fake_with_rng(rng),
-            data_gas_price_wei: Faker.fake_with_rng(rng),
+            l1_gas_price_fri: Faker.fake_with_rng(rng),
+            l1_gas_price_wei: Faker.fake_with_rng(rng),
+            l1_data_gas_price_fri: Faker.fake_with_rng(rng),
+            l1_data_gas_price_wei: Faker.fake_with_rng(rng),
             l2_gas_price_fri: Faker.fake_with_rng(rng),
             l2_gas_price_wei: Faker.fake_with_rng(rng),
             l1_data_availability_mode: Faker.fake_with_rng(rng),
@@ -90,10 +82,10 @@ impl<T> Dummy<T> for SignedBlockHeader {
     }
 }
 
-impl ToProtobuf<proto::header::NewBlock> for NewBlock {
-    fn to_protobuf(self) -> proto::header::NewBlock {
-        use proto::header::new_block::MaybeFull::{Header, Id};
-        proto::header::NewBlock {
+impl ToProtobuf<proto::sync::header::NewBlock> for NewBlock {
+    fn to_protobuf(self) -> proto::sync::header::NewBlock {
+        use proto::sync::header::new_block::MaybeFull::{Header, Id};
+        proto::sync::header::NewBlock {
             maybe_full: Some(match self {
                 Self::Id(block_number) => Id(block_number.to_protobuf()),
                 Self::Header(header) => Header(header.to_protobuf()),
@@ -102,12 +94,12 @@ impl ToProtobuf<proto::header::NewBlock> for NewBlock {
     }
 }
 
-impl TryFromProtobuf<proto::header::NewBlock> for NewBlock {
+impl TryFromProtobuf<proto::sync::header::NewBlock> for NewBlock {
     fn try_from_protobuf(
-        input: proto::header::NewBlock,
+        input: proto::sync::header::NewBlock,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::header::new_block::MaybeFull::{Header, Id};
+        use proto::sync::header::new_block::MaybeFull::{Header, Id};
         Ok(match proto_field(input.maybe_full, field_name)? {
             Id(i) => Self::Id(TryFromProtobuf::try_from_protobuf(i, field_name)?),
             Header(h) => Self::Header(TryFromProtobuf::try_from_protobuf(h, field_name)?),
@@ -115,10 +107,10 @@ impl TryFromProtobuf<proto::header::NewBlock> for NewBlock {
     }
 }
 
-impl ToProtobuf<proto::header::BlockHeadersResponse> for BlockHeadersResponse {
-    fn to_protobuf(self) -> proto::header::BlockHeadersResponse {
-        use proto::header::block_headers_response::HeaderMessage::{Fin, Header};
-        proto::header::BlockHeadersResponse {
+impl ToProtobuf<proto::sync::header::BlockHeadersResponse> for BlockHeadersResponse {
+    fn to_protobuf(self) -> proto::sync::header::BlockHeadersResponse {
+        use proto::sync::header::block_headers_response::HeaderMessage::{Fin, Header};
+        proto::sync::header::BlockHeadersResponse {
             header_message: Some(match self {
                 Self::Header(header) => Header(header.to_protobuf()),
                 Self::Fin => Fin(proto::common::Fin {}),
@@ -127,12 +119,12 @@ impl ToProtobuf<proto::header::BlockHeadersResponse> for BlockHeadersResponse {
     }
 }
 
-impl TryFromProtobuf<proto::header::BlockHeadersResponse> for BlockHeadersResponse {
+impl TryFromProtobuf<proto::sync::header::BlockHeadersResponse> for BlockHeadersResponse {
     fn try_from_protobuf(
-        input: proto::header::BlockHeadersResponse,
+        input: proto::sync::header::BlockHeadersResponse,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::header::block_headers_response::HeaderMessage::{Fin, Header};
+        use proto::sync::header::block_headers_response::HeaderMessage::{Fin, Header};
         Ok(match proto_field(input.header_message, field_name)? {
             Header(header) => Self::Header(Box::new(SignedBlockHeader::try_from_protobuf(
                 header, field_name,
