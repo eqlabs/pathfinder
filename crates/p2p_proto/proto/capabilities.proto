@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package starknet.capabilities;
+
+// A capability for one of the following protocols:
+// 1. /starknet/headers/
+// 2. /starknet/state_diffs/
+// 3. /starknet/classes/
+// 4. /starknet/transactions/
+// 5. /starknet/events/
+// The capability defines which blocks does the node store
+message SyncCapability {
+    message ArchiveStrategy {} // Keep all data from genesis for the given protocol.
+    message L1PruneStrategy {} // Keep all data not accepted on L1 for the given protocol.
+    message ConstSizePruneStrategy { // Keep data for the top n blocks of the chain for the given protocol.
+        uint64 num_blocks = 1;
+    }
+    message StaticPruneStrategy { // Keep all data from a hardcoded block for the given protocol.
+        uint64 first_block_number = 1;
+    }
+
+    oneof prune_strategy {
+        ArchiveStrategy archive_strategy = 1;
+        L1PruneStrategy l1_prune_strategy = 2;
+        ConstSizePruneStrategy const_size_prune_strategy = 3;
+        StaticPruneStrategy static_prune_strategy = 4;
+    }
+}

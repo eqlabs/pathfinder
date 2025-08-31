@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package starknet.sync.receipt;
+
+import "proto/common.proto";
+
+message MessageToL1 {
+  starknet.common.Felt252 from_address = 2;
+  repeated starknet.common.Felt252 payload = 3;
+  EthereumAddress to_address = 4;
+}
+
+enum PriceUnit {
+    Wei = 0;
+    Fri = 1;
+}
+
+message EthereumAddress {
+  bytes elements = 1;
+}
+
+message Receipt {
+  message ExecutionResources {
+    message BuiltinCounter {
+      uint32 bitwise = 1;
+      uint32 ecdsa = 2;
+      uint32 ec_op = 3;
+      uint32 pedersen = 4;
+      uint32 range_check = 5;
+      uint32 poseidon = 6;
+      uint32 keccak = 7;
+      uint32 output = 8;
+      uint32 add_mod = 9;
+      uint32 mul_mod = 10;
+      uint32 range_check96 = 11;
+    }
+
+    BuiltinCounter builtins = 1;
+    uint32 steps = 2;
+    uint32 memory_holes = 3;
+    starknet.common.Felt252 l1_gas = 4;
+    starknet.common.Felt252 l1_data_gas = 5;
+    starknet.common.Felt252 l2_gas = 6;
+    starknet.common.Felt252 total_l1_gas = 7;
+  }
+
+  message Common {
+    starknet.common.Felt252 actual_fee = 2;
+    PriceUnit price_unit = 3;
+    repeated MessageToL1 messages_sent = 4;
+    ExecutionResources execution_resources = 5;
+    optional string revert_reason = 6;
+  }
+
+
+  message Invoke {
+    Common common = 1;
+  }
+
+  message L1Handler {
+    Common common = 1;
+    starknet.common.Hash256 msg_hash = 2;
+  }
+
+  message Declare {
+    Common common = 1;
+  }
+
+  message Deploy {
+    Common common = 1;
+    starknet.common.Felt252 contract_address = 2;
+  }
+
+  message DeployAccount {
+    Common common = 1;
+    starknet.common.Felt252 contract_address = 2;
+  }
+
+  oneof type {
+    Invoke invoke = 1;
+    L1Handler l1_handler = 2;
+    Declare declare = 3;
+    Deploy deprecated_deploy = 4;
+    DeployAccount deploy_account = 5;
+  }
+}

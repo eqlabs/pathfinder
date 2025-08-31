@@ -1,7 +1,8 @@
 syntax = "proto3";
-import "common.proto";
 
 package starknet.class;
+
+import "proto/common.proto";
 
 message EntryPoint {
     starknet.common.Felt252 selector = 1;
@@ -42,16 +43,4 @@ message Class {
     }
     uint32 domain = 3;
     starknet.common.Hash class_hash = 4;
-}
-
-message ClassesRequest {
-    starknet.common.Iteration iteration = 1;
-}
-
-// Responses are sent ordered by the order given in the request.
-message ClassesResponse {
-    oneof class_message {
-        Class               class = 1;
-        starknet.common.Fin fin   = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its classes.
-    }
 }
