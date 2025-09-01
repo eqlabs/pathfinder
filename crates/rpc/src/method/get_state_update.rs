@@ -58,7 +58,7 @@ pub async fn get_state_update(
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Query pending data")?
-                .state_update();
+                .pending_state_update();
 
             return Ok(Output::Pending(state_update));
         }
@@ -766,7 +766,7 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let expected = context.pending_data.get_unchecked().state_update();
+        let expected = context.pending_data.get_unchecked().pending_state_update();
 
         let result = get_state_update(context, input, RPC_VERSION)
             .await
@@ -783,7 +783,7 @@ mod tests {
             block_id: BlockId::Pending,
         };
 
-        let expected = context.pending_data.get_unchecked().state_update();
+        let expected = context.pending_data.get_unchecked().pending_state_update();
 
         let result = get_state_update(context.clone(), input.clone(), RpcVersion::V09)
             .await

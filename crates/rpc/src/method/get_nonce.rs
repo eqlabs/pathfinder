@@ -42,13 +42,13 @@ pub async fn get_nonce(
         let tx = db.transaction().context("Creating database transaction")?;
 
         if input.block_id.is_pending() {
-            if let Some(nonce) = context
+            let nonce = context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .state_update()
-                .contract_nonce(input.contract_address)
-            {
+                .find_nonce(input.contract_address);
+
+            if let Some(nonce) = nonce {
                 return Ok(Output(nonce));
             }
         }
@@ -228,6 +228,28 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(nonce.0, contract_nonce!("0x10"));
+    }
+
+    #[tokio::test]
+    async fn pre_latest() {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+
+        // This contract is created during storage setup and has a nonce set in the
+        // pre-latest block.
+        let input = Input {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
+        };
+        let nonce = get_nonce(context.clone(), input.clone(), RpcVersion::V09)
+            .await
+            .unwrap();
+        assert_eq!(nonce.0, contract_nonce_bytes!(b"prelatest nonce"));
+
+        // JSON-RPC version before 0.9 are expected to ignore the pre-latest block.
+        let err = get_nonce(context, input.clone(), RpcVersion::V08)
+            .await
+            .unwrap_err();
+        assert_matches!(err, Error::ContractNotFound);
     }
 
     #[tokio::test]

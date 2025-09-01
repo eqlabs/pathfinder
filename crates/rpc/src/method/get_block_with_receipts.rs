@@ -62,8 +62,8 @@ pub async fn get_block_with_receipts(
                     .context("Querying pending data")?;
 
                 return Ok(Output::Pending {
-                    block: pending.block(),
-                    block_number: pending.block_number(),
+                    block: pending.pending_block(),
+                    block_number: pending.pending_block_number(),
                 });
             }
             other => other
@@ -146,7 +146,7 @@ impl crate::dto::SerializeForVersion for Output {
                     &mut block
                         .transactions()
                         .iter()
-                        .zip(block.transaction_receipts_and_events().iter())
+                        .zip(block.tx_receipts_and_events().iter())
                         .map(|(transaction, (receipt, events))| TransactionWithReceipt {
                             transaction,
                             receipt,
