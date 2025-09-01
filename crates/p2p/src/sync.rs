@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use futures::channel::mpsc::{Receiver as ResponseReceiver, Sender as ResponseSender};
 use libp2p::PeerId;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::sync::class::{ClassesRequest, ClassesResponse};
+use p2p_proto::sync::event::{EventsRequest, EventsResponse};
+use p2p_proto::sync::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::sync::state::{StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::sync::transaction::{TransactionsRequest, TransactionsResponse};
 use p2p_stream::OutboundRequestId;
 use tokio::sync::oneshot;
 

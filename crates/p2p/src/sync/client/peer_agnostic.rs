@@ -8,18 +8,23 @@ use std::time::{Duration, Instant};
 use futures::channel::mpsc as fmpsc;
 use futures::{Stream, StreamExt, TryStreamExt};
 use libp2p::PeerId;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::common::{Direction, Iteration};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{
+use p2p_proto::common::BlockNumberOrHash;
+use p2p_proto::sync::class::{ClassesRequest, ClassesResponse};
+use p2p_proto::sync::common::{Direction, Iteration};
+use p2p_proto::sync::event::{EventsRequest, EventsResponse};
+use p2p_proto::sync::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::sync::state::{
     ContractDiff,
     ContractStoredValue,
     DeclaredClass,
     StateDiffsRequest,
     StateDiffsResponse,
 };
-use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use p2p_proto::sync::transaction::{
+    TransactionWithReceipt,
+    TransactionsRequest,
+    TransactionsResponse,
+};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, StateUpdateData};
@@ -275,7 +280,7 @@ impl BlockClient for Client {
     )> {
         let request = TransactionsRequest {
             iteration: Iteration {
-                start: block.get().into(),
+                start: BlockNumberOrHash::Number(block.get()),
                 direction: Direction::Forward,
                 limit: 1,
                 step: 1.into(),
@@ -330,7 +335,7 @@ impl BlockClient for Client {
     ) -> Result<Option<(PeerId, StateUpdateData)>, StateDiffsError> {
         let request = StateDiffsRequest {
             iteration: Iteration {
-                start: block.get().into(),
+                start: BlockNumberOrHash::Number(block.get()),
                 direction: Direction::Forward,
                 limit: 1,
                 step: 1.into(),
@@ -460,7 +465,7 @@ impl BlockClient for Client {
     ) -> Result<Option<(PeerId, Vec<ClassDefinition>)>, ClassDefinitionsError> {
         let request = ClassesRequest {
             iteration: Iteration {
-                start: block.get().into(),
+                start: BlockNumberOrHash::Number(block.get()),
                 direction: Direction::Forward,
                 limit: 1,
                 step: 1.into(),
@@ -472,7 +477,7 @@ impl BlockClient for Client {
         for peer in peers {
             let Ok(mut stream) = self
                 .inner
-                .send_classes_request(peer, request)
+                .send_classes_request(peer, request.clone())
                 .await
                 .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
             else {
@@ -550,7 +555,7 @@ impl BlockClient for Client {
     )> {
         let request = EventsRequest {
             iteration: Iteration {
-                start: block.get().into(),
+                start: BlockNumberOrHash::Number(block.get()),
                 direction: Direction::Forward,
                 limit: 1,
                 step: 1.into(),
@@ -713,7 +718,7 @@ mod header_stream {
 
         BlockHeadersRequest {
             iteration: Iteration {
-                start: u64::try_from(start).expect("start >= 0").into(),
+                start: BlockNumberOrHash::Number(u64::try_from(start).expect("start >= 0").into()),
                 direction: dir,
                 limit,
                 step: 1.into(),
@@ -861,7 +866,7 @@ mod transaction_stream {
 
         TransactionsRequest {
             iteration: Iteration {
-                start: start.into(),
+                start: BlockNumberOrHash::Number(start.into()),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1089,7 +1094,7 @@ mod state_diff_stream {
 
         StateDiffsRequest {
             iteration: Iteration {
-                start: start.into(),
+                start: BlockNumberOrHash::Number(start.into()),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1233,7 +1238,7 @@ mod class_definition_stream {
 
         ClassesRequest {
             iteration: Iteration {
-                start: start.into(),
+                start: BlockNumberOrHash::Number(start.into()),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1434,7 +1439,7 @@ mod event_stream {
 
         EventsRequest {
             iteration: Iteration {
-                start: start.into(),
+                start: BlockNumberOrHash::Number(start.into()),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),

@@ -25,7 +25,7 @@ impl<T: ProtobufSerializable> ProtobufSerializable for StreamMessage<T> {
     fn to_protobuf_bytes(&self) -> Vec<u8> {
         let proto_message = p2p_proto::consensus::StreamMessage {
             stream_id: self.stream_id.into(),
-            message_id: self.message_id,
+            sequence_number: self.message_id,
             message: match &self.message {
                 StreamMessageBody::Content(content) => {
                     p2p_proto::consensus::StreamMessageVariant::Content(content.to_protobuf_bytes())
@@ -38,25 +38,18 @@ impl<T: ProtobufSerializable> ProtobufSerializable for StreamMessage<T> {
 
     /// Convert a byte vector to a stream message.
     fn from_protobuf_bytes(bytes: &[u8]) -> Result<Self, std::io::Error> {
-        let proto_message = p2p_proto::proto::consensus::StreamMessage::decode(bytes)?;
+        let proto_message = p2p_proto::consensus::StreamMessage::try_from_protobuf_bytes(bytes)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         let message = match proto_message.message {
-            Some(p2p_proto::proto::consensus::stream_message::Message::Content(content)) => {
+            p2p_proto::consensus::StreamMessageVariant::Content(content) => {
                 StreamMessageBody::Content(T::from_protobuf_bytes(&content)?)
             }
-            Some(p2p_proto::proto::consensus::stream_message::Message::Fin(_)) => {
-                StreamMessageBody::Fin
-            }
-            None => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "missing message",
-                ))
-            }
+            p2p_proto::consensus::StreamMessageVariant::Fin => StreamMessageBody::Fin,
         };
 
         Ok(StreamMessage {
             stream_id: proto_message.stream_id.try_into()?,
-            message_id: proto_message.message_id,
+            message_id: proto_message.sequence_number,
             message,
         })
     }
@@ -148,14 +141,14 @@ mod tests {
     fn test_encode_decode() {
         // Create a sample ProposalPart
         let block_info = p2p_proto::consensus::BlockInfo {
-            height: 100,
+            block_number: 100,
             timestamp: 1234567890,
             builder: Address(Felt::from_hex_str("0x456").unwrap()),
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1000,
             l1_gas_price_wei: 2000,
             l1_data_gas_price_wei: 3000,
-            eth_to_fri_rate: 4000,
+            eth_to_strk_rate: 4000,
         };
         let proposal = p2p_proto::consensus::ProposalPart::BlockInfo(block_info);
 

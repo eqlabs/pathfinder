@@ -10,7 +10,8 @@ use p2p_proto::consensus::{
     ProposalInit,
     TransactionVariant as ConsensusVariant,
 };
-use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
+use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
+use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -51,7 +52,7 @@ pub fn new(
     // TODO(validator) how can we validate the proposal init?
     Ok(ValidatorBlockInfoStage {
         chain_id,
-        proposal_height: BlockNumber::new(proposal_init.height)
+        proposal_height: BlockNumber::new(proposal_init.block_number)
             .context("ProposalInit height exceeds i64::MAX")?,
     })
 }
@@ -75,7 +76,7 @@ impl ValidatorBlockInfoStage {
     ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
-            height = %block_info.height,
+            height = %block_info.block_number,
             timestamp = %block_info.timestamp,
             builder = %block_info.builder.0,
         )
@@ -87,27 +88,27 @@ impl ValidatorBlockInfoStage {
         } = self;
 
         anyhow::ensure!(
-            proposal_height == block_info.height,
+            proposal_height == block_info.block_number,
             "ProposalInit height does not match BlockInfo height: {} != {}",
             proposal_height,
-            block_info.height,
+            block_info.block_number,
         );
 
         // TODO(validator) validate block info (timestamp, gas prices)
 
         let BlockInfo {
-            height,
+            block_number,
             timestamp,
             builder,
             l1_da_mode,
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
+            eth_to_strk_rate,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            height,
+            block_number,
             timestamp,
             SequencerAddress(builder.0),
             match l1_da_mode {
@@ -119,7 +120,7 @@ impl ValidatorBlockInfoStage {
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
+            eth_to_strk_rate,
             workaround_starknet_version,
             workaround_l2_gas_price_wei,
             workaround_l1_gas_price_fri,
@@ -404,9 +405,13 @@ fn try_map_transaction(
         transaction_hash,
     } = transaction;
     let (variant, class_info) = match txn {
-        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
-            (SyncVariant::DeclareV3(common), Some(class_info(class)?))
-        }
+        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => (
+            SyncVariant::DeclareV3(DeclareV3WithoutClass {
+                common,
+                class_hash: Default::default(),
+            }),
+            Some(class_info(class)?),
+        ),
         ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
         ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
         ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),

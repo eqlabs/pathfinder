@@ -1,4 +1,4 @@
-use p2p_proto::common::{Direction, Step};
+use p2p_proto::sync::common::{Direction, Step};
 use pathfinder_common::BlockNumber;
 use rstest::rstest;
 
@@ -35,12 +35,13 @@ mod boundary_conditions {
     use fake::{Fake, Faker};
     use futures::channel::mpsc;
     use futures::StreamExt;
-    use p2p_proto::class::ClassesRequest;
-    use p2p_proto::common::{BlockNumberOrHash, Iteration};
-    use p2p_proto::event::EventsRequest;
-    use p2p_proto::header::BlockHeadersRequest;
-    use p2p_proto::state::StateDiffsRequest;
-    use p2p_proto::transaction::TransactionsRequest;
+    use p2p_proto::common::BlockNumberOrHash;
+    use p2p_proto::sync::class::ClassesRequest;
+    use p2p_proto::sync::common::Iteration;
+    use p2p_proto::sync::event::EventsRequest;
+    use p2p_proto::sync::header::BlockHeadersRequest;
+    use p2p_proto::sync::state::StateDiffsRequest;
+    use p2p_proto::sync::transaction::TransactionsRequest;
     use pathfinder_storage::StorageBuilder;
     use rand::Rng;
     use rstest::rstest;
@@ -105,18 +106,20 @@ mod prop {
     use futures::StreamExt;
     use p2p::sync::client::conv::{CairoDefinition, SierraDefinition, TryFromDto};
     use p2p::sync::client::types::Receipt;
-    use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
-    use p2p_proto::common::{BlockNumberOrHash, Iteration};
-    use p2p_proto::event::{EventsRequest, EventsResponse};
-    use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-    use p2p_proto::state::{
+    use p2p_proto::class::Class;
+    use p2p_proto::common::BlockNumberOrHash;
+    use p2p_proto::sync::class::{ClassesRequest, ClassesResponse};
+    use p2p_proto::sync::common::Iteration;
+    use p2p_proto::sync::event::{EventsRequest, EventsResponse};
+    use p2p_proto::sync::header::{BlockHeadersRequest, BlockHeadersResponse};
+    use p2p_proto::sync::state::{
         ContractDiff,
         ContractStoredValue,
         DeclaredClass,
         StateDiffsRequest,
         StateDiffsResponse,
     };
-    use p2p_proto::transaction::{
+    use p2p_proto::sync::transaction::{
         TransactionWithReceipt,
         TransactionsRequest,
         TransactionsResponse,
@@ -529,7 +532,7 @@ mod prop {
 
     /// Find overlapping range between the DB and the request
     mod overlapping {
-        use p2p_proto::common::{Direction, Step};
+        use p2p_proto::sync::common::{Direction, Step};
         use pathfinder_storage::fake::Block;
 
         use crate::p2p_network::sync::sync_handlers::MAX_COUNT_IN_TESTS;
@@ -590,7 +593,7 @@ mod prop {
     mod strategy {
         use std::ops::Range;
 
-        use p2p_proto::common::{Direction, Step};
+        use p2p_proto::sync::common::{Direction, Step};
         use proptest::prelude::*;
 
         use super::fixtures::MAX_NUM_BLOCKS;
