@@ -258,7 +258,7 @@ async fn fetch_pre_latest<S: GatewayApi + Send + 'static>(
     let (pending_block, state_update) = sequencer
         .pending_block()
         .await
-        .context("Fetching pre-latest block from sequncer")?;
+        .context("Fetching pre-latest block from sequencer")?;
 
     let pre_latest_data = (pending_block.parent_hash == our_latest_hash).then_some((
         our_latest_number + 1,
