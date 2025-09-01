@@ -1015,8 +1015,9 @@ impl ConsensusConfig {
                 Cli::command()
                     .error(
                         clap::error::ErrorKind::ValueValidation,
-                        "At least 3 unique validator addresses are required (including this \
-                         node's validator address).",
+                        "At least 3 unique validator addresses are required in \
+                         '--consensus.validator-addresses' and '--consensus.my-validator-address' \
+                         combined.",
                     )
                     .exit();
             }
