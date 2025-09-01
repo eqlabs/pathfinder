@@ -1,6 +1,6 @@
 //! This RPC API should **always** be considered unstable and for internal use
-//! only. It's main purpose is to aid integration testing so expect it to change
-//! anythime!
+//! only. Its main purpose is to aid integration testing so expect it to change
+//! anytime!
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 use crate::method::consensus_info;

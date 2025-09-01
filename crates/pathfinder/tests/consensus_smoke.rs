@@ -205,7 +205,7 @@ impl PathfinderInstance {
                 // Currently the proposer address always points to Alice (0x1).
                 "--consensus.proposer-address=0x1",
                 format!(
-                    "--consensus.my-validator-address=0x{}",
+                    "--consensus.my-validator-address={:#x}",
                     config.my_validator_address
                 )
                 .as_str(),
@@ -364,7 +364,14 @@ fn pathfinder_bin() -> PathBuf {
     assert!(path.pop());
     assert!(path.pop());
     path.push("target");
-    path.push("debug");
+    #[cfg(debug_assertions)]
+    {
+        path.push("debug");
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        path.push("release");
+    }
     path.push("pathfinder");
     path
 }

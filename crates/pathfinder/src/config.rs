@@ -1005,7 +1005,7 @@ impl ConsensusConfig {
             if std::iter::once(
                 &args
                     .my_validator_address
-                    .expect("Clap requires this to be set if `is_enabled` is true"),
+                    .expect("Required if `is_enabled` is true"),
             )
             .chain(args.validator_addresses.iter())
             .collect::<HashSet<_>>()
@@ -1024,11 +1024,11 @@ impl ConsensusConfig {
             Self {
                 proposer_address: ContractAddress(
                     args.proposer_address
-                        .expect("Clap requires this to be set if `is_enabled` is true"),
+                        .expect("Required if `is_enabled` is true"),
                 ),
                 my_validator_address: ContractAddress(
                     args.my_validator_address
-                        .expect("Clap requires this to be set if `is_enabled` is true"),
+                        .expect("Required if `is_enabled` is true"),
                 ),
                 validator_addresses: args
                     .validator_addresses
