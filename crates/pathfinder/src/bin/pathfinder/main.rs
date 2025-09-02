@@ -260,19 +260,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     };
     let submitted_tx_tracker = context.submission_tracker.clone();
 
-    let default_version = match config.rpc_root_version {
-        config::RootRpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
-        config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
-        config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
-        config::RootRpcVersion::V09 => pathfinder_rpc::RpcVersion::V09,
-    };
-
-    let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
-    let rpc_server = match config.rpc_cors_domains {
-        Some(ref allowed_origins) => rpc_server.with_cors(allowed_origins.clone()),
-        None => rpc_server,
-    };
-
     // Spawn monitoring if configured.
     if let Some(address) = config.monitor_address {
         spawn_monitoring(
@@ -303,6 +290,54 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
         p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
 
+    let ConsensusTaskHandles {
+        consensus_p2p_event_processing_handle,
+        consensus_engine_handle,
+        consensus_info_watch,
+    } = if let Some(consensus_config) = &config.consensus {
+        let wal_directory = config.data_directory.join("consensus").join("wal");
+        if !wal_directory.exists() {
+            std::fs::DirBuilder::new()
+                .recursive(true)
+                .create(&wal_directory)
+                .context("Creating consensus wal directory")?;
+        }
+
+        if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
+            consensus::start(
+                consensus_config.clone(),
+                chain_id,
+                consensus_storage,
+                wal_directory,
+                client,
+                event_rx,
+            )
+        } else {
+            ConsensusTaskHandles::pending()
+        }
+    } else {
+        ConsensusTaskHandles::pending()
+    };
+
+    let context = if let Some(consensus_info_watch) = consensus_info_watch {
+        context.with_consensus_info_watch(consensus_info_watch)
+    } else {
+        context
+    };
+
+    let default_version = match config.rpc_root_version {
+        config::RootRpcVersion::V06 => pathfinder_rpc::RpcVersion::V06,
+        config::RootRpcVersion::V07 => pathfinder_rpc::RpcVersion::V07,
+        config::RootRpcVersion::V08 => pathfinder_rpc::RpcVersion::V08,
+        config::RootRpcVersion::V09 => pathfinder_rpc::RpcVersion::V09,
+    };
+
+    let rpc_server = pathfinder_rpc::RpcServer::new(config.rpc_address, context, default_version);
+    let rpc_server = match config.rpc_cors_domains {
+        Some(ref allowed_origins) => rpc_server.with_cors(allowed_origins.clone()),
+        None => rpc_server,
+    };
+
     let sync_handle = if config.is_sync_enabled {
         start_sync(
             sync_storage,
@@ -319,31 +354,6 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )
     } else {
         tokio::task::spawn(futures::future::pending())
-    };
-
-    let consensus_handles = if let Some(consensus_config) = config.consensus {
-        let wal_directory = config.data_directory.join("consensus").join("wal");
-        if !wal_directory.exists() {
-            std::fs::DirBuilder::new()
-                .recursive(true)
-                .create(&wal_directory)
-                .context("Creating consensus wal directory")?;
-        }
-
-        if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
-            consensus::start(
-                consensus_config,
-                chain_id,
-                wal_directory,
-                client,
-                consensus_storage,
-                event_rx,
-            )
-        } else {
-            ConsensusTaskHandles::pending()
-        }
-    } else {
-        ConsensusTaskHandles::pending()
     };
 
     let rpc_handle = if config.is_rpc_enabled {
@@ -371,18 +381,13 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     // We are now ready.
     readiness.store(true, std::sync::atomic::Ordering::Relaxed);
 
-    let ConsensusTaskHandles {
-        consensus_p2p_event_processing_handle: p2p_event_processing_handle,
-        consensus_engine_handle,
-    } = consensus_handles;
-
     // Monitor our critical spawned process tasks.
     let main_result = tokio::select! {
         result = sync_handle => handle_critical_task_result("Feeder gateway sync", result),
         result = rpc_handle => handle_critical_task_result("RPC", result),
         result = sync_p2p_handle => handle_critical_task_result("Sync P2P network and handlers", result),
         result = consensus_p2p_handle => handle_critical_task_result("Consensus P2P network", result),
-        result = p2p_event_processing_handle => handle_critical_task_result("Consensus P2P event processing", result),
+        result = consensus_p2p_event_processing_handle => handle_critical_task_result("Consensus P2P event processing", result),
         result = consensus_engine_handle => handle_critical_task_result("Consensus engine", result),
         _ = term_signal.recv() => {
             tracing::info!("TERM signal received");
