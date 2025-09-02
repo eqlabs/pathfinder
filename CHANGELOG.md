@@ -9,13 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Fixed
+
+- `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
+
+## [0.20.1] - 2025-09-02
+
 ### Added
 
 - `--rpc.disable-batch-requests` CLI option, for instances not wishing to support batch requests.
 
 ### Fixed
 
-- `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
+- Pathfinder cannot recover after a reorg involving more than 1000 blocks. L2 reorg fails with error "Reorg exceeded local blockchain cache".
 
 ## [0.20.0] - 2025-08-26
 

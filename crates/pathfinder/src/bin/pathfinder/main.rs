@@ -592,7 +592,7 @@ fn start_feeder_gateway_sync(
         submitted_tx_tracker,
         block_validation_mode: state::l2::BlockValidationMode::Strict,
         notifications,
-        block_cache_size: 1_000,
+        block_cache_size: 10_000,
         restart_delay: config.debug.restart_delay,
         verify_tree_hashes: config.verify_tree_hashes,
         sequencer_public_key: gateway_public_key,
