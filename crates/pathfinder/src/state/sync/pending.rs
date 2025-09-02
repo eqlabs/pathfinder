@@ -167,20 +167,19 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let latest = latest.borrow().0.get();
-        let (current_number, current_hash) = *current.borrow();
+        let (latest_number, latest_hash) = *latest.borrow();
+        let current_number = current.borrow().0.get();
 
-        if latest.abs_diff(current_number.get()) > IN_SYNC_THRESHOLD {
+        if latest_number.get().abs_diff(current_number) > IN_SYNC_THRESHOLD {
             tracing::debug!(
-                %latest, current = %current_number.get(),
+                latest = %latest_number.get(), current = %current_number,
                 "Not in sync yet; skipping pre-confirmed block download"
             );
             tokio::time::sleep_until(t_fetch + poll_interval).await;
             continue;
         }
 
-        let pre_latest_data = match fetch_pre_latest(sequencer, current_number, current_hash).await
-        {
+        let pre_latest_data = match fetch_pre_latest(sequencer, latest_number, latest_hash).await {
             Ok(r) => r.map(Box::new),
             Err(e) => {
                 tracing::debug!(%e, "Failed to fetch pre-latest block");
@@ -192,9 +191,9 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
         let pre_confirmed_block_number = if pre_latest_data.is_some() {
             // Pre-latest block exists which means that the sequencer has already started
             // building the next pre-confirmed block.
-            BlockNumber::new_or_panic(latest) + 2
+            latest_number + 2
         } else {
-            BlockNumber::new_or_panic(latest) + 1
+            latest_number + 1
         };
 
         let pre_confirmed_block = match sequencer
