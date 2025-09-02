@@ -103,18 +103,13 @@ pub async fn get_transaction_receipt(
             .get(&db_tx, rpc_version)
             .context("Querying pending data")?;
 
-        if let Some((transaction, (receipt, events))) = pending
-            .transactions()
-            .iter()
-            .zip(pending.transaction_receipts_and_events().iter())
-            .find_map(|(t, r)| (t.hash == input.transaction_hash).then(|| (t.clone(), r.clone())))
-        {
+        if let Some(finalized_tx_data) = pending.find_finalized_tx_data(input.transaction_hash) {
             return Ok(Output::Pending {
-                receipt,
-                block_number: pending.block_number(),
-                transaction,
-                events,
-                finality: pending.block().finality_status(),
+                receipt: finalized_tx_data.receipt,
+                block_number: finalized_tx_data.block_number,
+                transaction: finalized_tx_data.transaction,
+                events: finalized_tx_data.events,
+                finality: finalized_tx_data.finality_status,
             });
         }
 
@@ -258,6 +253,36 @@ mod tests {
                 let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
                 let expected_json: serde_json::Value = serde_json::from_str(include_str!(
                     "../../fixtures/0.9.0/transactions/receipt_pre_confirmed.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_latest(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"prelatest tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_receipt(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/receipt_pre_latest.json"
                 ))
                 .unwrap();
                 assert_eq!(output_json, expected_json);

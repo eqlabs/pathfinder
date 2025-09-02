@@ -20,7 +20,13 @@ use pathfinder_storage::pruning::BlockchainHistoryMode;
 use pathfinder_storage::{Connection, Storage, Transaction, TransactionBehavior};
 use primitive_types::H160;
 use starknet_gateway_client::GatewayApi;
-use starknet_gateway_types::reply::{Block, GasPrices, PendingBlock, PreConfirmedBlock};
+use starknet_gateway_types::reply::{
+    Block,
+    GasPrices,
+    PendingBlock,
+    PreConfirmedBlock,
+    PreLatestBlock,
+};
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::sync::watch::Sender as WatchSender;
 
@@ -66,8 +72,13 @@ pub enum SyncEvent {
     },
     /// A new L2 pending update was polled.
     Pending((Box<PendingBlock>, Box<StateUpdate>)),
-    /// A new L2 pre-confirmed update was polled.
-    PreConfirmed((BlockNumber, Box<PreConfirmedBlock>)),
+    /// A new L2 pre-confirmed update was polled. Optionally contains
+    /// [pre latest](PreLatestBlock) data.
+    PreConfirmed {
+        number: BlockNumber,
+        block: Box<PreConfirmedBlock>,
+        pre_latest_data: Option<Box<(BlockNumber, PreLatestBlock, StateUpdate)>>,
+    },
 }
 
 pub struct SyncContext<G, E> {
@@ -657,20 +668,33 @@ async fn consumer(
 
                     None
                 }
-                PreConfirmed((block_number, pre_confirmed_block)) => {
+                PreConfirmed {
+                    number,
+                    block,
+                    pre_latest_data,
+                } => {
+                    tracing::trace!("Updating pre-confirmed data");
                     let (latest_block_number, _) = tx
                         .block_id(BlockId::Latest)
                         .context("Fetching latest block hash")?
                         .unwrap_or_default();
 
-                    if block_number == latest_block_number + 1 {
-                        let pending = PendingData::from_pre_confirmed_block(
-                            *pre_confirmed_block,
-                            block_number,
+                    let next_block_number = pre_latest_data
+                        .as_ref()
+                        .map(|pre_latest| pre_latest.0)
+                        .unwrap_or(number);
+
+                    if next_block_number == latest_block_number + 1 {
+                        let pending = PendingData::from_pre_confirmed_and_pre_latest(
+                            block,
+                            number,
+                            pre_latest_data,
                         );
-                        let number_of_transactions = pending.transactions().len();
+                        let pre_latest_tx_count =
+                            pending.pre_latest_transactions().map(|txs| txs.len());
+                        let pre_confirmed_tx_count = pending.pending_transactions().len();
                         pending_data.send_replace(pending);
-                        tracing::debug!(%block_number, %number_of_transactions, "Updated pre-confirmed data");
+                        tracing::debug!(block_number = %number, %pre_confirmed_tx_count, ?pre_latest_tx_count, "Updated pre-confirmed data");
                     }
 
                     None
@@ -683,7 +707,7 @@ async fn consumer(
             let commit_result = tx.commit().context("Committing database transaction");
 
             // Now that the changes have been committed to storage we can send out the
-            // notification. It is important that this is only ever dont _after_
+            // notification. It is important that this is only ever done _after_
             // the commit otherwise clients could potentially see inconsistent
             // state.
             if let Some(notification) = notification {

@@ -65,13 +65,12 @@ pub async fn get_class_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let pending_class_hash = if input.block_id == BlockId::Pending {
+        let pending_class_hash = if input.block_id.is_pending() {
             context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .state_update()
-                .contract_class(input.contract_address)
+                .find_contract_class(input.contract_address)
         } else {
             None
         };

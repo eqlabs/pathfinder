@@ -57,7 +57,7 @@ pub(crate) fn create_transactions_and_receipts(
     let n_transactions = n_blocks * transactions_per_block;
     assert!(
         n_transactions < 64,
-        "Too many transactions ({} > {}), `Felt::from_hex_str() will overflow.",
+        "Too many transactions ({} > {}), `Felt::from_hex_str()` will overflow.",
         n_transactions,
         64
     );
