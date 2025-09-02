@@ -46,6 +46,7 @@ pub enum Command {
 }
 
 /// Events emitted by the consensus behaviour.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     /// A proposal (part) for a new block.

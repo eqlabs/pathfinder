@@ -477,7 +477,7 @@ impl BlockClient for Client {
         for peer in peers {
             let Ok(mut stream) = self
                 .inner
-                .send_classes_request(peer, request.clone())
+                .send_classes_request(peer, request)
                 .await
                 .inspect_err(|error| tracing::debug!(%peer, %error, "State diffs request failed"))
             else {
@@ -718,7 +718,7 @@ mod header_stream {
 
         BlockHeadersRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(u64::try_from(start).expect("start >= 0").into()),
+                start: BlockNumberOrHash::Number(u64::try_from(start).expect("start >= 0")),
                 direction: dir,
                 limit,
                 step: 1.into(),
@@ -866,7 +866,7 @@ mod transaction_stream {
 
         TransactionsRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(start.into()),
+                start: BlockNumberOrHash::Number(start),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1094,7 +1094,7 @@ mod state_diff_stream {
 
         StateDiffsRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(start.into()),
+                start: BlockNumberOrHash::Number(start),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1238,7 +1238,7 @@ mod class_definition_stream {
 
         ClassesRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(start.into()),
+                start: BlockNumberOrHash::Number(start),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),
@@ -1439,7 +1439,7 @@ mod event_stream {
 
         EventsRequest {
             iteration: Iteration {
-                start: BlockNumberOrHash::Number(start.into()),
+                start: BlockNumberOrHash::Number(start),
                 direction: Direction::Forward,
                 limit,
                 step: 1.into(),

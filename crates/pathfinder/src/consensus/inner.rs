@@ -59,6 +59,7 @@ enum ConsensusTaskEvent {
 }
 
 /// Events handled by the p2p task.
+#[allow(clippy::large_enum_variant)]
 enum P2PTaskEvent {
     /// An event coming from the P2P network (from the consensus P2P network
     /// main loop).

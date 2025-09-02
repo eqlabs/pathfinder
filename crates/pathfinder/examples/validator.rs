@@ -162,6 +162,7 @@ enum ConsensusTaskEvent {
     CommandFromP2P(ConsensusCommand<ConsensusValue, NodeAddress>),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum P2PTaskEvent {
     /// An event coming from the P2P network (from the consensus P2P network
     /// main loop).
