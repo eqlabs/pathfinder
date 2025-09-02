@@ -753,9 +753,13 @@ impl PendingWatcher {
                 // pre-confirmed block has no access to the parent block header, thus it
                 // cannot properly set the parent state commitment.
 
-                // We can consider the pre-confirmed block valid if either:
-                //   - the pre-latest block exists and is the child our latest stored block, or
-                //   - the pre-confirmed block is the child of our latest stored block.
+                // We can consider the pre-confirmed block valid if:
+                //   - the pre-latest block exists and is the child our latest stored block,
+                //   - the pre-latest block exists and is the same block as our latest block,
+                //   i.e. we received that block as a finalized L2 block but it still lingers
+                //   in pending data.
+                //   - the pre-latest block does not exist and the pre-confirmed block is the
+                //   child of our latest stored block.
                 match pre_latest_data {
                     // Is pre-latest the next block?
                     Some(pre_latest) if pre_latest.block.number == latest.number + 1 => {
@@ -781,6 +785,31 @@ impl PendingWatcher {
                             }
                             .into(),
                             state_update: Arc::clone(&watched_pending_data.state_update),
+                            number: block.number,
+                        }
+                    }
+                    // Is pre-latest already in the database?
+                    Some(pre_latest) if pre_latest.block.number == latest.number => {
+                        // We'll ignore pre-latest data here but let's make sure everything is
+                        // still as expected.
+                        assert_eq!(
+                            pre_latest.block.number + 1,
+                            block.number,
+                            "Pre-confirmed block should be child of pre-latest"
+                        );
+                        // Set pre-latest data to `None`, pre-confirmed block parent state
+                        // commitment and clone rest of the data.
+                        let pre_confirmed_block = PendingBlockVariant::PreConfirmed {
+                            block: block.clone(),
+                            candidate_transactions: candidate_transactions.clone(),
+                            pre_latest_data: None,
+                        };
+                        let pre_confirmed_state_update =
+                            StateUpdate::clone(&watched_pending_data.state_update)
+                                .with_parent_state_commitment(latest.state_commitment);
+                        PendingData {
+                            block: Arc::new(pre_confirmed_block),
+                            state_update: Arc::new(pre_confirmed_state_update),
                             number: block.number,
                         }
                     }
@@ -910,8 +939,8 @@ mod tests {
             timestamp: BlockTimestamp::new_or_panic(112233),
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
             l1_da_mode: L1DataAvailabilityMode::Blob,
-            transactions: vec![],
-            transaction_receipts: vec![],
+            transactions: vec![pathfinder_common::transaction::Transaction::default()],
+            transaction_receipts: vec![(pathfinder_common::receipt::Receipt::default(), vec![])],
         };
         let pre_latest_state_update = StateUpdate::default().with_contract_nonce(
             contract_address_bytes!(b"pre latest contract address"),
@@ -934,8 +963,11 @@ mod tests {
                     timestamp: BlockTimestamp::new_or_panic(112233),
                     starknet_version: StarknetVersion::new(0, 14, 0, 0),
                     l1_da_mode: L1DataAvailabilityMode::Blob,
-                    transactions: vec![],
-                    transaction_receipts: vec![],
+                    transactions: vec![pathfinder_common::transaction::Transaction::default()],
+                    transaction_receipts: vec![(
+                        pathfinder_common::receipt::Receipt::default(),
+                        vec![],
+                    )],
                 }
                 .into(),
                 candidate_transactions: vec![],
@@ -1006,6 +1038,11 @@ mod tests {
 
     #[test]
     fn valid_pre_confirmed_with_pre_latest() {
+        // There are certain intervals where the pre-latest block is still stored in
+        // pending data but that same block has already been finalized and received as
+        // the new L2 block. This test makes sure that we still provide pending data
+        // from the pre-confirmed block in this case and *we do not provide* the
+        // pre-latest block because it is not pending anymore.
         let (sender, receiver) = tokio::sync::watch::channel(Default::default());
         let uut = PendingWatcher::new(receiver);
 
@@ -1014,16 +1051,44 @@ mod tests {
             .connection()
             .unwrap();
 
-        let latest = latest_block();
+        // Required otherwise latest doesn't have a valid parent hash in storage.
+        let parent = BlockHeader::builder()
+            .number(BlockNumber::GENESIS + 12)
+            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+
+        let latest = parent
+            .child_builder()
+            .eth_l1_gas_price(GasPrice(1234))
+            .strk_l1_gas_price(GasPrice(3377))
+            .eth_l1_data_gas_price(GasPrice(9999))
+            .strk_l1_data_gas_price(GasPrice(8888))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .timestamp(BlockTimestamp::new_or_panic(6777))
+            .sequencer_address(sequencer_address!("0xffff"))
+            .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
+        tx.insert_block_header(&parent).unwrap();
         tx.insert_block_header(&latest).unwrap();
 
+        // Pre-latest block will be `latest + 1` which is valid.
         let pending = valid_pre_confirmed_block_with_pre_latest(&latest);
         sender.send(pending.clone()).unwrap();
 
         let result = uut.get(&tx, RpcVersion::V09).unwrap();
         pretty_assertions_sorted::assert_eq_sorted!(result, pending);
+
+        // Pre-latest block will be same as `latest` which is also valid, but in this
+        // case the pre-latest block should be ignored.
+        let pending = valid_pre_confirmed_block_with_pre_latest(&parent);
+        sender.send_replace(pending);
+
+        let result = uut.get(&tx, RpcVersion::V09).unwrap();
+        // We got a non-empty pre-confirmed block..
+        assert!(!result.pending_transactions().is_empty());
+        // ..and we did not receive a pre-latest block.
+        assert!(result.pre_latest_block().is_none());
+        assert!(result.pre_latest_state_update().is_none());
     }
 
     #[test]
@@ -1203,11 +1268,22 @@ mod tests {
             .unwrap();
 
         // Required otherwise latest doesn't have a valid parent hash in storage.
-        let parent = BlockHeader::builder()
+        let parent1 = BlockHeader::builder()
             .number(BlockNumber::GENESIS + 12)
-            .finalize_with_hash(block_hash_bytes!(b"parent hash"));
+            .finalize_with_hash(block_hash_bytes!(b"parent1 hash"));
 
-        let latest = parent
+        let parent2 = parent1
+            .child_builder()
+            .eth_l1_gas_price(GasPrice(1234))
+            .strk_l1_gas_price(GasPrice(3377))
+            .eth_l1_data_gas_price(GasPrice(9999))
+            .strk_l1_data_gas_price(GasPrice(8888))
+            .l1_da_mode(L1DataAvailabilityMode::Blob)
+            .timestamp(BlockTimestamp::new_or_panic(6777))
+            .sequencer_address(sequencer_address!("0xffff"))
+            .finalize_with_hash(block_hash_bytes!(b"paren2 hash"));
+
+        let latest = parent2
             .child_builder()
             .eth_l1_gas_price(GasPrice(1234))
             .strk_l1_gas_price(GasPrice(3377))
@@ -1219,10 +1295,13 @@ mod tests {
             .finalize_with_hash(block_hash_bytes!(b"latest hash"));
 
         let tx = storage.transaction().unwrap();
-        tx.insert_block_header(&parent).unwrap();
+        tx.insert_block_header(&parent1).unwrap();
+        tx.insert_block_header(&parent2).unwrap();
         tx.insert_block_header(&latest).unwrap();
 
-        let pending = valid_pre_confirmed_block_with_pre_latest(&parent);
+        // Pre-latest block exists but is behind `== latest - 1` (because `== latest`
+        // is still considered valid).
+        let pending = valid_pre_confirmed_block_with_pre_latest(&parent1);
         sender.send(pending.clone()).unwrap();
 
         let result = uut.get(&tx, RpcVersion::V09).unwrap();
