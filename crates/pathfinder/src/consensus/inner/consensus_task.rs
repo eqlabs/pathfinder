@@ -327,20 +327,20 @@ fn dummy_proposal(height: u64, round: Round, proposer: ContractAddress) -> Vec<P
         .as_secs();
     vec![
         ProposalPart::Init(ProposalInit {
-            height,
+            block_number: height,
             round,
             valid_round: None,
             proposer,
         }),
         ProposalPart::BlockInfo(BlockInfo {
-            height,
+            block_number: height,
             timestamp,
             builder: proposer,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
             l1_gas_price_wei: 1000000000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 1000000000,
+            eth_to_strk_rate: 1000000000,
         }),
         ProposalPart::TransactionBatch(vec![]),
         ProposalPart::Fin(ProposalFin {

@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package starknet.sync.state;
+
+import "proto/common.proto";
+import "proto/sync/common.proto";
+
+// optimized for flat storage, not through a trie (not sharing key prefixes)
+message ContractStoredValue {
+    starknet.common.Felt252 key = 1;
+    starknet.common.Felt252 value = 2;
+}
+
+message ContractDiff {
+    starknet.common.Address address = 1;
+    optional starknet.common.Felt252 nonce = 2;  // Present only if the nonce was updated
+    optional starknet.common.Hash class_hash = 3;  // Present only if the contract was deployed or replaced in this block.
+    repeated ContractStoredValue values = 4;
+    starknet.common.VolitionDomain domain = 5;
+}
+
+message DeclaredClass {
+    starknet.common.Hash class_hash = 1;
+    optional starknet.common.Hash compiled_class_hash = 2;  // Present only if the class is Cairo1
+}
+
+message StateDiffsRequest {
+    starknet.sync.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message StateDiffsResponse {
+    // All of the messages related to a block need to be sent before a message from the next block is sent.
+    oneof state_diff_message {
+        ContractDiff contract_diff = 1; // Multiple contract diffs for the same contract may appear continuously if the diff is too large or if it's more convenient.
+        DeclaredClass declared_class = 2;
+        starknet.common.Fin fin = 3; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its state diff.
+    }
+}

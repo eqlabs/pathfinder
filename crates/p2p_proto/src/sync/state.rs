@@ -5,18 +5,19 @@ use pathfinder_crypto::Felt;
 use pathfinder_tagged::Tagged;
 use pathfinder_tagged_debug_derive::TaggedDebug;
 
-use crate::common::{Address, Hash, Iteration, VolitionDomain};
+use crate::common::{Address, Hash, VolitionDomain};
+use crate::sync::common::Iteration;
 use crate::{proto, proto_field, ToProtobuf, TryFromProtobuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::state::ContractStoredValue")]
+#[protobuf(name = "crate::proto::sync::state::ContractStoredValue")]
 pub struct ContractStoredValue {
     pub key: Felt,
     pub value: Felt,
 }
 
 #[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, TaggedDebug)]
-#[protobuf(name = "crate::proto::state::ContractDiff")]
+#[protobuf(name = "crate::proto::sync::state::ContractDiff")]
 pub struct ContractDiff {
     pub address: Address,
     #[optional]
@@ -28,7 +29,7 @@ pub struct ContractDiff {
 }
 
 #[derive(Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, TaggedDebug)]
-#[protobuf(name = "crate::proto::state::DeclaredClass")]
+#[protobuf(name = "crate::proto::sync::state::DeclaredClass")]
 pub struct DeclaredClass {
     pub class_hash: Hash,
     // Present only if the class is Cairo1
@@ -37,7 +38,7 @@ pub struct DeclaredClass {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::state::StateDiffsRequest")]
+#[protobuf(name = "crate::proto::sync::state::StateDiffsRequest")]
 pub struct StateDiffsRequest {
     pub iteration: Iteration,
 }
@@ -50,14 +51,14 @@ pub enum StateDiffsResponse {
     Fin,
 }
 
-impl ToProtobuf<proto::state::StateDiffsResponse> for StateDiffsResponse {
-    fn to_protobuf(self) -> proto::state::StateDiffsResponse {
-        use proto::state::state_diffs_response::StateDiffMessage::{
+impl ToProtobuf<proto::sync::state::StateDiffsResponse> for StateDiffsResponse {
+    fn to_protobuf(self) -> proto::sync::state::StateDiffsResponse {
+        use proto::sync::state::state_diffs_response::StateDiffMessage::{
             ContractDiff,
             DeclaredClass,
             Fin,
         };
-        proto::state::StateDiffsResponse {
+        proto::sync::state::StateDiffsResponse {
             state_diff_message: Some(match self {
                 Self::ContractDiff(contract_diff) => ContractDiff(contract_diff.to_protobuf()),
                 Self::DeclaredClass(declared_class) => DeclaredClass(declared_class.to_protobuf()),
@@ -67,12 +68,12 @@ impl ToProtobuf<proto::state::StateDiffsResponse> for StateDiffsResponse {
     }
 }
 
-impl TryFromProtobuf<proto::state::StateDiffsResponse> for StateDiffsResponse {
+impl TryFromProtobuf<proto::sync::state::StateDiffsResponse> for StateDiffsResponse {
     fn try_from_protobuf(
-        input: proto::state::StateDiffsResponse,
+        input: proto::sync::state::StateDiffsResponse,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::state::state_diffs_response::StateDiffMessage::{
+        use proto::sync::state::state_diffs_response::StateDiffMessage::{
             ContractDiff,
             DeclaredClass,
             Fin,

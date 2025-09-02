@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package starknet.discovery;
+
+import "proto/common.proto";
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MessageOptions {
+    optional bytes powDifficulty = 1001;
+}
+
+message MultiAddress {
+    bytes value = 1;
+}
+
+// advertise what queries a peer can reply to (it can always query others for whatever it wants)
+message Capability {
+    string protocol = 1;
+    bytes capability = 2; // The content of the capability.
+                          // It should be the encoding of a protobuf message without length prefix.
+                          // The type of message is deduced from the protocol.
+}
+
+message Pow {
+    // ~10 seconds on a single CPU. 2^240 out of 2^256, so 16 bits of difficulty.
+    option (powDifficulty) = "0x200000000000000000000000000000000000000000000000000000000000";
+
+    bytes blockHash = 1; // one of the accepted block hashes in the underlying layer (ethereum in starknet).
+                         // accepted is currently the current last or one before it.
+    bytes salt = 2;  // a salt such that keccak(salt||blockHash||id) is below posDifficulty
+}
+
+// send when joining and periodically (period TBD)
+message Node
+{
+    starknet.common.PeerID id = 1;
+    repeated MultiAddress addresses = 2;
+    repeated Capability capabilities = 3;
+
+    Pow pow = 4;
+}
+
+// when a node joins it can ask peers for the nodes they know
+message NodesRequest {
+    // this can be used to request for peer information when only its id is known. The number of ids is limited (TBD)
+    // we might know only of an id when getting a message through a relayer from a new peer.
+    repeated starknet.common.PeerID ids = 1;
+}
+
+message NodesResponse
+{
+    // a selection of random nodes the peer knows. Limited (TBD exact number).
+    repeated Node nodes = 1;
+}

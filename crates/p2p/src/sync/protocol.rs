@@ -29,7 +29,8 @@ pub(crate) mod codec {
     use std::marker::PhantomData;
 
     use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use p2p_proto::{class, event, header, proto, state, transaction, ToProtobuf, TryFromProtobuf};
+    use p2p_proto::sync::{class, event, header, state, transaction};
+    use p2p_proto::{proto, ToProtobuf, TryFromProtobuf};
     use p2p_stream::Codec;
 
     use super::name;
@@ -41,8 +42,8 @@ pub(crate) mod codec {
         name::Headers,
         header::BlockHeadersRequest,
         header::BlockHeadersResponse,
-        proto::header::BlockHeadersRequest,
-        proto::header::BlockHeadersResponse,
+        proto::sync::header::BlockHeadersRequest,
+        proto::sync::header::BlockHeadersResponse,
         ONE_MIB,
     >;
 
@@ -50,8 +51,8 @@ pub(crate) mod codec {
         name::StateDiffs,
         state::StateDiffsRequest,
         state::StateDiffsResponse,
-        proto::state::StateDiffsRequest,
-        proto::state::StateDiffsResponse,
+        proto::sync::state::StateDiffsRequest,
+        proto::sync::state::StateDiffsResponse,
         ONE_MIB,
     >;
 
@@ -59,8 +60,8 @@ pub(crate) mod codec {
         name::Classes,
         class::ClassesRequest,
         class::ClassesResponse,
-        proto::class::ClassesRequest,
-        proto::class::ClassesResponse,
+        proto::sync::class::ClassesRequest,
+        proto::sync::class::ClassesResponse,
         FOUR_MIB,
     >;
 
@@ -68,8 +69,8 @@ pub(crate) mod codec {
         name::Transactions,
         transaction::TransactionsRequest,
         transaction::TransactionsResponse,
-        proto::transaction::TransactionsRequest,
-        proto::transaction::TransactionsResponse,
+        proto::sync::transaction::TransactionsRequest,
+        proto::sync::transaction::TransactionsResponse,
         ONE_MIB,
     >;
 
@@ -77,8 +78,8 @@ pub(crate) mod codec {
         name::Events,
         event::EventsRequest,
         event::EventsResponse,
-        proto::event::EventsRequest,
-        proto::event::EventsResponse,
+        proto::sync::event::EventsRequest,
+        proto::sync::event::EventsResponse,
         ONE_MIB,
     >;
 

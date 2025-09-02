@@ -5,12 +5,18 @@ use fake::{Dummy, Fake, Faker};
 use futures::channel::mpsc;
 use futures::SinkExt;
 use libp2p::PeerId;
-use p2p_proto::class::{Class, ClassesResponse};
+use p2p_proto::class::Class;
 use p2p_proto::common::{Address, Hash, VolitionDomain};
-use p2p_proto::event::EventsResponse;
-use p2p_proto::header::BlockHeadersResponse;
-use p2p_proto::state::{ContractDiff, ContractStoredValue, DeclaredClass, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionWithReceipt, TransactionsResponse};
+use p2p_proto::sync::class::ClassesResponse;
+use p2p_proto::sync::event::EventsResponse;
+use p2p_proto::sync::header::BlockHeadersResponse;
+use p2p_proto::sync::state::{
+    ContractDiff,
+    ContractStoredValue,
+    DeclaredClass,
+    StateDiffsResponse,
+};
+use p2p_proto::sync::transaction::{TransactionWithReceipt, TransactionsResponse};
 use pathfinder_common::event::Event;
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::{ContractClassUpdate, ContractUpdate, StateUpdateData};
@@ -151,7 +157,7 @@ pub fn txn_resp(tag: i32, transaction_index: u64) -> TransactionsResponse {
     let TestTxn { t, r } = txn(tag, transaction_index);
     let receipt = (&t, r).to_dto();
     let h = t.calculate_hash(ChainId::SEPOLIA_TESTNET, false);
-    let transaction = p2p_proto::transaction::Transaction {
+    let transaction = p2p_proto::sync::transaction::Transaction {
         txn: t.to_dto(),
         transaction_hash: Hash(h.0),
     };
@@ -373,7 +379,7 @@ pub fn event_resp(ev: i32, txn: i32) -> EventsResponse {
     let t = v[0].0;
     let e = v.pop().unwrap().1.pop().unwrap();
 
-    let e = p2p_proto::event::Event {
+    let e = p2p_proto::sync::event::Event {
         transaction_hash: Hash(t.0 .0),
         from_address: e.from_address.0,
         keys: e.keys.iter().map(|x| x.0).collect(),
@@ -381,9 +387,12 @@ pub fn event_resp(ev: i32, txn: i32) -> EventsResponse {
     };
 
     EventsResponse::Event(
-        Tagged::<p2p_proto::event::Event>::get(format!("event response {ev}, txn {txn}"), || e)
-            .unwrap()
-            .data,
+        Tagged::<p2p_proto::sync::event::Event>::get(
+            format!("event response {ev}, txn {txn}"),
+            || e,
+        )
+        .unwrap()
+        .data,
     )
 }
 

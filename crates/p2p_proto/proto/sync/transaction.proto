@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package starknet.sync.transaction;
+
+import "proto/common.proto";
+import "proto/sync/common.proto";
+import "proto/sync/receipt.proto";
+import "proto/transaction.proto";
+
+// TBD: can support a flag to return tx hashes only, good for standalone mempool to remove them,
+// or any node that keeps track of transaction streaming in the consensus.
+message TransactionsRequest {
+    starknet.sync.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request. The order inside each block is
+// according to the execution order.
+message TransactionsResponse {
+    oneof transaction_message {
+        TransactionWithReceipt transaction_with_receipt = 1;
+        starknet.common.Fin fin = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its transactions.
+    }
+}
+
+message TransactionWithReceipt {
+    TransactionInBlock transaction = 1;
+    starknet.sync.receipt.Receipt receipt = 2;
+}
+
+message TransactionInBlock {
+    message DeclareV0WithoutClass {
+        starknet.common.Address sender = 1;
+        starknet.common.Felt252 max_fee = 2;
+        starknet.transaction.AccountSignature signature = 3;
+        starknet.common.Hash class_hash = 4;
+    }
+
+    message DeclareV1WithoutClass {
+        starknet.common.Address sender = 1;
+        starknet.common.Felt252 max_fee = 2;
+        starknet.transaction.AccountSignature signature = 3;
+        starknet.common.Hash class_hash = 4;
+        starknet.common.Felt252 nonce = 5;
+    }
+
+    message DeclareV2WithoutClass {
+        starknet.common.Address sender = 1;
+        starknet.common.Felt252 max_fee = 2;
+        starknet.transaction.AccountSignature signature = 3;
+        starknet.common.Hash class_hash = 4;
+        starknet.common.Felt252 nonce = 5;
+        starknet.common.Hash compiled_class_hash = 6;
+    }
+
+    // see https://external.integration.starknet.io/feeder_gateway/get_transaction?transactionHash=0x41d1f5206ef58a443e7d3d1ca073171ec25fa75313394318fc83a074a6631c3
+    message DeclareV3WithoutClass {
+        starknet.transaction.DeclareV3Common common = 1;
+        starknet.common.Hash class_hash = 2;
+    }
+
+    message Deploy {
+        starknet.common.Hash class_hash = 1;
+        starknet.common.Felt252 address_salt = 2;
+        repeated starknet.common.Felt252 calldata = 3;
+        uint32 version = 4;
+    }
+
+    message DeployAccountV1 {
+        starknet.common.Felt252 max_fee = 1;
+        starknet.transaction.AccountSignature signature = 2;
+        starknet.common.Hash class_hash = 3;
+        starknet.common.Felt252 nonce = 4;
+        starknet.common.Felt252 address_salt = 5;
+        repeated starknet.common.Felt252 calldata = 6;
+    }
+
+    message InvokeV0 {
+        starknet.common.Felt252 max_fee = 1;
+        starknet.transaction.AccountSignature signature = 2;
+        starknet.common.Address address = 3;
+        starknet.common.Felt252 entry_point_selector = 4;
+        repeated starknet.common.Felt252 calldata = 5;
+    }
+
+    message InvokeV1 {
+        starknet.common.Address sender = 1;
+        starknet.common.Felt252 max_fee = 2;
+        starknet.transaction.AccountSignature signature = 3;
+        repeated starknet.common.Felt252 calldata = 4;
+        starknet.common.Felt252 nonce = 5;
+    }
+
+    oneof txn {
+        DeclareV0WithoutClass declare_v0 = 1;
+        DeclareV1WithoutClass declare_v1 = 2;
+        DeclareV2WithoutClass declare_v2 = 3;
+        DeclareV3WithoutClass declare_v3 = 4;
+        Deploy deploy = 5;
+        DeployAccountV1 deploy_account_v1 = 6;
+        starknet.transaction.DeployAccountV3 deploy_account_v3 = 7;
+        InvokeV0 invoke_v0 = 8;
+        InvokeV1 invoke_v1 = 9;
+        starknet.transaction.InvokeV3 invoke_v3 = 10;
+        starknet.transaction.L1HandlerV0 l1_handler = 11;
+    }
+    starknet.common.Hash transaction_hash = 12;
+}

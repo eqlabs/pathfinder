@@ -1,26 +1,24 @@
 use anyhow::Context;
 use futures::SinkExt;
 use p2p::sync::client::conv::ToDto;
-use p2p_proto::class::{Class, ClassesRequest, ClassesResponse};
-use p2p_proto::common::{
-    Address,
-    BlockNumberOrHash,
-    Direction,
-    Hash,
-    Iteration,
-    Step,
-    VolitionDomain,
-};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{
+use p2p_proto::class::Class;
+use p2p_proto::common::{Address, BlockNumberOrHash, Hash, VolitionDomain};
+use p2p_proto::sync::class::{ClassesRequest, ClassesResponse};
+use p2p_proto::sync::common::{Direction, Iteration, Step};
+use p2p_proto::sync::event::{EventsRequest, EventsResponse};
+use p2p_proto::sync::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::sync::state::{
     ContractDiff,
     ContractStoredValue,
     DeclaredClass,
     StateDiffsRequest,
     StateDiffsResponse,
 };
-use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use p2p_proto::sync::transaction::{
+    TransactionWithReceipt,
+    TransactionsRequest,
+    TransactionsResponse,
+};
 use pathfinder_common::{class_definition, BlockHash, BlockNumber, SignedBlockHeader};
 use pathfinder_storage::{Storage, Transaction};
 use tokio::sync::mpsc;
@@ -295,7 +293,7 @@ fn get_transactions_for_block(
         tracing::trace!(transaction_hash=%txn.hash, "Sending transaction");
 
         let receipt = (&txn.variant, receipt).to_dto();
-        let transaction = p2p_proto::transaction::Transaction {
+        let transaction = p2p_proto::sync::transaction::Transaction {
             txn: txn.variant.to_dto(),
             transaction_hash: Hash(txn.hash.0),
         };
