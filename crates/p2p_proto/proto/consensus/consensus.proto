@@ -103,7 +103,7 @@ message ProposalCommitment {
     starknet.common.Hash                   transaction_commitment       = 9;
     starknet.common.Hash                   event_commitment             = 10;
     starknet.common.Hash                   receipt_commitment           = 11;
-    // Lets for the 5 preceeding commitments.
+    // Lets for the 5 preceding commitments.
     // TODO: Just put the sizes explicitly? This is relatively free compared actually hashing the
     // lists we commit to. If not, should we also pack other fields?
     starknet.common.Felt252                concatenated_counts          = 12;
