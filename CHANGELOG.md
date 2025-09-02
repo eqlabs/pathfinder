@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `--rpc.disable-batch-requests` CLI option, for instances not wishing to support batch requests.
+
 ### Fixed
 
 - `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
