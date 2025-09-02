@@ -61,6 +61,7 @@ struct ConsensusStreamId {
     pub nonce: u64,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Dummy)]
 pub enum ProposalPart {
     Init(ProposalInit),
