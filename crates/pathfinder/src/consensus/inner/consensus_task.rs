@@ -344,8 +344,13 @@ fn dummy_proposal(height: u64, round: Round, proposer: ContractAddress) -> Vec<P
         }),
         ProposalPart::TransactionBatch(vec![]),
         ProposalPart::Fin(ProposalFin {
-            // For easy debugging
-            proposal_commitment: Hash(Felt::from_u64(height)),
+            // commitment of empty proposal is fixed
+            proposal_commitment: Hash(
+                Felt::from_hex_str(
+                    "0x02A3CE358B96A4A26AC9C0EF4F7A8F878A9F3B1A4757E716874CAC711617CA87",
+                )
+                .unwrap(),
+            ),
         }),
     ]
 }

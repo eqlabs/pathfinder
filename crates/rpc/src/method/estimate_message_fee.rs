@@ -99,7 +99,10 @@ pub async fn estimate_message_fee(
             }
         };
 
-        if !db_tx.contract_exists(input.message.to_address, header.number.into())? {
+        // the error isn't in spec for earlier API versions
+        if (rpc_version >= RpcVersion::V09)
+            && !db_tx.contract_exists(input.message.to_address, header.number.into())?
+        {
             return Err(EstimateMessageFeeError::ContractNotFound);
         }
 
@@ -372,7 +375,7 @@ mod tests {
     #[tokio::test]
     async fn test_estimate_message_fee(#[case] version: RpcVersion) {
         let rpc = setup(Setup::Full).await.expect("RPC context");
-        let result = super::estimate_message_fee(rpc, input(), RPC_VERSION)
+        let result = super::estimate_message_fee(rpc, input(), version)
             .await
             .expect("result");
 
@@ -401,5 +404,61 @@ mod tests {
 
         let error_cause = "Calldata limit (10000) exceeded";
         assert_matches!(err, EstimateMessageFeeError::Custom(e) if e.root_cause().to_string() == error_cause);
+    }
+
+    #[tokio::test]
+    async fn contract_not_found_early() {
+        let rpc = setup(Setup::Full).await.expect("RPC context");
+        let input = EstimateMessageFeeInput {
+            message: MsgFromL1 {
+                to_address: contract_address!(
+                    // incorrect
+                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e370"
+                ),
+                entry_point_selector: EntryPoint::hashed(b"my_l1_handler"),
+                payload: vec![call_param!("0xa")],
+                from_address: EthereumAddress(H160::zero()),
+            },
+            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+        };
+
+        let err = super::estimate_message_fee(rpc, input, RpcVersion::V09)
+            .await
+            .unwrap_err();
+        assert_matches!(err, EstimateMessageFeeError::ContractNotFound);
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[tokio::test]
+    async fn contract_not_found_late(#[case] version: RpcVersion) {
+        let rpc = setup(Setup::Full).await.expect("RPC context");
+        let input = EstimateMessageFeeInput {
+            message: MsgFromL1 {
+                to_address: contract_address!(
+                    // incorrect
+                    "0x57dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e370"
+                ),
+                entry_point_selector: EntryPoint::hashed(b"my_l1_handler"),
+                payload: vec![call_param!("0xa")],
+                from_address: EthereumAddress(H160::zero()),
+            },
+            block_id: BlockId::Number(BlockNumber::new_or_panic(1)),
+        };
+
+        let err = super::estimate_message_fee(rpc, input, version)
+            .await
+            .unwrap_err();
+        let expected_revert_error =
+            "Execution error: Transaction execution has failed:\n0: Error in the called contract \
+             (contract address: \
+             0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e370, class hash: \
+             0x0000000000000000000000000000000000000000000000000000000000000000, selector: \
+             0x031ee153a27e249dc4bade6b861b37ef1e1ea0a4c0bf73b7405a02e9e72f7be3):\nRequested \
+             contract address 0x057dde83c18c0efe7123c36a52d704cf27d5c38cdf0b1e1edc3b0dae3ee4e370 \
+             is not deployed.\n";
+        assert_matches!(err, EstimateMessageFeeError::ContractError { revert_error, revert_error_stack: _ } if revert_error == expected_revert_error);
     }
 }

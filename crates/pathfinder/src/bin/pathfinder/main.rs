@@ -183,6 +183,15 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 Hint: This is usually caused by exceeding the file descriptor limit of your system.
       Try increasing the file limit to using `ulimit` or similar tooling.",
         )?;
+    // like p2p_storage
+    let consensus_storage = storage_manager
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
+        .context(
+            r"Creating database connection pool for consensus
+
+Hint: This is usually caused by exceeding the file descriptor limit of your system.
+      Try increasing the file limit to using `ulimit` or similar tooling.",
+        )?;
 
     let shutdown_storage = storage_manager
         .create_pool(NonZeroU32::new(1).unwrap())
@@ -220,6 +229,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
 
     let rpc_config = pathfinder_rpc::context::RpcConfig {
         batch_concurrency_limit: config.rpc_batch_concurrency_limit,
+        disable_batch_requests: config.disable_batch_requests,
         get_events_event_filter_block_range_limit: config.get_events_event_filter_block_range_limit,
         fee_estimation_epsilon: config.fee_estimation_epsilon,
         versioned_constants_map: config.versioned_constants_map.clone(),
@@ -289,9 +299,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await;
 
+    let chain_id = pathfinder_context.network_id;
     let (consensus_p2p_handle, consensus_p2p_client_and_event_rx) =
-        p2p_network::consensus::start(pathfinder_context.network_id, config.consensus_p2p.clone())
-            .await;
+        p2p_network::consensus::start(chain_id, config.consensus_p2p.clone()).await;
 
     let sync_handle = if config.is_sync_enabled {
         start_sync(
@@ -321,7 +331,14 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         }
 
         if let Some((event_rx, client)) = consensus_p2p_client_and_event_rx {
-            consensus::start(consensus_config, wal_directory, client, event_rx)
+            consensus::start(
+                consensus_config,
+                chain_id,
+                wal_directory,
+                client,
+                consensus_storage,
+                event_rx,
+            )
         } else {
             ConsensusTaskHandles::pending()
         }

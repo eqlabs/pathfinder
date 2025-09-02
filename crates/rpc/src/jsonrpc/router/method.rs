@@ -61,6 +61,12 @@ pub async fn handle_json_rpc_body(
         }
     } else {
         // Batch request.
+        if state.context.config.disable_batch_requests {
+            return Err(RpcRequestError::InvalidRequest(
+                "Batch request denied".to_owned(),
+            ));
+        }
+
         let requests = match serde_json::from_str::<Vec<&RawValue>>(body) {
             Ok(requests) => requests,
             Err(e) => {
