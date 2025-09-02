@@ -690,13 +690,11 @@ async fn consumer(
                             number,
                             pre_latest_data,
                         );
-                        let number_of_transactions = pending
-                            .pre_latest_transactions()
-                            .map(|txs| txs.len())
-                            .unwrap_or(0)
-                            + pending.pending_transactions().len();
+                        let pre_latest_tx_count =
+                            pending.pre_latest_transactions().map(|txs| txs.len());
+                        let pre_confirmed_tx_count = pending.pending_transactions().len();
                         pending_data.send_replace(pending);
-                        tracing::debug!(block_number = %number, %number_of_transactions, "Updated pre-confirmed data");
+                        tracing::debug!(block_number = %number, %pre_confirmed_tx_count, ?pre_latest_tx_count, "Updated pre-confirmed data");
                     }
 
                     None
