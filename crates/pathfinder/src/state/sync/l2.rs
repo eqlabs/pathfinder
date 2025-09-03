@@ -821,6 +821,17 @@ where
                     ),
                 ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
 
+                if let Some(some_head) = &head {
+                    if some_head.1 != block.parent_block_hash {
+                        tracing::info!(
+                            block_number=%block.block_number,
+                            "Reorg detected during bulk sync, falling back to normal sync to handle reorg"
+                        );
+
+                        return Ok(());
+                    }
+                }
+
                 *head = Some((
                     block.block_number,
                     block.block_hash,
