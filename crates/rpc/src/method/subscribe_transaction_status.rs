@@ -256,7 +256,7 @@ impl RpcSubscriptionFlow for SubscribeTransactionStatus {
                                 // order.
 
                                 // 1. Submitted transactions.
-                                if let Some(block) = state.submission_tracker.get(&tx_hash) {
+                                if let Some(block) = state.submission_tracker.get_block(&tx_hash) {
                                     if sender
                                         .send_and_update(
                                             block,
@@ -380,7 +380,7 @@ async fn current_known_tx_status(
     let pending = pending_data.borrow_and_update().clone();
     let status = pending_data_tx_status(&pending, tx_hash).or_else(|| {
         submission_tracker
-            .get(&tx_hash)
+            .get_block(&tx_hash)
             .map(|block| (block, FinalityStatus::Received, None))
     });
 
@@ -1213,6 +1213,7 @@ mod tests {
         router.context.submission_tracker.insert(
             TARGET_TX_HASH,
             crate::method::get_latest_block_or_genesis(&router.context.storage).unwrap(),
+            Default::default(),
         );
 
         // Verify the transaction status subscription.

@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockNumber, ContractAddress};
 use tokio::sync::mpsc;
 
 use crate::context::RpcContext;
-use crate::dto::{TransactionWithHash, TxnFinalityStatus};
+use crate::dto::TransactionWithHash;
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
 use crate::RpcVersion;
 
@@ -13,30 +13,31 @@ pub struct SubscribeNewTransactions;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Params {
-    finality_status: Vec<TxnFinalityStatus>,
+    finality_status: Vec<TxnFinalityStatusWithoutL1Accepted>,
     sender_address: Option<HashSet<ContractAddress>>,
 }
 
 impl Default for Params {
     fn default() -> Self {
         Params {
-            finality_status: vec![TxnFinalityStatus::AcceptedOnL2],
+            finality_status: vec![TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2],
             sender_address: None,
         }
     }
 }
 
 impl Params {
-    fn matches(&self, sender_address: &ContractAddress, finality: TxnFinalityStatus) -> bool {
+    fn matches(
+        &self,
+        sender_address: &ContractAddress,
+        finality: TxnFinalityStatusWithoutL1Accepted,
+    ) -> bool {
         if let Some(addresses) = &self.sender_address {
             if !addresses.contains(sender_address) {
                 return false;
             }
         }
-        if !self.finality_status.contains(&finality) {
-            return false;
-        }
-        true
+        self.finality_status.contains(&finality)
     }
 }
 
@@ -50,9 +51,8 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
                 finality_status: value
                     .deserialize_optional_array("finality_status", |v| {
                         v.deserialize::<TxnFinalityStatusWithoutL1Accepted>()
-                            .map(Into::into)
                     })?
-                    .unwrap_or_else(|| vec![TxnFinalityStatus::AcceptedOnL2]),
+                    .unwrap_or_else(|| vec![TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2]),
                 sender_address: value
                     .deserialize_optional_array("sender_address", |addr| {
                         Ok(ContractAddress(addr.deserialize()?))
@@ -63,34 +63,41 @@ impl crate::dto::DeserializeForVersion for Option<Params> {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TxnFinalityStatusWithoutL1Accepted {
+    Received,
     Candidate,
     PreConfirmed,
     AcceptedOnL2,
+}
+
+impl crate::dto::SerializeForVersion for TxnFinalityStatusWithoutL1Accepted {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        match self {
+            Self::Received => "RECEIVED",
+            Self::Candidate => "CANDIDATE",
+            Self::PreConfirmed => "PRE_CONFIRMED",
+            Self::AcceptedOnL2 => "ACCEPTED_ON_L2",
+        }
+        .serialize(serializer)
+    }
 }
 
 impl crate::dto::DeserializeForVersion for TxnFinalityStatusWithoutL1Accepted {
     fn deserialize(value: crate::dto::Value) -> Result<Self, serde_json::Error> {
         let s: String = value.deserialize()?;
         match s.as_str() {
+            "RECEIVED" => Ok(Self::Received),
             "CANDIDATE" => Ok(Self::Candidate),
             "ACCEPTED_ON_L2" => Ok(Self::AcceptedOnL2),
             "PRE_CONFIRMED" => Ok(Self::PreConfirmed),
             _ => Err(serde::de::Error::unknown_variant(
                 &s,
-                &["ACCEPTED_ON_L2", "PRE_CONFIRMED", "CANDIDATE"],
+                &["ACCEPTED_ON_L2", "PRE_CONFIRMED", "CANDIDATE", "RECEIVED"],
             )),
-        }
-    }
-}
-
-impl From<TxnFinalityStatusWithoutL1Accepted> for TxnFinalityStatus {
-    fn from(status: TxnFinalityStatusWithoutL1Accepted) -> Self {
-        match status {
-            TxnFinalityStatusWithoutL1Accepted::Candidate => TxnFinalityStatus::Candidate,
-            TxnFinalityStatusWithoutL1Accepted::PreConfirmed => TxnFinalityStatus::PreConfirmed,
-            TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2 => TxnFinalityStatus::AcceptedOnL2,
         }
     }
 }
@@ -98,7 +105,7 @@ impl From<TxnFinalityStatusWithoutL1Accepted> for TxnFinalityStatus {
 #[derive(Debug)]
 pub struct Notification {
     transaction: Transaction,
-    finality: TxnFinalityStatus,
+    finality: TxnFinalityStatusWithoutL1Accepted,
 }
 
 impl crate::dto::SerializeForVersion for Notification {
@@ -128,12 +135,19 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
         let params = params.unwrap_or_default();
         let mut blocks = state.notifications.l2_blocks.subscribe();
         let mut pending_data = state.pending_data.0.clone();
+        let submission_tracker = state.submission_tracker.clone();
+        let mut received_watcher = submission_tracker.subscribe();
 
         // Last block sent to the subscriber. Initial value doesn't really matter.
         let mut last_pre_confirmed_block = BlockNumber::GENESIS;
 
         // Set to keep track of sent transactions to avoid duplicates.
         let mut pre_confirmed_sent_txs = HashSet::new();
+
+        // Transactions sent with Received status are kept separately,
+        // because their lifetime doesn't depend on blocks (they
+        // disappear spontaneously from the tracker as time passes).
+        let mut received_sent_txs = BTreeSet::new();
 
         loop {
             tokio::select! {
@@ -149,13 +163,13 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                             if block.block_number == last_pre_confirmed_block {
                                 // Send all transactions that might have been missed in the pre-confirmed block.
                                 for transaction in block.transactions.iter() {
-                                    if !params.matches(&transaction.variant.sender_address(), TxnFinalityStatus::AcceptedOnL2) {
+                                    if !params.matches(&transaction.variant.sender_address(), TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2) {
                                         continue;
                                     }
 
                                     let notification = Notification {
                                         transaction: transaction.clone(),
-                                        finality: TxnFinalityStatus::AcceptedOnL2,
+                                        finality: TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
                                     };
                                     if tx
                                         .send(SubscriptionMessage {
@@ -184,7 +198,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                     }
 
                     let pending = pending_data.borrow_and_update().clone();
-                    let finality_status = pending.block().finality_status();
+                    let finality_status = if pending.is_pre_confirmed() { TxnFinalityStatusWithoutL1Accepted::PreConfirmed } else { TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2 };
 
                     tracing::trace!(block_number=%pending.block_number(), ?finality_status, "Pre-confirmed block update");
 
@@ -194,7 +208,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                     }
 
                     for (transaction, finality_status) in pending.transactions().iter().zip(std::iter::repeat(finality_status)).chain(
-                        pending.candidate_transactions().into_iter().flatten().zip(std::iter::repeat(TxnFinalityStatus::Candidate))
+                        pending.candidate_transactions().into_iter().flatten().zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::Candidate))
                     ) {
                         if pre_confirmed_sent_txs.contains(&(transaction.hash, finality_status)) {
                             continue;
@@ -223,6 +237,57 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                         }
                     }
                 }
+                received_changed = received_watcher.changed() => {
+                    tracing::trace!("got {:?}", received_changed);
+                    if let Err(e) = received_changed {
+                        tracing::debug!(error=%e, "Submission tracker channel closed, stopping subscription");
+                        return Ok(());
+                    }
+
+                    let received_set = received_watcher.borrow_and_update().clone();
+                    for hash in received_set.iter() {
+                        if received_sent_txs.contains(hash) {
+                            continue;
+                        }
+
+                        let Some(variant) = submission_tracker.get_transaction(hash)
+                        else {
+                            continue;
+                        };
+
+                        if !params.matches(&variant.sender_address(), TxnFinalityStatusWithoutL1Accepted::Received) {
+                            continue;
+                        }
+
+                        let notification = Notification {
+                            transaction: Transaction {
+                                hash: *hash,
+                                variant,
+                            },
+                            finality: TxnFinalityStatusWithoutL1Accepted::Received,
+                        };
+                        if tx
+                            .send(SubscriptionMessage {
+                                notification,
+                                // Technically we could use the block
+                                // number tracked with the
+                                // transaction, but that wouldn't be
+                                // useable either - a received
+                                // transaction doesn't have block
+                                // number...
+                                block_number: BlockNumber::GENESIS,
+                                subscription_name: SUBSCRIPTION_NAME,
+                            })
+                            .await
+                            .is_err()
+                        {
+                            // Close subscription.
+                            return Ok(());
+                        }
+                    }
+
+                    received_sent_txs = received_set;
+                }
             }
         }
     }
@@ -239,11 +304,11 @@ mod tests {
     use starknet_gateway_types::reply::PreConfirmedBlock;
     use tokio::sync::{mpsc, watch};
 
-    use super::Params;
+    use super::{Params, TxnFinalityStatusWithoutL1Accepted};
     use crate::context::{RpcContext, WebsocketContext};
-    use crate::dto::TxnFinalityStatus;
     use crate::jsonrpc::websocket::WebsocketHistory;
     use crate::jsonrpc::{handle_json_rpc_socket, RpcResponse};
+    use crate::tracker::SubmittedTransactionTracker;
     use crate::{v09, Notifications, PendingData, RpcVersion};
 
     #[test]
@@ -260,9 +325,9 @@ mod tests {
             params.unwrap(),
             Params {
                 finality_status: vec![
-                    TxnFinalityStatus::AcceptedOnL2,
-                    TxnFinalityStatus::PreConfirmed,
-                    TxnFinalityStatus::Candidate
+                    TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2,
+                    TxnFinalityStatusWithoutL1Accepted::PreConfirmed,
+                    TxnFinalityStatusWithoutL1Accepted::Candidate
                 ],
                 sender_address: Some(
                     [contract_address!("0x1"), contract_address!("0x2")]
@@ -287,9 +352,171 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "unknown variant `ACCEPTED_ON_L1`, expected one of `ACCEPTED_ON_L2`, `PRE_CONFIRMED`, \
-             `CANDIDATE`"
+             `CANDIDATE`, `RECEIVED`"
                 .to_string()
         );
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn received_no_filtering() {
+        let Setup {
+            tx,
+            mut rx,
+            #[allow(unused_variables)]
+            pending_data_tx,
+            submission_tracker,
+            ..
+        } = setup();
+        tx.send(Ok(Message::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_subscribeNewTransactions",
+                "params": {
+                    "finality_status": ["RECEIVED"]
+                }
+            })
+            .to_string()
+            .into(),
+        )))
+        .await
+        .unwrap();
+        let response = rx.recv().await.unwrap().unwrap();
+        let subscription_id = match response {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => {
+                panic!("Expected text message");
+            }
+        };
+        assert_recv_nothing(&mut rx).await;
+
+        // First received update.
+        let block_number = BlockNumber::new_or_panic(1);
+        submission_tracker.insert(
+            transaction_hash!("0x3"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x1")),
+        );
+        submission_tracker.insert(
+            transaction_hash!("0x4"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x2")),
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x1", "0x3", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x2", "0x4", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn received_with_pre_confirmed() {
+        let Setup {
+            tx,
+            mut rx,
+            pending_data_tx,
+            submission_tracker,
+            ..
+        } = setup();
+        tx.send(Ok(Message::Text(
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_subscribeNewTransactions",
+                "params": {
+                    "finality_status": ["RECEIVED", "PRE_CONFIRMED"]
+                }
+            })
+            .to_string()
+            .into(),
+        )))
+        .await
+        .unwrap();
+        let response = rx.recv().await.unwrap().unwrap();
+        let subscription_id = match response {
+            Message::Text(json) => {
+                let json: serde_json::Value = serde_json::from_str(&json).unwrap();
+                assert_eq!(json["jsonrpc"], "2.0");
+                assert_eq!(json["id"], 1);
+                json["result"].as_str().unwrap().parse().unwrap()
+            }
+            _ => {
+                panic!("Expected text message");
+            }
+        };
+        assert_recv_nothing(&mut rx).await;
+
+        // First received update.
+        let block_number = BlockNumber::new_or_panic(1);
+        submission_tracker.insert(
+            transaction_hash!("0x3"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x1")),
+        );
+        submission_tracker.insert(
+            transaction_hash!("0x4"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x2")),
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x1", "0x3", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x2", "0x4", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
+
+        // First pre-confirmed block update.
+        pending_data_tx
+            .send(sample_pre_confirmed_block(
+                BlockNumber::new_or_panic(1),
+                vec![
+                    (contract_address!("0x1"), transaction_hash!("0x3")),
+                    (contract_address!("0x2"), transaction_hash!("0x4")),
+                ],
+                vec![],
+            ))
+            .unwrap();
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_pre_confirmed_transaction_message("0x1", "0x3", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_pre_confirmed_transaction_message("0x2", "0x4", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
+
+        submission_tracker.insert(
+            transaction_hash!("0x5"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x1")),
+        );
+        submission_tracker.insert(
+            transaction_hash!("0x6"),
+            block_number,
+            sample_transaction_variant(contract_address!("0x2")),
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x1", "0x5", subscription_id)
+        );
+        assert_eq!(
+            recv(&mut rx).await,
+            sample_received_transaction_message("0x2", "0x6", subscription_id)
+        );
+        assert_recv_nothing(&mut rx).await;
     }
 
     #[test_log::test(tokio::test)]
@@ -594,6 +821,7 @@ mod tests {
             tx,
             mut rx,
             pending_data_tx,
+            submission_tracker: _,
             notifications,
         } = setup();
         tx.send(Ok(Message::Text(
@@ -710,6 +938,7 @@ mod tests {
             tx,
             mut rx,
             pending_data_tx,
+            submission_tracker: _,
             notifications,
         } = setup();
         tx.send(Ok(Message::Text(
@@ -884,28 +1113,20 @@ mod tests {
         PendingData::from_pre_confirmed_block(pre_confirmed_block, block_number)
     }
 
+    fn sample_received_transaction_message(
+        sender_address: &str,
+        hash: &str,
+        subscription_id: u64,
+    ) -> serde_json::Value {
+        sample_transaction_message_ex(sender_address, hash, subscription_id, "RECEIVED")
+    }
+
     fn sample_pre_confirmed_transaction_message(
         sender_address: &str,
         hash: &str,
         subscription_id: u64,
     ) -> serde_json::Value {
-        serde_json::json!({
-            "jsonrpc":"2.0",
-            "method":"starknet_subscriptionNewTransaction",
-            "params": {
-                "result": {
-                    "class_hash": "0x0",
-                    "max_fee": "0x0",
-                    "sender_address": sender_address,
-                    "signature": [],
-                    "transaction_hash": hash,
-                    "type": "DECLARE",
-                    "version": "0x0",
-                    "finality_status": "PRE_CONFIRMED",
-                },
-                "subscription_id": subscription_id.to_string()
-            }
-        })
+        sample_transaction_message_ex(sender_address, hash, subscription_id, "PRE_CONFIRMED")
     }
 
     fn sample_candidate_transaction_message(
@@ -913,29 +1134,22 @@ mod tests {
         hash: &str,
         subscription_id: u64,
     ) -> serde_json::Value {
-        serde_json::json!({
-            "jsonrpc":"2.0",
-            "method":"starknet_subscriptionNewTransaction",
-            "params": {
-                "result": {
-                    "class_hash": "0x0",
-                    "max_fee": "0x0",
-                    "sender_address": sender_address,
-                    "signature": [],
-                    "transaction_hash": hash,
-                    "type": "DECLARE",
-                    "version": "0x0",
-                    "finality_status": "CANDIDATE",
-                },
-                "subscription_id": subscription_id.to_string()
-            }
-        })
+        sample_transaction_message_ex(sender_address, hash, subscription_id, "CANDIDATE")
     }
 
     fn sample_transaction_message(
         sender_address: &str,
         hash: &str,
         subscription_id: u64,
+    ) -> serde_json::Value {
+        sample_transaction_message_ex(sender_address, hash, subscription_id, "ACCEPTED_ON_L2")
+    }
+
+    fn sample_transaction_message_ex(
+        sender_address: &str,
+        hash: &str,
+        subscription_id: u64,
+        finality_status: &str,
     ) -> serde_json::Value {
         serde_json::json!({
             "jsonrpc":"2.0",
@@ -949,7 +1163,7 @@ mod tests {
                     "transaction_hash": hash,
                     "type": "DECLARE",
                     "version": "0x0",
-                    "finality_status": "ACCEPTED_ON_L2",
+                    "finality_status": finality_status,
                 },
                 "subscription_id": subscription_id.to_string()
             }
@@ -990,6 +1204,13 @@ mod tests {
         }
     }
 
+    fn sample_transaction_variant(sender_address: ContractAddress) -> TransactionVariant {
+        TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
+            sender_address,
+            ..Default::default()
+        })
+    }
+
     fn sample_header(block_number: u64) -> BlockHeader {
         BlockHeader {
             hash: BlockHash(Felt::from_u64(block_number)),
@@ -1014,6 +1235,7 @@ mod tests {
             .with_notifications(notifications.clone())
             .with_pending_data(pending_data.clone())
             .with_websockets(WebsocketContext::new(WebsocketHistory::Unlimited));
+        let submission_tracker = ctx.submission_tracker.clone();
         let router = v09::register_routes().build(ctx);
         let (sender_tx, sender_rx) = mpsc::channel(1024);
         let (receiver_tx, receiver_rx) = mpsc::channel(1024);
@@ -1022,6 +1244,7 @@ mod tests {
             tx: receiver_tx,
             rx: sender_rx,
             pending_data_tx,
+            submission_tracker,
             notifications,
         }
     }
@@ -1030,6 +1253,7 @@ mod tests {
         tx: mpsc::Sender<Result<Message, axum::Error>>,
         rx: mpsc::Receiver<Result<Message, RpcResponse>>,
         pending_data_tx: watch::Sender<PendingData>,
+        submission_tracker: SubmittedTransactionTracker,
         notifications: Notifications,
     }
 }
