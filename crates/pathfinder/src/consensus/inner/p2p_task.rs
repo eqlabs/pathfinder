@@ -432,6 +432,14 @@ async fn handle_incoming_proposal_part(
             // TODO validate commitment
             Ok(Some((proposal_commitment, ContractAddress(proposer.0))))
         }
+        ProposalPart::TransactionsFin(_transactions_fin) => {
+            // TODO
+            Ok(None)
+        }
+        ProposalPart::ProposalCommitment(_proposal_commitment) => {
+            // TODO
+            Ok(None)
+        }
     }
 }
 
@@ -443,9 +451,9 @@ fn p2p_vote_to_consensus_vote(
             p2p_proto::consensus::VoteType::Prevote => pathfinder_consensus::VoteType::Prevote,
             p2p_proto::consensus::VoteType::Precommit => pathfinder_consensus::VoteType::Precommit,
         },
-        height: vote.height,
+        height: vote.block_number,
         round: vote.round.into(),
-        value: vote.block_hash.map(ConsensusValue),
+        value: vote.proposal_commitment.map(ConsensusValue),
         validator_address: ContractAddress(vote.voter.0),
     }
 }
@@ -458,10 +466,9 @@ fn consensus_vote_to_p2p_vote(
             pathfinder_consensus::VoteType::Prevote => p2p_proto::consensus::VoteType::Prevote,
             pathfinder_consensus::VoteType::Precommit => p2p_proto::consensus::VoteType::Precommit,
         },
-        height: vote.height,
+        block_number: vote.height,
         round: vote.round.as_u32().expect("Round not to be Nil"),
-        block_hash: vote.value.map(|v| v.0),
+        proposal_commitment: vote.value.map(|v| v.0),
         voter: Address(vote.validator_address.0),
-        extension: None,
     }
 }

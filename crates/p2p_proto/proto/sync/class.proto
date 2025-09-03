@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package starknet.sync.class;
+
+import "proto/class.proto";
+import "proto/common.proto";
+import "proto/sync/common.proto";
+
+message ClassesRequest {
+    starknet.sync.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message ClassesResponse {
+    oneof class_message {
+        starknet.class.Class class = 1;
+        starknet.common.Fin   fin   = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its classes.
+    }
+}

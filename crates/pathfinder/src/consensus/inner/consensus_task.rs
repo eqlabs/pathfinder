@@ -13,10 +13,11 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
+use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::ContractAddress;
+use pathfinder_common::{BlockHash, BlockNumber, ConsensusInfo, ContractAddress};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -32,7 +33,7 @@ use pathfinder_consensus::{
     ValidatorSet,
 };
 use pathfinder_crypto::Felt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
@@ -42,6 +43,7 @@ pub fn spawn(
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
+    info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let mut current_height_file = wal_directory.clone();
     current_height_file.pop();
@@ -100,9 +102,10 @@ pub fn spawn(
                 }
             })
             .collect::<Vec<Validator<_>>>();
-        tracing::trace!("Validators: {:#?}", validators);
 
         let validator_set = ValidatorSet::new(validators);
+
+        tracing::trace!("Validator set: {:#?}", validator_set);
 
         let mut started_heights = HashSet::new();
 
@@ -216,6 +219,28 @@ pub fn spawn(
                             // TODO commit the block to storage
                             // commit_block(height, hash);
 
+                            let reported_height = BlockNumber::new(height).context(format!(
+                                "Decided on height that exceeds i64::MAX: {height}"
+                            ))?;
+                            let reported_value = BlockHash(value.0 .0);
+
+                            info_watch_tx.send_if_modified(|info| {
+                                let do_update = match info {
+                                    Some(info) => {
+                                        reported_height > info.highest_decided_height
+                                            || reported_value != info.highest_decided_value
+                                    }
+                                    None => true,
+                                };
+                                if do_update {
+                                    *info = Some(ConsensusInfo {
+                                        highest_decided_height: reported_height,
+                                        highest_decided_value: reported_value,
+                                    });
+                                }
+                                do_update
+                            });
+
                             let current_height_file = current_height_file.clone();
                             let _ = util::task::spawn_blocking(move |_| {
                                 std::fs::write(current_height_file, current_height.to_string())
@@ -246,7 +271,7 @@ pub fn spawn(
                             // What is the best way to handle them?
                             tracing::error!("🧠 ❌ {validator_address} consensus error: {error:?}");
                             // Bail out, stop the consensus
-                            break;
+                            return Err(error);
                         }
                     }
                 }
@@ -301,8 +326,6 @@ pub fn spawn(
             // in the outer select.
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-
-        Ok(())
     })
 }
 
@@ -327,20 +350,20 @@ fn dummy_proposal(height: u64, round: Round, proposer: ContractAddress) -> Vec<P
         .as_secs();
     vec![
         ProposalPart::Init(ProposalInit {
-            height,
+            block_number: height,
             round,
             valid_round: None,
             proposer,
         }),
         ProposalPart::BlockInfo(BlockInfo {
-            height,
+            block_number: height,
             timestamp,
             builder: proposer,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
             l1_gas_price_wei: 1000000000,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 1000000000,
+            eth_to_strk_rate: 1000000000,
         }),
         ProposalPart::TransactionBatch(vec![]),
         ProposalPart::Fin(ProposalFin {

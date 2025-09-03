@@ -1,11 +1,12 @@
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 
-use pathfinder_common::{contract_address, ChainId, ContractAddress};
+use pathfinder_common::{contract_address, ChainId, ConsensusInfo, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{NativeClassCache, TraceCache, VersionedConstantsMap};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use tokio::sync::watch;
 use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
@@ -92,6 +93,7 @@ pub struct RpcContext {
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
     pub native_class_cache: Option<NativeClassCache>,
+    pub consensus_info_watch: Option<watch::Receiver<Option<ConsensusInfo>>>,
 }
 
 impl RpcContext {
@@ -133,6 +135,7 @@ impl RpcContext {
             ethereum,
             config,
             native_class_cache,
+            consensus_info_watch: None,
         }
     }
 
@@ -155,6 +158,16 @@ impl RpcContext {
     pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
         Self {
             websocket: Some(websockets),
+            ..self
+        }
+    }
+
+    pub fn with_consensus_info_watch(
+        self,
+        consensus_info_watch: watch::Receiver<Option<ConsensusInfo>>,
+    ) -> Self {
+        Self {
+            consensus_info_watch: Some(consensus_info_watch),
             ..self
         }
     }

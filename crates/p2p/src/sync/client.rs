@@ -1,10 +1,10 @@
 use futures::channel::mpsc::Receiver as ResponseReceiver;
 use libp2p::PeerId;
-use p2p_proto::class::{ClassesRequest, ClassesResponse};
-use p2p_proto::event::{EventsRequest, EventsResponse};
-use p2p_proto::header::{BlockHeadersRequest, BlockHeadersResponse};
-use p2p_proto::state::{StateDiffsRequest, StateDiffsResponse};
-use p2p_proto::transaction::{TransactionsRequest, TransactionsResponse};
+use p2p_proto::sync::class::{ClassesRequest, ClassesResponse};
+use p2p_proto::sync::event::{EventsRequest, EventsResponse};
+use p2p_proto::sync::header::{BlockHeadersRequest, BlockHeadersResponse};
+use p2p_proto::sync::state::{StateDiffsRequest, StateDiffsResponse};
+use p2p_proto::sync::transaction::{TransactionsRequest, TransactionsResponse};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::core;

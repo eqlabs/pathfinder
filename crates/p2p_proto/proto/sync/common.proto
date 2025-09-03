@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package starknet.sync.common;
+
+import "proto/common.proto";
+
+message StateDiffCommitment {
+    uint64 state_diff_length = 1;
+    starknet.common.Hash root = 2;
+}
+
+message Iteration {
+    enum Direction {
+        Forward  = 0;
+        Backward = 1;
+    }
+    oneof start {
+        uint64 block_number = 1;
+        starknet.common.Hash header = 2;
+    }
+    Direction direction = 3;
+    uint64 limit = 4;
+    uint64 step = 5;  // to allow interleaving from several nodes
+    // bool interleave = 6; // return results in any order of blocks, per block the messages should still be in the order specified
+}

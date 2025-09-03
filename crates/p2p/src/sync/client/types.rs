@@ -61,8 +61,8 @@ pub type TransactionData = Vec<(Transaction, Receipt)>;
 
 pub type EventsForBlockByTransaction = (BlockNumber, Vec<(TransactionHash, Vec<Event>)>);
 
-impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
-    fn try_from_dto(dto: p2p_proto::header::SignedBlockHeader) -> anyhow::Result<Self> {
+impl TryFromDto<p2p_proto::sync::header::SignedBlockHeader> for SignedBlockHeader {
+    fn try_from_dto(dto: p2p_proto::sync::header::SignedBlockHeader) -> anyhow::Result<Self> {
         anyhow::ensure!(dto.signatures.len() == 1, "expected exactly one signature");
         let signature = dto
             .signatures
@@ -79,10 +79,10 @@ impl TryFromDto<p2p_proto::header::SignedBlockHeader> for SignedBlockHeader {
                 parent_hash: BlockHash(dto.parent_hash.0),
                 number: BlockNumber::new(dto.number).context("block number > i64::MAX")?,
                 timestamp: BlockTimestamp::new(dto.time).context("block timestamp > i64::MAX")?,
-                eth_l1_gas_price: GasPrice(dto.gas_price_wei),
-                strk_l1_gas_price: GasPrice(dto.gas_price_fri),
-                eth_l1_data_gas_price: GasPrice(dto.data_gas_price_wei),
-                strk_l1_data_gas_price: GasPrice(dto.data_gas_price_fri),
+                eth_l1_gas_price: GasPrice(dto.l1_gas_price_wei),
+                strk_l1_gas_price: GasPrice(dto.l1_gas_price_fri),
+                eth_l1_data_gas_price: GasPrice(dto.l1_data_gas_price_wei),
+                strk_l1_data_gas_price: GasPrice(dto.l1_data_gas_price_fri),
                 eth_l2_gas_price: GasPrice(dto.l2_gas_price_wei.unwrap_or_default()),
                 strk_l2_gas_price: GasPrice(dto.l2_gas_price_fri.unwrap_or_default()),
                 sequencer_address: SequencerAddress(dto.sequencer_address.0),
