@@ -790,9 +790,9 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "apollo_compilation_utils"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33c7351331466698b7d18032e66a7ba37785113b2e4a48f54d54f5568df70d6c"
+checksum = "88e46083be9ce864f2adf57b095fe9cd6bc9e665665e3e7272ed95fc47c58593"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-sierra 2.12.0-dev.1",
@@ -809,9 +809,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b863cac2edbf5a124b67a1f5e9250df9ab4f0bafd976517847ffedbdb5dc953e"
+checksum = "0ee1ac19d63f36f543c447a8d75b0c032a34e2ca71706501918d7923eaef1c8e"
 dependencies = [
  "apollo_compilation_utils",
  "apollo_compile_to_native_types",
@@ -823,9 +823,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_compile_to_native_types"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3941d3477c65251d88c5f2e30cf37f4519c0f9cf5332042f7a75ade4dcad2885"
+checksum = "389c8e9ea0c68822b179c75ac3aae646b101c390d01095d993e1ae41287d41d5"
 dependencies = [
  "apollo_config",
  "serde",
@@ -834,9 +834,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_config"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483cc6b6cb527b70d759431e8afa4e77228de139eb7a4fc07e200a25e5ff46ce"
+checksum = "b63c97b0be7573c6e0191c8b34776c64ed1bb621148f7d14d14fef4422d630a4"
 dependencies = [
  "apollo_infra_utils",
  "clap",
@@ -853,9 +853,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_infra_utils"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc215a265d7e1120532f86a0a92b6118b975ea776d313a2203fbef9294c9d8ef"
+checksum = "171220821a924e7c170341fc564553163488a17496194ea5f7d2039f294bc2e4"
 dependencies = [
  "apollo_proc_macros",
  "assert-json-diff",
@@ -872,9 +872,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_metrics"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00d819befc97f0ad6b7ab85546f2dc3546fb4e0faab4b330c3c46824309257c8"
+checksum = "eddd44db0a445e928fd4e78641587ef33e4391f186418089511998a90c2f1f2e"
 dependencies = [
  "indexmap 2.10.0",
  "metrics 0.24.2",
@@ -885,9 +885,9 @@ dependencies = [
 
 [[package]]
 name = "apollo_proc_macros"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26c08dffd7cc954176640782fd55ce45724412dbedc77ea0b6b27330b95ffd92"
+checksum = "a7989de6d0cf43a44d6c69c20f183e23af6959fc2be53f65554e4efaf8e6cb5b"
 dependencies = [
  "lazy_static",
  "proc-macro2",
@@ -1963,9 +1963,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56888e7ed4421c6eeb2b0bc44a715b24cd1d9d3cc6b06e1e80b6688d5b93a313"
+checksum = "63be42f5ff48f7f9065b8b03d137fece1cc153c7aefcffb267abd5abd6e4e09a"
 dependencies = [
  "anyhow",
  "apollo_compilation_utils",
@@ -2011,9 +2011,9 @@ dependencies = [
 
 [[package]]
 name = "blockifier_test_utils"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81be5b363638f8618dda40b810bd768e5cdfa3bc8810a04c37db6d994e87f9d3"
+checksum = "feefdfee072986f1203ee7f04a3b81e7c354ce45242a726299b56f91dcba0859"
 dependencies = [
  "apollo_infra_utils",
  "cairo-lang-starknet-classes",
@@ -10829,9 +10829,9 @@ dependencies = [
 
 [[package]]
 name = "starknet_api"
-version = "0.15.0-rc.3"
+version = "0.15.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "649b7ef2bacdcef1ce3e0b474cafd206e3f8d8050e9e0a7eec69f291a2748e80"
+checksum = "5d8aab893c06cdba387b8ef61a079ae0ccdcb926d6ecca11107f536d788e62a8"
 dependencies = [
  "apollo_infra_utils",
  "base64 0.13.1",
