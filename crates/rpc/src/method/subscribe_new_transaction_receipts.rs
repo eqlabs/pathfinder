@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -6,10 +7,11 @@ use pathfinder_common::transaction::Transaction;
 use pathfinder_common::{BlockHash, BlockNumber, ContractAddress};
 use tokio::sync::mpsc;
 
+use super::REORG_SUBSCRIPTION_NAME;
 use crate::context::RpcContext;
 use crate::dto::{TxnFinalityStatus, TxnReceiptWithBlockInfo};
 use crate::jsonrpc::{RpcError, RpcSubscriptionFlow, SubscriptionMessage};
-use crate::RpcVersion;
+use crate::{Reorg, RpcVersion};
 
 pub struct SubscribeNewTransactionReceipts;
 
@@ -92,7 +94,13 @@ impl From<TxnFinalityStatusWithoutL1Accepted> for TxnFinalityStatus {
 }
 
 #[derive(Debug)]
-pub struct Notification {
+pub enum Notification {
+    EmittedTransaction(Box<TransactionWithReceipt>),
+    Reorg(Arc<Reorg>),
+}
+
+#[derive(Debug)]
+pub struct TransactionWithReceipt {
     block_hash: Option<BlockHash>,
     block_number: BlockNumber,
     receipt: Receipt,
@@ -102,6 +110,18 @@ pub struct Notification {
 }
 
 impl crate::dto::SerializeForVersion for Notification {
+    fn serialize(
+        &self,
+        serializer: crate::dto::Serializer,
+    ) -> Result<crate::dto::Ok, crate::dto::Error> {
+        match self {
+            Notification::EmittedTransaction(tx) => tx.serialize(serializer),
+            Notification::Reorg(reorg) => reorg.serialize(serializer),
+        }
+    }
+}
+
+impl crate::dto::SerializeForVersion for TransactionWithReceipt {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -132,6 +152,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
     ) -> Result<(), RpcError> {
         let params = params.unwrap_or_default();
         let mut blocks = state.notifications.l2_blocks.subscribe();
+        let mut reorgs = state.notifications.reorgs.subscribe();
         let mut pending_data = state.pending_data.0.clone();
 
         // Last block sent to the subscriber. Initial value doesn't really matter.
@@ -142,6 +163,28 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
 
         loop {
             tokio::select! {
+                reorg = reorgs.recv() => {
+                    match reorg {
+                        Ok(reorg) => {
+                            let block_number = reorg.starting_block_number;
+                            if tx.send(SubscriptionMessage {
+                                notification: Notification::Reorg(reorg),
+                                block_number,
+                                subscription_name: REORG_SUBSCRIPTION_NAME,
+                            }).await.is_err() {
+                                return Ok(());
+                            }
+                        }
+                        Err(e) => {
+                            tracing::debug!(
+                                "Error receiving reorg from notifications channel, node might be \
+                                 lagging: {:?}",
+                                e
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
                 block = blocks.recv() => {
                     match block {
                         Err(e) => {
@@ -158,14 +201,14 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                                         continue;
                                     }
 
-                                    let notification = Notification {
+                                    let notification = Notification::EmittedTransaction(Box::new(TransactionWithReceipt {
                                         block_hash: Some(block.block_hash),
                                         block_number: block.block_number,
                                         receipt: receipt.clone(),
                                         transaction: transaction.clone(),
                                         events: events.clone(),
                                         finality: TxnFinalityStatus::AcceptedOnL2,
-                                    };
+                                    }));
                                     if tx
                                         .send(SubscriptionMessage {
                                             notification,
@@ -211,14 +254,14 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                             continue;
                         }
 
-                        let notification = Notification {
+                        let notification = Notification::EmittedTransaction(Box::new(TransactionWithReceipt {
                             block_hash: None,
                             block_number: pending.block_number(),
                             receipt: receipt.clone(),
                             transaction: transaction.clone(),
                             events: events.clone(),
                             finality: finality_status,
-                        };
+                        }));
                         pre_confirmed_sent_txs.insert(transaction.hash);
                         if tx
                             .send(SubscriptionMessage {
