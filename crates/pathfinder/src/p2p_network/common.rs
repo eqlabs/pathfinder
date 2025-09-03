@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use p2p::core::Client;
 use p2p::libp2p::multiaddr::Protocol;
@@ -23,16 +25,14 @@ pub async fn dial_bootnodes<C>(
                 continue;
             }
         };
+
         // TODO: Use exponential backoff with a max retry limit, at least one boot node
         // needs to be reachable for the node to be useful.
         // https://github.com/eqlabs/pathfinder/issues/2937
-        loop {
-            let dial_result = core_client.dial(peer_id, bootstrap_address.clone()).await;
-
-            match dial_result {
+        for _ in 0..5 {
+            match core_client.dial(peer_id, bootstrap_address.clone()).await {
                 Ok(_) => {
                     success = true;
-                    break;
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -40,7 +40,7 @@ pub async fn dial_bootnodes<C>(
                         %error,
                         "Failed to dial bootstrap node, retrying",
                     );
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
         }
