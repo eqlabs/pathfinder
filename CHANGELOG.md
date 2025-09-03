@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- `blockifier` has been upgraded to version 0.15.0-rc.4.
+
 ### Fixed
 
 - `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
