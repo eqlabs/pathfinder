@@ -4,13 +4,15 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
+use p2p_proto::common::Hash;
 use p2p_proto::consensus::{
     BlockInfo,
     ProposalFin,
     ProposalInit,
     TransactionVariant as ConsensusVariant,
 };
-use p2p_proto::transaction::{DeclareV3WithClass, TransactionVariant as SyncVariant};
+use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
+use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
 use pathfinder_common::event::Event;
 use pathfinder_common::receipt::Receipt;
@@ -29,7 +31,7 @@ use pathfinder_common::{
     StateCommitment,
     TransactionHash,
 };
-use pathfinder_executor::types::to_starknet_api_transaction;
+use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
@@ -48,20 +50,28 @@ pub fn new(
     chain_id: ChainId,
     proposal_init: ProposalInit,
 ) -> anyhow::Result<ValidatorBlockInfoStage> {
-    // TODO(validator) how can we validate the proposal init?
-    Ok(ValidatorBlockInfoStage {
-        chain_id,
-        proposal_height: BlockNumber::new(proposal_init.height)
-            .context("ProposalInit height exceeds i64::MAX")?,
-    })
+    ValidatorBlockInfoStage::new(chain_id, proposal_init)
 }
 
+#[derive(Debug)]
 pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
     proposal_height: BlockNumber,
 }
 
 impl ValidatorBlockInfoStage {
+    pub fn new(
+        chain_id: ChainId,
+        proposal_init: ProposalInit,
+    ) -> anyhow::Result<ValidatorBlockInfoStage> {
+        // TODO(validator) how can we validate the proposal init?
+        Ok(ValidatorBlockInfoStage {
+            chain_id,
+            proposal_height: BlockNumber::new(proposal_init.block_number)
+                .context("ProposalInit height exceeds i64::MAX")?,
+        })
+    }
+
     pub fn validate_block_info(
         self,
         block_info: BlockInfo,
@@ -75,7 +85,7 @@ impl ValidatorBlockInfoStage {
     ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
-            height = %block_info.height,
+            height = %block_info.block_number,
             timestamp = %block_info.timestamp,
             builder = %block_info.builder.0,
         )
@@ -87,27 +97,27 @@ impl ValidatorBlockInfoStage {
         } = self;
 
         anyhow::ensure!(
-            proposal_height == block_info.height,
+            proposal_height == block_info.block_number,
             "ProposalInit height does not match BlockInfo height: {} != {}",
             proposal_height,
-            block_info.height,
+            block_info.block_number,
         );
 
         // TODO(validator) validate block info (timestamp, gas prices)
 
         let BlockInfo {
-            height,
+            block_number,
             timestamp,
             builder,
             l1_da_mode,
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
+            eth_to_strk_rate: _,
         } = block_info;
 
         let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            height,
+            block_number,
             timestamp,
             SequencerAddress(builder.0),
             match l1_da_mode {
@@ -116,14 +126,93 @@ impl ValidatorBlockInfoStage {
                     L1DataAvailabilityMode::Calldata
                 }
             },
+            BlockInfoPriceConverter::legacy(
+                l2_gas_price_fri,
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                workaround_l2_gas_price_wei,
+                workaround_l1_gas_price_fri,
+                workaround_l1_data_gas_price_fri,
+            ),
+            workaround_starknet_version,
+        )
+        .context("Creating internal BlockInfo representation")?;
+
+        let block_executor = BlockExecutor::new(
+            chain_id,
+            block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            db_conn,
+        )
+        .context("Creating BlockExecutor")?;
+
+        Ok(ValidatorTransactionBatchStage {
+            chain_id,
+            block_info,
+            block_executor,
+            transactions: Vec::new(),
+            receipts: Vec::new(),
+            events: Vec::new(),
+        })
+    }
+
+    pub fn validate_consensus_block_info(
+        self,
+        block_info: BlockInfo,
+        db_conn: pathfinder_storage::Connection,
+    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
+        let _span = tracing::debug_span!(
+            "Validator::validate_block_info",
+            height = %block_info.block_number,
+            timestamp = %block_info.timestamp,
+            builder = %block_info.builder.0,
+        )
+        .entered();
+
+        let Self {
+            chain_id,
+            proposal_height,
+        } = self;
+
+        anyhow::ensure!(
+            proposal_height == block_info.block_number,
+            "ProposalInit height does not match BlockInfo height: {} != {}",
+            proposal_height,
+            block_info.block_number,
+        );
+
+        // TODO(validator) validate block info (timestamp, gas prices)
+
+        let BlockInfo {
+            block_number,
+            timestamp,
+            builder,
+            l1_da_mode,
             l2_gas_price_fri,
             l1_gas_price_wei,
             l1_data_gas_price_wei,
-            eth_to_fri_rate,
-            workaround_starknet_version,
-            workaround_l2_gas_price_wei,
-            workaround_l1_gas_price_fri,
-            workaround_l1_data_gas_price_fri,
+            eth_to_strk_rate,
+        } = block_info;
+
+        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
+            block_number,
+            timestamp,
+            SequencerAddress(builder.0),
+            match l1_da_mode {
+                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
+                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
+                    L1DataAvailabilityMode::Calldata
+                }
+            },
+            BlockInfoPriceConverter::consensus(
+                l2_gas_price_fri,
+                l1_gas_price_wei,
+                l1_data_gas_price_wei,
+                eth_to_strk_rate,
+            ),
+            StarknetVersion::new(0, 14, 0, 0), /* TODO(validator) should probably come from
+                                                * somewhere... */
         )
         .context("Creating internal BlockInfo representation")?;
 
@@ -318,6 +407,80 @@ impl ValidatorTransactionBatchStage {
             Ok(Err((expected_block_header, header)))
         }
     }
+
+    pub fn consensus_finalize(
+        self,
+        proposal_commitment: Hash,
+    ) -> anyhow::Result<ValidatorFinalizeStage> {
+        let _span = tracing::debug_span!(
+            "Validator::consensus_finalize",
+            height = %self.block_info.number,
+            num_transactions = %self.transactions.len(),
+        )
+        .entered();
+
+        let start = Instant::now();
+
+        let state_diff = self.block_executor.finalize()?;
+
+        let transaction_commitment =
+            calculate_transaction_commitment(&self.transactions, self.block_info.starknet_version)?;
+        let receipt_commitment = calculate_receipt_commitment(&self.receipts)?;
+        let events_ref_by_txn = self
+            .events
+            .iter()
+            .zip(self.transactions.iter().map(|t| t.hash))
+            .map(|(e, h)| (h, e.as_slice()))
+            .collect::<Vec<_>>();
+        let event_commitment =
+            calculate_event_commitment(&events_ref_by_txn, self.block_info.starknet_version)?;
+
+        let state_update = StateUpdateData::from(state_diff);
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
+
+        let header = BlockHeader {
+            hash: BlockHash::ZERO,        // UNUSED
+            parent_hash: BlockHash::ZERO, // UNUSED
+            number: self.block_info.number,
+            timestamp: self.block_info.timestamp,
+            eth_l1_gas_price: self.block_info.eth_l1_gas_price,
+            strk_l1_gas_price: self.block_info.strk_l1_gas_price,
+            eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
+            eth_l2_gas_price: self.block_info.eth_l2_gas_price,
+            strk_l2_gas_price: self.block_info.strk_l2_gas_price,
+            sequencer_address: self.block_info.sequencer_address,
+            starknet_version: self.block_info.starknet_version,
+            event_commitment,
+            state_commitment: StateCommitment::ZERO, // UNUSED
+            transaction_commitment,
+            transaction_count: self.transactions.len(),
+            event_count: self.events.iter().flatten().count(),
+            l1_da_mode: self.block_info.l1_da_mode,
+            receipt_commitment,
+            state_diff_commitment,
+            state_diff_length: state_update.state_diff_length(),
+        };
+
+        debug!(
+            "Block {} finalized in {} ms",
+            self.block_info.number,
+            start.elapsed().as_millis()
+        );
+
+        if state_diff_commitment.0 == proposal_commitment.0 {
+            Ok(ValidatorFinalizeStage {
+                header,
+                state_update,
+            })
+        } else {
+            Err(anyhow::anyhow!(
+                "expected {}, actual {}",
+                proposal_commitment,
+                state_diff_commitment
+            ))
+        }
+    }
 }
 
 pub struct ValidatorFinalizeStage {
@@ -390,6 +553,11 @@ impl ValidatorFinalizeStage {
     }
 }
 
+pub enum ValidatorStage {
+    BlockInfo(ValidatorBlockInfoStage),
+    TransactionBatch(Box<ValidatorTransactionBatchStage>),
+}
+
 /// Maps consensus transaction to a pair of:
 /// - common transaction, which is used for verifying the transaction hash
 /// - executor transaction, which is used for executing the transaction
@@ -404,9 +572,13 @@ fn try_map_transaction(
         transaction_hash,
     } = transaction;
     let (variant, class_info) = match txn {
-        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => {
-            (SyncVariant::DeclareV3(common), Some(class_info(class)?))
-        }
+        ConsensusVariant::DeclareV3(DeclareV3WithClass { common, class }) => (
+            SyncVariant::DeclareV3(DeclareV3WithoutClass {
+                common,
+                class_hash: Default::default(),
+            }),
+            Some(class_info(class)?),
+        ),
         ConsensusVariant::DeployAccountV3(v) => (SyncVariant::DeployAccountV3(v), None),
         ConsensusVariant::InvokeV3(v) => (SyncVariant::InvokeV3(v), None),
         ConsensusVariant::L1HandlerV0(v) => (SyncVariant::L1HandlerV0(v), None),

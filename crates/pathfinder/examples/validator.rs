@@ -162,6 +162,7 @@ enum ConsensusTaskEvent {
     CommandFromP2P(ConsensusCommand<ConsensusValue, NodeAddress>),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum P2PTaskEvent {
     /// An event coming from the P2P network (from the consensus P2P network
     /// main loop).
@@ -831,6 +832,14 @@ fn handle_incoming_proposal_part(
             // TODO validate commitment
             Ok(Some((proposal_commitment, *proposer)))
         }
+        ProposalPart::TransactionsFin(_transactions_fin) => {
+            // TODO
+            Ok(None)
+        }
+        ProposalPart::ProposalCommitment(_proposal_commitment) => {
+            // TODO
+            Ok(None)
+        }
     }
 }
 
@@ -844,21 +853,21 @@ fn sepolia_block_6_based_proposal(
     let round = round.as_u32().expect("Round not to be Nil???");
     vec![
         ProposalPart::Init(ProposalInit {
-            height,
+            block_number: height,
             round,
             valid_round: None,
             proposer,
         }),
         // Some "real" payload
         ProposalPart::BlockInfo(BlockInfo {
-            height: 0,
+            block_number: height,
             timestamp: 1700483673,
             builder: proposer,
             l1_da_mode: L1DataAvailabilityMode::Calldata,
             l2_gas_price_fri: 1,
             l1_gas_price_wei: 1000000018,
             l1_data_gas_price_wei: 1,
-            eth_to_fri_rate: 0,
+            eth_to_strk_rate: 0,
         }),
         ProposalPart::TransactionBatch(vec![p2p_proto::consensus::Transaction {
             txn: p2p_proto::consensus::TransactionVariant::L1HandlerV0(
@@ -897,9 +906,9 @@ fn p2p_vote_to_consensus_vote(
             p2p_proto::consensus::VoteType::Prevote => pathfinder_consensus::VoteType::Prevote,
             p2p_proto::consensus::VoteType::Precommit => pathfinder_consensus::VoteType::Precommit,
         },
-        height: vote.height,
+        height: vote.block_number,
         round: vote.round.into(),
-        value: vote.block_hash.map(ConsensusValue),
+        value: vote.proposal_commitment.map(ConsensusValue),
         validator_address: NodeAddress(vote.voter),
     }
 }
@@ -912,10 +921,9 @@ fn consensus_vote_to_p2p_vote(
             pathfinder_consensus::VoteType::Prevote => p2p_proto::consensus::VoteType::Prevote,
             pathfinder_consensus::VoteType::Precommit => p2p_proto::consensus::VoteType::Precommit,
         },
-        height: vote.height,
+        block_number: vote.height,
         round: vote.round.as_u32().expect("Round not to be Nil"),
-        block_hash: vote.value.map(|v| v.0),
+        proposal_commitment: vote.value.map(|v| v.0),
         voter: vote.validator_address.0,
-        extension: None,
     }
 }

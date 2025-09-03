@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package starknet.sync.event;
+
+import "proto/common.proto";
+import "proto/sync/common.proto";
+
+message Event {
+    starknet.common.Hash transaction_hash = 1;
+    starknet.common.Felt252 from_address = 3;
+    repeated starknet.common.Felt252 keys = 4;
+    repeated starknet.common.Felt252 data = 5;
+}
+
+message EventsRequest {
+    starknet.sync.common.Iteration iteration = 1;
+}
+
+// Responses are sent ordered by the order given in the request.
+message EventsResponse {
+    oneof event_message {
+        Event event = 1;
+        starknet.common.Fin fin = 2; // Fin is sent after the peer sent all the data or when it encountered a block that it doesn't have its events.
+    }
+}

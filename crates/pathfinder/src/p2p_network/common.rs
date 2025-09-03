@@ -19,16 +19,27 @@ pub async fn dial_bootnodes<C>(
                 continue;
             }
         };
+        // TODO: Use exponential backoff with a max retry limit, at least one boot node
+        // needs to be reachable for the node to be useful.
+        // https://github.com/eqlabs/pathfinder/issues/2937
+        loop {
+            let dial_result = core_client.dial(peer_id, bootstrap_address.clone()).await;
 
-        match core_client.dial(peer_id, bootstrap_address.clone()).await {
-            Ok(_) => {
-                success = true;
+            match dial_result {
+                Ok(_) => {
+                    success = true;
+                    break;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %bootstrap_address,
+                        %error,
+                        "Failed to dial bootstrap node, retrying",
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                }
             }
-            Err(error) => {
-                tracing::warn!(?error, "Failed dialing {bootstrap_address}");
-                continue;
-            }
-        };
+        }
 
         let relay_listener_address = bootstrap_address.clone().with(Protocol::P2pCircuit);
         if let Err(error) = core_client

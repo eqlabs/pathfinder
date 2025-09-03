@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::num::NonZeroU64;
 
 use fake::Dummy;
 use libp2p_identity::PeerId;
@@ -72,13 +71,6 @@ pub struct Patricia {
     pub root: Hash,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, Default)]
-#[protobuf(name = "crate::proto::common::StateDiffCommitment")]
-pub struct StateDiffCommitment {
-    pub state_diff_length: u64,
-    pub root: Hash,
-}
-
 #[derive(
     Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy, std::hash::Hash,
 )]
@@ -131,30 +123,10 @@ pub enum VolitionDomain {
     L2,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, ToProtobuf, TryFromProtobuf, Dummy)]
-#[protobuf(name = "crate::proto::common::Iteration")]
-pub struct Iteration {
-    pub start: BlockNumberOrHash,
-    pub direction: Direction,
-    pub limit: u64,
-    pub step: Step,
-}
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Dummy)]
 pub enum BlockNumberOrHash {
     Number(u64),
     Hash(Hash),
-}
-
-/// Guaranteed to always be `>= 1`, defaults to `1` if constructed from `None`
-/// or `Some(0)`
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Step(NonZeroU64);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Dummy)]
-pub enum Direction {
-    Forward,
-    Backward,
 }
 
 impl ToProtobuf<proto::common::Felt252> for Felt {
@@ -345,9 +317,9 @@ impl From<Felt> for BlockNumberOrHash {
     }
 }
 
-impl ToProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
-    fn to_protobuf(self) -> proto::common::iteration::Start {
-        use proto::common::iteration::Start::{BlockNumber, Header};
+impl ToProtobuf<proto::sync::common::iteration::Start> for BlockNumberOrHash {
+    fn to_protobuf(self) -> proto::sync::common::iteration::Start {
+        use proto::sync::common::iteration::Start::{BlockNumber, Header};
         match self {
             BlockNumberOrHash::Number(number) => BlockNumber(number),
             BlockNumberOrHash::Hash(hash) => Header(hash.to_protobuf()),
@@ -355,84 +327,15 @@ impl ToProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
     }
 }
 
-impl TryFromProtobuf<proto::common::iteration::Start> for BlockNumberOrHash {
+impl TryFromProtobuf<proto::sync::common::iteration::Start> for BlockNumberOrHash {
     fn try_from_protobuf(
-        input: proto::common::iteration::Start,
+        input: proto::sync::common::iteration::Start,
         field_name: &'static str,
     ) -> Result<Self, std::io::Error> {
-        use proto::common::iteration::Start::{BlockNumber, Header};
+        use proto::sync::common::iteration::Start::{BlockNumber, Header};
         Ok(match input {
             BlockNumber(number) => BlockNumberOrHash::Number(number),
             Header(hash) => BlockNumberOrHash::Hash(Hash::try_from_protobuf(hash, field_name)?),
         })
-    }
-}
-
-impl Step {
-    pub fn into_inner(self) -> u64 {
-        self.0.get()
-    }
-}
-
-impl From<u64> for Step {
-    fn from(input: u64) -> Self {
-        Self(NonZeroU64::new(input).unwrap_or(NonZeroU64::MIN))
-    }
-}
-
-impl From<Option<u64>> for Step {
-    fn from(input: Option<u64>) -> Self {
-        Self::from(input.unwrap_or_default())
-    }
-}
-
-impl Display for Step {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl<T> Dummy<T> for Step {
-    fn dummy_with_rng<R: Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-        Self(rng.gen())
-    }
-}
-
-impl ToProtobuf<u64> for Step {
-    fn to_protobuf(self) -> u64 {
-        self.into_inner()
-    }
-}
-
-impl TryFromProtobuf<u64> for Step {
-    fn try_from_protobuf(input: u64, _: &'static str) -> Result<Self, std::io::Error> {
-        Ok(Self::from(input))
-    }
-}
-
-impl ToProtobuf<i32> for Direction {
-    fn to_protobuf(self) -> i32 {
-        use proto::common::iteration::Direction::{Backward, Forward};
-        match self {
-            Direction::Forward => Forward as i32,
-            Direction::Backward => Backward as i32,
-        }
-    }
-}
-
-impl TryFromProtobuf<i32> for Direction {
-    fn try_from_protobuf(input: i32, field_name: &'static str) -> Result<Self, std::io::Error> {
-        use proto::common::iteration::Direction::{Backward, Forward};
-        Ok(
-            match TryFrom::try_from(input).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    format!("Invalid direction field element {field_name} enum value: {e}"),
-                )
-            })? {
-                Backward => Direction::Backward,
-                Forward => Direction::Forward,
-            },
-        )
     }
 }

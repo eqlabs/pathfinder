@@ -224,7 +224,7 @@ where
     let latest_blocks = latest_n_blocks(&mut db_conn, block_cache_size)
         .await
         .context("Fetching latest blocks from storage")?;
-    let block_chain = BlockChain::with_capacity(1_000, latest_blocks);
+    let block_chain = BlockChain::with_capacity(block_cache_size, latest_blocks);
 
     // Start L2 producer task. Clone the event sender so that the channel remains
     // open even if the producer task fails.

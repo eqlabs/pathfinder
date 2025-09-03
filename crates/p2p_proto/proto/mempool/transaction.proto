@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package starknet.mempool.transaction;
+
+import "proto/common.proto";
+import "proto/transaction.proto";
+
+// Doesn't contain L1Handler, as those don't need to be propagated and can be downloaded from L1.
+message MempoolTransaction {
+    oneof txn {
+        starknet.transaction.DeclareV3WithClass declare_v3 = 1;
+        starknet.transaction.DeployAccountV3 deploy_account_v3 = 2;
+        starknet.transaction.InvokeV3 invoke_v3 = 3;
+    }
+    starknet.common.Hash transaction_hash = 4;
+}

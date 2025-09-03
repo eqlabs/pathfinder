@@ -969,7 +969,7 @@ pub(crate) mod dto {
                 },
                 total_gas_consumed: L1Gas {
                     l1_gas: l1_gas.map(|x| x + rng.next_u32() as u128),
-                    l1_data_gas: l1_data_gas.map(|x| x + rng.next_u32() as u128),
+                    l1_data_gas: Some(0), // Data point no longer present in p2p spec
                 },
             }
         }
@@ -993,7 +993,7 @@ pub(crate) mod dto {
                 },
                 total_gas_consumed: L1Gas {
                     l1_gas: l1_gas.map(|x| x + rng.next_u32() as u128),
-                    l1_data_gas: l1_data_gas.map(|x| x + rng.next_u32() as u128),
+                    l1_data_gas: Some(0), // Data point no longer present in p2p spec
                 },
                 l2_gas_consumed: L2Gas {
                     l2_gas: rng.next_u32() as u128,

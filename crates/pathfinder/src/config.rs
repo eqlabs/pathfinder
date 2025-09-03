@@ -244,6 +244,15 @@ This should only be enabled for debugging purposes as it adds substantial proces
     rpc_batch_concurrency_limit: NonZeroUsize,
 
     #[arg(
+        long = "rpc.disable-batch-requests",
+        long_help = "Disable serving batch requests to JSON-RPC API.",
+        default_value = "false",
+        env = "PATHFINDER_RPC_DISABLE_BATCH_REQUESTS",
+        value_name = "BOOL"
+    )]
+    disable_batch_requests: bool,
+
+    #[arg(
         long = "sync.enable",
         long_help = "Enable syncing the chain",
         env = "PATHFINDER_SYNC_ENABLED",
@@ -815,6 +824,7 @@ pub struct Config {
     pub debug: DebugConfig,
     pub verify_tree_hashes: bool,
     pub rpc_batch_concurrency_limit: NonZeroUsize,
+    pub disable_batch_requests: bool,
     pub is_sync_enabled: bool,
     pub is_rpc_enabled: bool,
     pub gateway_api_key: Option<String>,
@@ -991,29 +1001,42 @@ impl ConsensusConfig {
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
     fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
-        if args.validator_addresses.len() < 2 {
-            Cli::command()
-                .error(
-                    clap::error::ErrorKind::ValueValidation,
-                    "At least 3 validator addresses are required (including this node's address).",
-                )
-                .exit();
-        }
+        args.is_enabled.then(|| {
+            if std::iter::once(
+                &args
+                    .my_validator_address
+                    .expect("Required if `is_enabled` is true"),
+            )
+            .chain(args.validator_addresses.iter())
+            .collect::<HashSet<_>>()
+            .len()
+                < 3
+            {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ValueValidation,
+                        "At least 3 unique validator addresses are required in \
+                         '--consensus.validator-addresses' and '--consensus.my-validator-address' \
+                         combined.",
+                    )
+                    .exit();
+            }
 
-        args.is_enabled.then_some(Self {
-            proposer_address: ContractAddress(
-                args.proposer_address
-                    .expect("Clap requires this to be set if `is_enabled` is true"),
-            ),
-            my_validator_address: ContractAddress(
-                args.my_validator_address
-                    .expect("Clap requires this to be set if `is_enabled` is true"),
-            ),
-            validator_addresses: args
-                .validator_addresses
-                .into_iter()
-                .map(ContractAddress)
-                .collect(),
+            Self {
+                proposer_address: ContractAddress(
+                    args.proposer_address
+                        .expect("Required if `is_enabled` is true"),
+                ),
+                my_validator_address: ContractAddress(
+                    args.my_validator_address
+                        .expect("Required if `is_enabled` is true"),
+                ),
+                validator_addresses: args
+                    .validator_addresses
+                    .into_iter()
+                    .map(ContractAddress)
+                    .collect(),
+            }
         })
     }
 }
@@ -1053,6 +1076,7 @@ impl Config {
             debug: DebugConfig::parse(cli.debug),
             verify_tree_hashes: cli.verify_tree_node_data,
             rpc_batch_concurrency_limit: cli.rpc_batch_concurrency_limit,
+            disable_batch_requests: cli.disable_batch_requests,
             is_sync_enabled: cli.is_sync_enabled,
             is_rpc_enabled: cli.is_rpc_enabled,
             gateway_api_key: cli.gateway_api_key,

@@ -16,8 +16,13 @@ use p2p::sync::client::peer_agnostic::traits::{
 };
 use p2p::sync::client::types::{ClassDefinition, EventsForBlockByTransaction, TransactionData};
 use p2p::PeerData;
-use p2p_proto::common::{BlockNumberOrHash, Direction, Iteration};
-use p2p_proto::transaction::{TransactionWithReceipt, TransactionsRequest, TransactionsResponse};
+use p2p_proto::common::BlockNumberOrHash;
+use p2p_proto::sync::common::{Direction, Iteration};
+use p2p_proto::sync::transaction::{
+    TransactionWithReceipt,
+    TransactionsRequest,
+    TransactionsResponse,
+};
 use pathfinder_block_hashes::BlockHashDb;
 use pathfinder_common::prelude::*;
 use pathfinder_common::receipt::Receipt;

@@ -1,11 +1,12 @@
 use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 
-use pathfinder_common::{contract_address, ChainId, ContractAddress};
+use pathfinder_common::{contract_address, ChainId, ConsensusInfo, ContractAddress};
 use pathfinder_ethereum::EthereumClient;
 use pathfinder_executor::{NativeClassCache, TraceCache, VersionedConstantsMap};
 use pathfinder_storage::Storage;
 use primitive_types::H160;
+use tokio::sync::watch;
 use util::percentage::Percentage;
 
 pub use crate::jsonrpc::websocket::WebsocketContext;
@@ -66,6 +67,7 @@ impl EthContractAddresses {
 #[derive(Clone)]
 pub struct RpcConfig {
     pub batch_concurrency_limit: NonZeroUsize,
+    pub disable_batch_requests: bool,
     pub get_events_event_filter_block_range_limit: NonZeroUsize,
     pub fee_estimation_epsilon: Percentage,
     pub versioned_constants_map: VersionedConstantsMap,
@@ -91,6 +93,7 @@ pub struct RpcContext {
     pub ethereum: EthereumClient,
     pub config: RpcConfig,
     pub native_class_cache: Option<NativeClassCache>,
+    pub consensus_info_watch: Option<watch::Receiver<Option<ConsensusInfo>>>,
 }
 
 impl RpcContext {
@@ -132,6 +135,7 @@ impl RpcContext {
             ethereum,
             config,
             native_class_cache,
+            consensus_info_watch: None,
         }
     }
 
@@ -154,6 +158,16 @@ impl RpcContext {
     pub fn with_websockets(self, websockets: WebsocketContext) -> Self {
         Self {
             websocket: Some(websockets),
+            ..self
+        }
+    }
+
+    pub fn with_consensus_info_watch(
+        self,
+        consensus_info_watch: watch::Receiver<Option<ConsensusInfo>>,
+    ) -> Self {
+        Self {
+            consensus_info_watch: Some(consensus_info_watch),
             ..self
         }
     }
@@ -218,6 +232,7 @@ impl RpcContext {
 
         let config = RpcConfig {
             batch_concurrency_limit: NonZeroUsize::new(8).unwrap(),
+            disable_batch_requests: false,
             get_events_event_filter_block_range_limit: NonZeroUsize::new(1000).unwrap(),
             fee_estimation_epsilon: Percentage::new(10),
             versioned_constants_map: Default::default(),

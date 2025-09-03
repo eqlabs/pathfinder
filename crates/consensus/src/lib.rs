@@ -122,7 +122,7 @@
 //! let mut consensus = Consensus::recover(config, validator_sets);
 //! ```
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::{Debug, Display};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
@@ -817,15 +817,16 @@ pub struct ValidatorSet<A> {
     pub validators: Vec<Validator<A>>,
 }
 
-impl<A: Ord> ValidatorSet<A> {
+impl<A: Clone + Ord> ValidatorSet<A> {
     /// Create a new validator set with the given validators.
     pub fn new(validators: impl IntoIterator<Item = Validator<A>>) -> Self {
-        let mut validators: Vec<_> = validators.into_iter().collect();
-        validators.sort();
-        validators.dedup();
-
+        // Ensure validators are unique by address.
+        let validators: BTreeMap<A, Validator<A>> = validators
+            .into_iter()
+            .map(|v| (v.address.clone(), v))
+            .collect();
         assert!(!validators.is_empty());
-
+        let validators = validators.into_values().collect();
         Self { validators }
     }
 
@@ -984,5 +985,23 @@ impl<A> StaticValidatorSetProvider<A> {
 impl<A: Clone + Send + Sync> ValidatorSetProvider<A> for StaticValidatorSetProvider<A> {
     fn get_validator_set(&self, _height: u64) -> ValidatorSet<A> {
         self.validator_set.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn regression_validator_set_is_unique_by_address() {
+        let with_duplicates = [1, 1, 2, 2, 2, 3, 3, 3, 3, 2, 1, 1, 2, 3, 2, 2, 1, 1, 3, 3]
+            .into_iter()
+            .map(|i| Validator::new(i, crate::PublicKey::from_bytes([0; 32])));
+        let set = ValidatorSet::new(with_duplicates);
+
+        assert_eq!(
+            set.validators.iter().map(|v| v.address).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
     }
 }

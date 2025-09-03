@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use p2p::consensus::{Client, Event};
-use tokio::sync::mpsc;
+use pathfinder_common::{ChainId, ConsensusInfo};
+use pathfinder_storage::Storage;
+use tokio::sync::{mpsc, watch};
 
 use crate::config::ConsensusConfig;
 
@@ -14,6 +16,7 @@ pub type ConsensusEngineTaskHandle = tokio::task::JoinHandle<anyhow::Result<()>>
 pub struct ConsensusTaskHandles {
     pub consensus_p2p_event_processing_handle: ConsensusP2PEventProcessingTaskHandle,
     pub consensus_engine_handle: ConsensusEngineTaskHandle,
+    pub consensus_info_watch: Option<watch::Receiver<Option<ConsensusInfo>>>,
 }
 
 impl ConsensusTaskHandles {
@@ -21,17 +24,27 @@ impl ConsensusTaskHandles {
         Self {
             consensus_p2p_event_processing_handle: tokio::task::spawn(std::future::pending()),
             consensus_engine_handle: tokio::task::spawn(std::future::pending()),
+            consensus_info_watch: None,
         }
     }
 }
 
 pub fn start(
     config: ConsensusConfig,
+    chain_id: ChainId,
+    storage: Storage,
     wal_directory: PathBuf,
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
 ) -> ConsensusTaskHandles {
-    inner::start(config, wal_directory, p2p_client, p2p_event_rx)
+    inner::start(
+        config,
+        chain_id,
+        storage,
+        wal_directory,
+        p2p_client,
+        p2p_event_rx,
+    )
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -40,6 +53,8 @@ mod inner {
 
     pub fn start(
         _: ConsensusConfig,
+        _: ChainId,
+        _: Storage,
         _: PathBuf,
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,

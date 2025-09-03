@@ -5,6 +5,7 @@ pub mod block_hash_and_number;
 pub mod block_number;
 pub mod call;
 pub mod chain_id;
+pub mod consensus_info;
 pub mod estimate_fee;
 pub mod estimate_message_fee;
 pub mod get_block_transaction_count;

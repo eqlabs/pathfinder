@@ -10,7 +10,7 @@ use p2p_proto::consensus::{
     ProposalPart,
     TransactionVariant as ConsensusVariant,
 };
-use p2p_proto::transaction::TransactionVariant as SyncVariant;
+use p2p_proto::sync::transaction::TransactionVariant as SyncVariant;
 use pathfinder_common::transaction::{Transaction, TransactionVariant};
 use pathfinder_common::{
     class_definition,
@@ -160,7 +160,7 @@ fn create_proposal(
     let height = header.number.get();
 
     proposal_parts.push_back(ProposalPart::Init(ProposalInit {
-        height,
+        block_number: height,
         // Decent random value
         round: 42,
         // FIXME
@@ -172,7 +172,7 @@ fn create_proposal(
     use p2p_proto::common::L1DataAvailabilityMode::{Blob, Calldata};
 
     proposal_parts.push_back(ProposalPart::BlockInfo(BlockInfo {
-        height,
+        block_number: height,
         timestamp: header.timestamp.get(),
         // Decent random value
         builder: Address(header.sequencer_address.0),
@@ -183,7 +183,7 @@ fn create_proposal(
         l2_gas_price_fri: header.strk_l2_gas_price.0,
         l1_gas_price_wei: header.eth_l1_gas_price.0,
         l1_data_gas_price_wei: header.eth_l1_data_gas_price.0,
-        eth_to_fri_rate: header.strk_l1_gas_price.0 * ETH_TO_WEI_RATE / header.eth_l1_gas_price.0,
+        eth_to_strk_rate: header.strk_l1_gas_price.0 * ETH_TO_WEI_RATE / header.eth_l1_gas_price.0,
     }));
 
     let txns = db_txn
@@ -213,7 +213,10 @@ fn create_proposal(
                         .context("Class not found")?;
                     let class =
                         serde_json::from_slice::<class_definition::Sierra<'_>>(&class)?.to_dto();
-                    let v = p2p_proto::transaction::DeclareV3WithClass { common, class };
+                    let v = p2p_proto::transaction::DeclareV3WithClass {
+                        common: common.common,
+                        class,
+                    };
                     ConsensusVariant::DeclareV3(v)
                 }
                 SyncVariant::DeployAccountV3(v) => ConsensusVariant::DeployAccountV3(v),
