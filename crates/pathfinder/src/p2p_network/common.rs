@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use p2p::core::Client;
 use p2p::libp2p::multiaddr::Protocol;
 use p2p::libp2p::{Multiaddr, PeerId};
@@ -63,5 +64,5 @@ pub fn ensure_peer_id_in_multiaddr(
             Protocol::P2p(peer_id) => Some(peer_id),
             _ => None,
         })
-        .ok_or_else(|| anyhow::anyhow!(msg))
+        .context(msg)
 }
