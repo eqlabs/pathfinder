@@ -100,7 +100,3 @@ starknet-gateway-test-fixtures = { path = "../gateway-test-fixtures" }
 test-log = { workspace = true, features = ["trace"] }
 tokio = { workspace = true, features = ["test-util"] }
 warp = { workspace = true }
-
-[[example]]
-name = "validator"
-required-features = ["p2p"]
