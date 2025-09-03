@@ -39,11 +39,14 @@ mod inner {
     use tracing::Instrument;
 
     use super::sync_handlers::{
-        get_classes, get_events, get_headers, get_state_diffs, get_transactions,
+        get_classes,
+        get_events,
+        get_headers,
+        get_state_diffs,
+        get_transactions,
     };
     use crate::config::p2p::P2PSyncConfig;
-    use crate::p2p_network::common::dial_bootnodes;
-    use crate::p2p_network::common::ensure_peer_id_in_multiaddr;
+    use crate::p2p_network::common::{dial_bootnodes, ensure_peer_id_in_multiaddr};
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]

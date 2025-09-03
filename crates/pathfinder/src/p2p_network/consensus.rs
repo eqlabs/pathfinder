@@ -34,8 +34,7 @@ mod inner {
 
     use super::*;
     use crate::config::p2p::P2PConsensusConfig;
-    use crate::p2p_network::common::dial_bootnodes;
-    use crate::p2p_network::common::ensure_peer_id_in_multiaddr;
+    use crate::p2p_network::common::{dial_bootnodes, ensure_peer_id_in_multiaddr};
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]

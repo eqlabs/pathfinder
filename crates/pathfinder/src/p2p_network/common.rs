@@ -1,7 +1,6 @@
-use p2p::{
-    core::Client,
-    libp2p::{multiaddr::Protocol, Multiaddr, PeerId},
-};
+use p2p::core::Client;
+use p2p::libp2p::multiaddr::Protocol;
+use p2p::libp2p::{Multiaddr, PeerId};
 
 pub async fn dial_bootnodes<C>(
     bootstrap_addresses: Vec<Multiaddr>,
