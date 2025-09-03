@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
+- Pathfinder gets stuck in a loop and prints "State root mismatch" errors after starting up from a database with current state that has been re-orged.
 
 ## [0.20.1] - 2025-09-02
 
