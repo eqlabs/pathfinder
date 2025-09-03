@@ -29,7 +29,7 @@ mod inner {
     use std::time::Duration;
 
     use anyhow::Context;
-    use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
+    use p2p::libp2p::multiaddr::Protocol;
     use p2p::sync::client::peer_agnostic;
     use p2p::sync::client::peer_agnostic::Client;
     use p2p::sync::Event;
@@ -39,13 +39,11 @@ mod inner {
     use tracing::Instrument;
 
     use super::sync_handlers::{
-        get_classes,
-        get_events,
-        get_headers,
-        get_state_diffs,
-        get_transactions,
+        get_classes, get_events, get_headers, get_state_diffs, get_transactions,
     };
     use crate::config::p2p::P2PSyncConfig;
+    use crate::p2p_network::common::dial_bootnodes;
+    use crate::p2p_network::common::ensure_peer_id_in_multiaddr;
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]
@@ -106,25 +104,8 @@ mod inner {
                 .with_context(|| format!("Starting sync P2P listener: {addr}"))?;
         }
 
-        let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
-            addr.iter()
-                .find_map(|p| match p {
-                    Protocol::P2p(peer_id) => Some(peer_id),
-                    _ => None,
-                })
-                .ok_or_else(|| anyhow::anyhow!(msg))
-        };
-
-        for bootstrap_address in bootstrap_addresses {
-            let peer_id = ensure_peer_id_in_multiaddr(
-                &bootstrap_address,
-                "Bootstrap addresses must include peer ID",
-            )?;
-            core_client.dial(peer_id, bootstrap_address.clone()).await?;
-            core_client
-                .start_listening(bootstrap_address.clone().with(Protocol::P2pCircuit))
-                .await
-                .context("Starting relay listener")?;
+        if !dial_bootnodes(bootstrap_addresses, &core_client).await {
+            anyhow::bail!("Failed to dial any configured bootstrap node")
         }
 
         for peer in predefined_peers {
