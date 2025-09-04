@@ -31,7 +31,11 @@ use clap::{Args, Parser};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{BlockId, Chain};
-use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
+use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
@@ -428,6 +432,22 @@ fn resolve_block(
         .map(|(tx, rx, ev)| (tx, (rx, ev)))
         .unzip();
 
+    let (transaction_commitment, event_commitment) =
+        if header.starknet_version < StarknetVersion::V_0_13_2 {
+            // This needs to be re-calculated because we _always_ store 0.13.2 commitments
+            // in the DB for P2P sync purposes
+            let transaction_commitment =
+                calculate_transaction_commitment(&transactions, header.starknet_version)?;
+            let events: Vec<_> = transaction_receipts
+                .iter()
+                .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
+                .collect();
+            let event_commitment = calculate_event_commitment(&events, header.starknet_version)?;
+            (transaction_commitment, event_commitment)
+        } else {
+            (header.transaction_commitment, header.event_commitment)
+        };
+
     let block_status = tx
         .block_is_l1_accepted(header.number.into())
         .context("Querying block status")?;
@@ -461,8 +481,8 @@ fn resolve_block(
         transactions,
         starknet_version: header.starknet_version,
         l1_da_mode: header.l1_da_mode.into(),
-        transaction_commitment: header.transaction_commitment,
-        event_commitment: header.event_commitment,
+        transaction_commitment,
+        event_commitment,
         receipt_commitment: Some(receipt_commitment),
         state_diff_commitment: Some(header.state_diff_commitment),
         state_diff_length: Some(header.state_diff_length),
