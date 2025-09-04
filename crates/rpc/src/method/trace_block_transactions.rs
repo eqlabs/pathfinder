@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::ChainId;
 use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
@@ -6,6 +7,8 @@ use starknet_gateway_client::GatewayApi;
 use crate::context::RpcContext;
 use crate::executor::{
     ExecutionStateError,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::types::BlockId;
@@ -111,6 +114,21 @@ pub async fn trace_block_transactions(
                     )));
                 }
             }
+        }
+
+        // Mainnet has a block range where re-execution is not possible (we get a
+        // different state diff due to a bug that was present on the sequencer
+        // when these blocks were produced). We should fall back to fetching
+        // traces from the feeder gateway instead.
+        if context.chain_id == ChainId::MAINNET
+            && input.block_id != BlockId::Pending
+            && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
+            && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
+        {
+            return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported((
+                block_id.expect("Pending was handled explicitly above"),
+                transactions,
+            )));
         }
 
         let executor_transactions = transactions

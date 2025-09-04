@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::TransactionHash;
+use pathfinder_common::{ChainId, TransactionHash};
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
@@ -8,6 +8,8 @@ use crate::dto::TransactionTrace;
 use crate::error::{ApplicationError, TraceError};
 use crate::executor::{
     ExecutionStateError,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::method::trace_block_transactions::map_gateway_trace;
@@ -101,6 +103,22 @@ pub async fn trace_transaction(
 
                 if header.starknet_version
                     < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+                {
+                    let transaction = db_tx
+                        .transaction(input.transaction_hash)
+                        .context("Fetching transaction data")?
+                        .context("Transaction data missing")?;
+
+                    return Ok(LocalExecution::Unsupported(transaction));
+                }
+
+                // Mainnet has a block range where re-execution is not possible (we get a
+                // different state diff due to a bug that was present on the
+                // sequencer when these blocks were produced). We should fall
+                // back to fetching traces from the feeder gateway instead.
+                if context.chain_id == ChainId::MAINNET
+                    && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
+                    && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
                 {
                     let transaction = db_tx
                         .transaction(input.transaction_hash)
