@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- reorg notifications for `starknet_subscribeNewTransactions` and `starknet_subscribeNewTransactionReceipts`
+
 ### Changed
 
 - `blockifier` has been upgraded to version 0.15.0-rc.4.
@@ -23,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `--rpc.disable-batch-requests` CLI option, for instances not wishing to support batch requests.
-- reorg notifications for `starknet_subscribeNewTransactions` and `starknet_subscribeNewTransactionReceipts`
 
 ### Fixed
 
