@@ -8,6 +8,7 @@ members = [
     "crates/crypto",
     "crates/ethereum",
     "crates/executor",
+    "crates/feeder-gateway",
     "crates/gateway-client",
     "crates/gateway-test-fixtures",
     "crates/gateway-test-utils",
