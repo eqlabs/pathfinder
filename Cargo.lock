@@ -5187,6 +5187,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "feeder-gateway"
+version = "0.20.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "const-decoder",
+ "pathfinder",
+ "pathfinder-common",
+ "pathfinder-storage",
+ "primitive-types",
+ "serde",
+ "serde_json",
+ "starknet-gateway-types",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "warp",
+]
+
+[[package]]
 name = "ff"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

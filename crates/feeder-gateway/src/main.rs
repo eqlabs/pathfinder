@@ -1,8 +1,7 @@
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example feeder_gateway
-/// ./testnet-sepolia.sqlite`
+/// `cargo run --release -p feeder-gateway ./testnet-sepolia.sqlite`
 ///
 /// Then pathfinder can be run with the following arguments to use this tool as
 /// a sync source:

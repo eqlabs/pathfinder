@@ -8,7 +8,13 @@ rust-version = { workspace = true }
 description = "Common types and utilities for Pathfinder"
 repository = "https://github.com/eqlabs/pathfinder"
 keywords = ["starknet", "ethereum", "blockchain", "web3", "types"]
-categories = ["cryptography::cryptocurrencies", "data-structures", "development-tools", "web-programming", "network-programming"]
+categories = [
+    "cryptography::cryptocurrencies",
+    "data-structures",
+    "development-tools",
+    "web-programming",
+    "network-programming",
+]
 
 [features]
 full-serde = []
@@ -35,8 +41,8 @@ serde_with = { workspace = true }
 sha3 = { workspace = true }
 thiserror = { workspace = true }
 
-[dev-dependencies]
-rstest = { workspace = true }
-
 [build-dependencies]
 vergen = { workspace = true, features = ["git", "gitcl"] }
+
+[dev-dependencies]
+rstest = { workspace = true }

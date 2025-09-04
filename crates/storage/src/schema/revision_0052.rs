@@ -189,7 +189,6 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
 mod dto {
     use std::fmt;
 
-    use fake::{Dummy, Fake, Faker};
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
     use serde::{Deserialize, Serialize};
@@ -255,15 +254,8 @@ mod dto {
         }
     }
 
-    impl<T> Dummy<T> for MinimalFelt {
-        fn dummy_with_rng<R: rand::prelude::Rng + ?Sized>(config: &T, rng: &mut R) -> Self {
-            let felt: Felt = Dummy::dummy_with_rng(config, rng);
-            felt.into()
-        }
-    }
-
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         External,
@@ -397,26 +389,6 @@ mod dto {
         }
     }
 
-    impl<T> Dummy<T> for ExecutionResources {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let (l1_gas, l1_data_gas) = if rng.gen() {
-                (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
-            } else {
-                (None, None)
-            };
-
-            Self {
-                builtins: Faker.fake_with_rng(rng),
-                n_steps: rng.next_u32() as u64,
-                n_memory_holes: rng.next_u32() as u64,
-                data_availability: ExecutionDataAvailability {
-                    l1_gas,
-                    l1_data_gas,
-                },
-            }
-        }
-    }
-
     // This struct purposefully allows for unknown fields as it is not critical to
     // store these counters perfectly. Failure would be far more costly than simply
     // ignoring them.
@@ -491,24 +463,8 @@ mod dto {
         }
     }
 
-    impl<T> Dummy<T> for BuiltinCounters {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                output: rng.next_u32() as u64,
-                pedersen: rng.next_u32() as u64,
-                range_check: rng.next_u32() as u64,
-                ecdsa: rng.next_u32() as u64,
-                bitwise: rng.next_u32() as u64,
-                ec_op: rng.next_u32() as u64,
-                keccak: rng.next_u32() as u64,
-                poseidon: rng.next_u32() as u64,
-                segment_arena: 0, // Not used in p2p
-            }
-        }
-    }
-
     /// Represents deserialized L2 to L1 message.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: MinimalFelt,
@@ -558,7 +514,7 @@ mod dto {
         }
     }
 
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     pub enum ExecutionStatus {
         Succeeded,
         Reverted { reason: String },
@@ -571,7 +527,7 @@ mod dto {
     }
 
     /// Represents deserialized L2 transaction receipt data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct ReceiptV0 {
         pub actual_fee: MinimalFelt,
@@ -630,7 +586,7 @@ mod dto {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     pub enum DataAvailabilityMode {
         L1,
         L2,
@@ -654,7 +610,7 @@ mod dto {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     pub struct ResourceBounds {
         pub l1_gas: ResourceBound,
         pub l2_gas: ResourceBound,
@@ -679,7 +635,7 @@ mod dto {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     pub struct ResourceBound {
         pub max_amount: ResourceAmount,
         pub max_price_per_unit: ResourcePricePerUnit,
@@ -709,7 +665,7 @@ mod dto {
         pub receipt: Receipt,
     }
 
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
         V0 {
@@ -719,7 +675,7 @@ mod dto {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum TransactionVariantV0 {
         DeclareV0(DeclareTransactionV0V1),
@@ -1411,20 +1367,8 @@ mod dto {
         pub sender_address: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for DeclareTransactionV0V1 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                class_hash: Faker.fake_with_rng(rng),
-                max_fee: Faker.fake_with_rng(rng),
-                nonce: TransactionNonce::ZERO.0.into(),
-                sender_address: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-            }
-        }
-    }
-
     /// A version 2 declare transaction.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV2 {
         pub class_hash: MinimalFelt,
@@ -1452,25 +1396,6 @@ mod dto {
         pub compiled_class_hash: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for DeclareTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                class_hash: Faker.fake_with_rng(rng),
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-                sender_address: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                compiled_class_hash: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
-                                                                          * elem only */
-            }
-        }
-    }
-
     /// Represents deserialized L2 deploy transaction data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -1480,18 +1405,6 @@ mod dto {
         pub contract_address_salt: MinimalFelt,
         pub class_hash: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
-    }
-
-    impl<T> Dummy<T> for DeployTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                version: Felt::from_u64(rng.gen_range(0..=1)).into(),
-                contract_address: ContractAddress::ZERO.0.into(), // Faker.fake_with_rng(rng), FIXME
-                contract_address_salt: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
-            }
-        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -1504,34 +1417,6 @@ mod dto {
         pub contract_address_salt: MinimalFelt,
         pub constructor_calldata: Vec<MinimalFelt>,
         pub class_hash: MinimalFelt,
-    }
-
-    impl<T> Dummy<T> for DeployAccountTransactionV1 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let contract_address_salt = Faker.fake_with_rng(rng);
-            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
-            let class_hash = Faker.fake_with_rng(rng);
-
-            Self {
-                contract_address: ContractAddress::deployed_contract_address(
-                    constructor_calldata.iter().copied(),
-                    &contract_address_salt,
-                    &class_hash,
-                )
-                .as_inner()
-                .to_owned()
-                .into(),
-                max_fee: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                nonce: Faker.fake_with_rng(rng),
-                contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
-                constructor_calldata: constructor_calldata
-                    .into_iter()
-                    .map(|x| x.as_inner().to_owned().into())
-                    .collect(),
-                class_hash: class_hash.as_inner().to_owned().into(),
-            }
-        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -1550,39 +1435,6 @@ mod dto {
         pub class_hash: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for DeployAccountTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let contract_address_salt = Faker.fake_with_rng(rng);
-            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
-            let class_hash = Faker.fake_with_rng(rng);
-
-            Self {
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
-                sender_address: ContractAddress::deployed_contract_address(
-                    constructor_calldata.iter().copied(),
-                    &contract_address_salt,
-                    &class_hash,
-                )
-                .as_inner()
-                .to_owned()
-                .into(),
-                signature: Faker.fake_with_rng(rng),
-                contract_address_salt: contract_address_salt.as_inner().to_owned().into(),
-                constructor_calldata: constructor_calldata
-                    .into_iter()
-                    .map(|x| x.as_inner().to_owned().into())
-                    .collect(),
-                class_hash: class_hash.as_inner().to_owned().into(),
-            }
-        }
-    }
-
     /// Represents deserialized L2 invoke transaction v0 data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -1595,21 +1447,8 @@ mod dto {
         pub signature: Vec<MinimalFelt>,
     }
 
-    impl<T> Dummy<T> for InvokeTransactionV0 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                calldata: Faker.fake_with_rng(rng),
-                sender_address: Faker.fake_with_rng(rng),
-                entry_point_selector: Faker.fake_with_rng(rng),
-                entry_point_type: None,
-                max_fee: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-            }
-        }
-    }
-
     /// Represents deserialized L2 invoke transaction v1 data.
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV1 {
         pub calldata: Vec<MinimalFelt>,
@@ -1635,25 +1474,6 @@ mod dto {
         pub sender_address: MinimalFelt,
     }
 
-    impl<T> Dummy<T> for InvokeTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
-                sender_address: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                calldata: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
-                                                                          * elem only */
-            }
-        }
-    }
-
     /// Represents deserialized L2 "L1 handler" transaction data.
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -1663,21 +1483,9 @@ mod dto {
         pub nonce: MinimalFelt,
         pub calldata: Vec<MinimalFelt>,
     }
-
-    impl<T> Dummy<T> for L1HandlerTransactionV0 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                contract_address: Faker.fake_with_rng(rng),
-                entry_point_selector: Faker.fake_with_rng(rng),
-                nonce: Faker.fake_with_rng(rng),
-                calldata: Faker.fake_with_rng(rng),
-            }
-        }
-    }
 }
 
 pub(crate) mod old_dto {
-    use fake::{Dummy, Fake, Faker};
     use pathfinder_common::*;
     use pathfinder_crypto::Felt;
     use pathfinder_serde::{
@@ -1694,7 +1502,7 @@ pub(crate) mod old_dto {
     use serde_with::serde_as;
 
     /// Represents deserialized L2 transaction entry point values.
-    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub enum EntryPointType {
         #[serde(rename = "EXTERNAL")]
@@ -1760,24 +1568,6 @@ pub(crate) mod old_dto {
                 n_memory_holes: value.n_memory_holes,
                 l1_gas: Some(value.data_availability.l1_gas),
                 l1_data_gas: Some(value.data_availability.l1_data_gas),
-            }
-        }
-    }
-
-    impl<T> Dummy<T> for ExecutionResources {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let (l1_gas, l1_data_gas) = if rng.gen() {
-                (Some(rng.next_u32() as u128), Some(rng.next_u32() as u128))
-            } else {
-                (None, None)
-            };
-
-            Self {
-                builtin_instance_counter: Faker.fake_with_rng(rng),
-                n_steps: rng.next_u32() as u64,
-                n_memory_holes: rng.next_u32() as u64,
-                l1_gas,
-                l1_data_gas,
             }
         }
     }
@@ -1857,25 +1647,9 @@ pub(crate) mod old_dto {
         }
     }
 
-    impl<T> Dummy<T> for BuiltinCounters {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                output_builtin: rng.next_u32() as u64,
-                pedersen_builtin: rng.next_u32() as u64,
-                range_check_builtin: rng.next_u32() as u64,
-                ecdsa_builtin: rng.next_u32() as u64,
-                bitwise_builtin: rng.next_u32() as u64,
-                ec_op_builtin: rng.next_u32() as u64,
-                keccak_builtin: rng.next_u32() as u64,
-                poseidon_builtin: rng.next_u32() as u64,
-                segment_arena_builtin: 0, // Not used in p2p
-            }
-        }
-    }
-
     /// Represents deserialized L2 to L1 message.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct L2ToL1Message {
         pub from_address: ContractAddress,
@@ -1921,7 +1695,7 @@ pub(crate) mod old_dto {
         }
     }
 
-    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
     pub enum ExecutionStatus {
         // This must be the default as pre v0.12.1 receipts did not contain this value and
@@ -2012,28 +1786,7 @@ pub(crate) mod old_dto {
         }
     }
 
-    impl<T> Dummy<T> for Receipt {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let execution_status = Faker.fake_with_rng(rng);
-            let revert_error =
-                (execution_status == ExecutionStatus::Reverted).then(|| Faker.fake_with_rng(rng));
-
-            // Those fields that were missing in very old receipts are always present
-            Self {
-                actual_fee: Some(Faker.fake_with_rng(rng)),
-                execution_resources: Some(Faker.fake_with_rng(rng)),
-                events: Faker.fake_with_rng(rng),
-                l1_to_l2_consumed_message: Faker.fake_with_rng(rng),
-                l2_to_l1_messages: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-                transaction_index: Faker.fake_with_rng(rng),
-                execution_status,
-                revert_error,
-            }
-        }
-    }
-
-    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
     pub enum DataAvailabilityMode {
         #[default]
         L1,
@@ -2083,7 +1836,7 @@ pub(crate) mod old_dto {
         }
     }
 
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     pub struct ResourceBounds {
         #[serde(rename = "L1_GAS")]
         pub l1_gas: ResourceBound,
@@ -2111,7 +1864,7 @@ pub(crate) mod old_dto {
     }
 
     #[serde_as]
-    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Copy, Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
     pub struct ResourceBound {
         #[serde_as(as = "ResourceAmountAsHexStr")]
         pub max_amount: ResourceAmount,
@@ -2138,7 +1891,7 @@ pub(crate) mod old_dto {
     }
 
     /// Represents deserialized L2 transaction data.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "type")]
     #[serde(deny_unknown_fields)]
     pub enum Transaction {
@@ -2829,25 +2582,9 @@ pub(crate) mod old_dto {
         }
     }
 
-    impl<T> Dummy<T> for DeclareTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            match rng.gen_range(0..=3) {
-                0 => {
-                    let mut v0: DeclareTransactionV0V1 = Faker.fake_with_rng(rng);
-                    v0.nonce = TransactionNonce::ZERO;
-                    Self::V0(v0)
-                }
-                1 => Self::V1(Faker.fake_with_rng(rng)),
-                2 => Self::V2(Faker.fake_with_rng(rng)),
-                3 => Self::V3(Faker.fake_with_rng(rng)),
-                _ => unreachable!(),
-            }
-        }
-    }
-
     /// A version 0 or 1 declare transaction.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV0V1 {
         pub class_hash: ClassHash,
@@ -2862,7 +2599,7 @@ pub(crate) mod old_dto {
 
     /// A version 2 declare transaction.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct DeclareTransactionV2 {
         pub class_hash: ClassHash,
@@ -2905,28 +2642,6 @@ pub(crate) mod old_dto {
         TransactionVersion::ZERO
     }
 
-    impl<T> Dummy<T> for DeclareTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                class_hash: Faker.fake_with_rng(rng),
-
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
-                sender_address: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-                compiled_class_hash: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
-                                                                          * elem only */
-            }
-        }
-    }
-
     /// Represents deserialized L2 deploy transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -2942,21 +2657,8 @@ pub(crate) mod old_dto {
         pub version: TransactionVersion,
     }
 
-    impl<T> Dummy<T> for DeployTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                version: TransactionVersion(Felt::from_u64(rng.gen_range(0..=1))),
-                contract_address: ContractAddress::ZERO, // Faker.fake_with_rng(rng), FIXME
-                contract_address_salt: Faker.fake_with_rng(rng),
-                class_hash: Faker.fake_with_rng(rng),
-                constructor_calldata: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-            }
-        }
-    }
-
     /// Represents deserialized L2 deploy account transaction data.
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(untagged)]
     pub enum DeployAccountTransaction {
         V0V1(DeployAccountTransactionV0V1),
@@ -3028,30 +2730,6 @@ pub(crate) mod old_dto {
         pub class_hash: ClassHash,
     }
 
-    impl<T> Dummy<T> for DeployAccountTransactionV0V1 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let contract_address_salt = Faker.fake_with_rng(rng);
-            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
-            let class_hash = Faker.fake_with_rng(rng);
-
-            Self {
-                version: TransactionVersion::ONE,
-                contract_address: ContractAddress::deployed_contract_address(
-                    constructor_calldata.iter().copied(),
-                    &contract_address_salt,
-                    &class_hash,
-                ),
-                transaction_hash: Faker.fake_with_rng(rng),
-                max_fee: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                nonce: Faker.fake_with_rng(rng),
-                contract_address_salt,
-                constructor_calldata,
-                class_hash,
-            }
-        }
-    }
-
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
@@ -3075,36 +2753,7 @@ pub(crate) mod old_dto {
         pub class_hash: ClassHash,
     }
 
-    impl<T> Dummy<T> for DeployAccountTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            let contract_address_salt = Faker.fake_with_rng(rng);
-            let constructor_calldata: Vec<CallParam> = Faker.fake_with_rng(rng);
-            let class_hash = Faker.fake_with_rng(rng);
-
-            Self {
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
-                sender_address: ContractAddress::deployed_contract_address(
-                    constructor_calldata.iter().copied(),
-                    &contract_address_salt,
-                    &class_hash,
-                ),
-                signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-                version: TransactionVersion::THREE,
-                contract_address_salt,
-                constructor_calldata,
-                class_hash,
-            }
-        }
-    }
-
-    #[derive(Clone, Debug, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
     #[serde(tag = "version")]
     pub enum InvokeTransaction {
         #[serde(rename = "0x0")]
@@ -3182,23 +2831,9 @@ pub(crate) mod old_dto {
         pub transaction_hash: TransactionHash,
     }
 
-    impl<T> Dummy<T> for InvokeTransactionV0 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                calldata: Faker.fake_with_rng(rng),
-                sender_address: Faker.fake_with_rng(rng),
-                entry_point_selector: Faker.fake_with_rng(rng),
-                entry_point_type: None,
-                max_fee: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-            }
-        }
-    }
-
     /// Represents deserialized L2 invoke transaction v1 data.
     #[serde_as]
-    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Dummy)]
+    #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
     #[serde(deny_unknown_fields)]
     pub struct InvokeTransactionV1 {
         #[serde_as(as = "Vec<CallParamAsDecimalStr>")]
@@ -3239,26 +2874,6 @@ pub(crate) mod old_dto {
         pub account_deployment_data: Vec<AccountDeploymentDataElem>,
     }
 
-    impl<T> Dummy<T> for InvokeTransactionV3 {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                nonce: Faker.fake_with_rng(rng),
-                nonce_data_availability_mode: Faker.fake_with_rng(rng),
-                fee_data_availability_mode: Faker.fake_with_rng(rng),
-                resource_bounds: Faker.fake_with_rng(rng),
-                tip: Faker.fake_with_rng(rng),
-                paymaster_data: vec![Faker.fake_with_rng(rng)], // TODO p2p allows 1 elem only
-
-                sender_address: Faker.fake_with_rng(rng),
-                signature: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-                calldata: Faker.fake_with_rng(rng),
-                account_deployment_data: vec![Faker.fake_with_rng(rng)], /* TODO p2p allows 1
-                                                                          * elem only */
-            }
-        }
-    }
-
     /// Represents deserialized L2 "L1 handler" transaction data.
     #[serde_as]
     #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -3272,19 +2887,6 @@ pub(crate) mod old_dto {
         pub calldata: Vec<CallParam>,
         pub transaction_hash: TransactionHash,
         pub version: TransactionVersion,
-    }
-
-    impl<T> Dummy<T> for L1HandlerTransaction {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &T, rng: &mut R) -> Self {
-            Self {
-                version: TransactionVersion::ZERO,
-                contract_address: Faker.fake_with_rng(rng),
-                entry_point_selector: Faker.fake_with_rng(rng),
-                nonce: Faker.fake_with_rng(rng),
-                calldata: Faker.fake_with_rng(rng),
-                transaction_hash: Faker.fake_with_rng(rng),
-            }
-        }
     }
 
     /// Describes L2 transaction failure details.
