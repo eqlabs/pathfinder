@@ -35,22 +35,6 @@ exclude = [
 ]
 resolver = "2"
 
-[profile.release]
-overflow-checks = true
-
-[profile.release-lto]
-inherits = "release"
-codegen-units = 1
-lto = true
-
-[profile.dev.package.flate2]
-opt-level = 3
-
-[profile.ci-dev]
-inherits = "dev"
-incremental = false
-debug = "line-tables-only"
-
 [workspace.package]
 version = "0.20.1"
 edition = "2021"
@@ -138,9 +122,9 @@ sha2 = "0.10.7"
 sha3 = "0.10"
 smallvec = "1.15.1"
 # This one needs to match the version used by blockifier
-starknet_api = "0.15.0-rc.4"
-# This one needs to match the version used by blockifier
 starknet-types-core = "=0.1.8"
+# This one needs to match the version used by blockifier
+starknet_api = "0.15.0-rc.4"
 syn = "1.0"
 tempfile = "3.8"
 test-log = { version = "0.2.12", features = ["trace"] }
@@ -162,3 +146,19 @@ void = "1.0.2"
 warp = "0.3.7"
 zeroize = "1.6.0"
 zstd = "0.13.2"
+
+[profile.release]
+overflow-checks = true
+
+[profile.release-lto]
+inherits = "release"
+codegen-units = 1
+lto = true
+
+[profile.dev.package.flate2]
+opt-level = 3
+
+[profile.ci-dev]
+inherits = "dev"
+incremental = false
+debug = "line-tables-only"
