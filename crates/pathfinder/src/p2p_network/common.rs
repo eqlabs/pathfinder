@@ -7,6 +7,10 @@ pub async fn dial_bootnodes<C>(
     bootstrap_addresses: Vec<Multiaddr>,
     core_client: &Client<C>,
 ) -> bool {
+    if bootstrap_addresses.is_empty() {
+        return true;
+    }
+
     let mut success = false;
     for bootstrap_address in bootstrap_addresses {
         let peer_id = match ensure_peer_id_in_multiaddr(
