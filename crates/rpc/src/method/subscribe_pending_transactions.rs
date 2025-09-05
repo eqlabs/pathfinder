@@ -86,6 +86,10 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
             // since after the Starknet 0.14.0 update no transactions will be
             // sent over this subscription.
             if pending.is_pre_confirmed() {
+                if pending_data.changed().await.is_err() {
+                    tracing::debug!("Pending data channel closed, stopping subscription");
+                    return Ok(());
+                }
                 continue;
             }
 
