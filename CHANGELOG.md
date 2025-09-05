@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
 - Pathfinder gets stuck in a loop and prints "State root mismatch" errors after starting up from a database with current state that has been re-orged.
+- `starknet_traceTransaction` and `starknet_traceBlockTransactions` falls back to fetching transaction traces for Starknet mainnet block range 1943704-1952704 (inclusive). Local re-execution would lead to a different result due to a sequencer issue that was present when these blocks were produced.
 
 ## [0.20.1] - 2025-09-02
 
