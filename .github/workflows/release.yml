@@ -7,44 +7,70 @@ on:
   push:
     tags:
       - v[0-9]+.*
+  pull_request:
+    types: [closed]
+    branches:
+      - main
 
 jobs:
-    create-draft-release:
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-            - uses: taiki-e/create-gh-release-action@v1
-              with:
-                # (Optional) Path to changelog.
-                changelog: CHANGELOG.md
-                # (Optional) Create a draft release.
-                # [default value: false]
-                draft: true
-                # (Required) GitHub token for creating GitHub Releases.
-                token: ${{ secrets.GITHUB_TOKEN }}
+  auto-tag:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Extract version from branch name
+        id: extract_version
+        run: |
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          VERSION="${BRANCH_NAME#release/v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Create and push tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag -a ${{ steps.extract_version.outputs.tag }} -m "Pathfinder ${{ steps.extract_version.outputs.tag }}"
+          git push origin ${{ steps.extract_version.outputs.tag }}
 
-    upload-assets:
-        needs: create-draft-release
-        strategy:
-            matrix:
-              include:
-                - target: x86_64-unknown-linux-gnu
-                  os: ubuntu-22.04
-                - target: aarch64-unknown-linux-gnu
-                  os: ubuntu-22.04-arm
-                - target: x86_64-apple-darwin
-                  os: macos-latest
-                - target: aarch64-apple-darwin
-                  os: macos-latest
-        runs-on: ${{ matrix.os }}
-        steps:
-            - uses: actions/checkout@v4
-            - uses: arduino/setup-protoc@v3
-              with:
-                repo-token: ${{ secrets.GITHUB_TOKEN }}
-            - uses: taiki-e/upload-rust-binary-action@v1
-              with:
-                bin: pathfinder
-                target: ${{ matrix.target }}
-                profile: release-lto
-                token: ${{ secrets.GITHUB_TOKEN }}
+  create-draft-release:
+    needs: auto-tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+          draft: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-assets:
+    needs: create-draft-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: pathfinder
+          target: ${{ matrix.target }}
+          profile: release-lto
+          token: ${{ secrets.GITHUB_TOKEN }}
