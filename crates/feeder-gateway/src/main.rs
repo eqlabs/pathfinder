@@ -568,7 +568,7 @@ fn resolve_class(
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
-        .ok_or_else(|| anyhow::anyhow!("No such class found"))?;
+        .context("No such class found")?;
 
     Ok(definition)
 }

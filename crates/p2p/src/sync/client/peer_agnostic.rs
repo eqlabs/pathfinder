@@ -5,6 +5,7 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use futures::channel::mpsc as fmpsc;
 use futures::{Stream, StreamExt, TryStreamExt};
 use libp2p::PeerId;
@@ -312,7 +313,7 @@ impl BlockClient for Client {
                             Receipt::try_from((
                                 tx_with_receipt.receipt,
                                 TransactionIndex::new(i.try_into().unwrap())
-                                    .ok_or_else(|| anyhow::anyhow!("Invalid transaction index"))?,
+                                    .context("Invalid transaction index")?,
                             ))?,
                         )),
                         Err(error) => {

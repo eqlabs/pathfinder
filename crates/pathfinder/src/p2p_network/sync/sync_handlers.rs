@@ -159,13 +159,9 @@ fn get_classes_for_block(
         |block_number: BlockNumber, class_hash| -> anyhow::Result<ClassDefinition> {
             let definition = db_tx
                 .class_definition_at(block_number.into(), class_hash)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Class definition {} not found at block {}",
-                        class_hash,
-                        block_number
-                    )
-                })?;
+                .context(format!(
+                    "Class definition {class_hash} not found at block {block_number}",
+                ))?;
             let casm_definition = db_tx.casm_definition(class_hash)?;
             Ok(match casm_definition {
                 Some(_casm) => ClassDefinition::Sierra {

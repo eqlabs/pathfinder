@@ -3,7 +3,7 @@ use std::io::Write;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use anyhow::anyhow;
+use anyhow::Context;
 use clap::Parser;
 use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
 use pathfinder_crypto::{Felt, HexParseError};
@@ -133,7 +133,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     for n in cli.from_block..=cli.to_block {
-        let bn = BlockNumber::new(n).ok_or_else(|| anyhow!("invalid block number {}", n))?;
+        let bn = BlockNumber::new(n).context(format!("invalid block number {n}"))?;
         if let Some(pairs) = db_tx.events_for_block(bn.into())? {
             for pair in pairs {
                 let tx_hash = pair.0;

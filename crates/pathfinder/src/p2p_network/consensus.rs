@@ -95,7 +95,7 @@ mod inner {
                     Protocol::P2p(peer_id) => Some(peer_id),
                     _ => None,
                 })
-                .ok_or_else(|| anyhow::anyhow!(msg))
+                .context(msg)
         };
 
         for bootstrap_address in bootstrap_addresses {

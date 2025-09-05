@@ -9,6 +9,7 @@ pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.
 pub mod request {
+    use anyhow::Context;
     use pathfinder_common::prelude::*;
     use pathfinder_common::transaction::{DataAvailabilityMode, ResourceBounds};
     use pathfinder_common::TipHex;
@@ -64,7 +65,7 @@ pub mod request {
                 BlockId::L1Accepted => {
                     let block_number = tx
                         .l1_l2_pointer()?
-                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                        .context("L1 accepted block number not found")?;
                     Ok(pathfinder_common::BlockId::Number(block_number))
                 }
                 BlockId::Latest => Ok(pathfinder_common::BlockId::Latest),
@@ -90,7 +91,7 @@ pub mod request {
                 BlockId::L1Accepted => {
                     let block_number = tx
                         .l1_l2_pointer()?
-                        .ok_or_else(|| anyhow::anyhow!("L1 accepted block number not found"))?;
+                        .context("L1 accepted block number not found")?;
                     Ok(pathfinder_common::BlockId::Number(block_number))
                 }
                 BlockId::Latest | BlockId::Pending => Ok(pathfinder_common::BlockId::Latest),
