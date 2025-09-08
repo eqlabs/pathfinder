@@ -1321,8 +1321,8 @@ pub mod test_utils {
 
         let pre_confirmed_contract1 = contract_address_bytes!(b"preconfirmed contract 1 address");
         let pre_confirmed_state_update = StateUpdate::default()
-            .with_declared_cairo_class(class_hash_bytes!(b"pre-confirmed class 0 hash"))
-            .with_declared_cairo_class(class_hash_bytes!(b"pre-confirmed class 1 hash"))
+            .with_declared_cairo_class(class_hash_bytes!(b"preconfirmed class 0 hash"))
+            .with_declared_cairo_class(class_hash_bytes!(b"preconfirmed class 1 hash"))
             .with_deployed_contract(
                 contract_address_bytes!(b"preconfirmed contract 0 address"),
                 class_hash_bytes!(b"preconfirmed class 0 hash"),

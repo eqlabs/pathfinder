@@ -325,6 +325,44 @@ mod tests {
     #[case::v08(RpcVersion::V08)]
     #[case::v09(RpcVersion::V09)]
     #[tokio::test]
+    async fn json_rpc_pre_latest_and_pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+
+        let input = Input {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"prelatest contract 0 address"),
+        };
+        let r = get_class_hash_at(context.clone(), input, version).await;
+        if version >= RpcVersion::V09 {
+            let hash = r.unwrap();
+            assert_eq!(hash.0, class_hash_bytes!(b"prelatest class 0 hash"));
+        } else {
+            // JSON-RPC version before 0.9 are expected to ignore the pre-latest block.
+            let err = r.unwrap_err();
+            assert_matches!(err, Error::ContractNotFound);
+        }
+
+        let input = Input {
+            block_id: BlockId::Pending,
+            contract_address: contract_address_bytes!(b"preconfirmed contract 0 address"),
+        };
+        let r = get_class_hash_at(context, input, version).await;
+        if version >= RpcVersion::V09 {
+            let hash = r.unwrap();
+            assert_eq!(hash.0, class_hash_bytes!(b"preconfirmed class 0 hash"));
+        } else {
+            // JSON-RPC version before 0.9 are expected to ignore the pre-confirmed block.
+            let err = r.unwrap_err();
+            assert_matches!(err, Error::ContractNotFound);
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
     async fn json_rpc_at_block(#[case] version: RpcVersion) {
         use pathfinder_common::BlockNumber;
 

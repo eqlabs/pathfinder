@@ -168,7 +168,7 @@ mod tests {
             storage_value_bytes!(b"preconfirmed storage value 0")
         );
 
-        // JSON-RPC version before 0.9 are expected to ignore the pre-latest block.
+        // JSON-RPC version before 0.9 are expected to ignore the pre-confirmed block.
         let err = get_storage_at(ctx, input, RpcVersion::V08)
             .await
             .unwrap_err();

@@ -55,13 +55,12 @@ pub async fn get_class(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let is_pending = input.block_id.is_pending() && {
-            context
+        let is_pending = input.block_id.is_pending()
+            && context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .class_is_declared(input.class_hash)
-        };
+                .class_is_declared(input.class_hash);
 
         let block_id = input
             .block_id
@@ -153,7 +152,7 @@ mod tests {
 
     #[tokio::test]
     async fn pending() {
-        let context = RpcContext::for_tests();
+        let context = RpcContext::for_tests_with_pending().await;
 
         // Cairo v0.x class
         let valid_v0 = class_hash_bytes!(b"class 0 hash");
@@ -179,6 +178,17 @@ mod tests {
         )
         .await
         .unwrap();
+        let valid_pending = class_hash_bytes!(b"pending class 0 hash");
+        super::get_class(
+            context.clone(),
+            Input {
+                block_id: BlockId::Pending,
+                class_hash: valid_pending,
+            },
+            RPC_VERSION,
+        )
+        .await
+        .unwrap();
 
         let invalid = class_hash_bytes!(b"invalid");
         let error = super::get_class(
@@ -193,6 +203,52 @@ mod tests {
         .unwrap_err();
 
         assert_matches!(error, Error::ClassHashNotFound);
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_latest_and_pre_confirmed(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+
+        let valid_pre_latest = class_hash_bytes!(b"prelatest class 0 hash");
+        let r = super::get_class(
+            context.clone(),
+            Input {
+                block_id: BlockId::Pending,
+                class_hash: valid_pre_latest,
+            },
+            version,
+        )
+        .await;
+        if version >= RpcVersion::V09 {
+            r.unwrap();
+        } else {
+            // JSON-RPC version before 0.9 are expected to ignore the pre-latest block.
+            let err = r.unwrap_err();
+            assert_matches!(err, Error::ClassHashNotFound);
+        }
+
+        let valid_pre_confirmed = class_hash_bytes!(b"preconfirmed class 0 hash");
+        let r = super::get_class(
+            context.clone(),
+            Input {
+                block_id: BlockId::Pending,
+                class_hash: valid_pre_confirmed,
+            },
+            version,
+        )
+        .await;
+        if version >= RpcVersion::V09 {
+            r.unwrap();
+        } else {
+            // JSON-RPC version before 0.9 are expected to ignore the pre-confirmed block.
+            let err = r.unwrap_err();
+            assert_matches!(err, Error::ClassHashNotFound);
+        }
     }
 
     #[tokio::test]
