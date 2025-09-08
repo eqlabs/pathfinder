@@ -74,7 +74,7 @@ pub async fn trace_transaction(
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
                 .pending_transactions()
-                .into_iter()
+                .iter()
                 .find(|tx| tx.hash == input.transaction_hash)
             {
                 let header = pending.pending_header();
