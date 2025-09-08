@@ -30,7 +30,7 @@ pub use executor::compose_executor_transaction;
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
-pub use pending::{PendingBlockVariant, PendingData};
+pub use pending::{FinalizedTxData, PendingBlockVariant, PendingData};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
