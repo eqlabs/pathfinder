@@ -236,16 +236,24 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                     }
 
                     let pending = pending_data.borrow_and_update().clone();
-                    let finality_status = pending.block().finality_status();
+                    let finality_status = pending.pending_block().finality_status();
 
-                    tracing::trace!(block_number=%pending.block_number(), ?finality_status, "Pre-confirmed block update");
+                    tracing::trace!(block_number=%pending.pending_block_number(), ?finality_status, "Pre-confirmed block update");
 
-                    if pending.block_number() != last_pre_confirmed_block {
-                        last_pre_confirmed_block = pending.block_number();
+                    if pending.pending_block_number() != last_pre_confirmed_block {
+                        last_pre_confirmed_block = pending.pending_block_number();
                         pre_confirmed_sent_txs.clear();
                     }
 
-                    for (transaction, (receipt, events)) in pending.transactions().iter().zip(pending.transaction_receipts_and_events().iter()) {
+                    for (transaction, (receipt, events)) in pending
+                        .pending_transactions()
+                        .iter()
+                        .zip(
+                            pending
+                                .pending_tx_receipts_and_events()
+                                .iter()
+                        )
+                    {
                         if pre_confirmed_sent_txs.contains(&transaction.hash) {
                             continue;
                         }
@@ -256,7 +264,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
 
                         let notification = Notification::EmittedTransaction(Box::new(TransactionWithReceipt {
                             block_hash: None,
-                            block_number: pending.block_number(),
+                            block_number: pending.pending_block_number(),
                             receipt: receipt.clone(),
                             transaction: transaction.clone(),
                             events: events.clone(),
@@ -266,7 +274,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactionReceipts {
                         if tx
                             .send(SubscriptionMessage {
                                 notification,
-                                block_number: pending.block_number(),
+                                block_number: pending.pending_block_number(),
                                 subscription_name: SUBSCRIPTION_NAME,
                             })
                             .await
@@ -810,7 +818,7 @@ mod tests {
             transaction_state_diffs: vec![],
             ..Default::default()
         };
-        PendingData::from_pre_confirmed_block(pre_confirmed_block, block_number)
+        PendingData::from_pre_confirmed_block(pre_confirmed_block.into(), block_number)
     }
 
     fn sample_pre_confirmed_receipt_message(

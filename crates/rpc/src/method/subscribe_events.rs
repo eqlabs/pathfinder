@@ -350,10 +350,10 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         continue;
                     }
 
-                    tracing::trace!(block_number=%pending.block_number(), "Received pending block update");
+                    tracing::trace!(block_number=%pending.pending_block_number(), "Received pending block update");
 
                     let finality = pending.finality_status();
-                    let block_number = pending.block_number();
+                    let block_number = pending.pending_block_number();
                     if block_number != current_block {
                         tracing::trace!(
                             %block_number,
@@ -363,7 +363,7 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                         sent_txs.clear();
                         current_block = block_number;
                     }
-                    for (receipt, events) in pending.transaction_receipts_and_events().iter() {
+                    for (receipt, events) in pending.pending_tx_receipts_and_events().iter() {
                         if sent_txs.contains(&(receipt.transaction_hash, finality)) {
                             tracing::trace!(
                                 transaction_hash=%receipt.transaction_hash,
@@ -830,7 +830,7 @@ mod tests {
         // Send pre-confirmed data, expecting it to be ignored.
         pending_data_tx
             .send(crate::PendingData::from_pre_confirmed_block(
-                sample_pre_confirmed_block(num_blocks),
+                sample_pre_confirmed_block(num_blocks).into(),
                 BlockNumber::new_or_panic(num_blocks),
             ))
             .unwrap();
@@ -910,7 +910,7 @@ mod tests {
         // Send pre-confirmed data.
         pending_data_tx
             .send(crate::PendingData::from_pre_confirmed_block(
-                sample_pre_confirmed_block(num_blocks),
+                sample_pre_confirmed_block(num_blocks).into(),
                 BlockNumber::new_or_panic(num_blocks),
             ))
             .unwrap();

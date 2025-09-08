@@ -88,7 +88,10 @@ pub async fn simulate_transactions(
                     .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
-                (pending.header(), Some(pending.state_update()))
+                (
+                    pending.pending_header(),
+                    Some(pending.pending_state_update()),
+                )
             }
             other => {
                 let block_id = other

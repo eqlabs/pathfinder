@@ -62,25 +62,23 @@ pub async fn get_transaction_status(
             .get(&db_tx, rpc_version)
             .context("Querying pending data")?;
 
-        if let Some((receipt, _)) = pending_data
-            .transaction_receipts_and_events()
-            .iter()
-            .find(|(rx, _)| rx.transaction_hash == input.transaction_hash)
+        if let Some(finalized_tx_data) = pending_data.find_finalized_tx_data(input.transaction_hash)
         {
-            let output = match pending_data.block().finality_status() {
+            let execution_status = &finalized_tx_data.receipt.execution_status;
+            let output = match finalized_tx_data.finality_status {
                 // This is not possible here (candidate transactions do not have receipts) but we're
                 // handling it for completeness.
                 crate::dto::TxnFinalityStatus::Candidate => Output::Candidate,
                 crate::dto::TxnFinalityStatus::PreConfirmed => {
-                    Output::PreConfirmed((&receipt.execution_status).into())
+                    Output::PreConfirmed((execution_status).into())
                 }
                 crate::dto::TxnFinalityStatus::AcceptedOnL2 => {
-                    Output::AcceptedOnL2((&receipt.execution_status).into())
+                    Output::AcceptedOnL2((execution_status).into())
                 }
                 // This is technically not possible: pending data is either PreConfirmed or
                 // AcceptedOnL2.
                 crate::dto::TxnFinalityStatus::AcceptedOnL1 => {
-                    Output::AcceptedOnL1((&receipt.execution_status).into())
+                    Output::AcceptedOnL1((execution_status).into())
                 }
             };
             return Ok(Some(output));
@@ -88,9 +86,7 @@ pub async fn get_transaction_status(
 
         if pending_data
             .candidate_transactions()
-            .iter()
-            .flat_map(|tx| tx.iter())
-            .any(|tx| tx.hash == input.transaction_hash)
+            .is_some_and(|txs| txs.iter().any(|tx| tx.hash == input.transaction_hash))
         {
             return Ok(Some(Output::Candidate));
         }
@@ -322,6 +318,36 @@ mod tests {
     async fn pre_confirmed(#[case] version: RpcVersion) {
         let context = RpcContext::for_tests_with_pre_confirmed().await;
         let tx_hash = transaction_hash_bytes!(b"preconfirmed tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_status(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(result, Err(Error::TxnHashNotFound));
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/status_pre_confirmed.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_latest(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"prelatest tx hash 0");
         let input = Input {
             transaction_hash: tx_hash,
         };

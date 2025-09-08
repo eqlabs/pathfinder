@@ -63,11 +63,15 @@ pub async fn get_block_with_tx_hashes(
                     .get(&transaction, rpc_version)
                     .context("Querying pending data")?;
 
-                let transactions = pending.transactions().iter().map(|t| t.hash).collect();
+                let transactions = pending
+                    .pending_transactions()
+                    .iter()
+                    .map(|t| t.hash)
+                    .collect();
 
                 return Ok(Output::Pending {
-                    header: pending.block(),
-                    block_number: pending.block_number(),
+                    header: pending.pending_block(),
+                    block_number: pending.pending_block_number(),
                     transactions,
                 });
             }

@@ -68,8 +68,8 @@ pub async fn trace_block_transactions(
                     .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
-                let header = pending.header();
-                let transactions = pending.transactions().to_vec();
+                let header = pending.pending_header();
+                let transactions = pending.pending_transactions().to_vec();
 
                 (
                     None,

@@ -256,16 +256,25 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                     let pending = pending_data.borrow_and_update().clone();
                     let finality_status = if pending.is_pre_confirmed() { TxnFinalityStatusWithoutL1Accepted::PreConfirmed } else { TxnFinalityStatusWithoutL1Accepted::AcceptedOnL2 };
 
-                    tracing::trace!(block_number=%pending.block_number(), ?finality_status, "Pre-confirmed block update");
+                    tracing::trace!(block_number=%pending.pending_block_number(), ?finality_status, "Pre-confirmed block update");
 
-                    if pending.block_number() != last_pre_confirmed_block {
-                        last_pre_confirmed_block = pending.block_number();
+                    if pending.pending_block_number() != last_pre_confirmed_block {
+                        last_pre_confirmed_block = pending.pending_block_number();
                         pre_confirmed_sent_txs.clear();
                     }
 
-                    for (transaction, finality_status) in pending.transactions().iter().zip(std::iter::repeat(finality_status)).chain(
-                        pending.candidate_transactions().into_iter().flatten().zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::Candidate))
-                    ) {
+                    for (transaction, finality_status) in pending
+                        .pending_transactions()
+                        .iter()
+                        .zip(std::iter::repeat(finality_status))
+                        .chain(
+                            pending
+                                .candidate_transactions()
+                                .into_iter()
+                                .flatten()
+                                .zip(std::iter::repeat(TxnFinalityStatusWithoutL1Accepted::Candidate)),
+                        )
+                    {
                         if pre_confirmed_sent_txs.contains(&(transaction.hash, finality_status)) {
                             continue;
                         }
@@ -282,7 +291,7 @@ impl RpcSubscriptionFlow for SubscribeNewTransactions {
                         if tx
                             .send(SubscriptionMessage {
                                 notification,
-                                block_number: pending.block_number(),
+                                block_number: pending.pending_block_number(),
                                 subscription_name: SUBSCRIPTION_NAME,
                             })
                             .await
@@ -1261,7 +1270,7 @@ mod tests {
             transaction_state_diffs: vec![],
             ..Default::default()
         };
-        PendingData::from_pre_confirmed_block(pre_confirmed_block, block_number)
+        PendingData::from_pre_confirmed_block(pre_confirmed_block.into(), block_number)
     }
 
     fn sample_received_transaction_message(

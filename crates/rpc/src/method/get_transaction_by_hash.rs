@@ -45,24 +45,7 @@ pub async fn get_transaction_by_hash(
             .pending_data
             .get(&db_tx, rpc_version)
             .context("Querying pending data")?
-            .transactions()
-            .iter()
-            .find(|tx| tx.hash == input.transaction_hash)
-            .cloned()
-        {
-            return Ok(Output(tx));
-        }
-
-        // Check candidate transactions.
-        if let Some(tx) = context
-            .pending_data
-            .get(&db_tx, rpc_version)
-            .context("Querying pending data")?
-            .candidate_transactions()
-            .iter()
-            .flat_map(|c| c.iter())
-            .find(|tx| tx.hash == input.transaction_hash)
-            .cloned()
+            .find_transaction(input.transaction_hash)
         {
             return Ok(Output(tx));
         }
@@ -242,6 +225,39 @@ mod tests {
                 let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
                 let expected_json: serde_json::Value = serde_json::from_str(include_str!(
                     "../../fixtures/0.9.0/transactions/txn_candidate_hash_0.json"
+                ))
+                .unwrap();
+                assert_eq!(output_json, expected_json);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[rstest::rstest]
+    #[case::v06(RpcVersion::V06)]
+    #[case::v07(RpcVersion::V07)]
+    #[case::v08(RpcVersion::V08)]
+    #[case::v09(RpcVersion::V09)]
+    #[tokio::test]
+    async fn pre_latest(#[case] version: RpcVersion) {
+        let context = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+        let tx_hash = transaction_hash_bytes!(b"prelatest tx hash 0");
+        let input = Input {
+            transaction_hash: tx_hash,
+        };
+        let result = get_transaction_by_hash(context, input, version).await;
+
+        match version {
+            RpcVersion::V06 | RpcVersion::V07 | RpcVersion::V08 => {
+                assert_matches::assert_matches!(
+                    result,
+                    Err(GetTransactionByHashError::TxnHashNotFound)
+                );
+            }
+            RpcVersion::V09 => {
+                let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
+                let expected_json: serde_json::Value = serde_json::from_str(include_str!(
+                    "../../fixtures/0.9.0/transactions/txn_pre_latest_hash_0.json"
                 ))
                 .unwrap();
                 assert_eq!(output_json, expected_json);

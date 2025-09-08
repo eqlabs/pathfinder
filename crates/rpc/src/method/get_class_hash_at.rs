@@ -42,16 +42,15 @@ pub async fn get_class_hash_at(
 
         let tx = db.transaction().context("Creating database transaction")?;
 
-        if input.block_id == BlockId::Pending {
-            let pending = context
+        if input.block_id.is_pending() {
+            let class_hash = context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .state_update()
-                .contract_class(input.contract_address);
+                .find_contract_class(input.contract_address);
 
-            if let Some(pending) = pending {
-                return Ok(Output(pending));
+            if let Some(class_hash) = class_hash {
+                return Ok(Output(class_hash));
             }
         }
 

@@ -55,15 +55,12 @@ pub async fn get_class(
             .context("Opening database connection")?;
         let tx = db.transaction().context("Creating database transaction")?;
 
-        let is_pending = if input.block_id.is_pending() {
+        let is_pending = input.block_id.is_pending() && {
             context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .state_update()
                 .class_is_declared(input.class_hash)
-        } else {
-            false
         };
 
         let block_id = input

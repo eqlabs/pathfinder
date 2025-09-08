@@ -391,8 +391,8 @@ fn pending_data_tx_status(
     pending_data: &PendingData,
     tx_hash: TransactionHash,
 ) -> Option<(BlockNumber, FinalityStatus, Option<ExecutionStatus>)> {
-    let block_number = pending_data.block_number();
-    match pending_data.block().as_ref() {
+    let block_number = pending_data.pending_block_number();
+    match pending_data.pending_block().as_ref() {
         PendingBlockVariant::Pending(block) => {
             find_tx_receipt(&block.transaction_receipts, tx_hash).map(|receipt| {
                 (
@@ -405,22 +405,20 @@ fn pending_data_tx_status(
         PendingBlockVariant::PreConfirmed {
             block,
             candidate_transactions,
+            ..
         } => {
             let is_candidate = candidate_transactions.iter().any(|tx| tx.hash == tx_hash);
             if is_candidate {
                 return Some((block_number, FinalityStatus::Candidate, None));
             }
 
-            let is_pre_confirmed = block.transactions.iter().any(|tx| tx.hash == tx_hash);
-            if is_pre_confirmed {
-                let execution_status = find_tx_receipt(&block.transaction_receipts, tx_hash)
-                    .expect("Pre-confirmed transaction should have a receipt")
-                    .execution_status
-                    .clone();
+            let status_in_pre_confirmed = find_tx_receipt(&block.transaction_receipts, tx_hash)
+                .map(|r| r.execution_status.clone());
+            if status_in_pre_confirmed.is_some() {
                 return Some((
                     block_number,
                     FinalityStatus::PreConfirmed,
-                    Some(execution_status),
+                    status_in_pre_confirmed,
                 ));
             }
 
@@ -547,7 +545,7 @@ mod tests {
 
         // Irrelevant pending update.
         pending_sender.send_modify(|pending| {
-            *pending.block_number_mut() = BlockNumber::GENESIS + 1;
+            *pending.pending_block_number_mut() = BlockNumber::GENESIS + 1;
         });
 
         // No message expected.
@@ -988,7 +986,8 @@ mod tests {
                             variant: Default::default(),
                         }],
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                     BlockNumber::GENESIS + 1,
                 )),
                 TestEvent::L2Block(
@@ -1015,7 +1014,8 @@ mod tests {
                             vec![],
                         ))],
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                     BlockNumber::GENESIS + 2,
                 )),
                 TestEvent::L2Block(
@@ -1081,7 +1081,8 @@ mod tests {
                             variant: Default::default(),
                         }],
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                     BlockNumber::GENESIS + 1,
                 )),
                 TestEvent::L2Block(
@@ -1102,7 +1103,8 @@ mod tests {
                         // belongs to the candidate transactions.
                         transaction_receipts: vec![None],
                         ..Default::default()
-                    },
+                    }
+                    .into(),
                     BlockNumber::GENESIS + 2,
                 )),
                 TestEvent::L2Block(

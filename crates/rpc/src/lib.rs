@@ -30,7 +30,7 @@ pub use executor::compose_executor_transaction;
 use http_body::Body;
 pub use jsonrpc::{Notifications, Reorg};
 use pathfinder_common::AllowedOrigins;
-pub use pending::PendingData;
+pub use pending::{PendingBlockVariant, PendingData};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tower_http::cors::CorsLayer;
@@ -287,7 +287,7 @@ pub mod test_utils {
     use pathfinder_storage::{Storage, StorageBuilder};
     use starknet_gateway_types::reply::GasPrices;
 
-    use crate::pending::PendingData;
+    use crate::pending::{PendingData, PreLatestBlock, PreLatestData};
 
     #[macro_export]
     macro_rules! fixture {
@@ -1034,8 +1034,10 @@ pub mod test_utils {
                 transactions,
                 starknet_version: StarknetVersion::new(0, 11, 0, 0),
                 l1_da_mode: L1DataAvailabilityMode::Calldata,
-            },
+            }
+            .into(),
             candidate_transactions,
+            pre_latest_data: None,
         };
 
         // The class definitions must be inserted into the database.
@@ -1061,6 +1063,361 @@ pub mod test_utils {
         .unwrap();
 
         PendingData::from_parts(block, state_update, latest.number + 1)
+    }
+
+    /// Creates [PendingData] which correctly links to the provided [Storage].
+    ///
+    /// For pre-confirmed blocks with pre-latest data that means that the block
+    /// number of the pre-latest block is the next block number after latest,
+    /// and the pre-confirmed block number is the one after that.
+    pub async fn create_pre_confirmed_data_with_pre_latest(storage: Storage) -> PendingData {
+        let storage2 = storage.clone();
+        let latest = tokio::task::spawn_blocking(move || {
+            let mut db = storage2.connection().unwrap();
+            let tx = db.transaction().unwrap();
+
+            tx.block_header(BlockId::Latest)
+                .unwrap()
+                .expect("Storage should contain a latest block")
+        })
+        .await
+        .unwrap();
+
+        let pre_latest_transactions: Vec<Transaction> = vec![
+            Transaction {
+                hash: transaction_hash_bytes!(b"prelatest tx hash 0"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"prelatest contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"prelatest tx hash 1"),
+                variant: TransactionVariant::DeployV0(DeployTransactionV0 {
+                    contract_address: contract_address!("0x1122355"),
+                    contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                    class_hash: class_hash_bytes!(b"prelatest class hash 1"),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"prelatest reverted"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"prelatest contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
+        ];
+
+        let pre_latest_tx_receipts = vec![
+            (
+                Receipt {
+                    actual_fee: Fee::ZERO,
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_latest_transactions[0].hash,
+                    transaction_index: TransactionIndex::new_or_panic(0),
+                    ..Default::default()
+                },
+                vec![
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"prelatest key")],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![
+                            event_key_bytes!(b"prelatest key"),
+                            event_key_bytes!(b"second prelatest key"),
+                        ],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcaaaaaaa"),
+                        keys: vec![event_key_bytes!(b"prelatest key 2")],
+                    },
+                ],
+            ),
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_latest_transactions[1].hash,
+                    transaction_index: TransactionIndex::new_or_panic(1),
+                    ..Default::default()
+                },
+                vec![],
+            ),
+            // Reverted and without events
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_latest_transactions[2].hash,
+                    transaction_index: TransactionIndex::new_or_panic(2),
+                    execution_status: ExecutionStatus::Reverted {
+                        reason: "Reverted!".to_owned(),
+                    },
+                    ..Default::default()
+                },
+                vec![],
+            ),
+        ];
+
+        let pre_latest_contract1 = contract_address_bytes!(b"prelatest contract 1 address");
+        let pre_latest_state_update = StateUpdate::default()
+            .with_parent_state_commitment(latest.state_commitment)
+            .with_declared_cairo_class(class_hash_bytes!(b"prelatest class 0 hash"))
+            .with_declared_cairo_class(class_hash_bytes!(b"prelatest class 1 hash"))
+            .with_deployed_contract(
+                contract_address_bytes!(b"prelatest contract 0 address"),
+                class_hash_bytes!(b"prelatest class 0 hash"),
+            )
+            .with_deployed_contract(
+                pre_latest_contract1,
+                class_hash_bytes!(b"prelatest class 1 hash"),
+            )
+            .with_storage_update(
+                pre_latest_contract1,
+                storage_address_bytes!(b"prelatest storage key 0"),
+                storage_value_bytes!(b"prelatest storage value 0"),
+            )
+            .with_storage_update(
+                pre_latest_contract1,
+                storage_address_bytes!(b"prelatest storage key 1"),
+                storage_value_bytes!(b"prelatest storage value 1"),
+            )
+            // This is not a real contract and should be re-worked..
+            .with_replaced_class(
+                contract_address_bytes!(b"prelatest contract 2 rplcd"),
+                class_hash_bytes!(b"prelatest class 2 hash rplcd"),
+            )
+            .with_contract_nonce(
+                pre_latest_contract1,
+                contract_nonce_bytes!(b"prelatest nonce"),
+            );
+
+        let pre_latest_block = PreLatestBlock {
+            // Pre-latest is between current latest and pre-confirmed.
+            number: latest.number + 1,
+            parent_hash: latest.hash,
+            l1_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),
+            },
+            l1_data_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
+            },
+            l2_gas_price: GasPrices {
+                price_in_wei: GasPrice::from_be_slice(b"l2 gas price").unwrap(),
+                price_in_fri: GasPrice::from_be_slice(b"strk l2gas price").unwrap(),
+            },
+            sequencer_address: sequencer_address_bytes!(b"pre-latest sequencer address"),
+            status: starknet_gateway_types::reply::Status::Pending,
+            timestamp: BlockTimestamp::new_or_panic(1234567),
+            transaction_receipts: pre_latest_tx_receipts,
+            transactions: pre_latest_transactions,
+            starknet_version: StarknetVersion::new(0, 11, 0, 0),
+            l1_da_mode: L1DataAvailabilityMode::Calldata,
+        };
+
+        let pre_confirmed_transactions: Vec<Transaction> = vec![
+            Transaction {
+                hash: transaction_hash_bytes!(b"preconfirmed tx hash 0"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"preconfirmed contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"preconfirmed tx hash 1"),
+                variant: TransactionVariant::DeployV0(DeployTransactionV0 {
+                    contract_address: contract_address!("0x1122355"),
+                    contract_address_salt: contract_address_salt_bytes!(b"salty"),
+                    class_hash: class_hash_bytes!(b"preconfirmed class hash 1"),
+                    ..Default::default()
+                }),
+            },
+            Transaction {
+                hash: transaction_hash_bytes!(b"preconfirmed reverted"),
+                variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                    sender_address: contract_address_bytes!(b"preconfirmed contract addr 0"),
+                    entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                    entry_point_type: Some(EntryPointType::External),
+                    ..Default::default()
+                }),
+            },
+        ];
+
+        let candidate_transactions = vec![Transaction {
+            hash: transaction_hash_bytes!(b"candidate tx hash 0"),
+            variant: TransactionVariant::InvokeV0(InvokeTransactionV0 {
+                sender_address: contract_address_bytes!(b"candidate contract addr 0"),
+                entry_point_selector: entry_point_bytes!(b"entry point 0"),
+                entry_point_type: Some(EntryPointType::External),
+                ..Default::default()
+            }),
+        }];
+
+        let pre_confirmed_tx_receipts = vec![
+            (
+                Receipt {
+                    actual_fee: Fee::ZERO,
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_confirmed_transactions[0].hash,
+                    transaction_index: TransactionIndex::new_or_panic(0),
+                    ..Default::default()
+                },
+                vec![
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![event_key_bytes!(b"preconfirmed key")],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcddddddd"),
+                        keys: vec![
+                            event_key_bytes!(b"preconfirmed key"),
+                            event_key_bytes!(b"second preconfirmed key"),
+                        ],
+                    },
+                    Event {
+                        data: vec![],
+                        from_address: contract_address!("0xabcaaaaaaa"),
+                        keys: vec![event_key_bytes!(b"preconfirmed key 2")],
+                    },
+                ],
+            ),
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_confirmed_transactions[1].hash,
+                    transaction_index: TransactionIndex::new_or_panic(1),
+                    ..Default::default()
+                },
+                vec![],
+            ),
+            // Reverted and without events
+            (
+                Receipt {
+                    execution_resources: ExecutionResources::default(),
+                    transaction_hash: pre_confirmed_transactions[2].hash,
+                    transaction_index: TransactionIndex::new_or_panic(2),
+                    execution_status: ExecutionStatus::Reverted {
+                        reason: "Reverted!".to_owned(),
+                    },
+                    ..Default::default()
+                },
+                vec![],
+            ),
+        ];
+
+        let pre_confirmed_contract1 = contract_address_bytes!(b"preconfirmed contract 1 address");
+        let pre_confirmed_state_update = StateUpdate::default()
+            .with_declared_cairo_class(class_hash_bytes!(b"pre-confirmed class 0 hash"))
+            .with_declared_cairo_class(class_hash_bytes!(b"pre-confirmed class 1 hash"))
+            .with_deployed_contract(
+                contract_address_bytes!(b"preconfirmed contract 0 address"),
+                class_hash_bytes!(b"preconfirmed class 0 hash"),
+            )
+            .with_deployed_contract(
+                pre_confirmed_contract1,
+                class_hash_bytes!(b"preconfirmed class 1 hash"),
+            )
+            .with_storage_update(
+                pre_confirmed_contract1,
+                storage_address_bytes!(b"preconfirmed storage key 0"),
+                storage_value_bytes!(b"preconfirmed storage value 0"),
+            )
+            .with_storage_update(
+                pre_confirmed_contract1,
+                storage_address_bytes!(b"preconfirmed storage key 1"),
+                storage_value_bytes!(b"preconfirmed storage value 1"),
+            )
+            // This is not a real contract and should be re-worked..
+            .with_replaced_class(
+                contract_address_bytes!(b"preconfirmed contract 2 rplcd"),
+                class_hash_bytes!(b"preconfirmed class 2 hash rplcd"),
+            )
+            .with_contract_nonce(
+                pre_confirmed_contract1,
+                contract_nonce_bytes!(b"preconfirmed nonce"),
+            );
+
+        let pre_confirmed_block = crate::pending::PendingBlockVariant::PreConfirmed {
+            block: crate::pending::PreConfirmedBlock {
+                // Pre-confirmed block is two blocks after latest when pre-latest
+                // is also present.
+                number: latest.number + 2,
+                l1_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from_be_slice(b"gas price").unwrap(),
+                    price_in_fri: GasPrice::from_be_slice(b"strk gas price").unwrap(),
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from_be_slice(b"datgasprice").unwrap(),
+                    price_in_fri: GasPrice::from_be_slice(b"strk datgasprice").unwrap(),
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: GasPrice::from_be_slice(b"l2 gas price").unwrap(),
+                    price_in_fri: GasPrice::from_be_slice(b"strk l2gas price").unwrap(),
+                },
+                sequencer_address: sequencer_address_bytes!(b"preconfirmed sequencer address"),
+                status: starknet_gateway_types::reply::Status::Pending,
+                timestamp: BlockTimestamp::new_or_panic(1234567),
+                transaction_receipts: pre_confirmed_tx_receipts,
+                transactions: pre_confirmed_transactions,
+                starknet_version: StarknetVersion::new(0, 11, 0, 0),
+                l1_da_mode: L1DataAvailabilityMode::Calldata,
+            }
+            .into(),
+            candidate_transactions,
+            pre_latest_data: Some(Box::new(PreLatestData {
+                block: pre_latest_block,
+                state_update: pre_latest_state_update.clone(),
+            })),
+        };
+
+        // The class definitions must be inserted into the database.
+        let pre_confirmed_state_update_copy = pre_confirmed_state_update.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut db = storage.connection().unwrap();
+            let tx = db.transaction().unwrap();
+            let class_definition =
+                starknet_gateway_test_fixtures::class_definitions::CONTRACT_DEFINITION;
+
+            for cairo in pre_latest_state_update.declared_cairo_classes {
+                tx.insert_cairo_class(cairo, class_definition).unwrap();
+            }
+            for (sierra, casm) in pre_latest_state_update.declared_sierra_classes {
+                tx.insert_sierra_class(&sierra, b"sierra def", &casm, b"casm def")
+                    .unwrap();
+            }
+
+            for cairo in pre_confirmed_state_update_copy.declared_cairo_classes {
+                tx.insert_cairo_class(cairo, class_definition).unwrap();
+            }
+            for (sierra, casm) in pre_confirmed_state_update_copy.declared_sierra_classes {
+                tx.insert_sierra_class(&sierra, b"sierra def", &casm, b"casm def")
+                    .unwrap();
+            }
+
+            tx.commit().unwrap();
+        })
+        .await
+        .unwrap();
+
+        PendingData::from_parts(
+            pre_confirmed_block,
+            pre_confirmed_state_update,
+            latest.number + 2,
+        )
     }
 }
 
