@@ -1627,6 +1627,790 @@ pub(crate) mod tests {
                 }
             }
         }
+
+        pub mod expected_output_0_14_0_0 {
+
+            use pathfinder_common::{BlockHeader, ContractAddress, SierraHash, StorageValue};
+
+            use super::*;
+            use crate::method::get_state_update::types::{StorageDiff, StorageEntry};
+
+            const DECLARE_OVERALL_FEE: u64 = 1266;
+            const DECLARE_GAS_CONSUMED: u64 = 882;
+            const DECLARE_DATA_GAS_CONSUMED: u64 = 192;
+            pub fn declare(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+            ) -> pathfinder_executor::types::TransactionSimulation {
+                pathfinder_executor::types::TransactionSimulation {
+                    fee_estimation: pathfinder_executor::types::FeeEstimate {
+                        l1_gas_consumed: DECLARE_GAS_CONSUMED.into(),
+                        l1_gas_price: 1.into(),
+                        l1_data_gas_consumed: DECLARE_DATA_GAS_CONSUMED.into(),
+                        l1_data_gas_price: 2.into(),
+                        l2_gas_consumed: 0.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: DECLARE_OVERALL_FEE.into(),
+                        unit: pathfinder_executor::types::PriceUnit::Wei,
+                    },
+                    trace: pathfinder_executor::types::TransactionTrace::Declare(
+                        pathfinder_executor::types::DeclareTransactionTrace {
+                            execution_info: DeclareTransactionExecutionInfo {
+                                fee_transfer_invocation: Some(declare_fee_transfer(
+                                    account_contract_address,
+                                    last_block_header,
+                                )),
+                                validate_invocation: Some(declare_validate(
+                                    account_contract_address,
+                                )),
+                                execution_resources:
+                                    pathfinder_executor::types::ExecutionResources {
+                                        computation_resources:
+                                            declare_validate_computation_resources()
+                                                + declare_fee_transfer_computation_resources(),
+                                        data_availability:
+                                            pathfinder_executor::types::DataAvailabilityResources {
+                                                l1_gas: 0,
+                                                l1_data_gas: 192,
+                                            },
+                                        l1_gas: DECLARE_GAS_CONSUMED.into(),
+                                        l1_data_gas: DECLARE_DATA_GAS_CONSUMED.into(),
+                                        l2_gas: 0,
+                                    },
+                            },
+                            state_diff: declare_state_diff(
+                                account_contract_address,
+                                declare_fee_transfer_storage_diffs(),
+                            ),
+                        },
+                    ),
+                }
+            }
+
+            fn declare_validate_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    memory_holes: 1,
+                    range_check_builtin_applications: 4,
+                    steps: 203,
+                    ..Default::default()
+                }
+            }
+
+            fn declare_fee_transfer_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 1354,
+                    memory_holes: 59,
+                    range_check_builtin_applications: 31,
+                    pedersen_builtin_applications: 4,
+                    ..Default::default()
+                }
+            }
+
+            fn declare_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> pathfinder_executor::types::StateDiff {
+                pathfinder_executor::types::StateDiff {
+                    storage_diffs: BTreeMap::from_iter(
+                        storage_diffs
+                            .into_iter()
+                            .map(|diff| {
+                                (
+                                    diff.address,
+                                    diff.storage_entries
+                                        .into_iter()
+                                        .map(|entry| pathfinder_executor::types::StorageDiff {
+                                            key: entry.key,
+                                            value: entry.value,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    deprecated_declared_classes: HashSet::new(),
+                    declared_classes: vec![pathfinder_executor::types::DeclaredSierraClass {
+                        class_hash: SierraHash(SIERRA_HASH.0),
+                        compiled_class_hash: CASM_HASH,
+                    }],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x1"))]),
+                }
+            }
+
+            fn declare_fee_transfer_storage_diffs() -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: ETH_FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: storage_value!("0x000000000000000000000000000000000000fffffffffffffffffffffffffb12")
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue(DECLARE_OVERALL_FEE.into()),
+                        },
+                    ],
+                }]
+            }
+
+            fn declare_fee_transfer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: *account_contract_address.get(),
+                    class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    events: vec![pathfinder_executor::types::Event {
+                        order: 0,
+                        data: vec![
+                            *account_contract_address.get(),
+                            last_block_header.sequencer_address.0,
+                            Felt::from_u64(DECLARE_OVERALL_FEE),
+                            felt!("0x0"),
+                        ],
+                        keys: vec![felt!(
+                            "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                        )],
+                    }],
+                    calldata: vec![
+                        last_block_header.sequencer_address.0,
+                        Felt::from_u64(DECLARE_OVERALL_FEE),
+                        felt!("0x0"),
+                    ],
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
+                    internal_calls: vec![],
+                    messages: vec![],
+                    result: vec![felt!("0x1")],
+                    computation_resources: declare_fee_transfer_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            fn declare_validate(
+                account_contract_address: ContractAddress,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: felt!("0x0"),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    events: vec![],
+                    contract_address: account_contract_address,
+                    selector: Some(EntryPoint::hashed(b"__validate_declare__").0),
+                    calldata: vec![SIERRA_HASH.0],
+                    internal_calls: vec![],
+                    messages: vec![],
+                    result: vec![felt!("0x56414c4944")],
+                    computation_resources: declare_validate_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 1,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            const UNIVERSAL_DEPLOYER_OVERALL_FEE: u64 = 473;
+            const UNIVERSAL_DEPLOYER_GAS_CONSUMED: u64 = 19;
+            const UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED: u64 = 224;
+            pub fn universal_deployer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                universal_deployer_address: ContractAddress,
+            ) -> pathfinder_executor::types::TransactionSimulation {
+                pathfinder_executor::types::TransactionSimulation {
+                    fee_estimation: pathfinder_executor::types::FeeEstimate {
+                        l1_gas_consumed: UNIVERSAL_DEPLOYER_GAS_CONSUMED.into(),
+                        l1_gas_price: 1.into(),
+                        l1_data_gas_consumed: UNIVERSAL_DEPLOYER_DATA_GAS_CONSUMED.into(),
+                        l1_data_gas_price: 2.into(),
+                        l2_gas_consumed: 0.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: UNIVERSAL_DEPLOYER_OVERALL_FEE.into(),
+                        unit: pathfinder_executor::types::PriceUnit::Wei,
+                    },
+                    trace: pathfinder_executor::types::TransactionTrace::Invoke(
+                        pathfinder_executor::types::InvokeTransactionTrace {
+                            execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
+                                validate_invocation: Some(universal_deployer_validate(
+                                    account_contract_address,
+                                    universal_deployer_address,
+                                )),
+                                execute_invocation:
+                                    pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(Some(
+                                        universal_deployer_execute(
+                                            account_contract_address,
+                                            universal_deployer_address,
+                                        ),
+                                    )),
+                                fee_transfer_invocation: Some(universal_deployer_fee_transfer(
+                                    account_contract_address,
+                                    last_block_header,
+                                    0,
+                                )),
+                                execution_resources: pathfinder_executor::types::ExecutionResources {
+                                    computation_resources: universal_deployer_validate_computation_resources()
+                                        + universal_deployer_execute_computation_resources()
+                                        + universal_deployer_fee_transfer_computation_resources(),
+                                    data_availability: pathfinder_executor::types::DataAvailabilityResources {
+                                        l1_gas: 0,
+                                        l1_data_gas: 224,
+                                    },
+                                    l1_gas: 25,
+                                    l1_data_gas: 224,
+                                    l2_gas: 0,
+                                },
+                            },
+                            state_diff: universal_deployer_state_diff(
+                                account_contract_address,
+                                universal_deployer_fee_transfer_storage_diffs(0),
+                            ),
+                        },
+                    ),
+                }
+            }
+
+            fn universal_deployer_validate_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    memory_holes: 4,
+                    range_check_builtin_applications: 14,
+                    steps: 341,
+                    ..Default::default()
+                }
+            }
+
+            fn universal_deployer_execute_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 2574,
+                    memory_holes: 20,
+                    range_check_builtin_applications: 66,
+                    pedersen_builtin_applications: 7,
+                    ..Default::default()
+                }
+            }
+
+            fn universal_deployer_fee_transfer_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 1354,
+                    memory_holes: 59,
+                    range_check_builtin_applications: 31,
+                    pedersen_builtin_applications: 4,
+                    ..Default::default()
+                }
+            }
+
+            fn universal_deployer_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> pathfinder_executor::types::StateDiff {
+                pathfinder_executor::types::StateDiff {
+                    storage_diffs: BTreeMap::from_iter(
+                        storage_diffs
+                            .into_iter()
+                            .map(|diff| {
+                                (
+                                    diff.address,
+                                    diff.storage_entries
+                                        .into_iter()
+                                        .map(|entry| pathfinder_executor::types::StorageDiff {
+                                            key: entry.key,
+                                            value: entry.value,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    deprecated_declared_classes: HashSet::new(),
+                    declared_classes: vec![],
+                    deployed_contracts: vec![pathfinder_executor::types::DeployedContract {
+                        address: DEPLOYED_CONTRACT_ADDRESS,
+                        class_hash: SIERRA_HASH,
+                    }],
+                    replaced_classes: vec![],
+                    nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x2"))]),
+                }
+            }
+
+            fn universal_deployer_fee_transfer_storage_diffs(
+                overall_fee_correction: u64,
+            ) -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: ETH_FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: StorageValue((0xfffffffffffffffffffffffff93fu128 + u128::from(overall_fee_correction)).into()),
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into()),
+                        },
+                    ],
+                }]
+            }
+
+            fn universal_deployer_validate(
+                account_contract_address: ContractAddress,
+                universal_deployer_address: ContractAddress,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: felt!("0x0"),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    internal_calls: vec![],
+                    events: vec![],
+                    contract_address: account_contract_address,
+                    selector: Some(EntryPoint::hashed(b"__validate__").0),
+                    calldata: vec![
+                        call_param!("0x1").0,
+                        universal_deployer_address.0,
+                        EntryPoint::hashed(b"deployContract").0,
+                        // calldata_len
+                        call_param!("0x4").0,
+                        // classHash
+                        SIERRA_HASH.0,
+                        // salt
+                        call_param!("0x0").0,
+                        // unique
+                        call_param!("0x0").0,
+                        // calldata_len
+                        call_param!("0x0").0,
+                    ],
+                    messages: vec![],
+                    result: vec![felt!("0x56414c4944")],
+                    computation_resources: universal_deployer_validate_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 2,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            fn universal_deployer_execute(
+                account_contract_address: ContractAddress,
+                universal_deployer_address: ContractAddress,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: felt!("0x0"),
+                    internal_calls: vec![
+                        pathfinder_executor::types::FunctionInvocation {
+                            call_type: Some(pathfinder_executor::types::CallType::Call),
+                            caller_address: *account_contract_address.get(),
+                            internal_calls: vec![
+                                pathfinder_executor::types::FunctionInvocation {
+                                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                                    caller_address: *universal_deployer_address.get(),
+                                    internal_calls: vec![],
+                                    class_hash: Some(SIERRA_HASH.0),
+                                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::Constructor),
+                                    events: vec![],
+                                    contract_address: DEPLOYED_CONTRACT_ADDRESS,
+                                    selector: Some(EntryPoint::hashed(b"constructor").0),
+                                    calldata: vec![],
+                                    messages: vec![],
+                                    result: vec![],
+                                    computation_resources: pathfinder_executor::types::ComputationResources::default(),
+                                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources::default(),
+                                    is_reverted: false,
+                                },
+                            ],
+                            class_hash: Some(UNIVERSAL_DEPLOYER_CLASS_HASH.0),
+                            entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                            events: vec![
+                                pathfinder_executor::types::Event {
+                                    order: 0,
+                                    data: vec![
+                                        *DEPLOYED_CONTRACT_ADDRESS.get(),
+                                        *account_contract_address.get(),
+                                        felt!("0x0"),
+                                        SIERRA_HASH.0,
+                                        felt!("0x0"),
+                                        felt!("0x0"),
+                                    ],
+                                    keys: vec![
+                                        felt!("0x026B160F10156DEA0639BEC90696772C640B9706A47F5B8C52EA1ABE5858B34D"),
+                                    ]
+                                },
+                            ],
+                            contract_address: universal_deployer_address,
+                            selector: Some(EntryPoint::hashed(b"deployContract").0),
+                            calldata: vec![
+                                // classHash
+                                SIERRA_HASH.0,
+                                // salt
+                                call_param!("0x0").0,
+                                // unique
+                                call_param!("0x0").0,
+                                //  calldata_len
+                                call_param!("0x0").0,
+                            ],
+                            messages: vec![],
+                            result: vec![
+                                *DEPLOYED_CONTRACT_ADDRESS.get(),
+                            ],
+                            computation_resources: pathfinder_executor::types::ComputationResources {
+                                steps: 1262,
+                                memory_holes: 2,
+                                range_check_builtin_applications: 23,
+                                pedersen_builtin_applications: 7,
+                                ..Default::default()
+                            },
+                            execution_resources: pathfinder_executor::types::InnerCallExecutionResources { l1_gas: 5, l2_gas: 0 },
+                            is_reverted: false,
+                        }
+                    ],
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    events: vec![],
+                    contract_address: account_contract_address,
+                    selector: Some(EntryPoint::hashed(b"__execute__").0),
+                    calldata: vec![
+                        call_param!("0x1").0,
+                        universal_deployer_address.0,
+                        EntryPoint::hashed(b"deployContract").0,
+                        call_param!("0x4").0,
+                        // classHash
+                        SIERRA_HASH.0,
+                        // salt
+                        call_param!("0x0").0,
+                        // unique
+                        call_param!("0x0").0,
+                        // calldata_len
+                        call_param!("0x0").0,
+                    ],
+                    messages: vec![],
+                    result: vec![
+                        felt!("0x1"),
+                        felt!("0x1"),
+                        *DEPLOYED_CONTRACT_ADDRESS.get(),
+                    ],
+                    computation_resources: universal_deployer_execute_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 10,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            fn universal_deployer_fee_transfer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                overall_fee_correction: u64,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: *account_contract_address.get(),
+                    internal_calls: vec![],
+                    class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    events: vec![pathfinder_executor::types::Event {
+                        order: 0,
+                        data: vec![
+                            *account_contract_address.get(),
+                            last_block_header.sequencer_address.0,
+                            (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into(),
+                            felt!("0x0"),
+                        ],
+                        keys: vec![felt!(
+                            "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                        )],
+                    }],
+                    calldata: vec![
+                        last_block_header.sequencer_address.0,
+                        (UNIVERSAL_DEPLOYER_OVERALL_FEE - overall_fee_correction).into(),
+                        // calldata_len
+                        call_param!("0x0").0,
+                    ],
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
+                    messages: vec![],
+                    result: vec![felt!("0x1")],
+                    computation_resources: universal_deployer_fee_transfer_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            const INVOKE_OVERALL_FEE: u64 = 275;
+            const INVOKE_GAS_CONSUMED: u64 = 14;
+            const INVOKE_DATA_GAS_CONSUMED: u64 = 128;
+            pub fn invoke(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                test_storage_value: StorageValue,
+            ) -> pathfinder_executor::types::TransactionSimulation {
+                pathfinder_executor::types::TransactionSimulation {
+                    fee_estimation: pathfinder_executor::types::FeeEstimate {
+                        l1_gas_consumed: INVOKE_GAS_CONSUMED.into(),
+                        l1_gas_price: 1.into(),
+                        l1_data_gas_consumed: INVOKE_DATA_GAS_CONSUMED.into(),
+                        l1_data_gas_price: 2.into(),
+                        l2_gas_consumed: 0.into(),
+                        l2_gas_price: 1.into(),
+                        overall_fee: INVOKE_OVERALL_FEE.into(),
+                        unit: pathfinder_executor::types::PriceUnit::Wei,
+                    },
+                    trace: pathfinder_executor::types::TransactionTrace::Invoke(
+                        pathfinder_executor::types::InvokeTransactionTrace {
+                            execution_info: pathfinder_executor::types::InvokeTransactionExecutionInfo {
+                                validate_invocation: Some(invoke_validate(account_contract_address)),
+                                execute_invocation:
+                                    pathfinder_executor::types::RevertibleFunctionInvocation::FunctionInvocation(Some(
+                                        invoke_execute(account_contract_address, test_storage_value),
+                                    )),
+                                fee_transfer_invocation: Some(invoke_fee_transfer(
+                                    account_contract_address,
+                                    last_block_header,
+                                    0,
+                                )),
+                                execution_resources: pathfinder_executor::types::ExecutionResources {
+                                    computation_resources: invoke_validate_computation_resources()
+                                        + invoke_execute_computation_resources()
+                                        + invoke_fee_transfer_computation_resources(),
+                                    data_availability: pathfinder_executor::types::DataAvailabilityResources {
+                                        l1_gas: 0,
+                                        l1_data_gas: 128,
+                                    },
+                                    l1_gas: 19,
+                                    l1_data_gas: 128,
+                                    l2_gas: 0,
+                                },
+                            },
+                            state_diff: invoke_state_diff(
+                                account_contract_address,
+                                invoke_fee_transfer_storage_diffs(0),
+                            ),
+                        },
+                    ),
+                }
+            }
+
+            fn invoke_validate_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 341,
+                    range_check_builtin_applications: 14,
+                    memory_holes: 4,
+                    ..Default::default()
+                }
+            }
+
+            fn invoke_execute_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 1477,
+                    range_check_builtin_applications: 46,
+                    memory_holes: 18,
+                    ..Default::default()
+                }
+            }
+
+            fn invoke_fee_transfer_computation_resources(
+            ) -> pathfinder_executor::types::ComputationResources {
+                pathfinder_executor::types::ComputationResources {
+                    steps: 1354,
+                    memory_holes: 59,
+                    range_check_builtin_applications: 31,
+                    pedersen_builtin_applications: 4,
+                    ..Default::default()
+                }
+            }
+
+            fn invoke_state_diff(
+                account_contract_address: ContractAddress,
+                storage_diffs: Vec<StorageDiff>,
+            ) -> pathfinder_executor::types::StateDiff {
+                pathfinder_executor::types::StateDiff {
+                    storage_diffs: BTreeMap::from_iter(
+                        storage_diffs
+                            .into_iter()
+                            .map(|diff| {
+                                (
+                                    diff.address,
+                                    diff.storage_entries
+                                        .into_iter()
+                                        .map(|entry| pathfinder_executor::types::StorageDiff {
+                                            key: entry.key,
+                                            value: entry.value,
+                                        })
+                                        .collect(),
+                                )
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    deprecated_declared_classes: HashSet::new(),
+                    declared_classes: vec![],
+                    deployed_contracts: vec![],
+                    replaced_classes: vec![],
+                    nonces: BTreeMap::from([(account_contract_address, contract_nonce!("0x3"))]),
+                }
+            }
+
+            fn invoke_fee_transfer_storage_diffs(overall_fee_correction: u64) -> Vec<StorageDiff> {
+                vec![StorageDiff {
+                    address: ETH_FEE_TOKEN_ADDRESS,
+                    storage_entries: vec![
+                        StorageEntry {
+                            key: storage_address!("0x032a4edd4e4cffa71ee6d0971c54ac9e62009526cd78af7404aa968c3dc3408e"),
+                            value: StorageValue((0xfffffffffffffffffffffffff831u128 + u128::from(2 * overall_fee_correction)).into()),
+                        },
+                        StorageEntry {
+                            key: storage_address!("0x05496768776e3db30053404f18067d81a6e06f5a2b0de326e21298fd9d569a9a"),
+                            value: StorageValue((DECLARE_OVERALL_FEE + UNIVERSAL_DEPLOYER_OVERALL_FEE + INVOKE_OVERALL_FEE - 2 * overall_fee_correction).into()),
+                        },
+                    ],
+                }]
+            }
+
+            fn invoke_validate(
+                account_contract_address: ContractAddress,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: felt!("0x0"),
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    internal_calls: vec![],
+                    events: vec![],
+                    contract_address: account_contract_address,
+                    selector: Some(EntryPoint::hashed(b"__validate__").0),
+                    calldata: vec![
+                        call_param!("0x1").0,
+                        DEPLOYED_CONTRACT_ADDRESS.0,
+                        EntryPoint::hashed(b"get_data").0,
+                        // calldata_len
+                        call_param!("0x0").0,
+                    ],
+                    messages: vec![],
+                    result: vec![felt!("0x56414c4944")],
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 2,
+                        l2_gas: 0,
+                    },
+                    computation_resources: invoke_validate_computation_resources(),
+                    is_reverted: false,
+                }
+            }
+
+            fn invoke_execute(
+                account_contract_address: ContractAddress,
+                test_storage_value: StorageValue,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: felt!("0x0"),
+                    internal_calls: vec![pathfinder_executor::types::FunctionInvocation {
+                        call_type: Some(pathfinder_executor::types::CallType::Call),
+                        caller_address: *account_contract_address.get(),
+                        class_hash: Some(SIERRA_HASH.0),
+                        entry_point_type: Some(
+                            pathfinder_executor::types::EntryPointType::External,
+                        ),
+                        events: vec![],
+                        internal_calls: vec![],
+                        contract_address: DEPLOYED_CONTRACT_ADDRESS,
+                        selector: Some(EntryPoint::hashed(b"get_data").0),
+                        calldata: vec![],
+                        messages: vec![],
+                        result: vec![test_storage_value.0],
+                        computation_resources: pathfinder_executor::types::ComputationResources {
+                            steps: 165,
+                            range_check_builtin_applications: 3,
+                            ..Default::default()
+                        },
+                        execution_resources:
+                            pathfinder_executor::types::InnerCallExecutionResources {
+                                l1_gas: 1,
+                                l2_gas: 0,
+                            },
+                        is_reverted: false,
+                    }],
+                    class_hash: Some(crate::test_setup::OPENZEPPELIN_ACCOUNT_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    events: vec![],
+                    contract_address: account_contract_address,
+                    selector: Some(EntryPoint::hashed(b"__execute__").0),
+                    calldata: vec![
+                        call_param!("0x1").0,
+                        DEPLOYED_CONTRACT_ADDRESS.0,
+                        EntryPoint::hashed(b"get_data").0,
+                        // calldata_len
+                        call_param!("0x0").0,
+                    ],
+                    messages: vec![],
+                    result: vec![felt!("0x1"), felt!("0x1"), test_storage_value.0],
+                    computation_resources: invoke_execute_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 6,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+
+            fn invoke_fee_transfer(
+                account_contract_address: ContractAddress,
+                last_block_header: &BlockHeader,
+                overall_fee_correction: u64,
+            ) -> pathfinder_executor::types::FunctionInvocation {
+                pathfinder_executor::types::FunctionInvocation {
+                    call_type: Some(pathfinder_executor::types::CallType::Call),
+                    caller_address: *account_contract_address.get(),
+                    class_hash: Some(ERC20_CONTRACT_DEFINITION_CLASS_HASH.0),
+                    entry_point_type: Some(pathfinder_executor::types::EntryPointType::External),
+                    internal_calls: vec![],
+                    events: vec![pathfinder_executor::types::Event {
+                        order: 0,
+                        data: vec![
+                            *account_contract_address.get(),
+                            last_block_header.sequencer_address.0,
+                            Felt::from_u64(INVOKE_OVERALL_FEE - overall_fee_correction),
+                            felt!("0x0"),
+                        ],
+                        keys: vec![felt!(
+                            "0x0099CD8BDE557814842A3121E8DDFD433A539B8C9F14BF31EBF108D12E6196E9"
+                        )],
+                    }],
+                    calldata: vec![
+                        last_block_header.sequencer_address.0,
+                        Felt::from_u64(INVOKE_OVERALL_FEE - overall_fee_correction),
+                        call_param!("0x0").0,
+                    ],
+                    contract_address: ETH_FEE_TOKEN_ADDRESS,
+                    selector: Some(EntryPoint::hashed(b"transfer").0),
+                    messages: vec![],
+                    result: vec![felt!("0x1")],
+                    computation_resources: invoke_fee_transfer_computation_resources(),
+                    execution_resources: pathfinder_executor::types::InnerCallExecutionResources {
+                        l1_gas: 4,
+                        l2_gas: 0,
+                    },
+                    is_reverted: false,
+                }
+            }
+        }
     }
 
     #[rstest::rstest]

@@ -1,7 +1,9 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use pathfinder_common::{BlockNumber, ContractAddress, EventKey};
+use pathfinder_common::event::Event;
+use pathfinder_common::receipt::Receipt;
+use pathfinder_common::{BlockHash, BlockNumber, ContractAddress, EventKey, TransactionHash};
 use pathfinder_storage::{AGGREGATE_BLOOM_BLOCK_RANGE_LEN, EVENT_KEY_FILTER_LIMIT};
 use tokio::sync::mpsc;
 
@@ -241,10 +243,11 @@ impl RpcSubscriptionFlow for SubscribeEvents {
         params: Self::Params,
         tx: mpsc::Sender<SubscriptionMessage<Self::Notification>>,
     ) -> Result<(), RpcError> {
+        let mut params = params.unwrap_or_default();
+
         let mut blocks = state.notifications.l2_blocks.subscribe();
         let mut reorgs = state.notifications.reorgs.subscribe();
         let mut pending_data = state.pending_data.0.clone();
-        let mut params = params.unwrap_or_default();
 
         if let Some(ref mut keys) = params.keys {
             // Truncate empty key lists from the end of the key filter.
@@ -253,17 +256,27 @@ impl RpcSubscriptionFlow for SubscribeEvents {
             }
         }
 
-        let mut sent_txs = HashSet::new();
-        let mut current_block = BlockNumber::GENESIS;
+        // Keep track of the updates already sent for each block. This is done in order
+        // to avoid sending duplicate notifications when seeing the same block multiple
+        // times in pending data (as new transactions are added). Post Starknet v0.14.0
+        // this includes the pre-confirmed block and an optional pre-latest block, which
+        // is why we need the map.
+        let mut sent_updates_per_block: HashMap<
+            BlockNumber,
+            HashSet<(TransactionHash, TxnFinalityStatus)>,
+        > = HashMap::new();
+
         loop {
             tokio::select! {
                 reorg = reorgs.recv() => {
                     match reorg {
                         Ok(reorg) => {
-                            let block_number = reorg.starting_block_number;
+                            // Remove any blocks that we were keeping track of but were reorged
+                            // away.
+                            sent_updates_per_block.retain(|&block_num, _| block_num < reorg.starting_block_number);
                             if tx.send(SubscriptionMessage {
+                                block_number: reorg.starting_block_number,
                                 notification: Notification::Reorg(reorg),
-                                block_number,
                                 subscription_name: REORG_SUBSCRIPTION_NAME,
                             }).await.is_err() {
                                 return Ok(());
@@ -287,29 +300,24 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
                             tracing::trace!(%block_number, %block_hash, "Received new block");
 
-                            if block_number != current_block {
-                                tracing::trace!(
-                                    %block_number,
-                                    %current_block,
-                                    "Clearing sent transactions"
-                                );
-                                sent_txs.clear();
-                                current_block = block_number;
-                            }
-                            for (receipt, events) in block.transaction_receipts.iter() {
-                                if sent_txs.contains(&(receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2)) {
-                                    tracing::trace!(
-                                        transaction_hash=%receipt.transaction_hash,
-                                        "Transaction already sent, skipping"
-                                    );
+                            // We won't be needing to keep track of updates for this block anymore,
+                            // so we remove it from the map.
+                            let sent_updates = sent_updates_per_block
+                                .remove(&block_number)
+                                .unwrap_or_default();
+
+                            // Send all events that might have been missed in the pending data. This should only
+                            // happen if the subscription started after the transactions were already evicted
+                            // from pending data but before receiving the L2 block that contains them.
+                            for (receipt, events) in &block.transaction_receipts {
+                                let tx_and_finality = (receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2);
+                                if sent_updates.contains(&tx_and_finality) {
                                     continue;
                                 }
                                 for event in events {
-                                    // Check if the event matches the filter.
                                     if !params.matches(event) {
                                         continue;
                                     }
-                                    sent_txs.insert((receipt.transaction_hash, TxnFinalityStatus::AcceptedOnL2));
                                     let emitted = EmittedEvent {
                                         data: event.data.clone(),
                                         keys: event.keys.clone(),
@@ -318,11 +326,15 @@ impl RpcSubscriptionFlow for SubscribeEvents {
                                         block_number: Some(block_number),
                                         transaction_hash: receipt.transaction_hash,
                                     };
-                                    if tx.send(SubscriptionMessage {
-                                        notification: Notification::EmittedEvent(EventWithFinality::new(emitted, TxnFinalityStatus::AcceptedOnL2)),
+                                    let notification = Notification::EmittedEvent(
+                                        EventWithFinality::new(emitted, TxnFinalityStatus::AcceptedOnL2)
+                                    );
+                                    let msg = SubscriptionMessage {
+                                        notification,
                                         block_number,
                                         subscription_name: SUBSCRIPTION_NAME,
-                                    }).await.is_err() {
+                                    };
+                                    if tx.send(msg).await.is_err() {
                                         return Ok(());
                                     }
                                 }
@@ -352,56 +364,99 @@ impl RpcSubscriptionFlow for SubscribeEvents {
 
                     tracing::trace!(block_number=%pending.pending_block_number(), "Received pending block update");
 
-                    let finality = pending.finality_status();
-                    let block_number = pending.pending_block_number();
-                    if block_number != current_block {
-                        tracing::trace!(
-                            %block_number,
-                            %current_block,
-                            "Clearing sent transactions"
-                        );
-                        sent_txs.clear();
-                        current_block = block_number;
+                    let pending_finality = pending.finality_status();
+                    let pending_block_number = pending.pending_block_number();
+                    let sent_pending_updates = sent_updates_per_block
+                        .entry(pending_block_number)
+                        .or_default();
+
+                    if send_event_updates(
+                        pending.pending_tx_receipts_and_events(),
+                        sent_pending_updates,
+                        None,
+                        pending_block_number,
+                        pending_finality,
+                        &params,
+                        &tx
+                    ).await.is_err() {
+                        // Close the subscription.
+                        return Ok(());
                     }
-                    for (receipt, events) in pending.pending_tx_receipts_and_events().iter() {
-                        if sent_txs.contains(&(receipt.transaction_hash, finality)) {
-                            tracing::trace!(
-                                transaction_hash=%receipt.transaction_hash,
-                                "Transaction already sent, skipping"
-                            );
+
+                    if let Some(pre_latest_block) = pending.pre_latest_block() {
+                        let pre_latest_block_number = pre_latest_block.number;
+
+                        let sent_pre_latest_updates = sent_updates_per_block
+                            .entry(pre_latest_block_number)
+                            .or_default();
+
+                        if !sent_pre_latest_updates.is_empty() {
+                            // We've already processed this block as pre-latest (and once it gets
+                            // promoted to pre-latest, it cannot change anymore), nothing to do.
                             continue;
                         }
-                        for event in events {
-                            // Check if the event matches the filter.
-                            if !params.matches(event) {
-                                continue;
-                            }
-                            sent_txs.insert((receipt.transaction_hash, finality));
-                            tracing::trace!(
-                                transaction_hash=%receipt.transaction_hash,
-                                "Sending event"
-                            );
-                            let emitted = EmittedEvent {
-                                data: event.data.clone(),
-                                keys: event.keys.clone(),
-                                from_address: event.from_address,
-                                block_hash: None,
-                                block_number: Some(block_number),
-                                transaction_hash: receipt.transaction_hash,
-                            };
-                            if tx.send(SubscriptionMessage {
-                                notification: Notification::EmittedEvent(EventWithFinality::new(emitted, finality)),
-                                block_number,
-                                subscription_name: SUBSCRIPTION_NAME,
-                            }).await.is_err() {
-                                return Ok(());
-                            }
+
+                        tracing::trace!(block_number = %pre_latest_block_number, "Pre-latest block update");
+
+                        if send_event_updates(
+                            &pre_latest_block.transaction_receipts,
+                            sent_pre_latest_updates,
+                            None,
+                            pre_latest_block_number,
+                            TxnFinalityStatus::AcceptedOnL2,
+                            &params,
+                            &tx,
+                        )
+                        .await
+                        .is_err() {
+                            // Close subscription.
+                            return Ok(());
                         }
                     }
                 }
             }
         }
     }
+}
+
+async fn send_event_updates(
+    event_updates: &[(Receipt, Vec<Event>)],
+    sent_updates_for_block: &mut HashSet<(TransactionHash, TxnFinalityStatus)>,
+    block_hash: Option<BlockHash>,
+    block_number: BlockNumber,
+    finality_status: TxnFinalityStatus,
+    params: &Params,
+    msg_tx: &mpsc::Sender<SubscriptionMessage<Notification>>,
+) -> Result<(), mpsc::error::SendError<SubscriptionMessage<Notification>>> {
+    for (receipt, events) in event_updates {
+        let tx_and_finality = (receipt.transaction_hash, finality_status);
+        if !sent_updates_for_block.insert(tx_and_finality) {
+            continue;
+        }
+        for event in events {
+            if !params.matches(event) {
+                continue;
+            }
+            let emitted = EmittedEvent {
+                data: event.data.clone(),
+                keys: event.keys.clone(),
+                from_address: event.from_address,
+                block_hash,
+                block_number: Some(block_number),
+                transaction_hash: receipt.transaction_hash,
+            };
+            let notification =
+                Notification::EmittedEvent(EventWithFinality::new(emitted, finality_status));
+            let msg = SubscriptionMessage {
+                notification,
+                block_number,
+                subscription_name: SUBSCRIPTION_NAME,
+            };
+            msg_tx.send(msg).await?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

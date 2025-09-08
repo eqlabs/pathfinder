@@ -91,6 +91,35 @@ pub async fn trace_transaction(
                     // Can't use the cache for pending blocks since they have no block hash.
                     pathfinder_executor::TraceCache::default(),
                 )
+            } else if let Some(pre_latest_tx) = pending.pre_latest_block().and_then(|pre_latest| {
+                pre_latest
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.hash == input.transaction_hash)
+                    .cloned()
+            }) {
+                let header = pending
+                    .pre_latest_header()
+                    .expect("Pre-latest block exists");
+
+                if header.starknet_version
+                    < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+                {
+                    return Ok(LocalExecution::Unsupported(pre_latest_tx.clone()));
+                }
+
+                let txs = pending
+                    .pre_latest_block()
+                    .expect("Pre-latest block exists")
+                    .transactions
+                    .clone();
+
+                (
+                    header,
+                    txs,
+                    // Can't use the cache for pre-latest blocks since they have no block hash.
+                    pathfinder_executor::TraceCache::default(),
+                )
             } else {
                 let block_hash = db_tx
                     .transaction_block_hash(input.transaction_hash)?
@@ -275,6 +304,8 @@ pub mod tests {
 
     use super::super::trace_block_transactions::tests::{
         setup_multi_tx_trace_pending_test,
+        setup_multi_tx_trace_pre_confirmed_test,
+        setup_multi_tx_trace_pre_latest_test,
         setup_multi_tx_trace_test,
     };
     use super::{trace_transaction, Input, Output};
@@ -318,6 +349,70 @@ pub mod tests {
     #[tokio::test]
     async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
+
+        for trace in traces {
+            let input = Input {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
+            pretty_assertions_sorted::assert_eq!(
+                output
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap(),
+                expected
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pre_latest_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pre_latest_test().await?;
+
+        for trace in traces {
+            let input = Input {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
+            pretty_assertions_sorted::assert_eq!(
+                output
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap(),
+                expected
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pre_confirmed_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pre_confirmed_test().await?;
 
         for trace in traces {
             let input = Input {
