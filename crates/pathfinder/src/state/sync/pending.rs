@@ -29,7 +29,16 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     )
     .await;
 
-    poll_starknet_0_14_0(&tx_event, &sequencer, poll_interval, &latest, &current).await;
+    poll_starknet_0_14_0(
+        &tx_event,
+        &sequencer,
+        poll_interval,
+        &storage,
+        &latest,
+        &current,
+        fetch_casm_from_fgw,
+    )
+    .await;
 }
 
 const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
@@ -130,8 +139,10 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &S,
     poll_interval: std::time::Duration,
+    storage: &Storage,
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
+    fetch_casm_from_fgw: bool,
 ) {
     const IN_SYNC_THRESHOLD: u64 = 6;
 
@@ -188,7 +199,33 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             }
         };
 
-        let pre_confirmed_block_number = if pre_latest_data.is_some() {
+        let pre_confirmed_block_number = if let Some(ref pre_latest) = pre_latest_data {
+            let (_, _, state_update) = pre_latest.as_ref();
+            // TODO: What to do if this fails? Ignore pre-latest data? Ignore entire
+            // pre-confirmed update? Ignore just the classes?
+            match super::l2::download_new_classes(
+                state_update,
+                sequencer,
+                storage.clone(),
+                fetch_casm_from_fgw,
+            )
+            .await
+            {
+                Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
+                Ok(downloaded_classes) => {
+                    if let Err(e) = super::l2::emit_events_for_downloaded_classes(
+                        tx_event,
+                        downloaded_classes,
+                        &state_update.declared_sierra_classes,
+                    )
+                    .await
+                    {
+                        tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
+                        break;
+                    }
+                }
+            }
+
             // Pre-latest block exists which means that the sequencer has already started
             // building the next pre-confirmed block.
             latest_number + 2
