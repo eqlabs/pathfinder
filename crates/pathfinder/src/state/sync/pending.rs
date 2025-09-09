@@ -1,3 +1,4 @@
+use anyhow::Context;
 use pathfinder_common::{BlockHash, BlockNumber, StarknetVersion};
 use pathfinder_storage::Storage;
 use starknet_gateway_client::GatewayApi;
@@ -28,7 +29,16 @@ pub async fn poll_pending<S: GatewayApi + Clone + Send + 'static>(
     )
     .await;
 
-    poll_starknet_0_14_0(&tx_event, &sequencer, poll_interval, &latest, &current).await;
+    poll_starknet_0_14_0(
+        &tx_event,
+        &sequencer,
+        poll_interval,
+        &storage,
+        &latest,
+        &current,
+        fetch_casm_from_fgw,
+    )
+    .await;
 }
 
 const STARKNET_VERSION_0_14_0: StarknetVersion = StarknetVersion::new(0, 14, 0, 0);
@@ -129,23 +139,36 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     tx_event: &tokio::sync::mpsc::Sender<SyncEvent>,
     sequencer: &S,
     poll_interval: std::time::Duration,
+    storage: &Storage,
     latest: &watch::Receiver<(BlockNumber, BlockHash)>,
     current: &watch::Receiver<(BlockNumber, BlockHash)>,
+    fetch_casm_from_fgw: bool,
 ) {
+    const IN_SYNC_THRESHOLD: u64 = 6;
+
     #[derive(Default)]
     struct State {
         block_number: BlockNumber,
         tx_count: usize,
+        pre_latest_tx_count: Option<usize>,
     }
 
     impl State {
         /// Returns `true` if the state was updated, `false` otherwise.
-        fn update(&mut self, block_number: BlockNumber, tx_count: usize) -> bool {
-            if self.block_number == block_number && self.tx_count >= tx_count {
+        fn update(&mut self, new_state: Self) -> bool {
+            let pre_confirmed_same =
+                self.block_number == new_state.block_number && self.tx_count >= new_state.tx_count;
+            let pre_latest_same = match (self.pre_latest_tx_count, new_state.pre_latest_tx_count) {
+                (Some(current), Some(new)) if current >= new => true,
+                (Some(_current), None) => true,
+                _ => false,
+            };
+
+            if pre_confirmed_same && pre_latest_same {
                 return false;
             }
-            self.block_number = block_number;
-            self.tx_count = tx_count;
+
+            *self = new_state;
             true
         }
     }
@@ -155,16 +178,68 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
     loop {
         let t_fetch = Instant::now();
 
-        let latest = latest.borrow().0.get();
-        let current = current.borrow().0.get();
+        let (latest_number, latest_hash) = *latest.borrow();
+        let current_number = current.borrow().0.get();
 
-        if latest.abs_diff(current) > 6 {
-            tracing::debug!(%latest, %current, "Not in sync yet; skipping pre-confirmed block download");
+        if latest_number.get().abs_diff(current_number) > IN_SYNC_THRESHOLD {
+            tracing::debug!(
+                latest = %latest_number.get(), current = %current_number,
+                "Not in sync yet; skipping pre-confirmed block download"
+            );
             tokio::time::sleep_until(t_fetch + poll_interval).await;
             continue;
         }
 
-        let pre_confirmed_block_number = BlockNumber::new_or_panic(latest + 1);
+        let pre_latest_data = match fetch_pre_latest(sequencer, latest_number, latest_hash).await {
+            Ok(r) => r.map(Box::new),
+            Err(e) => {
+                tracing::debug!(%e, "Failed to fetch pre-latest block");
+                tokio::time::sleep_until(t_fetch + poll_interval).await;
+                continue;
+            }
+        };
+
+        let pre_confirmed_block_number = if let Some(pre_latest) = pre_latest_data.as_ref() {
+            let (_, _, state_update) = pre_latest.as_ref();
+
+            // Download, process and emit all missing classes. This can occasionally
+            // fail when querying an out of sync feeder gateway which isn't aware of
+            // the new pending classes. In this case, ignore the new pending data as
+            // it is incomplete.
+            match super::l2::download_new_classes(
+                state_update,
+                sequencer,
+                storage.clone(),
+                fetch_casm_from_fgw,
+            )
+            .await
+            {
+                Err(e) => {
+                    tracing::debug!(reason=?e, "Failed to download pending classes");
+                    // Ignore incomplete pending data.
+                    tokio::time::sleep_until(t_fetch + poll_interval).await;
+                    continue;
+                }
+                Ok(downloaded_classes) => {
+                    if let Err(e) = super::l2::emit_events_for_downloaded_classes(
+                        tx_event,
+                        downloaded_classes,
+                        &state_update.declared_sierra_classes,
+                    )
+                    .await
+                    {
+                        tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
+                        break;
+                    }
+                }
+            }
+
+            // Pre-latest block exists which means that the sequencer has already started
+            // building the next pre-confirmed block.
+            latest_number + 2
+        } else {
+            latest_number + 1
+        };
 
         let pre_confirmed_block = match sequencer
             .preconfirmed_block(pre_confirmed_block_number.into())
@@ -178,32 +253,63 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             }
         };
 
-        match state.update(
-            pre_confirmed_block_number,
-            pre_confirmed_block.transactions.len(),
-        ) {
-            false => {
-                tracing::trace!("No change in pre-confirmed block data");
-                tokio::time::sleep_until(t_fetch + poll_interval).await;
-                continue;
+        let new_state = State {
+            block_number: pre_confirmed_block_number,
+            tx_count: pre_confirmed_block.transactions.len(),
+            pre_latest_tx_count: pre_latest_data
+                .as_ref()
+                .map(|pre_latest| pre_latest.1.transactions.len()),
+        };
+        if state.update(new_state) {
+            tracing::trace!("Emitting a pre-confirmed update");
+            if let Err(e) = tx_event
+                .send(SyncEvent::PreConfirmed {
+                    number: pre_confirmed_block_number,
+                    block: pre_confirmed_block.into(),
+                    pre_latest_data,
+                })
+                .await
+            {
+                tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
+                break;
             }
-            true => {
-                tracing::trace!("Emitting a pre-confirmed update");
-                if let Err(e) = tx_event
-                    .send(SyncEvent::PreConfirmed((
-                        pre_confirmed_block_number,
-                        pre_confirmed_block.into(),
-                    )))
-                    .await
-                {
-                    tracing::error!(error=%e, "Event channel closed unexpectedly. Ending pre-confirmed stream.");
-                    break;
-                }
 
-                tokio::time::sleep_until(t_fetch + poll_interval).await;
-            }
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
+        } else {
+            tracing::trace!("No change in pre-confirmed block data");
+            tokio::time::sleep_until(t_fetch + poll_interval).await;
         }
     }
+}
+
+/// Fetch the pending block from the sequencer and classify it as
+/// [pre-latest](starknet_gateway_types::reply::PreLatestBlock) if its parent
+/// hash matches our latest block hash.
+///
+/// If the pre-latest block (N) exists, the sequencer has already started
+/// building the next pre-confirmed block (N + 1).
+async fn fetch_pre_latest<S: GatewayApi + Send + 'static>(
+    sequencer: &S,
+    our_latest_number: BlockNumber,
+    our_latest_hash: BlockHash,
+) -> anyhow::Result<
+    Option<(
+        BlockNumber,
+        starknet_gateway_types::reply::PreLatestBlock,
+        pathfinder_common::StateUpdate,
+    )>,
+> {
+    let (pending_block, state_update) = sequencer
+        .pending_block()
+        .await
+        .context("Fetching pre-latest block from sequencer")?;
+
+    let pre_latest_data = (pending_block.parent_hash == our_latest_hash).then_some((
+        our_latest_number + 1,
+        pending_block,
+        state_update,
+    ));
+    Ok(pre_latest_data)
 }
 
 #[cfg(test)]
@@ -236,6 +342,7 @@ mod tests {
         L1DataAvailabilityMode,
         PendingBlock,
         PreConfirmedBlock,
+        PreLatestBlock,
         Status,
     };
     use tokio::sync::watch;
@@ -296,6 +403,11 @@ mod tests {
         }],
         starknet_version: StarknetVersion::default(),
         l1_da_mode: L1DataAvailabilityMode::Calldata,
+    });
+
+    pub static PRE_LATEST_BLOCK: LazyLock<PreLatestBlock> = LazyLock::new(|| PreLatestBlock {
+        starknet_version: StarknetVersion::new(0, 14, 0, 0),
+        ..PENDING_BLOCK.clone()
     });
 
     pub static PRE_CONFIRMED_BLOCK: LazyLock<PreConfirmedBlock> =
@@ -525,6 +637,9 @@ mod tests {
 
         sequencer
             .expect_pending_block()
+            .returning(move || Ok((pending_block.clone(), PENDING_UPDATE.clone())));
+        sequencer
+            .expect_pending_block()
             .returning(move || Ok((pending_block_copy.clone(), PENDING_UPDATE.clone())));
         sequencer
             .expect_preconfirmed_block()
@@ -551,6 +666,120 @@ mod tests {
             .expect("Event should be emitted")
             .unwrap();
 
-        assert_matches!(result1, SyncEvent::PreConfirmed((block_number, pre_confirmed_block)) if block_number == BlockNumber::new_or_panic(1) && *pre_confirmed_block == *PRE_CONFIRMED_BLOCK);
+        assert_matches!(
+            result1,
+            SyncEvent::PreConfirmed {
+                number,
+                block,
+                ..
+            } if number == BlockNumber::new_or_panic(1) && *block == *PRE_CONFIRMED_BLOCK
+        );
+    }
+
+    #[tokio::test]
+    async fn fetch_pre_latest_returns_some_when_parent_matches() {
+        let mut sequencer = MockGatewayApi::new();
+        let our_latest_number = NEXT_BLOCK.block_number - 1;
+        let our_latest_hash = NEXT_BLOCK.parent_block_hash;
+
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((PENDING_BLOCK.clone(), PENDING_UPDATE.clone())));
+
+        let (number, block, state_update) =
+            super::fetch_pre_latest(&sequencer, our_latest_number, our_latest_hash)
+                .await
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(number, NEXT_BLOCK.block_number);
+        assert_eq!(block.parent_hash, our_latest_hash);
+        assert_eq!(state_update, PENDING_UPDATE.clone());
+    }
+
+    #[tokio::test]
+    async fn fetch_pre_latest_returns_none_when_parent_differs() {
+        let mut sequencer = MockGatewayApi::new();
+        let our_latest_number = NEXT_BLOCK.block_number - 1;
+        let our_latest_hash = NEXT_BLOCK.parent_block_hash;
+        let different_hash = block_hash!("0xdeadbeef");
+
+        let pending_block = PendingBlock {
+            parent_hash: different_hash,
+            ..PENDING_BLOCK.clone()
+        };
+
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((pending_block.clone(), PENDING_UPDATE.clone())));
+
+        let result = super::fetch_pre_latest(&sequencer, our_latest_number, our_latest_hash)
+            .await
+            .unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn poll_starknet_0_14_0_with_pre_latest_data() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(2);
+        let mut sequencer = MockGatewayApi::new();
+
+        let our_latest_hash = PRE_LATEST_BLOCK.parent_hash;
+
+        // Make sure that the pending block triggers a transition to Starknet 0.14.0
+        // polling. Note that this block is ignored as `poll_pre_starknet_0_14_0`
+        // does not handle pre-latest blocks.
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
+        // This will be polled by `poll_starknet_0_14_0` and will not be ignored.
+        sequencer
+            .expect_pending_block()
+            .returning(move || Ok((PRE_LATEST_BLOCK.clone(), PENDING_UPDATE.clone())));
+        sequencer
+            .expect_preconfirmed_block()
+            .returning(move |_| Ok(PRE_CONFIRMED_BLOCK.clone()));
+
+        let latest_block_number = BlockNumber::new_or_panic(10);
+
+        let (_, rx_latest) = watch::channel((latest_block_number, our_latest_hash));
+        let (_, rx_current) = watch::channel((latest_block_number, our_latest_hash));
+
+        let sequencer = Arc::new(sequencer);
+        let _jh = tokio::spawn(async move {
+            super::poll_pending(
+                tx,
+                sequencer,
+                std::time::Duration::ZERO,
+                StorageBuilder::in_memory().unwrap(),
+                rx_latest,
+                rx_current,
+                false,
+            )
+            .await
+        });
+
+        let event = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
+            .await
+            .expect("Event should be emitted")
+            .unwrap();
+
+        let expected_pre_latest_data = Some(Box::new((
+            latest_block_number + 1,
+            PRE_LATEST_BLOCK.clone(),
+            PENDING_UPDATE.clone(),
+        )));
+
+        assert_matches!(
+            event,
+            SyncEvent::PreConfirmed {
+                number,
+                block,
+                pre_latest_data
+            } if number == latest_block_number + 2
+                && *block == *PRE_CONFIRMED_BLOCK
+                && pre_latest_data == expected_pre_latest_data
+        );
     }
 }

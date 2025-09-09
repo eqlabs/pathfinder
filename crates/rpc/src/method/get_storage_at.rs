@@ -5,7 +5,7 @@ use crate::context::RpcContext;
 use crate::types::BlockId;
 use crate::RpcVersion;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Input {
     pub contract_address: ContractAddress,
     pub key: StorageAddress,
@@ -46,13 +46,13 @@ pub async fn get_storage_at(
         let tx = db.transaction().context("Creating database transaction")?;
 
         if input.block_id.is_pending() {
-            if let Some(value) = context
+            let storage_value = context
                 .pending_data
                 .get(&tx, rpc_version)
                 .context("Querying pending data")?
-                .state_update()
-                .storage_value(input.contract_address, input.key)
-            {
+                .find_storage_value(input.contract_address, input.key);
+
+            if let Some(value) = storage_value {
                 return Ok(Output(value));
             }
         }
@@ -146,6 +146,57 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.0, storage_value_bytes!(b"pending storage value 0"));
+    }
+
+    #[tokio::test]
+    async fn pre_confirmed() {
+        let ctx = RpcContext::for_tests_with_pre_confirmed().await;
+
+        // This contract is created during storage setup and has a storage value set in
+        // the pre-confirmed block.
+        let input = Input {
+            contract_address: contract_address_bytes!(b"preconfirmed contract 1 address"),
+            key: storage_address_bytes!(b"preconfirmed storage key 0"),
+            block_id: BlockId::Pending,
+        };
+
+        let result = get_storage_at(ctx.clone(), input.clone(), RpcVersion::V09)
+            .await
+            .unwrap();
+        assert_eq!(
+            result.0,
+            storage_value_bytes!(b"preconfirmed storage value 0")
+        );
+
+        // JSON-RPC version before 0.9 are expected to ignore the pre-confirmed block.
+        let err = get_storage_at(ctx, input, RpcVersion::V08)
+            .await
+            .unwrap_err();
+        assert_matches!(err, Error::ContractNotFound);
+    }
+
+    #[tokio::test]
+    async fn pre_latest() {
+        let ctx = RpcContext::for_tests_with_pre_latest_and_pre_confirmed().await;
+
+        // This contract is created during storage setup and has a storage value set in
+        // the pre-latest block.
+        let input = Input {
+            contract_address: contract_address_bytes!(b"prelatest contract 1 address"),
+            key: storage_address_bytes!(b"prelatest storage key 0"),
+            block_id: BlockId::Pending,
+        };
+
+        let result = get_storage_at(ctx.clone(), input.clone(), RpcVersion::V09)
+            .await
+            .unwrap();
+        assert_eq!(result.0, storage_value_bytes!(b"prelatest storage value 0"));
+
+        // JSON-RPC version before 0.9 are expected to ignore the pre-latest block.
+        let err = get_storage_at(ctx, input, RpcVersion::V08)
+            .await
+            .unwrap_err();
+        assert_matches!(err, Error::ContractNotFound);
     }
 
     #[tokio::test]
