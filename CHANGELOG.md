@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Changed
+
+- Polling of pre-confirmed data has been improved to reduce end-to-end latency. Pathfinder now polls both the pre-latest and pre-confirmed data from the feeder gateway.
+
 ## [0.20.2] - 2025-09-05
 
 ### Added
