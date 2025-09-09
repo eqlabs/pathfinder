@@ -199,10 +199,13 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             }
         };
 
-        let pre_confirmed_block_number = if let Some(ref pre_latest) = pre_latest_data {
+        let pre_confirmed_block_number = if let Some(pre_latest) = pre_latest_data.as_ref() {
             let (_, _, state_update) = pre_latest.as_ref();
-            // TODO: What to do if this fails? Ignore pre-latest data? Ignore entire
-            // pre-confirmed update? Ignore just the classes?
+
+            // Download, process and emit all missing classes. This can occasionally
+            // fail when querying an out of sync feeder gateway which isn't aware of
+            // the new pending classes. In this case, ignore the new pending data as
+            // it is incomplete.
             match super::l2::download_new_classes(
                 state_update,
                 sequencer,
@@ -211,7 +214,12 @@ pub async fn poll_starknet_0_14_0<S: GatewayApi + Clone + Send + 'static>(
             )
             .await
             {
-                Err(e) => tracing::debug!(reason=?e, "Failed to download pending classes"),
+                Err(e) => {
+                    tracing::debug!(reason=?e, "Failed to download pending classes");
+                    // Ignore incomplete pending data.
+                    tokio::time::sleep_until(t_fetch + poll_interval).await;
+                    continue;
+                }
                 Ok(downloaded_classes) => {
                     if let Err(e) = super::l2::emit_events_for_downloaded_classes(
                         tx_event,
