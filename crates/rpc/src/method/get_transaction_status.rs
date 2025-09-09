@@ -360,7 +360,7 @@ mod tests {
             RpcVersion::V09 => {
                 let output_json = result.unwrap().serialize(Serializer { version }).unwrap();
                 let expected_json: serde_json::Value = serde_json::from_str(include_str!(
-                    "../../fixtures/0.9.0/transactions/status_pre_confirmed.json"
+                    "../../fixtures/0.9.0/transactions/status_pre_latest.json"
                 ))
                 .unwrap();
                 assert_eq!(output_json, expected_json);

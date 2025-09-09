@@ -669,8 +669,7 @@ impl PendingData {
                     transaction: pre_latest_tx.clone(),
                     receipt,
                     events,
-                    // TODO: Double check this.
-                    finality_status: crate::dto::TxnFinalityStatus::PreConfirmed,
+                    finality_status: crate::dto::TxnFinalityStatus::AcceptedOnL2,
                 });
             }
         }
