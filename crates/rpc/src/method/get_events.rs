@@ -1418,7 +1418,6 @@ mod tests {
                 .unwrap();
             assert!(!result.events.is_empty());
             // Events from pending data do not have a block number/hash.
-            // TODO: But they could?
             assert!(result.events.iter().all(|e| e.block_number.is_none()));
 
             input.filter.from_block = Some(BlockId::Number(PRE_CONFIRMED_BLOCK));
@@ -1429,7 +1428,6 @@ mod tests {
                 .unwrap();
             assert!(!result.events.is_empty());
             // Events from pending data do not have a block number/hash.
-            // TODO: But they could?
             assert!(result.events.iter().all(|e| e.block_number.is_none()));
 
             input.filter.from_block = Some(BlockId::Number(PRE_LATEST_BLOCK));
@@ -1438,7 +1436,6 @@ mod tests {
             let result = get_events(context, input, RPC_VERSION).await.unwrap();
             assert!(!result.events.is_empty());
             // Events from pending data do not have a block number/hash.
-            // TODO: But they could?
             assert!(result.events.iter().all(|e| e.block_number.is_none()));
         }
     }
