@@ -154,8 +154,14 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         .and(warp::query::<BlockIdParam>())
         .and_then({
             let storage = storage.clone();
+            let reorg_config = reorg_config.clone();
+            let reorged = reorged.clone();
+
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
+                let reorg_config = reorg_config.clone();
+                let reorged = reorged.clone();
+
                 async move {
                     let header_only = block_id.header_only.unwrap_or(false);
 
@@ -165,7 +171,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                resolve_block(&tx, block_id)
+                                resolve_block(&tx, block_id, &reorg_config, reorged)
                             }).await.unwrap();
 
                             match block {
@@ -249,18 +255,15 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
                     match block_id.try_into() {
                         Ok(block_id) => {
-                            let (state_update, block) = tokio::task::spawn_blocking(move || {
+                            let block_and_state_update = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                let state_update = resolve_state_update(&tx, block_id, reorg_config, reorged);
-                                let block = resolve_block(&tx, block_id);
-
-                                (state_update, block)
+                                resolve_state_update(&tx, block_id, &reorg_config, reorged.clone()).and_then(|state_update| resolve_block(&tx, block_id, &reorg_config, reorged).map(|block| (block, state_update)))
                             }).await.unwrap();
 
-                            match (state_update, block) {
-                                (Ok(state_update), Ok(block)) => {
+                            match block_and_state_update {
+                                Ok((block, state_update)) => {
                                     if include_block {
                                         #[derive(Serialize)]
                                         struct StateUpdateWithBlock {
@@ -278,7 +281,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                         Ok(warp::reply::with_status(warp::reply::json(&state_update), warp::http::StatusCode::OK))
                                     }
                                 },
-                                _ => {
+                                Err(_) => {
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
                                     Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
@@ -409,9 +412,14 @@ pub struct ContractAddresses {
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: BlockId,
+    reorg_config: &Option<ReorgConfig>,
+    reorged: Arc<AtomicBool>,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
+    let resolved_block_id =
+        resolve_block_id(block_id, reorg_config, reorged).context("Resolving block id")?;
+
     let header = tx
-        .block_header(block_id)
+        .block_header(resolved_block_id)
         .context("Fetching block header")?
         .context("Block header missing")?;
 
@@ -457,8 +465,16 @@ fn resolve_block(
         Status::AcceptedOnL2
     };
 
+    // If the block id was reorged, we should return a non-matching block hash
+    // to trigger reorg detection in Pathfinder.
+    let block_hash = if block_id != resolved_block_id {
+        BlockHash::ZERO
+    } else {
+        header.hash
+    };
+
     Ok(starknet_gateway_types::reply::Block {
-        block_hash: header.hash,
+        block_hash,
         block_number: header.number,
         l1_gas_price: GasPrices {
             price_in_wei: header.eth_l1_gas_price,
@@ -514,15 +530,14 @@ fn resolve_signature(
     })
 }
 
-#[tracing::instrument(level = "trace", skip(tx))]
-fn resolve_state_update(
-    tx: &pathfinder_storage::Transaction<'_>,
-    block: BlockId,
-    reorg_config: Option<ReorgConfig>,
+/// Apply reorg transformation to block id.
+fn resolve_block_id(
+    block_id: BlockId,
+    reorg_config: &Option<ReorgConfig>,
     reorged: Arc<AtomicBool>,
-) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
-    let block = if let Some(reorg_config) = reorg_config {
-        match block {
+) -> anyhow::Result<BlockId> {
+    let block_id = if let Some(reorg_config) = reorg_config {
+        match block_id {
             BlockId::Number(block_number) => {
                 if reorged.load(Ordering::Relaxed) {
                     // reorg is active
@@ -539,20 +554,32 @@ fn resolve_state_update(
                     }
                 }
 
-                block
+                block_id
             }
             BlockId::Latest => {
                 if reorged.load(Ordering::Relaxed) {
                     reorg_config.reorg_to_block.into()
                 } else {
-                    block
+                    block_id
                 }
             }
-            _ => block,
+            _ => block_id,
         }
     } else {
-        block
+        block_id
     };
+
+    Ok(block_id)
+}
+
+#[tracing::instrument(level = "trace", skip(tx))]
+fn resolve_state_update(
+    tx: &pathfinder_storage::Transaction<'_>,
+    block: BlockId,
+    reorg_config: &Option<ReorgConfig>,
+    reorged: Arc<AtomicBool>,
+) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
+    let block = resolve_block_id(block, reorg_config, reorged).context("Resolving block id")?;
 
     tx.state_update(block)
         .context("Fetching state update")?
