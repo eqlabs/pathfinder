@@ -281,8 +281,7 @@ impl PendingData {
                 l1_data_gas_price: pre_latest_block.l1_data_gas_price,
                 l2_gas_price: pre_latest_block.l2_gas_price,
                 sequencer_address: pre_latest_block.sequencer_address,
-                // TODO: Add its own status?
-                status: Status::PreConfirmed,
+                status: Status::Pending,
                 timestamp: pre_latest_block.timestamp,
                 starknet_version: pre_latest_block.starknet_version,
                 l1_da_mode: pre_latest_block.l1_da_mode.into(),
@@ -935,7 +934,7 @@ mod tests {
             l1_data_gas_price: Default::default(),
             l2_gas_price: Default::default(),
             sequencer_address: sequencer_address!("0x1234"),
-            status: Status::PreConfirmed,
+            status: Status::Pending,
             timestamp: BlockTimestamp::new_or_panic(112233),
             starknet_version: StarknetVersion::new(0, 14, 0, 0),
             l1_da_mode: L1DataAvailabilityMode::Blob,

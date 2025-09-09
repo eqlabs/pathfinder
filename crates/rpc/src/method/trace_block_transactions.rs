@@ -1083,8 +1083,7 @@ pub(crate) mod tests {
                 },
                 parent_hash: last_block_header.hash,
                 sequencer_address: last_block_header.sequencer_address,
-                // TODO: Double check this.
-                status: starknet_gateway_types::reply::Status::AcceptedOnL2,
+                status: starknet_gateway_types::reply::Status::Pending,
                 timestamp: last_block_header.timestamp,
                 transaction_receipts,
                 transactions: pre_latest_transactions.clone(),
