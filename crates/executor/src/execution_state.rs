@@ -229,14 +229,17 @@ impl ExecutionState {
         let chain_info = self.chain_info()?;
         let block_info = self.block_info()?;
 
-        // Perform system contract updates if we are executing ontop of a parent block.
+        // Perform system contract updates if we are executing on top of a parent block.
         // Currently this is only the block hash from 10 blocks ago.
         let old_block_number_and_hash = if self.block_info.number.get() >= 10 {
             let block_number_whose_hash_becomes_available =
                 pathfinder_common::BlockNumber::new_or_panic(self.block_info.number.get() - 10);
+
             let block_hash = storage_adapter
                 .block_hash(block_number_whose_hash_becomes_available.into())?
-                .context("Getting historical block hash")?;
+                .context(format!(
+                    "Getting hash of historical block {block_number_whose_hash_becomes_available}"
+                ))?;
 
             tracing::trace!(%block_number_whose_hash_becomes_available, %block_hash, "Setting historical block hash");
 
