@@ -29,11 +29,12 @@ mod inner {
 
     use anyhow::Context;
     use futures::FutureExt;
-    use p2p::libp2p::multiaddr::{Multiaddr, Protocol};
+    use p2p::libp2p::multiaddr::Protocol;
     use pathfinder_common::ChainId;
 
     use super::*;
     use crate::config::p2p::P2PConsensusConfig;
+    use crate::p2p_network::common::{dial_bootnodes, ensure_peer_id_in_multiaddr};
     use crate::p2p_network::identity;
 
     #[tracing::instrument(name = "p2p", skip_all)]
@@ -89,44 +90,8 @@ mod inner {
                 .with_context(|| format!("Starting consensus P2P listener: {addr}"))?;
         }
 
-        let ensure_peer_id_in_multiaddr = |addr: &Multiaddr, msg: &'static str| {
-            addr.iter()
-                .find_map(|p| match p {
-                    Protocol::P2p(peer_id) => Some(peer_id),
-                    _ => None,
-                })
-                .context(msg)
-        };
-
-        for bootstrap_address in bootstrap_addresses {
-            let peer_id = ensure_peer_id_in_multiaddr(
-                &bootstrap_address,
-                "Bootstrap addresses must include peer ID",
-            )?;
-            // TODO: Use exponential backoff with a max retry limit, at least one boot node
-            // needs to be reachable for the node to be useful.
-            // https://github.com/eqlabs/pathfinder/issues/2937
-            loop {
-                let dial_result = core_client.dial(peer_id, bootstrap_address.clone()).await;
-
-                match dial_result {
-                    Ok(_) => break,
-                    Err(error) => {
-                        tracing::warn!(
-                            %bootstrap_address,
-                            %error,
-                            "Failed to dial bootstrap node, retrying",
-                        );
-                        tokio::time::sleep(Duration::from_secs(1)).await;
-                    }
-                }
-            }
-
-            let relay_listener_address = bootstrap_address.clone().with(Protocol::P2pCircuit);
-            core_client
-                .start_listening(relay_listener_address.clone())
-                .await
-                .context(format!("Starting relay listener: {relay_listener_address}"))?;
+        if !dial_bootnodes(bootstrap_addresses, &core_client).await {
+            anyhow::bail!("Failed to dial any configured bootstrap node")
         }
 
         for peer in predefined_peers {
