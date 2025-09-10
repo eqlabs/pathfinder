@@ -589,10 +589,7 @@ impl ValidatorFinalizeStage {
             start.elapsed().as_millis()
         );
 
-        let transactions_and_receipts = transactions
-            .into_iter()
-            .zip(receipts.into_iter())
-            .collect::<Vec<_>>();
+        let transactions_and_receipts = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
 
         Ok(FinalizedBlock {
             header,
@@ -606,7 +603,7 @@ impl ValidatorFinalizeStage {
 pub enum ValidatorStage {
     BlockInfo(ValidatorBlockInfoStage),
     TransactionBatch(Box<ValidatorTransactionBatchStage>),
-    Finalize(ValidatorFinalizeStage),
+    Finalize(Box<ValidatorFinalizeStage>),
 }
 
 /// Maps consensus transaction to a pair of:

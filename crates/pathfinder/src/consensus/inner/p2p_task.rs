@@ -526,7 +526,10 @@ async fn handle_incoming_proposal_part(
             .await
             .context("Joining blocking task")?
             .context("Verifying proposal commitment")?;
-            validator_cache.insert(height_and_round, ValidatorStage::Finalize(validator));
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::Finalize(Box::new(validator)),
+            );
 
             Ok(Some((
                 ProposalCommitment(proposal_commitment.0),
