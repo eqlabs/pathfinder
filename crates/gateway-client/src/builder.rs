@@ -454,12 +454,12 @@ fn retry_condition(e: &SequencerError) -> bool {
     match e {
         SequencerError::ReqwestError(e) => {
             if e.is_timeout() {
-                info!(reason=%e, "Request failed, retrying. Fetching the response or parts of it timed out. Try increasing request timeout by using the `--gateway.request-timeout` CLI option.");
+                info!(reason=?e, "Request failed, retrying. Fetching the response or parts of it timed out. Try increasing request timeout by using the `--gateway.request-timeout` CLI option.");
                 return true;
             }
 
             if e.is_body() || e.is_connect() {
-                info!(reason=%e, "Request failed, retrying");
+                info!(reason=?e, "Request failed, retrying");
             } else if e.is_status() {
                 match e.status().expect("status related error") {
                     StatusCode::NOT_FOUND
@@ -467,24 +467,24 @@ fn retry_condition(e: &SequencerError) -> bool {
                     | StatusCode::BAD_GATEWAY
                     | StatusCode::SERVICE_UNAVAILABLE
                     | StatusCode::GATEWAY_TIMEOUT => {
-                        debug!(reason=%e, "Request failed, retrying");
+                        debug!(reason=?e, "Request failed, retrying");
                     }
                     StatusCode::INTERNAL_SERVER_ERROR => {
-                        error!(reason=%e, "Request failed, retrying");
+                        error!(reason=?e, "Request failed, retrying");
                     }
-                    _ => warn!(reason=%e, "Request failed, retrying"),
+                    _ => warn!(reason=?e, "Request failed, retrying"),
                 }
             } else if e.is_decode() {
-                error!(reason=%e, "Request failed, retrying");
+                error!(reason=?e, "Request failed, retrying");
             } else {
-                warn!(reason=%e, "Request failed, retrying");
+                warn!(reason=?e, "Request failed, retrying");
             }
 
             true
         }
         SequencerError::StarknetError(_) => false,
         SequencerError::InvalidStarknetErrorVariant => {
-            error!(reason=%e, "Request failed, retrying");
+            error!(reason=?e, "Request failed, retrying");
             true
         }
     }
