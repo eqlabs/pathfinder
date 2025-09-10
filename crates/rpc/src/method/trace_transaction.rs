@@ -1,5 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::TransactionHash;
+use pathfinder_common::{ChainId, TransactionHash};
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
 
@@ -8,6 +8,8 @@ use crate::dto::TransactionTrace;
 use crate::error::{ApplicationError, TraceError};
 use crate::executor::{
     ExecutionStateError,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::method::trace_block_transactions::map_gateway_trace;
@@ -71,11 +73,11 @@ pub async fn trace_transaction(
                 .context("Querying pending data")?;
 
             let (header, transactions, cache) = if let Some(pending_tx) = pending
-                .transactions()
+                .pending_transactions()
                 .iter()
                 .find(|tx| tx.hash == input.transaction_hash)
             {
-                let header = pending.header();
+                let header = pending.pending_header();
 
                 if header.starknet_version
                     < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
@@ -85,8 +87,37 @@ pub async fn trace_transaction(
 
                 (
                     header,
-                    pending.transactions().to_vec(),
+                    pending.pending_transactions().to_vec(),
                     // Can't use the cache for pending blocks since they have no block hash.
+                    pathfinder_executor::TraceCache::default(),
+                )
+            } else if let Some(pre_latest_tx) = pending.pre_latest_block().and_then(|pre_latest| {
+                pre_latest
+                    .transactions
+                    .iter()
+                    .find(|tx| tx.hash == input.transaction_hash)
+                    .cloned()
+            }) {
+                let header = pending
+                    .pre_latest_header()
+                    .expect("Pre-latest block exists");
+
+                if header.starknet_version
+                    < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+                {
+                    return Ok(LocalExecution::Unsupported(pre_latest_tx.clone()));
+                }
+
+                let txs = pending
+                    .pre_latest_block()
+                    .expect("Pre-latest block exists")
+                    .transactions
+                    .clone();
+
+                (
+                    header,
+                    txs,
+                    // Can't use the cache for pre-latest blocks since they have no block hash.
                     pathfinder_executor::TraceCache::default(),
                 )
             } else {
@@ -101,6 +132,22 @@ pub async fn trace_transaction(
 
                 if header.starknet_version
                     < VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY
+                {
+                    let transaction = db_tx
+                        .transaction(input.transaction_hash)
+                        .context("Fetching transaction data")?
+                        .context("Transaction data missing")?;
+
+                    return Ok(LocalExecution::Unsupported(transaction));
+                }
+
+                // Mainnet has a block range where re-execution is not possible (we get a
+                // different state diff due to a bug that was present on the
+                // sequencer when these blocks were produced). We should fall
+                // back to fetching traces from the feeder gateway instead.
+                if context.chain_id == ChainId::MAINNET
+                    && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
+                    && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
                 {
                     let transaction = db_tx
                         .transaction(input.transaction_hash)
@@ -257,6 +304,8 @@ pub mod tests {
 
     use super::super::trace_block_transactions::tests::{
         setup_multi_tx_trace_pending_test,
+        setup_multi_tx_trace_pre_confirmed_test,
+        setup_multi_tx_trace_pre_latest_test,
         setup_multi_tx_trace_test,
     };
     use super::{trace_transaction, Input, Output};
@@ -300,6 +349,70 @@ pub mod tests {
     #[tokio::test]
     async fn test_multiple_pending_transactions() -> anyhow::Result<()> {
         let (context, traces) = setup_multi_tx_trace_pending_test().await?;
+
+        for trace in traces {
+            let input = Input {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
+            pretty_assertions_sorted::assert_eq!(
+                output
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap(),
+                expected
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pre_latest_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pre_latest_test().await?;
+
+        for trace in traces {
+            let input = Input {
+                transaction_hash: trace.transaction_hash,
+            };
+            let output = trace_transaction(context.clone(), input, RPC_VERSION)
+                .await
+                .unwrap();
+            let expected = Output(crate::dto::TransactionTrace {
+                trace: trace.trace_root,
+                include_state_diff: false,
+            });
+            pretty_assertions_sorted::assert_eq!(
+                output
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap(),
+                expected
+                    .serialize(Serializer {
+                        version: RPC_VERSION
+                    })
+                    .unwrap()
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_pre_confirmed_transactions() -> anyhow::Result<()> {
+        let (context, traces) = setup_multi_tx_trace_pre_confirmed_test().await?;
 
         for trace in traces {
             let input = Input {

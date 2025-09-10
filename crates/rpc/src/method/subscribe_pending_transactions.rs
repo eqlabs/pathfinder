@@ -86,14 +86,18 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
             // since after the Starknet 0.14.0 update no transactions will be
             // sent over this subscription.
             if pending.is_pre_confirmed() {
+                if pending_data.changed().await.is_err() {
+                    tracing::debug!("Pending data channel closed, stopping subscription");
+                    return Ok(());
+                }
                 continue;
             }
 
-            if pending.block_number() != last_block {
-                last_block = pending.block_number();
+            if pending.pending_block_number() != last_block {
+                last_block = pending.pending_block_number();
                 sent_txs.clear();
             }
-            for transaction in pending.transactions().iter() {
+            for transaction in pending.pending_transactions().iter() {
                 if sent_txs.contains(&transaction.hash) {
                     continue;
                 }
@@ -126,7 +130,7 @@ impl RpcSubscriptionFlow for SubscribePendingTransactions {
                 if tx
                     .send(SubscriptionMessage {
                         notification,
-                        block_number: pending.block_number(),
+                        block_number: pending.pending_block_number(),
                         subscription_name: SUBSCRIPTION_NAME,
                     })
                     .await

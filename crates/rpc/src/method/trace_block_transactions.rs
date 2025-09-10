@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_common::ChainId;
 use pathfinder_executor::types::InnerCallExecutionResources;
 use pathfinder_executor::TransactionExecutionError;
 use starknet_gateway_client::GatewayApi;
@@ -6,6 +7,8 @@ use starknet_gateway_client::GatewayApi;
 use crate::context::RpcContext;
 use crate::executor::{
     ExecutionStateError,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END,
+    MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START,
     VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY,
 };
 use crate::types::BlockId;
@@ -65,8 +68,8 @@ pub async fn trace_block_transactions(
                     .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
-                let header = pending.header();
-                let transactions = pending.transactions().to_vec();
+                let header = pending.pending_header();
+                let transactions = pending.pending_transactions().to_vec();
 
                 (
                     None,
@@ -111,6 +114,21 @@ pub async fn trace_block_transactions(
                     )));
                 }
             }
+        }
+
+        // Mainnet has a block range where re-execution is not possible (we get a
+        // different state diff due to a bug that was present on the sequencer
+        // when these blocks were produced). We should fall back to fetching
+        // traces from the feeder gateway instead.
+        if context.chain_id == ChainId::MAINNET
+            && input.block_id != BlockId::Pending
+            && header.number >= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START
+            && header.number <= MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END
+        {
+            return Ok::<_, TraceBlockTransactionsError>(LocalExecution::Unsupported((
+                block_id.expect("Pending was handled explicitly above"),
+                transactions,
+            )));
         }
 
         let executor_transactions = transactions
@@ -981,6 +999,270 @@ pub(crate) mod tests {
             },
             Trace {
                 transaction_hash: transactions[2].hash,
+                trace_root: traces[2].trace.clone(),
+            },
+        ];
+
+        Ok((context, traces))
+    }
+
+    pub(crate) async fn setup_multi_tx_trace_pre_latest_test(
+    ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
+
+        let (
+            storage,
+            last_block_header,
+            account_contract_address,
+            universal_deployer_address,
+            test_storage_value,
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 14, 0, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage.clone());
+
+        let pre_latest_transactions = vec![
+            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+            fixtures::input::universal_deployer(
+                account_contract_address,
+                universal_deployer_address,
+            )
+            .into_common(context.chain_id),
+            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+        ];
+
+        let traces = vec![
+            fixtures::expected_output_0_14_0_0::declare(
+                account_contract_address,
+                &last_block_header,
+            ),
+            fixtures::expected_output_0_14_0_0::universal_deployer(
+                account_contract_address,
+                &last_block_header,
+                universal_deployer_address,
+            ),
+            fixtures::expected_output_0_14_0_0::invoke(
+                account_contract_address,
+                &last_block_header,
+                test_storage_value,
+            ),
+        ];
+
+        let pending_data = {
+            let mut db = storage.connection()?;
+            let tx = db.transaction()?;
+
+            tx.insert_sierra_class(
+                &SierraHash(fixtures::SIERRA_HASH.0),
+                fixtures::SIERRA_DEFINITION,
+                &fixtures::CASM_HASH,
+                fixtures::CASM_DEFINITION,
+            )?;
+
+            let dummy_receipt = Receipt {
+                transaction_hash: TransactionHash(felt!("0x1")),
+                transaction_index: TransactionIndex::new_or_panic(0),
+                ..Default::default()
+            };
+
+            let transaction_receipts = vec![(dummy_receipt, vec![]); pre_latest_transactions.len()];
+
+            let pre_latest_block = starknet_gateway_types::reply::PreLatestBlock {
+                l1_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_gas_price,
+                    price_in_fri: last_block_header.strk_l1_gas_price,
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_data_gas_price,
+                    price_in_fri: last_block_header.strk_l1_data_gas_price,
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l2_gas_price,
+                    price_in_fri: last_block_header.strk_l2_gas_price,
+                },
+                parent_hash: last_block_header.hash,
+                sequencer_address: last_block_header.sequencer_address,
+                status: starknet_gateway_types::reply::Status::Pending,
+                timestamp: last_block_header.timestamp,
+                transaction_receipts,
+                transactions: pre_latest_transactions.clone(),
+                starknet_version: last_block_header.starknet_version,
+                l1_da_mode: L1DataAvailabilityMode::Blob,
+            };
+
+            let pre_confirmed_block = starknet_gateway_types::reply::PreConfirmedBlock {
+                l1_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_gas_price,
+                    price_in_fri: last_block_header.strk_l1_gas_price,
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_data_gas_price,
+                    price_in_fri: last_block_header.strk_l1_data_gas_price,
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l2_gas_price,
+                    price_in_fri: last_block_header.strk_l2_gas_price,
+                },
+                sequencer_address: last_block_header.sequencer_address,
+                status: starknet_gateway_types::reply::Status::PreConfirmed,
+                timestamp: last_block_header.timestamp,
+                transaction_receipts: vec![],
+                transactions: vec![],
+                starknet_version: last_block_header.starknet_version,
+                l1_da_mode: L1DataAvailabilityMode::Blob,
+                transaction_state_diffs: vec![],
+            };
+
+            tx.commit()?;
+
+            crate::pending::PendingData::from_pre_confirmed_and_pre_latest(
+                Box::new(pre_confirmed_block),
+                // Last L2 block, then pre-latest then this, so +2.
+                last_block_header.number + 2,
+                Some(Box::new((
+                    last_block_header.number + 1,
+                    pre_latest_block,
+                    StateUpdate::default(),
+                ))),
+            )
+        };
+
+        let (tx, rx) = tokio::sync::watch::channel(Default::default());
+        tx.send(pending_data).unwrap();
+
+        let context = context.with_pending_data(rx);
+
+        let traces = vec![
+            Trace {
+                transaction_hash: pre_latest_transactions[0].hash,
+                trace_root: traces[0].trace.clone(),
+            },
+            Trace {
+                transaction_hash: pre_latest_transactions[1].hash,
+                trace_root: traces[1].trace.clone(),
+            },
+            Trace {
+                transaction_hash: pre_latest_transactions[2].hash,
+                trace_root: traces[2].trace.clone(),
+            },
+        ];
+
+        Ok((context, traces))
+    }
+
+    pub(crate) async fn setup_multi_tx_trace_pre_confirmed_test(
+    ) -> anyhow::Result<(RpcContext, Vec<Trace>)> {
+        use super::super::simulate_transactions::tests::{
+            fixtures,
+            setup_storage_with_starknet_version,
+        };
+
+        let (
+            storage,
+            last_block_header,
+            account_contract_address,
+            universal_deployer_address,
+            test_storage_value,
+        ) = setup_storage_with_starknet_version(StarknetVersion::new(0, 14, 0, 0)).await;
+        let context = RpcContext::for_tests().with_storage(storage.clone());
+
+        let pre_confirmed_transactions = vec![
+            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+            fixtures::input::universal_deployer(
+                account_contract_address,
+                universal_deployer_address,
+            )
+            .into_common(context.chain_id),
+            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+        ];
+
+        let traces = vec![
+            fixtures::expected_output_0_14_0_0::declare(
+                account_contract_address,
+                &last_block_header,
+            ),
+            fixtures::expected_output_0_14_0_0::universal_deployer(
+                account_contract_address,
+                &last_block_header,
+                universal_deployer_address,
+            ),
+            fixtures::expected_output_0_14_0_0::invoke(
+                account_contract_address,
+                &last_block_header,
+                test_storage_value,
+            ),
+        ];
+
+        let pending_data = {
+            let mut db = storage.connection()?;
+            let tx = db.transaction()?;
+
+            tx.insert_sierra_class(
+                &SierraHash(fixtures::SIERRA_HASH.0),
+                fixtures::SIERRA_DEFINITION,
+                &fixtures::CASM_HASH,
+                fixtures::CASM_DEFINITION,
+            )?;
+
+            let dummy_receipt = Receipt {
+                transaction_hash: TransactionHash(felt!("0x1")),
+                transaction_index: TransactionIndex::new_or_panic(0),
+                ..Default::default()
+            };
+
+            let transaction_receipts =
+                vec![Some((dummy_receipt, vec![])); pre_confirmed_transactions.len()];
+
+            let pre_confirmed_block = starknet_gateway_types::reply::PreConfirmedBlock {
+                l1_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_gas_price,
+                    price_in_fri: last_block_header.strk_l1_gas_price,
+                },
+                l1_data_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l1_data_gas_price,
+                    price_in_fri: last_block_header.strk_l1_data_gas_price,
+                },
+                l2_gas_price: GasPrices {
+                    price_in_wei: last_block_header.eth_l2_gas_price,
+                    price_in_fri: last_block_header.strk_l2_gas_price,
+                },
+                sequencer_address: last_block_header.sequencer_address,
+                status: starknet_gateway_types::reply::Status::PreConfirmed,
+                timestamp: last_block_header.timestamp,
+                transaction_receipts,
+                transactions: pre_confirmed_transactions.clone(),
+                starknet_version: last_block_header.starknet_version,
+                l1_da_mode: L1DataAvailabilityMode::Blob,
+                transaction_state_diffs: vec![],
+            };
+
+            tx.commit()?;
+
+            crate::pending::PendingData::from_pre_confirmed_and_pre_latest(
+                Box::new(pre_confirmed_block),
+                // No pre-latest block, so +1.
+                last_block_header.number + 1,
+                None,
+            )
+        };
+
+        let (tx, rx) = tokio::sync::watch::channel(Default::default());
+        tx.send(pending_data).unwrap();
+
+        let context = context.with_pending_data(rx);
+
+        let traces = vec![
+            Trace {
+                transaction_hash: pre_confirmed_transactions[0].hash,
+                trace_root: traces[0].trace.clone(),
+            },
+            Trace {
+                transaction_hash: pre_confirmed_transactions[1].hash,
+                trace_root: traces[1].trace.clone(),
+            },
+            Trace {
+                transaction_hash: pre_confirmed_transactions[2].hash,
                 trace_root: traces[2].trace.clone(),
             },
         ];

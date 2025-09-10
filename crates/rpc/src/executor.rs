@@ -1,6 +1,6 @@
 use anyhow::Context;
 use pathfinder_common::transaction::TransactionVariant;
-use pathfinder_common::{ChainId, StarknetVersion};
+use pathfinder_common::{BlockNumber, ChainId, StarknetVersion};
 use pathfinder_executor::types::to_starknet_api_transaction;
 use pathfinder_executor::{ClassInfo, IntoStarkFelt};
 use starknet_api::contract_class::SierraVersion;
@@ -29,6 +29,11 @@ pub const CALLDATA_LIMIT: usize = 10_000;
 pub const SIGNATURE_ELEMENT_LIMIT: usize = 10_000;
 pub const VERSIONS_LOWER_THAN_THIS_SHOULD_FALL_BACK_TO_FETCHING_TRACE_FROM_GATEWAY:
     StarknetVersion = StarknetVersion::new(0, 13, 1, 1);
+
+pub const MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_START: BlockNumber =
+    BlockNumber::new_or_panic(1943704);
+pub const MAINNET_RANGE_WHERE_RE_EXECUTION_IS_IMPOSSIBLE_END: BlockNumber =
+    BlockNumber::new_or_panic(1952704);
 
 pub(crate) fn calldata_limit_exceeded(tx: &BroadcastedTransaction) -> bool {
     match tx {

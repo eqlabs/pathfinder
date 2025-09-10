@@ -8,13 +8,18 @@ rust-version = { workspace = true }
 description = "Starknet-specific serialization utilities for Pathfinder"
 repository = "https://github.com/eqlabs/pathfinder"
 keywords = ["starknet", "ethereum", "serde", "serialization", "web3"]
-categories = ["encoding", "cryptography::cryptocurrencies", "development-tools", "web-programming"]
+categories = [
+    "encoding",
+    "cryptography::cryptocurrencies",
+    "development-tools",
+    "web-programming",
+]
 
 [dependencies]
 anyhow = { workspace = true }
 num-bigint = { workspace = true }
-pathfinder-common = { version = "0.20.1", path = "../common" }
-pathfinder-crypto = { version = "0.20.1", path = "../crypto" }
+pathfinder-common = { version = "0.20.3", path = "../common" }
+pathfinder-crypto = { version = "0.20.3", path = "../crypto" }
 primitive-types = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

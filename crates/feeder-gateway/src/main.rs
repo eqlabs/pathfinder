@@ -1,8 +1,7 @@
 /// Serve feeder gateway REST endpoints required for pathfinder to sync.
 ///
 /// Usage:
-/// `cargo run --release -p pathfinder --example feeder_gateway
-/// ./testnet-sepolia.sqlite`
+/// `cargo run --release -p feeder-gateway ./testnet-sepolia.sqlite`
 ///
 /// Then pathfinder can be run with the following arguments to use this tool as
 /// a sync source:
@@ -32,7 +31,11 @@ use clap::{Args, Parser};
 use pathfinder_common::prelude::*;
 use pathfinder_common::state_update::ContractClassUpdate;
 use pathfinder_common::{BlockId, Chain};
-use pathfinder_lib::state::block_hash::calculate_receipt_commitment;
+use pathfinder_lib::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use primitive_types::H160;
 use serde::{Deserialize, Serialize};
 use starknet_gateway_types::reply::state_update::{
@@ -151,8 +154,14 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
         .and(warp::query::<BlockIdParam>())
         .and_then({
             let storage = storage.clone();
+            let reorg_config = reorg_config.clone();
+            let reorged = reorged.clone();
+
             move |block_id: BlockIdParam| {
                 let storage = storage.clone();
+                let reorg_config = reorg_config.clone();
+                let reorged = reorged.clone();
+
                 async move {
                     let header_only = block_id.header_only.unwrap_or(false);
 
@@ -162,7 +171,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                resolve_block(&tx, block_id)
+                                resolve_block(&tx, block_id, &reorg_config, reorged)
                             }).await.unwrap();
 
                             match block {
@@ -246,18 +255,15 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
 
                     match block_id.try_into() {
                         Ok(block_id) => {
-                            let (state_update, block) = tokio::task::spawn_blocking(move || {
+                            let block_and_state_update = tokio::task::spawn_blocking(move || {
                                 let mut connection = storage.connection().unwrap();
                                 let tx = connection.transaction().unwrap();
 
-                                let state_update = resolve_state_update(&tx, block_id, reorg_config, reorged);
-                                let block = resolve_block(&tx, block_id);
-
-                                (state_update, block)
+                                resolve_state_update(&tx, block_id, &reorg_config, reorged.clone()).and_then(|state_update| resolve_block(&tx, block_id, &reorg_config, reorged).map(|block| (block, state_update)))
                             }).await.unwrap();
 
-                            match (state_update, block) {
-                                (Ok(state_update), Ok(block)) => {
+                            match block_and_state_update {
+                                Ok((block, state_update)) => {
                                     if include_block {
                                         #[derive(Serialize)]
                                         struct StateUpdateWithBlock {
@@ -275,7 +281,7 @@ async fn serve(cli: Cli) -> anyhow::Result<()> {
                                         Ok(warp::reply::with_status(warp::reply::json(&state_update), warp::http::StatusCode::OK))
                                     }
                                 },
-                                _ => {
+                                Err(_) => {
                                     let error = serde_json::json!({"code": "StarknetErrorCode.BLOCK_NOT_FOUND", "message": "Block number not found"});
                                     Ok(warp::reply::with_status(warp::reply::json(&error), warp::http::StatusCode::BAD_REQUEST))
                                 }
@@ -406,9 +412,14 @@ pub struct ContractAddresses {
 fn resolve_block(
     tx: &pathfinder_storage::Transaction<'_>,
     block_id: BlockId,
+    reorg_config: &Option<ReorgConfig>,
+    reorged: Arc<AtomicBool>,
 ) -> anyhow::Result<starknet_gateway_types::reply::Block> {
+    let resolved_block_id =
+        resolve_block_id(block_id, reorg_config, reorged).context("Resolving block id")?;
+
     let header = tx
-        .block_header(block_id)
+        .block_header(resolved_block_id)
         .context("Fetching block header")?
         .context("Block header missing")?;
 
@@ -429,6 +440,22 @@ fn resolve_block(
         .map(|(tx, rx, ev)| (tx, (rx, ev)))
         .unzip();
 
+    let (transaction_commitment, event_commitment) =
+        if header.starknet_version < StarknetVersion::V_0_13_2 {
+            // This needs to be re-calculated because we _always_ store 0.13.2 commitments
+            // in the DB for P2P sync purposes
+            let transaction_commitment =
+                calculate_transaction_commitment(&transactions, header.starknet_version)?;
+            let events: Vec<_> = transaction_receipts
+                .iter()
+                .map(|(receipt, events)| (receipt.transaction_hash, events.as_slice()))
+                .collect();
+            let event_commitment = calculate_event_commitment(&events, header.starknet_version)?;
+            (transaction_commitment, event_commitment)
+        } else {
+            (header.transaction_commitment, header.event_commitment)
+        };
+
     let block_status = tx
         .block_is_l1_accepted(header.number.into())
         .context("Querying block status")?;
@@ -438,8 +465,16 @@ fn resolve_block(
         Status::AcceptedOnL2
     };
 
+    // If the block id was reorged, we should return a non-matching block hash
+    // to trigger reorg detection in Pathfinder.
+    let block_hash = if block_id != resolved_block_id {
+        BlockHash::ZERO
+    } else {
+        header.hash
+    };
+
     Ok(starknet_gateway_types::reply::Block {
-        block_hash: header.hash,
+        block_hash,
         block_number: header.number,
         l1_gas_price: GasPrices {
             price_in_wei: header.eth_l1_gas_price,
@@ -462,8 +497,8 @@ fn resolve_block(
         transactions,
         starknet_version: header.starknet_version,
         l1_da_mode: header.l1_da_mode.into(),
-        transaction_commitment: header.transaction_commitment,
-        event_commitment: header.event_commitment,
+        transaction_commitment,
+        event_commitment,
         receipt_commitment: Some(receipt_commitment),
         state_diff_commitment: Some(header.state_diff_commitment),
         state_diff_length: Some(header.state_diff_length),
@@ -495,15 +530,14 @@ fn resolve_signature(
     })
 }
 
-#[tracing::instrument(level = "trace", skip(tx))]
-fn resolve_state_update(
-    tx: &pathfinder_storage::Transaction<'_>,
-    block: BlockId,
-    reorg_config: Option<ReorgConfig>,
+/// Apply reorg transformation to block id.
+fn resolve_block_id(
+    block_id: BlockId,
+    reorg_config: &Option<ReorgConfig>,
     reorged: Arc<AtomicBool>,
-) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
-    let block = if let Some(reorg_config) = reorg_config {
-        match block {
+) -> anyhow::Result<BlockId> {
+    let block_id = if let Some(reorg_config) = reorg_config {
+        match block_id {
             BlockId::Number(block_number) => {
                 if reorged.load(Ordering::Relaxed) {
                     // reorg is active
@@ -520,20 +554,32 @@ fn resolve_state_update(
                     }
                 }
 
-                block
+                block_id
             }
             BlockId::Latest => {
                 if reorged.load(Ordering::Relaxed) {
                     reorg_config.reorg_to_block.into()
                 } else {
-                    block
+                    block_id
                 }
             }
-            _ => block,
+            _ => block_id,
         }
     } else {
-        block
+        block_id
     };
+
+    Ok(block_id)
+}
+
+#[tracing::instrument(level = "trace", skip(tx))]
+fn resolve_state_update(
+    tx: &pathfinder_storage::Transaction<'_>,
+    block: BlockId,
+    reorg_config: &Option<ReorgConfig>,
+    reorged: Arc<AtomicBool>,
+) -> anyhow::Result<starknet_gateway_types::reply::StateUpdate> {
+    let block = resolve_block_id(block, reorg_config, reorged).context("Resolving block id")?;
 
     tx.state_update(block)
         .context("Fetching state update")?
@@ -549,7 +595,7 @@ fn resolve_class(
     let definition = tx
         .class_definition(class_hash)
         .context("Reading class definition from database")?
-        .ok_or_else(|| anyhow::anyhow!("No such class found"))?;
+        .context("No such class found")?;
 
     Ok(definition)
 }

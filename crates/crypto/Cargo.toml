@@ -8,19 +8,25 @@ rust-version = { workspace = true }
 description = "Cryptographic primitives used by Pathfinder"
 repository = "https://github.com/eqlabs/pathfinder"
 keywords = ["starknet", "cryptography", "pedersen", "poseidon", "ecdsa"]
-categories = ["cryptography", "cryptography::cryptocurrencies", "algorithms", "mathematics", "no-std"]
+categories = [
+    "cryptography",
+    "cryptography::cryptocurrencies",
+    "algorithms",
+    "mathematics",
+    "no-std",
+]
 
 [lib]
 name = "pathfinder_crypto"
 path = "src/lib.rs"
-
-[build-dependencies]
 
 [dependencies]
 bitvec = { workspace = true }
 fake = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
+
+[build-dependencies]
 
 [dev-dependencies]
 ark-ff = { workspace = true, features = ["std", "asm"] }

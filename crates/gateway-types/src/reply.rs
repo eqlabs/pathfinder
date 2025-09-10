@@ -84,6 +84,14 @@ pub struct PendingBlock {
     pub l1_da_mode: L1DataAvailabilityMode,
 }
 
+/// Represents the "pre-latest" block in Starknet, which is a block that has
+/// been closed in consensus but is still awaiting commitment calculations
+/// before being finalized.
+///
+/// Obtained by querying the gateway for the pending block on Starknet >
+/// v0.14.0.
+pub type PreLatestBlock = PendingBlock;
+
 #[serde_as]
 #[derive(Clone, Default, Debug, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(serde::Serialize))]
@@ -2026,7 +2034,7 @@ pub mod transaction {
 }
 
 /// Used to deserialize replies to StarkNet state update requests.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StateUpdate {
     /// Gets default value for pending state updates.

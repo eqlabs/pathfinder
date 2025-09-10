@@ -7,6 +7,29 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.3] - 2025-09-09
+
+### Changed
+
+- Polling of pre-confirmed data has been improved to reduce end-to-end latency. Pathfinder now polls both the pre-latest and pre-confirmed data from the feeder gateway.
+
+## [0.20.2] - 2025-09-05
+
+### Added
+
+- reorg notifications for `starknet_subscribeNewTransactions` and `starknet_subscribeNewTransactionReceipts`
+
+### Changed
+
+- `blockifier` has been upgraded to version 0.15.0-rc.4.
+
+### Fixed
+
+- `starknet_subscribeNewTransactions` doesn't accept the `RECEIVED` finality status filter.
+- Pathfinder gets stuck in a loop and prints "State root mismatch" errors after starting up from a database with current state that has been re-orged.
+- `starknet_traceTransaction` and `starknet_traceBlockTransactions` falls back to fetching transaction traces for Starknet mainnet block range 1943704-1952704 (inclusive). Local re-execution would lead to a different result due to a sequencer issue that was present when these blocks were produced.
+- Pathfinder gets stuck syncing and stops responding to JSON-RPC requests.
+
 ## [0.20.1] - 2025-09-02
 
 ### Added

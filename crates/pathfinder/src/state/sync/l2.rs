@@ -156,7 +156,7 @@ where
                 chain_id,
                 head_meta.map(|h| h.1),
                 &sequencer,
-                storage.clone(),
+                &blocks,
                 block_validation_mode,
             )
             .await?
@@ -184,9 +184,8 @@ where
                             chain_id,
                             &tx_event,
                             &sequencer,
-                            storage.clone(),
-                            block_validation_mode,
                             &blocks,
+                            block_validation_mode,
                         )
                         .await
                         .context("L2 reorg")?,
@@ -214,9 +213,8 @@ where
                     chain_id,
                     &tx_event,
                     &sequencer,
-                    storage.clone(),
-                    block_validation_mode,
                     &blocks,
+                    block_validation_mode,
                 )
                 .await
                 .context("L2 reorg")?;
@@ -470,7 +468,7 @@ async fn download_block(
     chain_id: ChainId,
     prev_block_hash: Option<BlockHash>,
     sequencer: &impl GatewayApi,
-    storage: Storage,
+    blocks: &BlockChain,
     mode: BlockValidationMode,
 ) -> anyhow::Result<DownloadBlock> {
     use rayon::prelude::*;
@@ -578,14 +576,9 @@ async fn download_block(
                     );
                     prev_block_hash
                 } else {
-                    let mut conn = storage
-                        .connection()
-                        .context("Creating database connection")?;
-                    let tx = conn
-                        .transaction()
-                        .context("Creating database transaction")?;
-                    tx.block_hash(pathfinder_common::BlockId::Number(seq_head_number))
-                        .context("Query block hash")?
+                    blocks
+                        .get(&seq_head_number)
+                        .map(|(block_hash, _state_commitment)| *block_hash)
                 };
                 match our_block_hash {
                     // Our chain is still valid, it's just that a new block has not been
@@ -820,6 +813,17 @@ where
                         timings,
                     ),
                 ) = ordered_blocks.pop_first().expect("num_to_emit > 0");
+
+                if let Some(some_head) = &head {
+                    if some_head.1 != block.parent_block_hash {
+                        tracing::info!(
+                            block_number=%block.block_number,
+                            "Reorg detected during bulk sync, falling back to normal sync to handle reorg"
+                        );
+
+                        return Ok(());
+                    }
+                }
 
                 *head = Some((
                     block.block_number,
@@ -1132,9 +1136,8 @@ async fn reorg(
     chain_id: ChainId,
     tx_event: &mpsc::Sender<SyncEvent>,
     sequencer: &impl GatewayApi,
-    storage: Storage,
-    mode: BlockValidationMode,
     blocks: &BlockChain,
+    mode: BlockValidationMode,
 ) -> anyhow::Result<Option<(BlockNumber, BlockHash, StateCommitment)>> {
     // Go back in history until we find an L2 block that does still exist.
     // We already know the current head is invalid.
@@ -1156,7 +1159,7 @@ async fn reorg(
             chain_id,
             Some(previous.0),
             sequencer,
-            storage.clone(),
+            blocks,
             mode,
         )
         .await

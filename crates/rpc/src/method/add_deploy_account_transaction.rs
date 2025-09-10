@@ -1,3 +1,8 @@
+use pathfinder_common::transaction::{
+    DeployAccountTransactionV1,
+    DeployAccountTransactionV3,
+    TransactionVariant,
+};
 use pathfinder_common::{ContractAddress, TransactionHash};
 use serde::de::Error;
 use starknet_gateway_client::GatewayApi;
@@ -186,13 +191,14 @@ pub async fn add_deploy_account_transaction(
         Transaction::DeployAccount(tx) => tx.deployed_contract_address(),
     };
     let Transaction::DeployAccount(tx) = input.deploy_account_transaction;
-    let response = add_deploy_account_transaction_impl(&context, tx).await?;
+    let (transaction_hash, variant) = add_deploy_account_transaction_impl(&context, tx).await?;
     context.submission_tracker.insert(
-        response.transaction_hash,
+        transaction_hash,
         super::get_latest_block_or_genesis(&context.storage)?,
+        variant,
     );
     Ok(Output {
-        transaction_hash: response.transaction_hash,
+        transaction_hash,
         contract_address,
     })
 }
@@ -200,70 +206,116 @@ pub async fn add_deploy_account_transaction(
 pub(crate) async fn add_deploy_account_transaction_impl(
     context: &RpcContext,
     tx: BroadcastedDeployAccountTransaction,
-) -> Result<starknet_gateway_types::reply::add_transaction::DeployAccountResponse, SequencerError> {
+) -> Result<(TransactionHash, TransactionVariant), SequencerError> {
     use starknet_gateway_types::request::add_transaction;
 
-    match tx {
+    let success = match tx {
         BroadcastedDeployAccountTransaction::V1(
             tx @ BroadcastedDeployAccountTransactionV1 { version, .. },
         ) if version.without_query_version() == 0 => {
-            context
+            let response = context
                 .sequencer
                 .add_deploy_account(add_transaction::DeployAccount::V0(
                     add_transaction::DeployAccountV0V1 {
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: tx.nonce,
                         class_hash: tx.class_hash,
                         contract_address_salt: tx.contract_address_salt,
-                        constructor_calldata: tx.constructor_calldata,
+                        constructor_calldata: tx.constructor_calldata.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = DeployAccountTransactionV1 {
+                contract_address: tx.deployed_contract_address(),
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: tx.nonce,
+                contract_address_salt: tx.contract_address_salt,
+                constructor_calldata: tx.constructor_calldata,
+                class_hash: tx.class_hash,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::DeployAccountV1(new_tx),
+            )
         }
         BroadcastedDeployAccountTransaction::V1(
             tx @ BroadcastedDeployAccountTransactionV1 { version, .. },
         ) if version.without_query_version() == 1 => {
-            context
+            let response = context
                 .sequencer
                 .add_deploy_account(add_transaction::DeployAccount::V1(
                     add_transaction::DeployAccountV0V1 {
                         max_fee: tx.max_fee,
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: tx.nonce,
                         class_hash: tx.class_hash,
                         contract_address_salt: tx.contract_address_salt,
-                        constructor_calldata: tx.constructor_calldata,
+                        constructor_calldata: tx.constructor_calldata.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = DeployAccountTransactionV1 {
+                contract_address: tx.deployed_contract_address(),
+                max_fee: tx.max_fee,
+                signature: tx.signature,
+                nonce: tx.nonce,
+                contract_address_salt: tx.contract_address_salt,
+                constructor_calldata: tx.constructor_calldata,
+                class_hash: tx.class_hash,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::DeployAccountV1(new_tx),
+            )
         }
-        BroadcastedDeployAccountTransaction::V1(_) => Err(SequencerError::StarknetError(
-            starknet_gateway_types::error::StarknetError {
-                code: KnownStarknetErrorCode::InvalidTransactionVersion.into(),
-                message: "".to_string(),
-            },
-        )),
+        BroadcastedDeployAccountTransaction::V1(_) => {
+            return Err(SequencerError::StarknetError(
+                starknet_gateway_types::error::StarknetError {
+                    code: KnownStarknetErrorCode::InvalidTransactionVersion.into(),
+                    message: "".to_string(),
+                },
+            ))
+        }
         BroadcastedDeployAccountTransaction::V3(tx) => {
-            context
+            let response = context
                 .sequencer
                 .add_deploy_account(add_transaction::DeployAccount::V3(
                     add_transaction::DeployAccountV3 {
-                        signature: tx.signature,
+                        signature: tx.signature.clone(),
                         nonce: tx.nonce,
                         nonce_data_availability_mode: tx.nonce_data_availability_mode.into(),
                         fee_data_availability_mode: tx.fee_data_availability_mode.into(),
                         resource_bounds: tx.resource_bounds.into(),
                         tip: tx.tip,
-                        paymaster_data: tx.paymaster_data,
+                        paymaster_data: tx.paymaster_data.clone(),
                         class_hash: tx.class_hash,
                         contract_address_salt: tx.contract_address_salt,
-                        constructor_calldata: tx.constructor_calldata,
+                        constructor_calldata: tx.constructor_calldata.clone(),
                     },
                 ))
-                .await
+                .await?;
+            let new_tx = DeployAccountTransactionV3 {
+                contract_address: tx.deployed_contract_address(),
+                signature: tx.signature,
+                nonce: tx.nonce,
+                nonce_data_availability_mode: tx.nonce_data_availability_mode,
+                fee_data_availability_mode: tx.fee_data_availability_mode,
+                resource_bounds: tx.resource_bounds,
+                tip: tx.tip,
+                paymaster_data: tx.paymaster_data,
+                contract_address_salt: tx.contract_address_salt,
+                constructor_calldata: tx.constructor_calldata,
+                class_hash: tx.class_hash,
+            };
+            (
+                response.transaction_hash,
+                TransactionVariant::DeployAccountV3(new_tx),
+            )
         }
-    }
+    };
+    Ok(success)
 }
 
 impl crate::dto::SerializeForVersion for Output {

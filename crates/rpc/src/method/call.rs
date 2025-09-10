@@ -141,7 +141,10 @@ pub async fn call(
                     .get(&db_tx, rpc_version)
                     .context("Querying pending data")?;
 
-                (pending.header(), Some(pending.state_update()))
+                (
+                    pending.pending_header(),
+                    Some(pending.pending_state_update()),
+                )
             }
             other => {
                 let block_id = other
@@ -564,8 +567,10 @@ mod tests {
                         transactions: vec![],
                         starknet_version: last_block_header.starknet_version,
                         l1_da_mode: L1DataAvailabilityMode::Blob.into(),
-                    },
+                    }
+                    .into(),
                     candidate_transactions: vec![],
+                    pre_latest_data: None,
                 },
                 state_update,
                 last_block_header.number + 1,
