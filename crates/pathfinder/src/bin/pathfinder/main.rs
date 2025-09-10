@@ -905,7 +905,7 @@ async fn verify_database(
 
                 anyhow::ensure!(
                     database_genesis == gateway_hash,
-                    "Database genesis block does not match gateway. {} != {}",
+                    "Database genesis block {} does not match gateway {}.",
                     database_genesis,
                     gateway_hash
                 );
