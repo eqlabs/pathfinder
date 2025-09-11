@@ -23,8 +23,7 @@ mod test {
     #[tokio::test]
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
-        // This is the max height at which system contract 0x1 is not available.
-        const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 9;
+        const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
         const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
