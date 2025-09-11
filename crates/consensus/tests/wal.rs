@@ -119,7 +119,7 @@ async fn wal_concurrent_heights_retention_test() {
                                 pretty_addr(&addr)
                             );
                             let mut decisions = decisions.lock().unwrap();
-                            decisions.insert((addr.clone(), h, r), value);
+                            decisions.insert((addr.clone(), h), value);
                         }
 
                         ConsensusEvent::Error(error) => {

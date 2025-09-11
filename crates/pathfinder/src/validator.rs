@@ -558,9 +558,9 @@ impl ValidatorFinalizeStage {
             .context("Create database transaction")?;
 
         if let Some(parent_number) = header.number.parent() {
-            // Parent block hash for the genesis block is zero by definition.
             header.parent_hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
         } else {
+            // Parent block hash for the genesis block is zero by definition.
             header.parent_hash = BlockHash::ZERO;
         }
 

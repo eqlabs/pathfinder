@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use p2p::core::Client;
 use p2p::libp2p::multiaddr::Protocol;
 use p2p::libp2p::{Multiaddr, PeerId};
@@ -59,10 +59,7 @@ pub async fn dial_bootnodes<C>(
     success
 }
 
-pub fn ensure_peer_id_in_multiaddr(
-    addr: &Multiaddr,
-    msg: &'static str,
-) -> Result<PeerId, anyhow::Error> {
+pub fn ensure_peer_id_in_multiaddr(addr: &Multiaddr, msg: &'static str) -> anyhow::Result<PeerId> {
     addr.iter()
         .find_map(|p| match p {
             Protocol::P2p(peer_id) => Some(peer_id),
