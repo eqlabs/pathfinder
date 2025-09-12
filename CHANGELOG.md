@@ -7,6 +7,12 @@ More expansive patch notes and explanations may be found in the specific [pathfi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Pathfinder panics with "Block number Z is not in the range X..=Y" after starting up from an old Sepolia testnet database snapshot.
+
 ## [0.20.3] - 2025-09-09
 
 ### Changed
