@@ -782,7 +782,7 @@ mod tests {
                     tracing::debug!(%block,
                         "FakeP2PClient::transaction_stream triggering fatal error at",
                     );
-                    return Err(anyhow::anyhow!("Fatal error at block {block}",));
+                    anyhow::bail!("Fatal error at block {block}");
                 }
 
                 Ok(PeerData::for_tests((

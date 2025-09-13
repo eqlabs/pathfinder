@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
-use pathfinder_common::{ChainId, ContractAddress};
+use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::ConsensusTaskHandles;
 use crate::config::ConsensusConfig;
+use crate::validator::FinalizedBlock;
 
 pub fn start(
     config: ConsensusConfig,
@@ -33,7 +34,7 @@ pub fn start(
         chain_id,
         config.my_validator_address,
         p2p_client,
-        storage,
+        storage.clone(),
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
@@ -41,8 +42,15 @@ pub fn start(
 
     let (info_watch_tx, consensus_info_watch) = watch::channel(None);
 
-    let consensus_engine_handle =
-        consensus_task::spawn(config, wal_directory, tx_to_p2p, rx_from_p2p, info_watch_tx);
+    let consensus_engine_handle = consensus_task::spawn(
+        config,
+        wal_directory,
+        tx_to_p2p,
+        rx_from_p2p,
+        info_watch_tx,
+        chain_id,
+        storage,
+    );
 
     ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,
@@ -70,16 +78,16 @@ enum P2PTaskEvent {
     /// The consensus engine requested that we produce a proposal, so we
     /// create it, feed it back to the consensus engine, and we must
     /// cache it for gossiping when the engine requests so.
-    CacheProposal(HeightAndRound, Vec<ProposalPart>),
-    /// The consensus engine decided on the given height and we can finally
-    /// remove the proposal that was cached for this height.
-    RemoveProposal(u64),
+    CacheProposal(HeightAndRound, Vec<ProposalPart>, FinalizedBlock),
     /// Consensus requested that we gossip a message via the P2P network.
     GossipRequest(NetworkMessage<ConsensusValue, ContractAddress>),
+    /// Commit the given block and state update to the database. All proposals
+    /// for this height are removed from the cache.
+    CommitBlock(HeightAndRound, ConsensusValue),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-struct ConsensusValue(p2p_proto::common::Hash);
+struct ConsensusValue(ProposalCommitment);
 
 impl std::fmt::Display for ConsensusValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

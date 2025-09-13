@@ -5,12 +5,7 @@ use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
 use p2p_proto::common::Hash;
-use p2p_proto::consensus::{
-    BlockInfo,
-    ProposalFin,
-    ProposalInit,
-    TransactionVariant as ConsensusVariant,
-};
+use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
@@ -334,6 +329,9 @@ impl ValidatorTransactionBatchStage {
     /// `Ok(Ok(ValidatorFinalizeStage))` if the expected block header
     /// matches the computed one, `Ok(Err((expected, actual)))` if they do
     /// not match, `Err` if there was an error during finalization.
+    ///
+    /// TODO remove this fn and the example that uses it (or modify the example
+    /// to use proper API)
     pub fn finalize(
         self,
         mut expected_block_header: BlockHeader,
@@ -402,6 +400,9 @@ impl ValidatorTransactionBatchStage {
             Ok(Ok(ValidatorFinalizeStage {
                 header,
                 state_update,
+                transactions: self.transactions,
+                receipts: self.receipts,
+                events: self.events,
             }))
         } else {
             Ok(Err((expected_block_header, header)))
@@ -412,35 +413,44 @@ impl ValidatorTransactionBatchStage {
         self,
         proposal_commitment: Hash,
     ) -> anyhow::Result<ValidatorFinalizeStage> {
+        let Self {
+            block_info,
+            block_executor,
+            transactions,
+            receipts,
+            events,
+            ..
+        } = self;
+
         let _span = tracing::debug_span!(
             "Validator::consensus_finalize",
-            height = %self.block_info.number,
-            num_transactions = %self.transactions.len(),
+            height = %block_info.number,
+            num_transactions = %transactions.len(),
         )
         .entered();
 
         let start = Instant::now();
 
-        let state_diff = self.block_executor.finalize()?;
+        let state_diff = block_executor.finalize()?;
 
         let transaction_commitment =
-            calculate_transaction_commitment(&self.transactions, self.block_info.starknet_version)?;
-        let receipt_commitment = calculate_receipt_commitment(&self.receipts)?;
-        let events_ref_by_txn = self
-            .events
+            calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
+        let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+        let events_ref_by_txn = events
             .iter()
-            .zip(self.transactions.iter().map(|t| t.hash))
+            .zip(transactions.iter().map(|t| t.hash))
             .map(|(e, h)| (h, e.as_slice()))
             .collect::<Vec<_>>();
         let event_commitment =
-            calculate_event_commitment(&events_ref_by_txn, self.block_info.starknet_version)?;
+            calculate_event_commitment(&events_ref_by_txn, block_info.starknet_version)?;
 
         let state_update = StateUpdateData::from(state_diff);
         let state_diff_commitment = state_update.compute_state_diff_commitment();
 
         let header = BlockHeader {
-            hash: BlockHash::ZERO,        // UNUSED
-            parent_hash: BlockHash::ZERO, // UNUSED
+            // Computed in ValidatorFinalizeStage::finalize()
+            hash: BlockHash::ZERO,
+            parent_hash: BlockHash::ZERO,
             number: self.block_info.number,
             timestamp: self.block_info.timestamp,
             eth_l1_gas_price: self.block_info.eth_l1_gas_price,
@@ -452,10 +462,11 @@ impl ValidatorTransactionBatchStage {
             sequencer_address: self.block_info.sequencer_address,
             starknet_version: self.block_info.starknet_version,
             event_commitment,
-            state_commitment: StateCommitment::ZERO, // UNUSED
+            // Computed in ValidatorFinalizeStage::finalize()
+            state_commitment: StateCommitment::ZERO,
             transaction_commitment,
-            transaction_count: self.transactions.len(),
-            event_count: self.events.iter().flatten().count(),
+            transaction_count: transactions.len(),
+            event_count: events.iter().flatten().count(),
             l1_da_mode: self.block_info.l1_da_mode,
             receipt_commitment,
             state_diff_commitment,
@@ -472,6 +483,9 @@ impl ValidatorTransactionBatchStage {
             Ok(ValidatorFinalizeStage {
                 header,
                 state_update,
+                transactions,
+                receipts,
+                events,
             })
         } else {
             Err(anyhow::anyhow!(
@@ -481,35 +495,58 @@ impl ValidatorTransactionBatchStage {
             ))
         }
     }
+
+    /// This function is only used for dummy proposal creation.
+    /// TODO remove this function once more elaborate proposal creation for
+    /// tests is employed.
+    pub fn compute_proposal_commitment(self) -> anyhow::Result<Hash> {
+        let state_diff = self.block_executor.finalize()?;
+        let state_update = StateUpdateData::from(state_diff);
+        let state_diff_commitment = state_update.compute_state_diff_commitment();
+        Ok(Hash(state_diff_commitment.0))
+    }
 }
 
 pub struct ValidatorFinalizeStage {
     header: BlockHeader,
     state_update: StateUpdateData,
+    transactions: Vec<Transaction>,
+    receipts: Vec<Receipt>,
+    events: Vec<Vec<Event>>,
+}
+
+pub struct FinalizedBlock {
+    pub header: BlockHeader,
+    pub state_update: StateUpdateData,
+    pub transactions_and_receipts: Vec<(Transaction, Receipt)>,
+    pub events: Vec<Vec<Event>>,
 }
 
 impl ValidatorFinalizeStage {
-    // TODO(validator) we're using the block hash instead of the proposal commitment
-    // here, which is incorrect but we don't have the proposal commitment
-    // formula yet.
-    /// Updates the tries, computes the state commitment and block hash, and
-    /// validates that the computed block hash matches the one in the proposal
-    /// fin.
-    pub fn validate_block_hash(
-        mut self,
-        workaround_block_hash_in_proposal_fin: ProposalFin,
-        workaround_parent_hash: BlockHash,
-        storage: Storage,
-    ) -> anyhow::Result<bool> {
+    /// Updates the tries, computes the state commitment and block hash.
+    ///
+    /// ### Performance
+    ///
+    /// This function performs database operations and is computationally
+    /// and IO intensive.
+    pub fn finalize(self, storage: Storage) -> anyhow::Result<FinalizedBlock> {
         #[cfg(debug_assertions)]
         const VERIFY_HASHES: bool = true;
         #[cfg(not(debug_assertions))]
         const VERIFY_HASHES: bool = false;
 
+        let Self {
+            mut header,
+            state_update,
+            transactions,
+            receipts,
+            events,
+        } = self;
+
         let _span = tracing::debug_span!(
             "Validator::finalize",
-            height = %self.header.number,
-            num_transactions = %self.header.transaction_count,
+            height = %header.number,
+            num_transactions = %header.transaction_count,
         )
         .entered();
 
@@ -520,42 +557,53 @@ impl ValidatorFinalizeStage {
             .transaction()
             .context("Create database transaction")?;
 
+        if let Some(parent_number) = header.number.parent() {
+            header.parent_hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+        } else {
+            // Parent block hash for the genesis block is zero by definition.
+            header.parent_hash = BlockHash::ZERO;
+        }
+
         let (storage_commitment, class_commitment) = update_starknet_state(
             &db_txn,
-            (&self.state_update).into(),
+            (&state_update).into(),
             VERIFY_HASHES,
-            self.header.number,
+            header.number,
             storage.clone(),
         )?;
 
         debug!(
             "Block {} tries updated in {} ms",
-            self.header.number,
+            header.number,
             start.elapsed().as_millis()
         );
 
         let start = Instant::now();
-        self.header.parent_hash = workaround_parent_hash;
-        self.header.state_commitment =
-            StateCommitment::calculate(storage_commitment, class_commitment);
+        header.state_commitment = StateCommitment::calculate(storage_commitment, class_commitment);
 
-        let computed_block_hash = block_hash::compute_final_hash(&self.header);
-        let expected_block_hash =
-            BlockHash(workaround_block_hash_in_proposal_fin.proposal_commitment.0);
+        header.hash = block_hash::compute_final_hash(&header);
 
         debug!(
             "Block {} state commitment and block hash computed in {} ms",
-            self.header.number,
+            header.number,
             start.elapsed().as_millis()
         );
 
-        Ok(computed_block_hash == expected_block_hash)
+        let transactions_and_receipts = transactions.into_iter().zip(receipts).collect::<Vec<_>>();
+
+        Ok(FinalizedBlock {
+            header,
+            state_update,
+            transactions_and_receipts,
+            events,
+        })
     }
 }
 
 pub enum ValidatorStage {
     BlockInfo(ValidatorBlockInfoStage),
     TransactionBatch(Box<ValidatorTransactionBatchStage>),
+    Finalize(Box<ValidatorFinalizeStage>),
 }
 
 /// Maps consensus transaction to a pair of:

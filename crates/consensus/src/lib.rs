@@ -571,6 +571,11 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
             false
         }
     }
+
+    /// Get the current maximum height being tracked by the consensus engine.
+    pub fn current_height(&self) -> Option<u64> {
+        self.internal.keys().max().copied()
+    }
 }
 
 /// A round number (or `None` if the round is nil).
@@ -917,7 +922,7 @@ pub enum ConsensusEvent<V, A> {
     ///
     /// This event indicates that consensus has been reached for the given
     /// height and the value should be committed to the blockchain.
-    Decision { height: u64, value: V },
+    Decision { height: u64, round: u32, value: V },
     /// An internal error occurred in consensus.
     ///
     /// The application should handle this error appropriately, possibly by
@@ -935,8 +940,12 @@ impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusEvent<V, A> {
             ConsensusEvent::RequestProposal { height, round, .. } => {
                 write!(f, "RequestProposal(H:{height} R:{round})")
             }
-            ConsensusEvent::Decision { height, value } => {
-                write!(f, "Decision(H:{height} Val:{value:?})")
+            ConsensusEvent::Decision {
+                height,
+                round,
+                value,
+            } => {
+                write!(f, "Decision(H:{height} R: {round} Val:{value:?})")
             }
             ConsensusEvent::Error(error) => write!(f, "Error({error:?})"),
         }

@@ -549,6 +549,7 @@ macros::felt_newtypes!(
         L1ToL2MessagePayloadElem,
         L2ToL1MessagePayloadElem,
         PaymasterDataElem,
+        ProposalCommitment,
         PublicKey,
         SequencerAddress,
         StateCommitment,
@@ -673,7 +674,7 @@ pub fn calculate_class_commitment_leaf_hash(
 #[derive(Debug, Clone, Copy)]
 pub struct ConsensusInfo {
     pub highest_decided_height: BlockNumber,
-    pub highest_decided_value: BlockHash,
+    pub highest_decided_value: ProposalCommitment,
 }
 
 #[cfg(test)]

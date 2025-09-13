@@ -11,13 +11,14 @@
 
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
+use p2p_proto::common::{Address, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockHash, BlockNumber, ConsensusInfo, ContractAddress};
+use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -29,14 +30,16 @@ use pathfinder_consensus::{
     Round,
     SignedVote,
     SigningKey,
+    StaticValidatorSetProvider,
     Validator,
     ValidatorSet,
 };
-use pathfinder_crypto::Felt;
+use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
+use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
 pub fn spawn(
     config: ConsensusConfig,
@@ -44,48 +47,10 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
+    chain_id: ChainId, // For dummy proposal creation
+    storage: Storage,  // For dummy proposal creation
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    let mut current_height_file = wal_directory.clone();
-    current_height_file.pop();
-    current_height_file = current_height_file.join("current_height");
-
-    // TODO Current height should be retrieved from WAL. Related issue: https://github.com/eqlabs/pathfinder/issues/2931
-    let mut current_height = std::fs::read_to_string(&current_height_file)
-        .unwrap_or_else(|e| {
-            tracing::warn!(
-                "Failed to read height file {}: {e}",
-                current_height_file.display()
-            );
-            String::new()
-        })
-        .parse::<u64>()
-        .unwrap_or_else(|e| {
-            tracing::warn!(
-                "Failed to parse height file {}: {e}, starting at height 0",
-                current_height_file.display()
-            );
-            0
-        });
-
     util::task::spawn(async move {
-        let mut consensus = Consensus::new(
-            Config::new(config.my_validator_address)
-                .with_wal_dir(wal_directory)
-                .with_history_depth(
-                    // TODO: We don't support round certificates yet, and we want to limit
-                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
-                    // engines which are finalized because the effect `CancelAllTimeouts` is only
-                    // triggered upon a new round or a new height.
-                    0,
-                ),
-        );
-
-        // A validator that joins the consensus network and is lagging behind will vote
-        // Nil for its current height, because the consensus network is already at a
-        // higher height. This is a workaround for the missing sync/catch-up mechanism.
-        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
-        let mut last_nil_vote_height = None;
-
         let validator_address = config.my_validator_address;
 
         let validators = std::iter::once(validator_address)
@@ -105,7 +70,28 @@ pub fn spawn(
 
         let validator_set = ValidatorSet::new(validators);
 
-        tracing::trace!("Validator set: {:#?}", validator_set);
+        let mut consensus = Consensus::recover(
+            Config::new(config.my_validator_address)
+                .with_wal_dir(wal_directory)
+                .with_history_depth(
+                    // TODO: We don't support round certificates yet, and we want to limit
+                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
+                    // engines which are finalized because the effect `CancelAllTimeouts` is only
+                    // triggered upon a new round or a new height.
+                    0,
+                ),
+            // TODO use a dynamic validator set provider, once fetching the validator set from the
+            // staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
+            Arc::new(StaticValidatorSetProvider::new(validator_set.clone())),
+        );
+
+        let mut current_height = consensus.current_height().unwrap_or_default();
+
+        // A validator that joins the consensus network and is lagging behind will vote
+        // Nil for its current height, because the consensus network is already at a
+        // higher height. This is a workaround for the missing sync/catch-up mechanism.
+        // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
+        let mut last_nil_vote_height = None;
 
         let mut started_heights = HashSet::new();
 
@@ -145,8 +131,13 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let wire_proposal =
-                                dummy_proposal(height, round.into(), validator_address);
+                            let (wire_proposal, finalized_block) = create_empty_proposal(
+                                chain_id,
+                                height,
+                                round.into(),
+                                validator_address,
+                                storage.clone(),
+                            )?;
 
                             let ProposalFin {
                                 proposal_commitment,
@@ -154,12 +145,13 @@ pub fn spawn(
                                 "Proposals produced by our node are always coherent and complete",
                             );
 
-                            let value = ConsensusValue(*proposal_commitment);
+                            let value = ConsensusValue(ProposalCommitment(proposal_commitment.0));
 
                             tx_to_p2p
                                 .send(P2PTaskEvent::CacheProposal(
                                     HeightAndRound::new(height, round),
                                     wire_proposal,
+                                    finalized_block,
                                 ))
                                 .await
                                 .expect("Receiver not to be dropped");
@@ -212,40 +204,46 @@ pub fn spawn(
                             }
                         }
                         // Consensus has been reached for the given height and value.
-                        ConsensusEvent::Decision { height, value } => {
+                        ConsensusEvent::Decision {
+                            height,
+                            round,
+                            value,
+                        } => {
                             tracing::info!(
-                                "🧠 ✅ {validator_address} decided on {value:?} at height {height}"
+                                "🧠 ✅ {validator_address} decided on {value} at height {height} \
+                                 round {round}",
                             );
-                            // TODO commit the block to storage
-                            // commit_block(height, hash);
 
-                            let reported_height = BlockNumber::new(height).context(format!(
-                                "Decided on height that exceeds i64::MAX: {height}"
-                            ))?;
-                            let reported_value = BlockHash(value.0 .0);
+                            let height_and_round = HeightAndRound::new(height, round);
+
+                            tx_to_p2p
+                                .send(P2PTaskEvent::CommitBlock(height_and_round, value.clone()))
+                                .await
+                                .expect("Receiver not to be dropped");
 
                             info_watch_tx.send_if_modified(|info| {
                                 let do_update = match info {
                                     Some(info) => {
-                                        reported_height > info.highest_decided_height
-                                            || reported_value != info.highest_decided_value
+                                        height > info.highest_decided_height.get()
+                                            || value.0 != info.highest_decided_value
                                     }
                                     None => true,
                                 };
                                 if do_update {
-                                    *info = Some(ConsensusInfo {
-                                        highest_decided_height: reported_height,
-                                        highest_decided_value: reported_value,
-                                    });
+                                    if let Some(height) = BlockNumber::new(height) {
+                                        *info = Some(ConsensusInfo {
+                                            highest_decided_height: height,
+                                            highest_decided_value: value.0,
+                                        });
+                                    } else {
+                                        tracing::error!(
+                                            "Height {height} is out of range for BlockNumber"
+                                        );
+                                        *info = None;
+                                    }
                                 }
                                 do_update
                             });
-
-                            let current_height_file = current_height_file.clone();
-                            let _ = util::task::spawn_blocking(move |_| {
-                                std::fs::write(current_height_file, current_height.to_string())
-                            })
-                            .await;
 
                             assert!(started_heights.remove(&height));
 
@@ -260,11 +258,6 @@ pub fn spawn(
                                     validator_set.clone(),
                                 );
                             }
-
-                            tx_to_p2p
-                                .send(P2PTaskEvent::RemoveProposal(height))
-                                .await
-                                .expect("Receiver not to be dropped");
                         }
                         ConsensusEvent::Error(error) => {
                             // TODO are all of these errors fatal or recoverable?
@@ -341,39 +334,66 @@ fn start_height(
     }
 }
 
-fn dummy_proposal(height: u64, round: Round, proposer: ContractAddress) -> Vec<ProposalPart> {
+/// Create an empty proposal for the given height and round. Returns proposal
+/// parts that can be gossiped via P2P network and the finalized block that
+/// corresponds to this proposal.
+fn create_empty_proposal(
+    chain_id: ChainId,
+    height: u64,
+    round: Round,
+    proposer: ContractAddress,
+    storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, FinalizedBlock)> {
     let round = round.as_u32().expect("Round not to be Nil???");
     let proposer = Address(proposer.0);
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    vec![
-        ProposalPart::Init(ProposalInit {
-            block_number: height,
-            round,
-            valid_round: None,
-            proposer,
-        }),
-        ProposalPart::BlockInfo(BlockInfo {
-            block_number: height,
-            timestamp,
-            builder: proposer,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            l2_gas_price_fri: 1,
-            l1_gas_price_wei: 1000000000,
-            l1_data_gas_price_wei: 1,
-            eth_to_strk_rate: 1000000000,
-        }),
-        ProposalPart::TransactionBatch(vec![]),
-        ProposalPart::Fin(ProposalFin {
-            // commitment of empty proposal is fixed
-            proposal_commitment: Hash(
-                Felt::from_hex_str(
-                    "0x02A3CE358B96A4A26AC9C0EF4F7A8F878A9F3B1A4757E716874CAC711617CA87",
-                )
-                .unwrap(),
-            ),
-        }),
-    ]
+    let proposal_init = ProposalInit {
+        block_number: height,
+        round,
+        valid_round: None,
+        proposer,
+    };
+    let block_info = BlockInfo {
+        block_number: height,
+        timestamp,
+        builder: proposer,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        l2_gas_price_fri: 1,
+        l1_gas_price_wei: 1_000_000_000,
+        l1_data_gas_price_wei: 1,
+        eth_to_strk_rate: 1_000_000_000,
+    };
+    // We need to figure out the proposal commitment value first.
+    let db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
+        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+    let proposal_commitment = validator.compute_proposal_commitment()?;
+    // Now we have all parts of the proposal, so it's time to produce the finalized
+    // block.
+    let db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
+        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+    let validator = validator.consensus_finalize(proposal_commitment)?;
+    let finalized_block = validator.finalize(storage)?;
+
+    Ok((
+        vec![
+            ProposalPart::Init(proposal_init),
+            ProposalPart::BlockInfo(block_info),
+            // TODO empty proposal in the spec actually skips this part,
+            // make sure our code handles the case where this part is missing
+            ProposalPart::TransactionBatch(vec![]),
+            ProposalPart::Fin(ProposalFin {
+                proposal_commitment,
+            }),
+        ],
+        finalized_block,
+    ))
 }
