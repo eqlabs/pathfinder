@@ -134,10 +134,12 @@ pub(crate) fn migrate(tx: &rusqlite::Transaction<'_>) -> anyhow::Result<()> {
     tx.execute(
         r"
         UPDATE running_event_filter
-        SET bitmap = ?, next_block = ?
+        SET from_block = ?, to_block = ?, bitmap = ?, next_block = ?
         WHERE id = 1
         ",
         params![
+            &rebuilt_running_event_filter.from_block,
+            &rebuilt_running_event_filter.to_block,
             &rebuilt_running_event_filter.compress_bitmap(),
             &(latest + 1)
         ],
