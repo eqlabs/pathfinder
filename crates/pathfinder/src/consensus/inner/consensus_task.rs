@@ -9,16 +9,29 @@
 //! 4. issues commands to the P2P task, for example to gossip a proposal or a
 //!    vote
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, L1DataAvailabilityMode};
-use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
+use p2p_proto::consensus::{
+    BlockInfo,
+    ProposalCommitment as PProposalCommitment,
+    ProposalFin,
+    ProposalInit,
+    ProposalPart,
+};
+use pathfinder_common::{
+    BlockNumber,
+    ChainId,
+    ConsensusInfo,
+    ContractAddress,
+    ProposalCommitment,
+    StarknetVersion,
+};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -35,12 +48,19 @@ use pathfinder_consensus::{
     ValidatorSet,
 };
 use pathfinder_storage::Storage;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Mutex};
 
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
+use crate::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub fn spawn(
     config: ConsensusConfig,
     wal_directory: PathBuf,
@@ -49,6 +69,7 @@ pub fn spawn(
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     chain_id: ChainId, // For dummy proposal creation
     storage: Storage,  // For dummy proposal creation
+    incoming_proposals_cache: Arc<Mutex<BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>>>, /* For dummy proposal creation */
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     util::task::spawn(async move {
         let validator_address = config.my_validator_address;
@@ -131,12 +152,14 @@ pub fn spawn(
                                  {round}",
                             );
 
+                            let mut cache = incoming_proposals_cache.lock().await;
                             let (wire_proposal, finalized_block) = create_empty_proposal(
                                 chain_id,
                                 height,
                                 round.into(),
                                 validator_address,
                                 storage.clone(),
+                                &mut cache,
                             )?;
 
                             let ProposalFin {
@@ -343,6 +366,7 @@ fn create_empty_proposal(
     round: Round,
     proposer: ContractAddress,
     storage: Storage,
+    incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
 ) -> anyhow::Result<(Vec<ProposalPart>, FinalizedBlock)> {
     let round = round.as_u32().expect("Round not to be Nil???");
     let proposer = Address(proposer.0);
@@ -372,7 +396,7 @@ fn create_empty_proposal(
         .context("Creating database connection")?;
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let proposal_commitment = validator.compute_proposal_commitment()?;
+    let proposal_commitment_hash = validator.compute_proposal_commitment()?;
     // Now we have all parts of the proposal, so it's time to produce the finalized
     // block.
     let db_conn = storage
@@ -380,9 +404,56 @@ fn create_empty_proposal(
         .context("Creating database connection")?;
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let validator = validator.consensus_finalize(proposal_commitment)?;
+    let validator = validator.consensus_finalize(proposal_commitment_hash)?;
     let finalized_block = validator.finalize(storage)?;
-
+    // Need the previous commitment as well.
+    let parent_proposal_commitment_hash = if height > 0 {
+        let proposals_at_parent_height = incoming_proposals_cache.entry(height - 1).or_default();
+        let last_entry = proposals_at_parent_height.last_entry().context(format!(
+            "Proposal parts for height {} not available",
+            height - 1
+        ))?;
+        let parts = last_entry.get();
+        let ProposalFin {
+            proposal_commitment,
+        } = parts
+            .last()
+            .and_then(ProposalPart::as_fin)
+            .context(format!(
+                "Final proposal for height {} not available",
+                height - 1
+            ))?;
+        *proposal_commitment
+    } else {
+        Default::default()
+    };
+    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+    let transactions = vec![];
+    let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)?;
+    let transaction_events = vec![];
+    let event_commitment = calculate_event_commitment(&transaction_events, starknet_version)?;
+    let receipts = vec![];
+    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+    let proposal_commitment = PProposalCommitment {
+        block_number: height,
+        parent_commitment: parent_proposal_commitment_hash,
+        builder: proposer,
+        timestamp,
+        protocol_version: starknet_version.to_string(),
+        old_state_root: Default::default(), // not used by 0.14.0
+        version_constant_commitment: Default::default(), // TODO
+        state_diff_commitment: proposal_commitment_hash,
+        transaction_commitment: Hash(transaction_commitment.0),
+        event_commitment: Hash(event_commitment.0),
+        receipt_commitment: Hash(receipt_commitment.0),
+        concatenated_counts: Default::default(), // should be the sum of lengths of inputs to *_commitment
+        l1_gas_price_fri: 1000,
+        l1_data_gas_price_fri: 2000,
+        l2_gas_price_fri: 3000,
+        l2_gas_used: 4000,
+        next_l2_gas_price_fri: 3000,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    };
     Ok((
         vec![
             ProposalPart::Init(proposal_init),
@@ -390,8 +461,9 @@ fn create_empty_proposal(
             // TODO empty proposal in the spec actually skips this part,
             // make sure our code handles the case where this part is missing
             ProposalPart::TransactionBatch(vec![]),
+            ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
-                proposal_commitment,
+                proposal_commitment: proposal_commitment_hash,
             }),
         ],
         finalized_block,
