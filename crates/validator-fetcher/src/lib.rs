@@ -1,6 +1,11 @@
 use anyhow::Context;
 use pathfinder_common::{
-    BlockHeader, CallParam, CallResultValue, ChainId, ContractAddress, EntryPoint,
+    BlockHeader,
+    CallParam,
+    CallResultValue,
+    ChainId,
+    ContractAddress,
+    EntryPoint,
 };
 use pathfinder_consensus::PublicKey;
 use pathfinder_crypto::Felt;
@@ -52,17 +57,25 @@ impl From<pathfinder_executor::CallError> for ValidatorFetcherError {
 }
 
 /// Returns the validator contract address for the given network
-fn get_validator_contract_address(chain_id: ChainId) -> Result<ContractAddress, ValidatorFetcherError> {
+fn get_validator_contract_address(
+    chain_id: ChainId,
+) -> Result<ContractAddress, ValidatorFetcherError> {
     match chain_id {
         ChainId::SEPOLIA_TESTNET => {
             // Sepolia testnet mock validator contract
-            parse_contract_address("0x06473b97715c7b665923bc0629c66f2a7b8a1ce144699be12bcbe1e3278f109c")
-        },
+            parse_contract_address(
+                "0x06473b97715c7b665923bc0629c66f2a7b8a1ce144699be12bcbe1e3278f109c",
+            )
+        }
         ChainId::MAINNET => {
             // TODO: Add mainnet validator contract address when available
-            Err(ValidatorFetcherError::UnsupportedNetwork(chain_id.as_str().to_string()))
-        },
-        _ => Err(ValidatorFetcherError::UnsupportedNetwork(chain_id.as_str().to_string())),
+            Err(ValidatorFetcherError::UnsupportedNetwork(
+                chain_id.as_str().to_string(),
+            ))
+        }
+        _ => Err(ValidatorFetcherError::UnsupportedNetwork(
+            chain_id.as_str().to_string(),
+        )),
     }
 }
 
@@ -90,10 +103,10 @@ pub fn get_validators_at_height(
         block_header,
         None, // No pending state for this call
         L1BlobDataAvailability::Disabled,
-        Default::default(), // VersionedConstantsMap::default()
+        Default::default(),    // VersionedConstantsMap::default()
         ContractAddress::ZERO, // ETH fee address (not used for calls)
         ContractAddress::ZERO, // STRK fee address (not used for calls)
-        None, // No native class cache
+        None,                  // No native class cache
     );
 
     // The entry point selector for get_validators_at_height
@@ -117,7 +130,8 @@ pub fn get_validators_at_height(
 }
 
 /// Parses the contract call result into a vector of ValidatorInfo
-/// The mock contract now returns an array of ValidatorInfo structs, where each struct contains:
+/// The mock contract now returns an array of ValidatorInfo structs, where each
+/// struct contains:
 /// - address: ContractAddress
 /// - public_key: felt252 (32 bytes as a single felt)
 /// - voting_power: u64
@@ -130,7 +144,8 @@ fn parse_validators_from_result(
     }
 
     // The contract returns an array with length first, then ValidatorInfo structs
-    // Format: [length, address1, public_key1, voting_power1, address2, public_key2, voting_power2, ...]
+    // Format: [length, address1, public_key1, voting_power1, address2, public_key2,
+    // voting_power2, ...]
     let mut validators = Vec::new();
 
     // The first element is the array length
@@ -139,7 +154,8 @@ fn parse_validators_from_result(
     let array_length = u64::from_be_bytes(first_bytes[24..32].try_into().unwrap());
 
     // Skip the first element (array length) and process the data
-    // The remaining elements are the validator data (address, public_key, voting_power) for each validator
+    // The remaining elements are the validator data (address, public_key,
+    // voting_power) for each validator
     let data = &result[1..];
 
     // Validate that we have the expected number of elements
@@ -147,17 +163,20 @@ fn parse_validators_from_result(
     if data.len() != expected_elements as usize {
         return Err(ValidatorFetcherError::InvalidValidatorData(format!(
             "Expected {} elements for {} validators, got {}",
-            expected_elements, array_length, data.len()
+            expected_elements,
+            array_length,
+            data.len()
         )));
     }
 
     // Process the data in chunks of 3 (address, public_key, voting_power)
     for (i, chunk) in data.chunks(3).enumerate() {
-
         if chunk.len() != 3 {
-            return Err(ValidatorFetcherError::InvalidValidatorData(
-                format!("Invalid chunk length {} at index {}", chunk.len(), i)
-            ));
+            return Err(ValidatorFetcherError::InvalidValidatorData(format!(
+                "Invalid chunk length {} at index {}",
+                chunk.len(),
+                i
+            )));
         }
 
         let address = ContractAddress(chunk[0].0);
@@ -186,7 +205,8 @@ fn parse_validators_from_result(
     if validators.len() != array_length as usize {
         return Err(ValidatorFetcherError::InvalidValidatorData(format!(
             "Expected {} validators, processed {}",
-            array_length, validators.len()
+            array_length,
+            validators.len()
         )));
     }
 
@@ -213,16 +233,15 @@ pub fn felt_to_public_key(felt: &Felt) -> Result<PublicKey, ValidatorFetcherErro
     match std::panic::catch_unwind(|| PublicKey::from_bytes(key_bytes)) {
         Ok(public_key) => Ok(public_key),
         Err(_) => Err(ValidatorFetcherError::InvalidValidatorData(
-            "Invalid public key data from contract".to_string()
+            "Invalid public key data from contract".to_string(),
         )),
     }
 }
 
 /// Helper function to create a contract address from a hex string
 pub fn parse_contract_address(hex_str: &str) -> Result<ContractAddress, ValidatorFetcherError> {
-    let felt = Felt::from_hex_str(hex_str)
-        .map_err(|e| ValidatorFetcherError::InvalidValidatorData(
-            format!("Invalid contract address: {e}")
-        ))?;
+    let felt = Felt::from_hex_str(hex_str).map_err(|e| {
+        ValidatorFetcherError::InvalidValidatorData(format!("Invalid contract address: {e}"))
+    })?;
     Ok(ContractAddress(felt))
 }

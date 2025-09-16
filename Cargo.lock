@@ -12000,7 +12000,7 @@ dependencies = [
 
 [[package]]
 name = "validator-fetcher"
-version = "0.20.2"
+version = "0.20.3"
 dependencies = [
  "anyhow",
  "pathfinder-common",
@@ -12010,7 +12010,7 @@ dependencies = [
  "pathfinder-serde",
  "pathfinder-storage",
  "primitive-types",
- "thiserror 2.0.14",
+ "thiserror 2.0.16",
 ]
 
 [[package]]

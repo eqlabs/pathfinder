@@ -35,7 +35,9 @@ impl From<validator_fetcher::ValidatorFetcherError> for FetchValidatorsError {
             NoValidators { height } => Self::NoValidators { height },
             InvalidValidatorData(msg) => Self::InvalidValidatorData(msg),
             BlockNotFound => Self::BlockNotFound,
-            UnsupportedNetwork(chain_id) => Self::Custom(anyhow::anyhow!("Unsupported network: {}", chain_id)),
+            UnsupportedNetwork(chain_id) => {
+                Self::Custom(anyhow::anyhow!("Unsupported network: {}", chain_id))
+            }
         }
     }
 }
@@ -45,8 +47,12 @@ impl From<FetchValidatorsError> for ApplicationError {
         match value {
             FetchValidatorsError::BlockNotFound => ApplicationError::BlockNotFound,
             FetchValidatorsError::ContractNotFound => ApplicationError::ContractNotFound,
-            FetchValidatorsError::NoValidators { .. } => ApplicationError::Custom(anyhow::anyhow!("No validators found")),
-            FetchValidatorsError::InvalidValidatorData(msg) => ApplicationError::Custom(anyhow::anyhow!(msg)),
+            FetchValidatorsError::NoValidators { .. } => {
+                ApplicationError::Custom(anyhow::anyhow!("No validators found"))
+            }
+            FetchValidatorsError::InvalidValidatorData(msg) => {
+                ApplicationError::Custom(anyhow::anyhow!(msg))
+            }
             FetchValidatorsError::Internal(e) => ApplicationError::Internal(e),
             FetchValidatorsError::Custom(e) => ApplicationError::Custom(e),
         }
@@ -117,7 +123,15 @@ impl From<Vec<validator_fetcher::ValidatorInfo>> for Output {
             .into_iter()
             .map(|validator| ValidatorInfoResponse {
                 address: format!("0x{:064x}", validator.address.0),
-                public_key: format!("0x{}", validator.public_key.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>()),
+                public_key: format!(
+                    "0x{}",
+                    validator
+                        .public_key
+                        .as_bytes()
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<String>()
+                ),
                 voting_power: validator.voting_power,
             })
             .collect();
