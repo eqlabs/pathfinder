@@ -497,6 +497,28 @@ async fn handle_incoming_proposal_part(
             );
             Ok(None)
         }
+        ProposalPart::ProposalCommitment(proposal_commitment) => {
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                anyhow::bail!(
+                    "No ValidatorTransactionBatchStage for height and round {}",
+                    height_and_round
+                );
+            };
+
+            let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
+                anyhow::bail!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                );
+            };
+
+            validator.record_proposal_commitment(proposal_commitment)?;
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::TransactionBatch(validator),
+            );
+            Ok(None)
+        }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
@@ -539,10 +561,6 @@ async fn handle_incoming_proposal_part(
             )))
         }
         ProposalPart::TransactionsFin(_transactions_fin) => {
-            // TODO
-            Ok(None)
-        }
-        ProposalPart::ProposalCommitment(_proposal_commitment) => {
             // TODO
             Ok(None)
         }
