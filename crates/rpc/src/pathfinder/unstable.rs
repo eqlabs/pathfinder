@@ -4,8 +4,10 @@
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
 use crate::method::consensus_info;
+use crate::method::fetch_validators;
 
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::PathfinderV01)
         .register("pathfinder_consensusInfo", consensus_info::consensus_info)
+        .register("pathfinder_fetchValidators", fetch_validators::fetch_validators)
 }

@@ -1,0 +1,76 @@
+use pathfinder_common::{ChainId, BlockHeader, ContractAddress};
+use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
+use pathfinder_storage::Storage;
+use rand::rngs::OsRng;
+
+use crate::config::ConsensusConfig;
+
+
+// TODO:
+//
+// Currently, the validator fetching functionality lives in its own crate (validator-fetcher)
+// because we have a temporary internal RPC method that we use for convenient testing.
+//
+// This separation allows us to easily expose and test the functionality through the RPC
+// while the specification for validator fetching is still being finalized.
+//
+// Once we have a final spec, the functionality from the validator-fetcher crate will be
+// migrated into this file and the temporary crate (along with its RPC method) will be
+// removed.
+
+
+/// Fetches validators for a given height
+///
+/// Uses config-based validators if validator addresses are provided in config,
+/// otherwise fetches validators from the contract.
+pub fn fetch_validators(
+    storage: &Storage,
+    chain_id: ChainId,
+    block_header: BlockHeader,
+    height: u64,
+    config: &ConsensusConfig,
+) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+    if config.validator_addresses.is_empty() {
+        fetch_validators_from_l2(storage, chain_id, block_header, height)
+    } else {
+        create_validators_from_config(config)
+    }
+}
+
+/// Creates validators from consensus config
+///
+/// This is the original logic that was in consensus_task.rs.
+/// It creates validators with random keys and equal voting power.
+fn create_validators_from_config(config: &ConsensusConfig) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+    let validator_address = config.my_validator_address;
+
+    let validators = std::iter::once(validator_address)
+        .chain(config.validator_addresses.clone())
+        .map(|address| {
+            let sk = SigningKey::new(OsRng);
+            let vk = sk.verification_key();
+            let public_key = PublicKey::from_bytes(vk.to_bytes());
+
+            Validator {
+                address,
+                public_key,
+                voting_power: 1,
+            }
+        })
+        .collect::<Vec<Validator<ContractAddress>>>();
+
+    Ok(ValidatorSet::new(validators))
+}
+
+/// Fetches validators from the L2 contract
+///
+/// This logic is temporary until we have a final spec for validator fetching.
+fn fetch_validators_from_l2(storage: &Storage, chain_id: ChainId, block_header: BlockHeader, height: u64) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+    let validators = validator_fetcher::get_validators_at_height(storage, chain_id, block_header, height)?;
+    let validators = validators.into_iter().map(|validator| Validator {
+        address: validator.address,
+        public_key: validator.public_key,
+        voting_power: validator.voting_power,
+    }).collect::<Vec<Validator<ContractAddress>>>();
+    Ok(ValidatorSet::new(validators))
+}
