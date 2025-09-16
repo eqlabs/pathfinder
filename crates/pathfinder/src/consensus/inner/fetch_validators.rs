@@ -1,23 +1,70 @@
-use pathfinder_common::{ChainId, BlockHeader, ContractAddress};
+use anyhow::Context;
+use pathfinder_common::{BlockHeader, BlockId, ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
 use pathfinder_storage::Storage;
 use rand::rngs::OsRng;
 
 use crate::config::ConsensusConfig;
 
+#[derive(Clone)]
+pub struct L2ValidatorSetProvider {
+    storage: Storage,
+    chain_id: ChainId,
+    config: ConsensusConfig,
+}
+
+impl L2ValidatorSetProvider {
+    pub fn new(storage: Storage, chain_id: ChainId, config: ConsensusConfig) -> Self {
+        Self {
+            storage,
+            chain_id,
+            config,
+        }
+    }
+
+    fn get_block_header(&self) -> anyhow::Result<BlockHeader> {
+        let mut db_conn = self
+            .storage
+            .connection()
+            .context("Failed to create database connection")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Failed to create database transaction")?;
+        let block_header = db_tx
+            .block_header(BlockId::Latest)
+            .context("Querying latest block header")?;
+        block_header.ok_or_else(|| anyhow::anyhow!("No block header found"))
+    }
+}
+
+impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2ValidatorSetProvider {
+    fn get_validator_set(
+        &self,
+        height: u64,
+    ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+        fetch_validators(
+            &self.storage,
+            self.chain_id,
+            self.get_block_header()?,
+            height,
+            &self.config,
+        )
+    }
+}
 
 // TODO:
 //
-// Currently, the validator fetching functionality lives in its own crate (validator-fetcher)
-// because we have a temporary internal RPC method that we use for convenient testing.
+// Currently, the validator fetching functionality lives in its own crate
+// (validator-fetcher) because we have a temporary internal RPC method that we
+// use for convenient testing.
 //
-// This separation allows us to easily expose and test the functionality through the RPC
-// while the specification for validator fetching is still being finalized.
+// This separation allows us to easily expose and test the functionality through
+// the RPC while the specification for validator fetching is still being
+// finalized.
 //
-// Once we have a final spec, the functionality from the validator-fetcher crate will be
-// migrated into this file and the temporary crate (along with its RPC method) will be
-// removed.
-
+// Once we have a final spec, the functionality from the validator-fetcher crate
+// will be migrated into this file and the temporary crate (along with its RPC
+// method) will be removed.
 
 /// Fetches validators for a given height
 ///
@@ -41,7 +88,9 @@ pub fn fetch_validators(
 ///
 /// This is the original logic that was in consensus_task.rs.
 /// It creates validators with random keys and equal voting power.
-fn create_validators_from_config(config: &ConsensusConfig) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+fn create_validators_from_config(
+    config: &ConsensusConfig,
+) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     let validator_address = config.my_validator_address;
 
     let validators = std::iter::once(validator_address)
@@ -65,12 +114,21 @@ fn create_validators_from_config(config: &ConsensusConfig) -> Result<ValidatorSe
 /// Fetches validators from the L2 contract
 ///
 /// This logic is temporary until we have a final spec for validator fetching.
-fn fetch_validators_from_l2(storage: &Storage, chain_id: ChainId, block_header: BlockHeader, height: u64) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
-    let validators = validator_fetcher::get_validators_at_height(storage, chain_id, block_header, height)?;
-    let validators = validators.into_iter().map(|validator| Validator {
-        address: validator.address,
-        public_key: validator.public_key,
-        voting_power: validator.voting_power,
-    }).collect::<Vec<Validator<ContractAddress>>>();
+fn fetch_validators_from_l2(
+    storage: &Storage,
+    chain_id: ChainId,
+    block_header: BlockHeader,
+    height: u64,
+) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
+    let validators =
+        validator_fetcher::get_validators_at_height(storage, chain_id, block_header, height)?;
+    let validators = validators
+        .into_iter()
+        .map(|validator| Validator {
+            address: validator.address,
+            public_key: validator.public_key,
+            voting_power: validator.voting_power,
+        })
+        .collect::<Vec<Validator<ContractAddress>>>();
     Ok(ValidatorSet::new(validators))
 }

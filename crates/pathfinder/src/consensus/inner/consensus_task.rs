@@ -26,17 +26,15 @@ use pathfinder_consensus::{
     ConsensusEvent,
     NetworkMessage,
     Proposal,
-    PublicKey,
     Round,
     SignedVote,
-    SigningKey,
-    StaticValidatorSetProvider,
-    Validator,
     ValidatorSet,
+    ValidatorSetProvider,
 };
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
+use super::fetch_validators::L2ValidatorSetProvider;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
@@ -51,27 +49,12 @@ pub fn spawn(
     storage: Storage,  // For dummy proposal creation
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     util::task::spawn(async move {
+        // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
-
-        let validators = std::iter::once(validator_address)
-            .chain(config.validator_addresses)
-            .map(|address| {
-                let sk = SigningKey::new(rand::rngs::OsRng);
-                let vk = sk.verification_key();
-                let public_key = PublicKey::from_bytes(vk.to_bytes());
-
-                Validator {
-                    address,
-                    public_key,
-                    voting_power: 1,
-                }
-            })
-            .collect::<Vec<Validator<_>>>();
-
-        let validator_set = ValidatorSet::new(validators);
+        let validator_set_provider = L2ValidatorSetProvider::new(storage.clone(), chain_id, config);
 
         let mut consensus = Consensus::recover(
-            Config::new(config.my_validator_address)
+            Config::new(validator_address)
                 .with_wal_dir(wal_directory)
                 .with_history_depth(
                     // TODO: We don't support round certificates yet, and we want to limit
@@ -82,9 +65,10 @@ pub fn spawn(
                 ),
             // TODO use a dynamic validator set provider, once fetching the validator set from the
             // staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
-            Arc::new(StaticValidatorSetProvider::new(validator_set.clone())),
-        );
+            Arc::new(validator_set_provider.clone()),
+        )?;
 
+        // Get the current height
         let mut current_height = consensus.current_height().unwrap_or_default();
 
         // A validator that joins the consensus network and is lagging behind will vote
@@ -99,7 +83,7 @@ pub fn spawn(
             &mut consensus,
             &mut started_heights,
             current_height,
-            validator_set.clone(),
+            validator_set_provider.get_validator_set(current_height)?,
         );
 
         loop {
@@ -255,7 +239,7 @@ pub fn spawn(
                                     &mut consensus,
                                     &mut started_heights,
                                     current_height,
-                                    validator_set.clone(),
+                                    validator_set_provider.get_validator_set(current_height)?,
                                 );
                             }
                         }
@@ -306,7 +290,7 @@ pub fn spawn(
                                 &mut consensus,
                                 &mut started_heights,
                                 cmd_height,
-                                validator_set.clone(),
+                                validator_set_provider.get_validator_set(cmd_height)?,
                             );
                         }
                     }
