@@ -43,15 +43,8 @@ pub fn start(
 
     let (info_watch_tx, consensus_info_watch) = watch::channel(None);
 
-    let consensus_engine_handle = consensus_task::spawn(
-        config,
-        wal_directory,
-        tx_to_p2p,
-        rx_from_p2p,
-        info_watch_tx,
-        chain_id,
-        storage,
-    );
+    let consensus_engine_handle =
+        consensus_task::spawn(config, wal_directory, tx_to_p2p, rx_from_p2p, info_watch_tx);
 
     ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,

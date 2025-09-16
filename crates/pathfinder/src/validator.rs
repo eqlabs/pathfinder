@@ -515,6 +515,7 @@ pub struct ValidatorFinalizeStage {
     events: Vec<Vec<Event>>,
 }
 
+#[derive(Clone, Debug)]
 pub struct FinalizedBlock {
     pub header: BlockHeader,
     pub state_update: StateUpdateData,

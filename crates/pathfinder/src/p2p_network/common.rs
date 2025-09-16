@@ -33,6 +33,7 @@ pub async fn dial_bootnodes<C>(
             match core_client.dial(peer_id, bootstrap_address.clone()).await {
                 Ok(_) => {
                     success = true;
+                    break;
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -40,7 +41,7 @@ pub async fn dial_bootnodes<C>(
                         %error,
                         "Failed to dial bootstrap node, retrying",
                     );
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    tokio::time::sleep(Duration::from_secs(3)).await;
                 }
             }
         }

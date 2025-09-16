@@ -24,7 +24,8 @@ mod test {
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
-        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(240);
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -47,17 +48,20 @@ mod test {
         let mut configs =
             Config::for_set(NUM_NODES, &pathfinder_bin, &fixture_dir, test_dir.path()).into_iter();
 
-        // Alice is the boot node, so we want her up and running first.
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
-        alice.wait_for_ready(READY_POLL_INTERVAL).await;
+        alice
+            .wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
+            .await?;
 
         let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
         let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
 
-        tokio::join!(
-            bob.wait_for_ready(READY_POLL_INTERVAL),
-            charlie.wait_for_ready(READY_POLL_INTERVAL)
+        let (bob_rdy, charlie_rdy) = tokio::join!(
+            bob.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT),
+            charlie.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
         );
+        bob_rdy?;
+        charlie_rdy?;
 
         let spawn_rpc_client = |rpc_port| {
             tokio::spawn(wait_for_height(
@@ -97,10 +101,6 @@ mod test {
                 Err(anyhow::anyhow!("Test interrupted by user"))
             }
         };
-
-        alice.terminate()?;
-        bob.terminate()?;
-        charlie.terminate()?;
 
         test_result
     }
@@ -150,6 +150,7 @@ mod test {
         highest_decided_height: Option<u64>,
     }
 
+    /// Successfully spawned pathfinder instance is terminated when dropped.
     struct PathfinderInstance {
         process: Child,
         name: &'static str,
@@ -254,26 +255,41 @@ mod test {
             })
         }
 
-        async fn wait_for_ready(&self, poll_interval: Duration) {
-            let stopwatch = Instant::now();
-            loop {
-                match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port)).await {
-                    Ok(response) if response.status() == StatusCode::OK => {
-                        println!(
-                            "Pathfinder instance {} ready after {} s",
-                            self.name,
-                            stopwatch.elapsed().as_secs()
-                        );
-                        return;
+        async fn wait_for_ready(
+            &self,
+            poll_interval: Duration,
+            timeout: Duration,
+        ) -> anyhow::Result<()> {
+            let fut = async move {
+                let stopwatch = Instant::now();
+                loop {
+                    match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port))
+                        .await
+                    {
+                        Ok(response) if response.status() == StatusCode::OK => {
+                            println!(
+                                "Pathfinder instance {} ready after {} s",
+                                self.name,
+                                stopwatch.elapsed().as_secs()
+                            );
+                            return;
+                        }
+                        _ => println!("Pathfinder instance {} not ready yet", self.name),
                     }
-                    _ => println!("Pathfinder instance {} not ready yet", self.name),
-                }
 
-                sleep(poll_interval).await;
+                    sleep(poll_interval).await;
+                }
+            };
+            if tokio::time::timeout(timeout, fut).await.is_err() {
+                anyhow::bail!(
+                    "Timeout waiting for Pathfinder instance {} to be ready",
+                    self.name
+                );
             }
+            Ok(())
         }
 
-        fn terminate(mut self) -> anyhow::Result<()> {
+        fn terminate(&mut self) -> anyhow::Result<()> {
             _ = Command::new("kill")
                 // It's supposed to be the default signal in `kill`, but let's be explicit.
                 .arg("-TERM")
@@ -327,6 +343,14 @@ mod test {
             }
 
             Ok(())
+        }
+    }
+
+    impl Drop for PathfinderInstance {
+        fn drop(&mut self) {
+            if let Err(e) = self.terminate() {
+                eprintln!("Error terminating Pathfinder instance {}: {}", self.name, e);
+            }
         }
     }
 

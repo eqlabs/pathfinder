@@ -406,12 +406,15 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
         height: Self::Height,
         round: Round,
     ) -> &'a Self::Validator {
-        let round = round.as_u32().expect("round is not nil");
-        let num_validators = validator_set.count();
-        let index = round as usize % num_validators;
-        let proposer = validator_set
-            .get_by_index(index)
-            .expect("validator not found");
+        // let round = round.as_u32().expect("round is not nil");
+        // let num_validators = validator_set.count();
+        // let index = round as usize % num_validators;
+        // let proposer = validator_set
+        //     .get_by_index(index)
+        //     .expect("validator not found");
+
+        // Always select the first validator as proposer
+        let proposer = validator_set.get_by_index(0).expect("validator not found");
 
         tracing::debug!(
             proposer = ?proposer,
