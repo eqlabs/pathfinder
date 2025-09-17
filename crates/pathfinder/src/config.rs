@@ -1002,22 +1002,34 @@ impl ConsensusConfig {
 impl ConsensusConfig {
     fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
         args.is_enabled.then(|| {
-            if std::iter::once(
-                &args
-                    .my_validator_address
-                    .expect("Required if `is_enabled` is true"),
-            )
-            .chain(args.validator_addresses.iter())
-            .collect::<HashSet<_>>()
-            .len()
-                < 3
-            {
+            let my_validator_address = args
+                .my_validator_address
+                .as_ref()
+                .expect("Required if `is_enabled` is true");
+            let unique_validator_addresses = std::iter::once(my_validator_address)
+                .chain(args.validator_addresses.iter())
+                .collect::<HashSet<_>>();
+
+            if unique_validator_addresses.len() < 3 {
                 Cli::command()
                     .error(
                         clap::error::ErrorKind::ValueValidation,
                         "At least 3 unique validator addresses are required in \
                          '--consensus.validator-addresses' and '--consensus.my-validator-address' \
                          combined.",
+                    )
+                    .exit();
+            }
+
+            if !unique_validator_addresses.contains(
+                &args
+                    .proposer_address
+                    .expect("Required if `is_enabled` is true"),
+            ) {
+                Cli::command()
+                    .error(
+                        clap::error::ErrorKind::ValueValidation,
+                        "The proposer address must match one of the validator addresses.",
                     )
                     .exit();
             }
