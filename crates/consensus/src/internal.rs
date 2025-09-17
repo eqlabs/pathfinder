@@ -362,11 +362,11 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
             )));
             Ok(resume.resume_with(()))
         }
-        // Rebroadcast a vote.
-        Effect::RebroadcastVote(vote, resume) => {
+        // Republish a vote.
+        Effect::RepublishVote(vote, resume) => {
             tracing::debug!(
                 vote = ?vote,
-                "Rebroadcasting vote"
+                "Republishing vote"
             );
             output_queue.push_back(ConsensusEvent::Gossip(NetworkMessage::Vote(
                 convert_vote_out(vote),
@@ -398,6 +398,8 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
         // --------------------------------------------------------------
         // Effects we don't care about. They're not relevant to Starknet.
         // --------------------------------------------------------------
+        // Sync a value.
+        Effect::SyncValue(_, resume) => Ok(resume.resume_with(())),
         // Verify a commit certificate.
         Effect::VerifyCommitCertificate(_, _, _, resume) => Ok(resume.resume_with(Ok(()))),
         // Verify a polka certificate.
@@ -406,8 +408,8 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
         Effect::VerifyRoundCertificate(_, _, _, resume) => Ok(resume.resume_with(Ok(()))),
         // Publish a liveness message to peers.
         Effect::PublishLivenessMsg(_, resume) => Ok(resume.resume_with(())),
-        // Rebroadcast a round certificate.
-        Effect::RebroadcastRoundCertificate(_, resume) => Ok(resume.resume_with(())),
+        // Republish a round certificate.
+        Effect::RepublishRoundCertificate(_, resume) => Ok(resume.resume_with(())),
         // Extend a vote.
         Effect::ExtendVote(_, _, _, resume) => Ok(resume.resume_with(None)),
         // Verify a vote extension.
