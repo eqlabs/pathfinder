@@ -746,13 +746,15 @@ pub(crate) mod tests {
             tx.insert_block_header(&next_block_header)?;
 
             let transactions = vec![
-                fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+                fixtures::input::declare(account_contract_address)
+                    .try_into_common(context.chain_id)?,
                 fixtures::input::universal_deployer(
                     account_contract_address,
                     universal_deployer_address,
                 )
-                .into_common(context.chain_id),
-                fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+                .try_into_common(context.chain_id)?,
+                fixtures::input::invoke(account_contract_address)
+                    .try_into_common(context.chain_id)?,
             ];
 
             let traces = vec![
@@ -904,13 +906,13 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let transactions = vec![
-            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+            fixtures::input::declare(account_contract_address).try_into_common(context.chain_id)?,
             fixtures::input::universal_deployer(
                 account_contract_address,
                 universal_deployer_address,
             )
-            .into_common(context.chain_id),
-            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+            .try_into_common(context.chain_id)?,
+            fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
         let traces = vec![
@@ -1023,13 +1025,13 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let pre_latest_transactions = vec![
-            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+            fixtures::input::declare(account_contract_address).try_into_common(context.chain_id)?,
             fixtures::input::universal_deployer(
                 account_contract_address,
                 universal_deployer_address,
             )
-            .into_common(context.chain_id),
-            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+            .try_into_common(context.chain_id)?,
+            fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
         let traces = vec![
@@ -1168,13 +1170,13 @@ pub(crate) mod tests {
         let context = RpcContext::for_tests().with_storage(storage.clone());
 
         let pre_confirmed_transactions = vec![
-            fixtures::input::declare(account_contract_address).into_common(context.chain_id),
+            fixtures::input::declare(account_contract_address).try_into_common(context.chain_id)?,
             fixtures::input::universal_deployer(
                 account_contract_address,
                 universal_deployer_address,
             )
-            .into_common(context.chain_id),
-            fixtures::input::invoke(account_contract_address).into_common(context.chain_id),
+            .try_into_common(context.chain_id)?,
+            fixtures::input::invoke(account_contract_address).try_into_common(context.chain_id)?,
         ];
 
         let traces = vec![

@@ -216,7 +216,7 @@ pub(crate) fn map_broadcasted_transaction(
         strict_nonce_check: !skip_validate,
     };
 
-    let transaction = transaction.clone().into_common(chain_id);
+    let transaction = transaction.clone().try_into_common(chain_id)?;
     let transaction_hash = transaction.hash;
     let transaction = to_starknet_api_transaction(transaction.variant)?;
 

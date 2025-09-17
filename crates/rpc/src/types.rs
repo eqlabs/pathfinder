@@ -1228,14 +1228,17 @@ pub mod request {
     }
 
     impl BroadcastedTransaction {
-        pub fn into_common(self, chain_id: ChainId) -> pathfinder_common::transaction::Transaction {
+        pub fn try_into_common(
+            self,
+            chain_id: ChainId,
+        ) -> anyhow::Result<pathfinder_common::transaction::Transaction> {
             use pathfinder_common::transaction::*;
 
             let query_only = self.version().has_query_version();
 
             let variant = match self {
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1245,7 +1248,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1255,7 +1258,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV2(DeclareTransactionV2 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1266,7 +1269,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV3(DeclareTransactionV3 {
                         class_hash,
                         nonce: declare.nonce,
@@ -1343,7 +1346,7 @@ pub mod request {
             };
 
             let hash = variant.calculate_hash(chain_id, query_only);
-            Transaction { hash, variant }
+            Ok(Transaction { hash, variant })
         }
     }
 
