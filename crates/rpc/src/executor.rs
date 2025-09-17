@@ -12,7 +12,6 @@ use crate::types::request::{
     BroadcastedInvokeTransaction,
     BroadcastedTransaction,
 };
-use crate::types::SierraContractClass;
 
 pub enum ExecutionStateError {
     BlockNotFound,
@@ -276,7 +275,7 @@ pub fn compose_executor_transaction(
             let class_definition = db_transaction
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
-            let class_definition: SierraContractClass =
+            let class_definition: crate::types::class::sierra::SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
             let sierra_version =
@@ -298,7 +297,7 @@ pub fn compose_executor_transaction(
             let class_definition = db_transaction
                 .class_definition(tx.class_hash)?
                 .context("Fetching class definition")?;
-            let class_definition: SierraContractClass =
+            let class_definition: crate::types::class::sierra::SierraContractClass =
                 serde_json::from_str(&String::from_utf8(class_definition)?)
                     .context("Deserializing class definition")?;
             let sierra_version =

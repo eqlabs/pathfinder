@@ -3,7 +3,9 @@ use pathfinder_common::ContractAddress;
 
 use crate::context::RpcContext;
 use crate::dto::SerializeForVersion;
-use crate::types::{BlockId, CairoContractClass, ContractClass, SierraContractClass};
+use crate::types::class::cairo::CairoContractClass;
+use crate::types::class::sierra::SierraContractClass;
+use crate::types::{BlockId, ContractClass};
 use crate::{dto, RpcVersion};
 
 crate::error::generate_rpc_error_subset!(Error: BlockNotFound, ContractNotFound);

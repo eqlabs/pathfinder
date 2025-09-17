@@ -4,7 +4,7 @@ pub(crate) mod class;
 pub(crate) mod receipt;
 pub mod syncing;
 
-pub use class::*;
+pub use class::ContractClass;
 pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.
@@ -425,7 +425,7 @@ pub mod request {
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
 
-        pub contract_class: super::CairoContractClass,
+        pub contract_class: super::class::cairo::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -470,7 +470,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        pub contract_class: super::CairoContractClass,
+        pub contract_class: super::class::cairo::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -518,7 +518,7 @@ pub mod request {
         pub nonce: TransactionNonce,
 
         pub compiled_class_hash: CasmHash,
-        pub contract_class: super::SierraContractClass,
+        pub contract_class: super::class::sierra::SierraContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -570,7 +570,7 @@ pub mod request {
         pub fee_data_availability_mode: DataAvailabilityMode,
 
         pub compiled_class_hash: CasmHash,
-        pub contract_class: super::SierraContractClass,
+        pub contract_class: super::class::sierra::SierraContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -1376,9 +1376,9 @@ pub mod request {
 
             use super::super::*;
             use crate::dto::DeserializeForVersion;
-            use crate::types::{
-                CairoContractClass,
-                ContractEntryPoints,
+            use crate::types::class::cairo::entry_point::ContractEntryPoints;
+            use crate::types::class::cairo::CairoContractClass;
+            use crate::types::class::sierra::{
                 SierraContractClass,
                 SierraEntryPoint,
                 SierraEntryPoints,

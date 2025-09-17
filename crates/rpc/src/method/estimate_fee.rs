@@ -236,6 +236,7 @@ mod tests {
 
     use super::*;
     use crate::dto::{SerializeForVersion, Serializer};
+    use crate::types::class::sierra::SierraContractClass;
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV2,
@@ -247,7 +248,7 @@ mod tests {
         BroadcastedInvokeTransactionV3,
         BroadcastedTransaction,
     };
-    use crate::types::{BlockId, ContractClass, SierraContractClass};
+    use crate::types::{BlockId, ContractClass};
     use crate::RpcVersion;
 
     const RPC_VERSION: RpcVersion = RpcVersion::V09;

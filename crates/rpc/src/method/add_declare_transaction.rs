@@ -184,13 +184,14 @@ impl Input {
                     max_fee: Default::default(),
                     version: pathfinder_common::TransactionVersion::ZERO,
                     signature: Default::default(),
-                    contract_class: crate::types::CairoContractClass {
+                    contract_class: crate::types::class::cairo::CairoContractClass {
                         program: Default::default(),
-                        entry_points_by_type: crate::types::ContractEntryPoints {
-                            constructor: Default::default(),
-                            external: Default::default(),
-                            l1_handler: Default::default(),
-                        },
+                        entry_points_by_type:
+                            crate::types::class::cairo::entry_point::ContractEntryPoints {
+                                constructor: Default::default(),
+                                external: Default::default(),
+                                l1_handler: Default::default(),
+                            },
                         abi: Default::default(),
                     },
                     sender_address: Default::default(),
@@ -208,13 +209,14 @@ impl Input {
                     version: pathfinder_common::TransactionVersion::ONE,
                     signature: Default::default(),
                     nonce: Default::default(),
-                    contract_class: crate::types::CairoContractClass {
+                    contract_class: crate::types::class::cairo::CairoContractClass {
                         program: Default::default(),
-                        entry_points_by_type: crate::types::ContractEntryPoints {
-                            constructor: Default::default(),
-                            external: Default::default(),
-                            l1_handler: Default::default(),
-                        },
+                        entry_points_by_type:
+                            crate::types::class::cairo::entry_point::ContractEntryPoints {
+                                constructor: Default::default(),
+                                external: Default::default(),
+                                l1_handler: Default::default(),
+                            },
                         abi: Default::default(),
                     },
                     sender_address: Default::default(),
@@ -233,10 +235,10 @@ impl Input {
                     signature: Default::default(),
                     nonce: Default::default(),
                     compiled_class_hash: Default::default(),
-                    contract_class: crate::types::SierraContractClass {
+                    contract_class: crate::types::class::sierra::SierraContractClass {
                         sierra_program: Default::default(),
                         contract_class_version: Default::default(),
-                        entry_points_by_type: crate::types::SierraEntryPoints {
+                        entry_points_by_type: crate::types::class::sierra::SierraEntryPoints {
                             constructor: Default::default(),
                             external: Default::default(),
                             l1_handler: Default::default(),
@@ -264,10 +266,10 @@ impl Input {
                     nonce_data_availability_mode: Default::default(),
                     fee_data_availability_mode: Default::default(),
                     compiled_class_hash: Default::default(),
-                    contract_class: crate::types::SierraContractClass {
+                    contract_class: crate::types::class::sierra::SierraContractClass {
                         sierra_program: Default::default(),
                         contract_class_version: Default::default(),
-                        entry_points_by_type: crate::types::SierraEntryPoints {
+                        entry_points_by_type: crate::types::class::sierra::SierraEntryPoints {
                             constructor: Default::default(),
                             external: Default::default(),
                             l1_handler: Default::default(),
@@ -465,13 +467,15 @@ mod tests {
     };
 
     use super::*;
+    use crate::types::class::cairo::CairoContractClass;
+    use crate::types::class::sierra::SierraContractClass;
     use crate::types::request::{
         BroadcastedDeclareTransaction,
         BroadcastedDeclareTransactionV1,
         BroadcastedDeclareTransactionV2,
         BroadcastedDeclareTransactionV3,
     };
-    use crate::types::{CairoContractClass, ContractClass, SierraContractClass};
+    use crate::types::ContractClass;
 
     pub static CONTRACT_CLASS: LazyLock<CairoContractClass> = LazyLock::new(|| {
         ContractClass::from_definition_bytes(CONTRACT_DEFINITION)

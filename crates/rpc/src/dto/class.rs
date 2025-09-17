@@ -4,7 +4,7 @@ use super::U64Hex;
 use crate::dto::SerializeForVersion;
 use crate::types;
 
-impl SerializeForVersion for types::CairoContractClass {
+impl SerializeForVersion for types::class::cairo::CairoContractClass {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -19,7 +19,7 @@ impl SerializeForVersion for types::CairoContractClass {
     }
 }
 
-impl SerializeForVersion for types::SierraContractClass {
+impl SerializeForVersion for types::class::sierra::SierraContractClass {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -43,7 +43,7 @@ impl SerializeForVersion for types::SierraContractClass {
     }
 }
 
-impl SerializeForVersion for types::SierraEntryPoints {
+impl SerializeForVersion for types::class::sierra::SierraEntryPoints {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -68,7 +68,7 @@ impl SerializeForVersion for types::SierraEntryPoints {
     }
 }
 
-impl SerializeForVersion for types::ContractEntryPoints {
+impl SerializeForVersion for types::class::cairo::entry_point::ContractEntryPoints {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -93,7 +93,7 @@ impl SerializeForVersion for types::ContractEntryPoints {
     }
 }
 
-impl SerializeForVersion for &types::ContractEntryPoint {
+impl SerializeForVersion for &types::class::cairo::entry_point::ContractEntryPoint {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -107,7 +107,7 @@ impl SerializeForVersion for &types::ContractEntryPoint {
     }
 }
 
-impl SerializeForVersion for &types::SierraEntryPoint {
+impl SerializeForVersion for &types::class::sierra::SierraEntryPoint {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -121,7 +121,7 @@ impl SerializeForVersion for &types::SierraEntryPoint {
     }
 }
 
-impl SerializeForVersion for [types::ContractAbiEntry] {
+impl SerializeForVersion for [types::class::cairo::abi::ContractAbiEntry] {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -130,7 +130,7 @@ impl SerializeForVersion for [types::ContractAbiEntry] {
     }
 }
 
-impl SerializeForVersion for Vec<types::ContractAbiEntry> {
+impl SerializeForVersion for Vec<types::class::cairo::abi::ContractAbiEntry> {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -139,20 +139,20 @@ impl SerializeForVersion for Vec<types::ContractAbiEntry> {
     }
 }
 
-impl SerializeForVersion for &types::ContractAbiEntry {
+impl SerializeForVersion for &types::class::cairo::abi::ContractAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            types::ContractAbiEntry::Function(f) => f.serialize(serializer),
-            types::ContractAbiEntry::Event(e) => e.serialize(serializer),
-            types::ContractAbiEntry::Struct(s) => s.serialize(serializer),
+            types::class::cairo::abi::ContractAbiEntry::Function(f) => f.serialize(serializer),
+            types::class::cairo::abi::ContractAbiEntry::Event(e) => e.serialize(serializer),
+            types::class::cairo::abi::ContractAbiEntry::Struct(s) => s.serialize(serializer),
         }
     }
 }
 
-impl SerializeForVersion for &types::FunctionAbiEntry {
+impl SerializeForVersion for &types::class::cairo::abi::FunctionAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -179,7 +179,7 @@ impl SerializeForVersion for &types::FunctionAbiEntry {
     }
 }
 
-impl SerializeForVersion for &types::EventAbiEntry {
+impl SerializeForVersion for &types::class::cairo::abi::EventAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -199,7 +199,7 @@ impl SerializeForVersion for &types::EventAbiEntry {
     }
 }
 
-impl SerializeForVersion for &types::StructAbiEntry {
+impl SerializeForVersion for &types::class::cairo::abi::StructAbiEntry {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -217,15 +217,15 @@ impl SerializeForVersion for &types::StructAbiEntry {
     }
 }
 
-impl SerializeForVersion for types::FunctionAbiType {
+impl SerializeForVersion for types::class::cairo::abi::FunctionAbiType {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
     ) -> Result<crate::dto::Ok, crate::dto::Error> {
         match self {
-            types::FunctionAbiType::Function => "function",
-            types::FunctionAbiType::L1Handler => "l1_handler",
-            types::FunctionAbiType::Constructor => "constructor",
+            types::class::cairo::abi::FunctionAbiType::Function => "function",
+            types::class::cairo::abi::FunctionAbiType::L1Handler => "l1_handler",
+            types::class::cairo::abi::FunctionAbiType::Constructor => "constructor",
         }
         .serialize(serializer)
     }
@@ -264,7 +264,7 @@ impl SerializeForVersion for FunctionStateMutability {
     }
 }
 
-impl SerializeForVersion for &types::StructMember {
+impl SerializeForVersion for &types::class::cairo::abi::StructMember {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
@@ -273,7 +273,7 @@ impl SerializeForVersion for &types::StructMember {
 
         // FIXME: these clones could be removed if the types::* definitions were
         // smarter.
-        let parameter = &types::TypedParameter {
+        let parameter = &types::class::cairo::abi::TypedParameter {
             name: self.typed_parameter_name.clone(),
             r#type: self.typed_parameter_type.clone(),
         };
@@ -284,7 +284,7 @@ impl SerializeForVersion for &types::StructMember {
     }
 }
 
-impl SerializeForVersion for &types::TypedParameter {
+impl SerializeForVersion for &types::class::cairo::abi::TypedParameter {
     fn serialize(
         &self,
         serializer: crate::dto::Serializer,
