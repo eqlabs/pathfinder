@@ -13,6 +13,7 @@ mod test {
     use std::fs::File;
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
+    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
 
     use anyhow::Context;
@@ -93,6 +94,8 @@ mod test {
                 a.context("Joining Alice's RPC client task")?;
                 b.context("Joining Bob's RPC client task")?;
                 c.context("Joining Charlie's RPC client task")?;
+                // Don't dump logs if test succeeded.
+                PathfinderInstance::disable_log_dump();
                 Ok(())
             }
 
@@ -156,6 +159,8 @@ mod test {
         name: &'static str,
         monitor_port: u16,
         rpc_port: u16,
+        stdout_path: PathBuf,
+        stderr_path: PathBuf,
     }
 
     #[derive(Debug, Clone)]
@@ -176,17 +181,13 @@ mod test {
         fn spawn(config: Config<'_>) -> anyhow::Result<Self> {
             let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
             let db_file = config.test_dir.join(format!("db-{}", config.name));
-            let stdout_file = File::create(
-                config.test_dir.join(format!("{}_stdout.log", config.name)),
-            )
-            .context(format!(
+            let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
+            let stdout_file = File::create(stdout_path.clone()).context(format!(
                 "Creating stdout log file for pathfinder instance {}",
                 config.name
             ))?;
-            let stderr_file = File::create(
-                config.test_dir.join(format!("{}_stderr.log", config.name)),
-            )
-            .context(format!(
+            let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
+            let stderr_file = File::create(stderr_path.clone()).context(format!(
                 "Creating stderr log file for pathfinder instance {}",
                 config.name
             ))?;
@@ -252,6 +253,8 @@ mod test {
                 name: config.name,
                 monitor_port: config.monitor_port,
                 rpc_port: config.rpc_port,
+                stdout_path,
+                stderr_path,
             })
         }
 
@@ -289,7 +292,7 @@ mod test {
             Ok(())
         }
 
-        fn terminate(&mut self) -> anyhow::Result<()> {
+        fn terminate(&mut self) {
             _ = Command::new("kill")
                 // It's supposed to be the default signal in `kill`, but let's be explicit.
                 .arg("-TERM")
@@ -315,44 +318,57 @@ mod test {
                     }
                     Err(e) => {
                         eprintln!(
-                            "Error waiting for Pathfinder instance {} (pid: {}) to terminate: {}",
+                            "Error waiting for Pathfinder instance {} (pid: {}) to terminate: {e}",
                             self.name,
                             self.process.id(),
-                            e
                         );
-                        self.process.kill().context(format!(
-                            "Killing Pathfinder instance {} (pid: {})",
-                            self.name,
-                            self.process.id()
-                        ))?;
+                        if let Err(error) = self.process.kill() {
+                            eprintln!(
+                                "Error killing Pathfinder instance {} (pid: {}): {error}",
+                                self.name,
+                                self.process.id(),
+                            );
+                        }
                     }
                 },
                 Err(e) => {
                     eprintln!(
-                        "Error terminating Pathfinder instance {} (pid: {}): {}",
+                        "Error terminating Pathfinder instance {} (pid: {}): {e}",
                         self.name,
                         self.process.id(),
-                        e
                     );
-                    self.process.kill().context(format!(
-                        "Killing Pathfinder instance {} (pid: {})",
-                        self.name,
-                        self.process.id()
-                    ))?;
+                    if let Err(error) = self.process.kill() {
+                        eprintln!(
+                            "Error killing Pathfinder instance {} (pid: {}): {error}",
+                            self.name,
+                            self.process.id(),
+                        );
+                    }
                 }
             }
+        }
 
-            Ok(())
+        fn disable_log_dump() {
+            DUMP_LOGS_ON_DROP.store(false, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
     impl Drop for PathfinderInstance {
         fn drop(&mut self) {
-            if let Err(e) = self.terminate() {
-                eprintln!("Error terminating Pathfinder instance {}: {}", self.name, e);
+            self.terminate();
+
+            if DUMP_LOGS_ON_DROP.load(std::sync::atomic::Ordering::Relaxed) {
+                let stdout = std::fs::read_to_string(&self.stdout_path)
+                    .unwrap_or("Error reading file".to_string());
+                println!("Pathfinder instance {} stdout log:\n{stdout}", self.name);
+                let stderr = std::fs::read_to_string(&self.stderr_path)
+                    .unwrap_or("Error reading file".to_string());
+                println!("Pathfinder instance {} stderr log:\n{stderr}", self.name);
             }
         }
     }
+
+    static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
     impl<'a> Config<'a> {
         const NAMES: &'static [&'static str] = &[
