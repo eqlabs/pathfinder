@@ -47,8 +47,10 @@ async fn wal_concurrent_heights_retention_test() {
         validators.push((addr, sk));
     }
 
+    let proposer = validators[0].0.clone();
+
     // Create validator set
-    let validator_set = ValidatorSet::new(validator_set);
+    let validator_set = ValidatorSet::new(validator_set, proposer);
 
     // Track decisions for each height
     let decisions = Arc::new(Mutex::new(HashMap::new()));
@@ -203,7 +205,7 @@ async fn recover_from_wal_restores_and_continues() {
         public_key: pubkey,
         voting_power: 1,
     };
-    let validators = ValidatorSet::new(vec![validator.clone()]);
+    let validators = ValidatorSet::new(vec![validator.clone()], addr.clone());
 
     // Config with temporary WAL directory
     let config = Config::new(addr.clone()).with_wal_dir(wal_dir.to_path_buf());

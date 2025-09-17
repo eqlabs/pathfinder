@@ -2,15 +2,7 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use malachite_signing_ed25519::Ed25519;
-use malachite_types::{
-    Height as _,
-    NilOrVal,
-    Round,
-    SignedExtension,
-    ValidatorSet as MalachiteValidatorSet,
-    ValueId,
-    VoteType,
-};
+use malachite_types::{Height as _, NilOrVal, Round, SignedExtension, ValueId, VoteType};
 use serde::{Deserialize, Serialize};
 
 use crate::{PublicKey, VotingPower};
@@ -227,6 +219,7 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ValidatorSet<V, A> {
     pub validators: Vec<Validator<A>>,
+    pub proposer_idx: usize,
     _phantom_v: PhantomData<V>,
 }
 
@@ -238,6 +231,7 @@ impl<V, A> From<crate::ValidatorSet<A>> for ValidatorSet<V, A> {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
+            proposer_idx: validator_set.proposer_idx,
             _phantom_v: PhantomData,
         }
     }
@@ -406,15 +400,10 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
         height: Self::Height,
         round: Round,
     ) -> &'a Self::Validator {
-        // let round = round.as_u32().expect("round is not nil");
-        // let num_validators = validator_set.count();
-        // let index = round as usize % num_validators;
-        // let proposer = validator_set
-        //     .get_by_index(index)
-        //     .expect("validator not found");
-
-        // Always select the first validator as proposer
-        let proposer = validator_set.get_by_index(0).expect("validator not found");
+        let proposer = validator_set
+            .validators
+            .get(validator_set.proposer_idx)
+            .expect("Validator set is non-empty and proposer index is valid");
 
         tracing::debug!(
             proposer = ?proposer,
