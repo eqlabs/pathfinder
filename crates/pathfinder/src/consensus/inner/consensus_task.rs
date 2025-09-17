@@ -72,7 +72,7 @@ pub fn spawn(
             })
             .collect::<Vec<Validator<_>>>();
 
-        let validator_set = ValidatorSet::new(validators);
+        let validator_set = ValidatorSet::new(validators, config.proposer_address);
 
         let mut consensus = Consensus::recover(
             Config::new(config.my_validator_address)

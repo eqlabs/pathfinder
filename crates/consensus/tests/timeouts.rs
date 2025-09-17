@@ -37,7 +37,7 @@ async fn single_node_propose_timeout_advances_round() {
         public_key: pubkey,
         voting_power: 1,
     };
-    let validators = ValidatorSet::new(vec![validator]);
+    let validators = ValidatorSet::new(vec![validator], addr.clone());
 
     // Create a (single) temporary directory for WAL files
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
@@ -90,7 +90,7 @@ async fn single_node_prevote_timeout_advances_round() {
         public_key: pubkey,
         voting_power: 1,
     };
-    let validators = ValidatorSet::new(vec![validator.clone()]);
+    let validators = ValidatorSet::new(vec![validator.clone()], addr.clone());
 
     // Create a (single) temporary directory for WAL files
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
@@ -157,7 +157,7 @@ async fn single_node_precommit_timeout_advances_round() {
         public_key: pubkey,
         voting_power: 1,
     };
-    let validators = ValidatorSet::new(vec![validator.clone()]);
+    let validators = ValidatorSet::new(vec![validator.clone()], addr.clone());
 
     // Create a (single) temporary directory for WAL files
     let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
