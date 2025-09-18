@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::vec;
@@ -49,7 +49,7 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
-    data_directory: &PathBuf,
+    data_directory: &Path,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     let storage_manager =
         pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))

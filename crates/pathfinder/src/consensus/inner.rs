@@ -2,7 +2,7 @@ mod consensus_task;
 mod fetch_validators;
 mod p2p_task;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
@@ -23,7 +23,7 @@ pub fn start(
     wal_directory: PathBuf,
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
-    data_directory: &PathBuf,
+    data_directory: &Path,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
