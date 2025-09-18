@@ -595,7 +595,7 @@ struct NativeExecutionCli {
         default_value = "false",
         env = "PATHFINDER_RPC_NATIVE_EXECUTION"
     )]
-    is_enabled: bool,
+    is_native_execution_enabled: bool,
 
     #[arg(
         long = "rpc.native-execution-class-cache-size",
@@ -617,7 +617,7 @@ struct ConsensusCli {
         default_value = "false",
         env = "PATHFINDER_CONSENSUS_ENABLE",
     )]
-    is_enabled: bool,
+    is_consensus_enabled: bool,
 
     #[arg(
         long = "consensus.proposer-address",
@@ -625,7 +625,7 @@ struct ConsensusCli {
         value_name = "ADDRESS",
         value_parser = parse_felt,
         env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESS",
-        required_if_eq("is_enabled", "true"),
+        required_if_eq("is_consensus_enabled", "true"),
     )]
     proposer_address: Option<Felt>,
 
@@ -635,7 +635,7 @@ struct ConsensusCli {
         value_name = "ADDRESS",
         value_parser = parse_felt,
         env = "PATHFINDER_CONSENSUS_MY_VALIDATOR_ADDRESS",
-        required_if_eq("is_enabled", "true"),
+        required_if_eq("is_consensus_enabled", "true"),
     )]
     my_validator_address: Option<Felt>,
 
@@ -646,7 +646,7 @@ struct ConsensusCli {
         value_parser = parse_felt,
         value_delimiter = ',',
         env = "PATHFINDER_CONSENSUS_VALIDATOR_ADDRESSES",
-        required_if_eq("is_enabled", "true"),
+        required_if_eq("is_consensus_enabled", "true"),
     )]
     validator_addresses: Vec<Felt>,
 }
@@ -977,7 +977,7 @@ impl NativeExecutionConfig {
 impl NativeExecutionConfig {
     fn parse(args: NativeExecutionCli) -> Self {
         Self {
-            enabled: args.is_enabled,
+            enabled: args.is_native_execution_enabled,
             class_cache_size: args.class_cache_size,
         }
     }
@@ -1001,11 +1001,11 @@ impl ConsensusConfig {
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
     fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
-        args.is_enabled.then(|| {
+        args.is_consensus_enabled.then(|| {
             let my_validator_address = args
                 .my_validator_address
                 .as_ref()
-                .expect("Required if `is_enabled` is true");
+                .expect("Required if `is_consensus_enabled` is true");
             let unique_validator_addresses = std::iter::once(my_validator_address)
                 .chain(args.validator_addresses.iter())
                 .collect::<HashSet<_>>();
@@ -1024,7 +1024,7 @@ impl ConsensusConfig {
             if !unique_validator_addresses.contains(
                 &args
                     .proposer_address
-                    .expect("Required if `is_enabled` is true"),
+                    .expect("Required if `is_consensus_enabled` is true"),
             ) {
                 Cli::command()
                     .error(
@@ -1037,11 +1037,11 @@ impl ConsensusConfig {
             Self {
                 proposer_address: ContractAddress(
                     args.proposer_address
-                        .expect("Required if `is_enabled` is true"),
+                        .expect("Required if `is_consensus_enabled` is true"),
                 ),
                 my_validator_address: ContractAddress(
                     args.my_validator_address
-                        .expect("Required if `is_enabled` is true"),
+                        .expect("Required if `is_consensus_enabled` is true"),
                 ),
                 validator_addresses: args
                     .validator_addresses
