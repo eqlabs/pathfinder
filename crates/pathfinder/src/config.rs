@@ -1021,19 +1021,6 @@ impl ConsensusConfig {
                     .exit();
             }
 
-            if !unique_validator_addresses.contains(
-                &args
-                    .proposer_address
-                    .expect("Required if `is_consensus_enabled` is true"),
-            ) {
-                Cli::command()
-                    .error(
-                        clap::error::ErrorKind::ValueValidation,
-                        "The proposer address must match one of the validator addresses.",
-                    )
-                    .exit();
-            }
-
             Self {
                 proposer_address: ContractAddress(
                     args.proposer_address
