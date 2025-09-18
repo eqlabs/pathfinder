@@ -14,6 +14,7 @@ mod test {
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
     use std::sync::atomic::AtomicBool;
+    use std::sync::LazyLock;
     use std::time::{Duration, Instant};
 
     use anyhow::Context;
@@ -21,6 +22,11 @@ mod test {
     use serde::Deserialize;
     use tokio::time::sleep;
 
+    // If the env variable `CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is set, the
+    // stdout and stderr logs of each Pathfinder instance will be dumped
+    // automatically to the parent process descriptors if the test fails. Otherwise
+    // you need to inspect the temporary directory that is created to hold the test
+    // artifacts.
     #[tokio::test]
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
         const NUM_NODES: usize = 3;
@@ -94,8 +100,8 @@ mod test {
                 a.context("Joining Alice's RPC client task")?;
                 b.context("Joining Bob's RPC client task")?;
                 c.context("Joining Charlie's RPC client task")?;
-                // Don't dump logs if test succeeded.
-                PathfinderInstance::disable_log_dump();
+                // Don't dump logs if the test succeeded.
+                PathfinderInstance::enable_log_dump(false);
                 Ok(())
             }
 
@@ -348,8 +354,8 @@ mod test {
             }
         }
 
-        fn disable_log_dump() {
-            DUMP_LOGS_ON_DROP.store(false, std::sync::atomic::Ordering::Relaxed);
+        fn enable_log_dump(enable: bool) {
+            DUMP_LOGS_ON_DROP.store(enable, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -368,7 +374,10 @@ mod test {
         }
     }
 
-    static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
+    // Dump logs by default in the ci-dev profile.
+    static DUMP_LOGS_ON_DROP: LazyLock<AtomicBool> = LazyLock::new(|| {
+        AtomicBool::new(std::env::var_os("CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some())
+    });
 
     impl<'a> Config<'a> {
         const NAMES: &'static [&'static str] = &[
