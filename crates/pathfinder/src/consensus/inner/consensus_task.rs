@@ -51,17 +51,7 @@ pub fn spawn(
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     data_directory: &Path,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    let storage_manager =
-        pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))
-            .journal_mode(JournalMode::WAL)
-            .trie_prune_mode(Some(TriePruneMode::Archive))
-            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-            .migrate()
-            .unwrap();
-    let available_parallelism = std::thread::available_parallelism().unwrap();
-    let fake_proposals_storage = storage_manager
-        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
-        .unwrap();
+    let fake_proposals_storage = open_fake_proposals_storage(data_directory);
 
     util::task::spawn(async move {
         // Get the validator address and validator set provider
@@ -325,6 +315,21 @@ pub fn spawn(
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
+}
+
+fn open_fake_proposals_storage(data_directory: &Path) -> Storage {
+    let storage_manager =
+        pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))
+            .journal_mode(JournalMode::WAL)
+            .trie_prune_mode(Some(TriePruneMode::Archive))
+            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
+            .migrate()
+            .unwrap();
+    let available_parallelism = std::thread::available_parallelism().unwrap();
+    let fake_proposals_storage = storage_manager
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
+        .unwrap();
+    fake_proposals_storage
 }
 
 fn start_height(
