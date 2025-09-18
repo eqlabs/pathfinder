@@ -311,6 +311,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
                 wal_directory,
                 client,
                 event_rx,
+                &config.data_directory,
             )
         } else {
             ConsensusTaskHandles::pending()
