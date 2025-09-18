@@ -433,30 +433,37 @@ pub mod cairo {
             where
                 D: serde::Deserializer<'de>,
             {
-                let temp_value = serde_json::Value::deserialize(deserializer)?;
-                if let serde_json::Value::Array(mut array) = temp_value {
-                    if array.len() != 2 {
-                        return Err(serde::de::Error::custom("length mismatch"));
+                struct ParentLocationVisitor;
+
+                impl<'de> serde::de::Visitor<'de> for ParentLocationVisitor {
+                    type Value = ParentLocation;
+
+                    fn expecting(
+                        &self,
+                        formatter: &mut std::fmt::Formatter<'_>,
+                    ) -> std::fmt::Result {
+                        formatter.write_str("a (location, remark) pair")
                     }
 
-                    let remark = array.pop().unwrap();
-                    let remark = match remark {
-                        serde_json::Value::String(remark) => remark,
-                        _ => return Err(serde::de::Error::custom("unexpected value type")),
-                    };
+                    fn visit_seq<S>(self, mut access: S) -> Result<Self::Value, S::Error>
+                    where
+                        S: serde::de::SeqAccess<'de>,
+                    {
+                        let location: Location = access
+                            .next_element()?
+                            .ok_or_else(|| serde::de::Error::missing_field("location"))?;
+                        let remark: String = access
+                            .next_element()?
+                            .ok_or_else(|| serde::de::Error::missing_field("remark"))?;
 
-                    let location = array.pop().unwrap();
-                    let location = Location::deserialize(location).map_err(|err| {
-                        serde::de::Error::custom(format!("unable to deserialize Location: {err}"))
-                    })?;
-
-                    Ok(Self {
-                        location: Box::new(location),
-                        remark,
-                    })
-                } else {
-                    Err(serde::de::Error::custom("expected sequencer"))
+                        Ok(ParentLocation {
+                            location: Box::new(location),
+                            remark,
+                        })
+                    }
                 }
+
+                deserializer.deserialize_seq(ParentLocationVisitor)
             }
         }
     }
@@ -777,10 +784,10 @@ mod tests {
     }
 
     mod contract_class_serialization {
-
         use pathfinder_executor::parse_deprecated_class_definition;
 
         use super::super::cairo::CairoContractClass;
+        use super::super::ContractClass;
         use crate::dto::DeserializeForVersion;
 
         #[test]
@@ -804,6 +811,16 @@ mod tests {
             let serialized_definition = contract_class.serialize_to_json().unwrap();
 
             parse_deprecated_class_definition(serialized_definition).unwrap();
+        }
+
+        #[test]
+        fn parse_deprecated_class_definition_with_debug_info() {
+            let definition =
+                include_bytes!("../../fixtures/contracts/cairo0_open_zeppelin_class.json");
+            let class = ContractClass::from_definition_bytes(definition).unwrap();
+
+            // this step involves parsing the full program including debug info
+            class.as_cairo().unwrap().serialize_to_json().unwrap();
         }
     }
 }
