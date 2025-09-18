@@ -23,6 +23,7 @@ pub fn start(
     wal_directory: PathBuf,
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
+    data_directory: &PathBuf,
 ) -> ConsensusTaskHandles {
     // Events that are produced by the P2P task and consumed by the consensus task.
     // TODO determine sufficient buffer size. 1 is not enough.
@@ -43,8 +44,15 @@ pub fn start(
 
     let (info_watch_tx, consensus_info_watch) = watch::channel(None);
 
-    let consensus_engine_handle =
-        consensus_task::spawn(config, wal_directory, tx_to_p2p, rx_from_p2p, info_watch_tx);
+    let consensus_engine_handle = consensus_task::spawn(
+        chain_id,
+        config,
+        wal_directory,
+        tx_to_p2p,
+        rx_from_p2p,
+        info_watch_tx,
+        data_directory,
+    );
 
     ConsensusTaskHandles {
         consensus_p2p_event_processing_handle,

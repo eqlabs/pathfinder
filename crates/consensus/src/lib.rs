@@ -820,19 +820,11 @@ impl<A> Validator<A> {
 pub struct ValidatorSet<A> {
     /// The list of validators in the set
     pub validators: Vec<Validator<A>>,
-    /// StarkWare operates the sole proposer. This is the index of that proposer
-    /// in the [`validators`](Self::validators) list.
-    pub proposer_idx: usize,
 }
 
 impl<A: Clone + Ord> ValidatorSet<A> {
     /// Create a new validator set with the given validators.
-    ///
-    /// ### Panics
-    ///
-    /// This function will panic if the provided validators are empty or if the
-    /// sole proposer address does not match any validator in the set.
-    pub fn new(validators: impl IntoIterator<Item = Validator<A>>, proposer: A) -> Self {
+    pub fn new(validators: impl IntoIterator<Item = Validator<A>>) -> Self {
         // Ensure validators are unique by address.
         let validators: BTreeMap<A, Validator<A>> = validators
             .into_iter()
@@ -840,14 +832,7 @@ impl<A: Clone + Ord> ValidatorSet<A> {
             .collect();
         assert!(!validators.is_empty());
         let validators = validators.into_values().collect::<Vec<Validator<A>>>();
-        let proposer_idx = validators
-            .iter()
-            .position(|v| v.address == proposer)
-            .expect("Proposer address must match one of the validator addresses in the set");
-        Self {
-            validators,
-            proposer_idx,
-        }
+        Self { validators }
     }
 
     /// Get the number of validators in the set.
@@ -1012,12 +997,11 @@ mod tests {
         let with_duplicates = [1, 1, 2, 2, 2, 3, 3, 3, 3, 2, 1, 1, 2, 3, 2, 2, 1, 1, 3, 3]
             .into_iter()
             .map(|i| Validator::new(i, crate::PublicKey::from_bytes([0; 32])));
-        let set = ValidatorSet::new(with_duplicates, 1);
+        let set = ValidatorSet::new(with_duplicates);
 
         assert_eq!(
             set.validators.iter().map(|v| v.address).collect::<Vec<_>>(),
             vec![1, 2, 3]
         );
-        assert_eq!(set.proposer_idx, 0);
     }
 }

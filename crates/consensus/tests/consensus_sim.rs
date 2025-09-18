@@ -47,10 +47,8 @@ async fn consensus_simulation() {
         validators.push((addr.clone(), sk));
     }
 
-    let proposer = validators[0].0.clone();
-
     // Create validator set
-    let validator_set = ValidatorSet::new(validator_set, proposer);
+    let validator_set = ValidatorSet::new(validator_set);
 
     // Track decisions for each height
     let decisions = Arc::new(Mutex::new(HashMap::new()));

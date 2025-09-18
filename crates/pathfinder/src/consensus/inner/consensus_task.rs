@@ -12,19 +12,15 @@
 use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock};
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::consensus::{ProposalFin, ProposalPart};
-use p2p_proto::TryFromProtobuf;
-use pathfinder_common::event::Event;
-use pathfinder_common::receipt::Receipt;
-use pathfinder_common::state_update::StateUpdateData;
-use pathfinder_common::transaction::Transaction;
-use pathfinder_common::{BlockId, BlockNumber, ConsensusInfo, ContractAddress, ProposalCommitment};
+use p2p_proto::common::{Address, L1DataAvailabilityMode};
+use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
+use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -38,21 +34,35 @@ use pathfinder_consensus::{
     ValidatorSetProvider,
 };
 use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{JournalMode, TriePruneMode};
+use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
 use tokio::sync::{mpsc, watch};
 
 use super::fetch_validators::L2ValidatorSetProvider;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
-use crate::validator::FinalizedBlock;
+use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
 pub fn spawn(
+    chain_id: pathfinder_common::ChainId,
     config: ConsensusConfig,
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
+    data_directory: &PathBuf,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let storage_manager =
+        pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))
+            .journal_mode(JournalMode::WAL)
+            .trie_prune_mode(Some(TriePruneMode::Archive))
+            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
+            .migrate()
+            .unwrap();
+    let available_parallelism = std::thread::available_parallelism().unwrap();
+    let fake_proposals_storage = storage_manager
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
+        .unwrap();
+
     util::task::spawn(async move {
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
@@ -120,10 +130,19 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let (wire_proposal, finalized_block) = EMPTY_PROPOSALS
-                                .get(height as usize)
-                                .context("Pathfinder only simulates the first 1k proposals")?
-                                .clone();
+                            let fake_proposals_storage = fake_proposals_storage.clone();
+                            let (wire_proposal, finalized_block) =
+                                util::task::spawn_blocking(move |_| {
+                                    create_empty_proposal(
+                                        chain_id,
+                                        height,
+                                        round.into(),
+                                        validator_address,
+                                        fake_proposals_storage,
+                                    )
+                                })
+                                .await?
+                                .context("Creating empty proposal")?;
 
                             let ProposalFin {
                                 proposal_commitment,
@@ -320,242 +339,86 @@ fn start_height(
     }
 }
 
-static PROPOSALS_FIXTURE: &[u8] = include_bytes!("../../../fixtures/proposals.zst");
-static FINALIZED_BLOCKS_FIXTURE: &[u8] =
-    include_bytes!("../../../fixtures/finalized-blocks.sqlite.zst");
-static EMPTY_PROPOSALS: LazyLock<Vec<(Vec<ProposalPart>, FinalizedBlock)>> =
-    LazyLock::new(empty_proposals);
-
-fn empty_proposals() -> Vec<(Vec<ProposalPart>, FinalizedBlock)> {
-    let Ok(storage_dir) = tempfile::Builder::new().tempdir() else {
-        tracing::error!("Failed to create temporary directory for empty proposals fixture");
-        return vec![];
+/// Create an empty proposal for the given height and round. Returns
+/// proposal parts that can be gossiped via P2P network and the
+/// finalized block that corresponds to this proposal.
+fn create_empty_proposal(
+    chain_id: ChainId,
+    height: u64,
+    round: Round,
+    proposer: ContractAddress,
+    storage: Storage,
+) -> anyhow::Result<(Vec<ProposalPart>, FinalizedBlock)> {
+    let round = round.as_u32().expect("Round not to be Nil???");
+    let proposer = Address(proposer.0);
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let proposal_init = ProposalInit {
+        block_number: height,
+        round,
+        valid_round: None,
+        proposer,
     };
-    let Ok(finalized_blocks) = zstd::decode_all(FINALIZED_BLOCKS_FIXTURE) else {
-        tracing::error!("Failed to decompress finalized blocks fixture");
-        return vec![];
+    let block_info = BlockInfo {
+        block_number: height,
+        timestamp,
+        builder: proposer,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+        l2_gas_price_fri: 1,
+        l1_gas_price_wei: 1_000_000_000,
+        l1_data_gas_price_wei: 1,
+        eth_to_strk_rate: 1_000_000_000,
     };
-    let db_path = storage_dir.path().join("finalized-blocks.sqlite");
-    if std::fs::write(&db_path, finalized_blocks).is_err() {
-        tracing::error!("Failed to write finalized blocks fixture to temporary directory");
-        return vec![];
-    }
-    let Ok(proposals) = zstd::decode_all(PROPOSALS_FIXTURE) else {
-        tracing::error!("Failed to decompress proposals fixture");
-        return vec![];
-    };
-
-    let storage_manager = pathfinder_storage::StorageBuilder::file(db_path)
-        .journal_mode(JournalMode::WAL)
-        .trie_prune_mode(Some(TriePruneMode::Archive))
-        .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-        .migrate()
-        .unwrap();
-    let storage = storage_manager
-        .create_read_only_pool(NonZeroU32::new(1).unwrap())
-        .unwrap();
+    // We need to figure out the proposal commitment value first.
+    let db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
+        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+    let proposal_commitment = validator.compute_proposal_commitment()?;
+    // Now we have all parts of the proposal, so it's time to produce the finalized
+    // block.
+    let db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
+        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+    let validator = validator.consensus_finalize(proposal_commitment)?;
+    let finalized_block = validator.finalize(storage.clone())?;
 
     let mut db_conn = storage.connection().unwrap();
     let db_txn = db_conn.transaction().unwrap();
-    let mut pos = 0;
 
-    let mut fixtures = vec![];
+    let FinalizedBlock {
+        header,
+        state_update,
+        transactions_and_receipts,
+        events,
+    } = finalized_block.clone();
 
-    for i in 0..1000u64 {
-        let proposal_parts = {
-            let mut parts = vec![];
-            // Each proposal consists of 4 parts:
-            // ProposalPart::Init
-            // ProposalPart::BlockInfo
-            // ProposalPart::TransactionBatch
-            // ProposalPart::Fin
-            for _ in 0..4 {
-                let len = prost::decode_length_delimiter(&proposals[pos..]).unwrap();
-                let len0 = prost::length_delimiter_len(len);
-                let part: p2p_proto::proto::consensus::consensus::ProposalPart =
-                    prost::Message::decode_length_delimited(&proposals[pos..]).unwrap();
-                pos += len + len0;
-                let part = ProposalPart::try_from_protobuf(part, "").unwrap();
-                parts.push(part);
-            }
-            parts
-        };
+    let block_number = header.number;
 
-        let block_id = BlockId::Number(BlockNumber::new_or_panic(i));
-        let header = db_txn.block_header(block_id).unwrap().unwrap();
-        let state_update: StateUpdateData = db_txn.state_update(block_id).unwrap().unwrap().into();
-        let (transactions_and_receipts, events): (Vec<(Transaction, Receipt)>, Vec<Vec<Event>>) =
-            db_txn
-                .transaction_data_for_block(block_id)
-                .unwrap()
-                .unwrap()
-                .into_iter()
-                .map(|(tx, receipt, events)| ((tx, receipt), events))
-                .unzip();
-        let finalized_block = FinalizedBlock {
-            header,
-            state_update,
-            transactions_and_receipts,
-            events,
-        };
-        fixtures.push((proposal_parts, finalized_block));
-    }
+    // The fake proposals DB is deterministic and always starts empty, so if a
+    // simulation or test is started with an already existing fake proposals DB we
+    // just ignore the failed inserts, because the data is already there.
+    let _ = db_txn.insert_block_header(&header);
+    let _ = db_txn.insert_state_update_data(block_number, &state_update);
+    let _ = db_txn.insert_transaction_data(block_number, &transactions_and_receipts, Some(&events));
+    let _ = db_txn.commit();
 
-    fixtures
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::SystemTime;
-
-    use p2p_proto::common::{Address, L1DataAvailabilityMode};
-    use p2p_proto::consensus::{BlockInfo, ProposalInit};
-    use p2p_proto::ToProtobuf as _;
-    use pathfinder_common::ChainId;
-    use pathfinder_storage::Storage;
-
-    use super::*;
-    use crate::validator::ValidatorBlockInfoStage;
-
-    /// Create an empty proposal for the given height and round. Returns
-    /// proposal parts that can be gossiped via P2P network and the
-    /// finalized block that corresponds to this proposal.
-    fn create_empty_proposal(
-        chain_id: ChainId,
-        height: u64,
-        round: Round,
-        proposer: ContractAddress,
-        storage: Storage,
-    ) -> anyhow::Result<(Vec<ProposalPart>, FinalizedBlock)> {
-        let round = round.as_u32().expect("Round not to be Nil???");
-        let proposer = Address(proposer.0);
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let proposal_init = ProposalInit {
-            block_number: height,
-            round,
-            valid_round: None,
-            proposer,
-        };
-        let block_info = BlockInfo {
-            block_number: height,
-            timestamp,
-            builder: proposer,
-            l1_da_mode: L1DataAvailabilityMode::Calldata,
-            l2_gas_price_fri: 1,
-            l1_gas_price_wei: 1_000_000_000,
-            l1_data_gas_price_wei: 1,
-            eth_to_strk_rate: 1_000_000_000,
-        };
-        // We need to figure out the proposal commitment value first.
-        let db_conn = storage
-            .connection()
-            .context("Creating database connection")?;
-        let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-            .validate_consensus_block_info(block_info.clone(), db_conn)?;
-        let proposal_commitment = validator.compute_proposal_commitment()?;
-        // Now we have all parts of the proposal, so it's time to produce the finalized
-        // block.
-        let db_conn = storage
-            .connection()
-            .context("Creating database connection")?;
-        let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-            .validate_consensus_block_info(block_info.clone(), db_conn)?;
-        let validator = validator.consensus_finalize(proposal_commitment)?;
-        let finalized_block = validator.finalize(storage)?;
-
-        Ok((
-            vec![
-                ProposalPart::Init(proposal_init),
-                ProposalPart::BlockInfo(block_info),
-                // TODO empty proposal in the spec actually skips this part,
-                // make sure our code handles the case where this part is missing
-                ProposalPart::TransactionBatch(vec![]),
-                ProposalPart::Fin(ProposalFin {
-                    proposal_commitment,
-                }),
-            ],
-            finalized_block,
-        ))
-    }
-
-    fn manifest_dir_path() -> PathBuf {
-        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-    }
-
-    #[test]
-    #[ignore = "Run this to generate a new proposal fixture"]
-    fn generate_fixture() {
-        let storage_manager = pathfinder_storage::StorageBuilder::file(
-            manifest_dir_path().join("fixtures/finalized-blocks.sqlite"),
-        )
-        .journal_mode(JournalMode::WAL)
-        .trie_prune_mode(Some(TriePruneMode::Archive))
-        .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-        .migrate()
-        .unwrap();
-        let available_parallelism = std::thread::available_parallelism().unwrap();
-        let consensus_storage = storage_manager
-            .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
-            .unwrap();
-
-        let mut proposals = vec![];
-
-        let num_blocks = 1000u64;
-
-        for i in 0..num_blocks {
-            let (parts, block) = create_empty_proposal(
-                ChainId::SEPOLIA_TESTNET,
-                i,
-                0.into(),
-                // Alice is the proposer for all blocks
-                pathfinder_common::ContractAddress::ONE,
-                consensus_storage.clone(),
-            )
-            .unwrap();
-            proposals.push(parts);
-
-            let mut db_conn = consensus_storage.connection().unwrap();
-            let db_txn = db_conn.transaction().unwrap();
-
-            let FinalizedBlock {
-                header,
-                state_update,
-                transactions_and_receipts,
-                events,
-            } = block;
-
-            let block_number = header.number;
-
-            db_txn.insert_block_header(&header).unwrap();
-            db_txn
-                .insert_state_update_data(block_number, &state_update)
-                .unwrap();
-            db_txn
-                .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
-                .unwrap();
-            db_txn.commit().unwrap();
-        }
-
-        use prost::Message;
-
-        let mut messages = vec![];
-        for parts in proposals {
-            messages.extend(parts.to_protobuf());
-        }
-        let mut bytes = vec![];
-        for message in messages {
-            let encoded = message.encode_length_delimited_to_vec();
-            bytes.extend(encoded);
-        }
-        let compressed = zstd::encode_all(bytes.as_slice(), 10).unwrap();
-
-        std::fs::write(
-            manifest_dir_path().join("fixtures/proposals.zst"),
-            compressed,
-        )
-        .unwrap();
-    }
+    Ok((
+        vec![
+            ProposalPart::Init(proposal_init),
+            ProposalPart::BlockInfo(block_info),
+            // TODO empty proposal in the spec actually skips this part,
+            // make sure our code handles the case where this part is missing
+            ProposalPart::TransactionBatch(vec![]),
+            ProposalPart::Fin(ProposalFin {
+                proposal_commitment,
+            }),
+        ],
+        finalized_block,
+    ))
 }
