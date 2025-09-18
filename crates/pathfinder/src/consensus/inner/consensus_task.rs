@@ -326,10 +326,9 @@ fn open_fake_proposals_storage(data_directory: &Path) -> Storage {
             .migrate()
             .unwrap();
     let available_parallelism = std::thread::available_parallelism().unwrap();
-    let fake_proposals_storage = storage_manager
+    storage_manager
         .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
-        .unwrap();
-    fake_proposals_storage
+        .unwrap()
 }
 
 fn start_height(
