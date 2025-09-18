@@ -10,8 +10,7 @@
 //!    vote
 
 use std::collections::HashSet;
-use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::vec;
@@ -33,8 +32,7 @@ use pathfinder_consensus::{
     ValidatorSet,
     ValidatorSetProvider,
 };
-use pathfinder_storage::pruning::BlockchainHistoryMode;
-use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
+use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
 use super::fetch_validators::L2ValidatorSetProvider;
@@ -49,10 +47,8 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
-    data_directory: &Path,
+    fake_proposals_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    let fake_proposals_storage = open_fake_proposals_storage(data_directory);
-
     util::task::spawn(async move {
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
@@ -317,20 +313,6 @@ pub fn spawn(
     })
 }
 
-fn open_fake_proposals_storage(data_directory: &Path) -> Storage {
-    let storage_manager =
-        pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))
-            .journal_mode(JournalMode::WAL)
-            .trie_prune_mode(Some(TriePruneMode::Archive))
-            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
-            .migrate()
-            .unwrap();
-    let available_parallelism = std::thread::available_parallelism().unwrap();
-    storage_manager
-        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
-        .unwrap()
-}
-
 fn start_height(
     consensus: &mut Consensus<ConsensusValue, ContractAddress>,
     started_heights: &mut HashSet<u64>,
@@ -391,26 +373,6 @@ fn create_empty_proposal(
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
     let validator = validator.consensus_finalize(proposal_commitment)?;
     let finalized_block = validator.finalize(storage.clone())?;
-
-    let mut db_conn = storage.connection().unwrap();
-    let db_txn = db_conn.transaction().unwrap();
-
-    let FinalizedBlock {
-        header,
-        state_update,
-        transactions_and_receipts,
-        events,
-    } = finalized_block.clone();
-
-    let block_number = header.number;
-
-    // The fake proposals DB is deterministic and always starts empty, so if a
-    // simulation or test is started with an already existing fake proposals DB we
-    // just ignore the failed inserts, because the data is already there.
-    let _ = db_txn.insert_block_header(&header);
-    let _ = db_txn.insert_state_update_data(block_number, &state_update);
-    let _ = db_txn.insert_transaction_data(block_number, &transactions_and_receipts, Some(&events));
-    let _ = db_txn.commit();
 
     Ok((
         vec![

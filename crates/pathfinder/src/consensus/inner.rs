@@ -2,13 +2,15 @@ mod consensus_task;
 mod fetch_validators;
 mod p2p_task;
 
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
 use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
-use pathfinder_storage::Storage;
+use pathfinder_storage::pruning::BlockchainHistoryMode;
+use pathfinder_storage::{JournalMode, Storage, TriePruneMode};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, watch};
 
@@ -32,6 +34,8 @@ pub fn start(
     // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
 
+    let fake_proposals_storage = open_fake_proposals_storage(data_directory);
+
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
         config.my_validator_address,
@@ -40,6 +44,7 @@ pub fn start(
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
+        fake_proposals_storage.clone(),
     );
 
     let (info_watch_tx, consensus_info_watch) = watch::channel(None);
@@ -51,7 +56,7 @@ pub fn start(
         tx_to_p2p,
         rx_from_p2p,
         info_watch_tx,
-        data_directory,
+        fake_proposals_storage,
     );
 
     ConsensusTaskHandles {
@@ -59,6 +64,20 @@ pub fn start(
         consensus_engine_handle,
         consensus_info_watch: Some(consensus_info_watch),
     }
+}
+
+fn open_fake_proposals_storage(data_directory: &Path) -> Storage {
+    let storage_manager =
+        pathfinder_storage::StorageBuilder::file(data_directory.join("fake-proposals.sqlite"))
+            .journal_mode(JournalMode::WAL)
+            .trie_prune_mode(Some(TriePruneMode::Archive))
+            .blockchain_history_mode(Some(BlockchainHistoryMode::Archive))
+            .migrate()
+            .unwrap();
+    let available_parallelism = std::thread::available_parallelism().unwrap();
+    storage_manager
+        .create_pool(NonZeroU32::new(5 + available_parallelism.get() as u32).unwrap())
+        .unwrap()
 }
 
 /// Events handled by the consensus task.

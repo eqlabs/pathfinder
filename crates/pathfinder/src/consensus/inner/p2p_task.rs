@@ -50,6 +50,7 @@ pub fn spawn(
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
+    fake_proposals_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     // Cache for proposals that we created and are waiting to be gossiped upon a
     // command from the consensus engine. Once the proposal is gossiped, it is
@@ -298,6 +299,7 @@ pub fn spawn(
                     );
                     let stopwatch = std::time::Instant::now();
                     let storage = storage.clone();
+                    let fake_proposals_storage = fake_proposals_storage.clone();
 
                     let finalized_block = match my_finalized_blocks_cache.remove(&height_and_round)
                     {
@@ -321,41 +323,21 @@ pub fn spawn(
                     };
 
                     util::task::spawn_blocking(move |_| {
-                        let FinalizedBlock {
-                            header,
-                            state_update,
-                            transactions_and_receipts,
-                            events,
-                        } = match finalized_block {
+                        let finalized_block = match finalized_block {
                             Either::Left(block) => block,
                             Either::Right(validator) => validator.finalize(storage.clone())?,
                         };
 
-                        debug_assert_eq!(value.0 .0, header.state_diff_commitment.0);
+                        debug_assert_eq!(
+                            value.0 .0,
+                            finalized_block.header.state_diff_commitment.0
+                        );
 
-                        let mut db_conn = storage
-                            .connection()
-                            .context("Creating database connection")?;
-                        let db_txn = db_conn
-                            .transaction()
-                            .context("Creating database transaction")?;
-                        let block_number = header.number;
-                        db_txn
-                            .insert_block_header(&header)
-                            .context("Inserting block header")?;
-                        db_txn
-                            .insert_state_update_data(block_number, &state_update)
-                            .context("Inserting state update")?;
-                        db_txn
-                            .insert_transaction_data(
-                                block_number,
-                                &transactions_and_receipts,
-                                Some(&events),
-                            )
-                            .context("Inserting transactions, receipts and events")?;
-                        db_txn.commit().context("Committing database transaction")?;
+                        commit_finalized_block(storage, finalized_block.clone())?;
+                        // Necessary for proper fake proposal creation at next heights.
+                        commit_finalized_block(fake_proposals_storage, finalized_block)?;
 
-                        Ok::<(), anyhow::Error>(())
+                        anyhow::Ok(())
                     })
                     .await??;
                     tracing::info!(
@@ -393,6 +375,35 @@ pub fn spawn(
             }
         }
     })
+}
+
+fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> anyhow::Result<()> {
+    let FinalizedBlock {
+        header,
+        state_update,
+        transactions_and_receipts,
+        events,
+    } = finalized_block;
+
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    let block_number = header.number;
+    db_txn
+        .insert_block_header(&header)
+        .context("Inserting block header")?;
+    db_txn
+        .insert_state_update_data(block_number, &state_update)
+        .context("Inserting state update")?;
+    db_txn
+        .insert_transaction_data(block_number, &transactions_and_receipts, Some(&events))
+        .context("Inserting transactions, receipts and events")?;
+    db_txn.commit().context("Committing database transaction")?;
+
+    Ok(())
 }
 
 async fn handle_incoming_proposal_part(
