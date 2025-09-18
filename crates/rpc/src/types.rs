@@ -4,7 +4,7 @@ pub(crate) mod class;
 pub(crate) mod receipt;
 pub mod syncing;
 
-pub use class::ContractClass;
+pub(crate) use class::ContractClass;
 pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.

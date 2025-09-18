@@ -1,6 +1,5 @@
 use anyhow::Context;
 use base64::prelude::*;
-use pathfinder_class_hash::ComputedClassHash;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ContractClass {
@@ -68,6 +67,8 @@ impl ContractClass {
         }
     }
 
+    #[cfg(test)]
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_cairo(self) -> Option<cairo::CairoContractClass> {
         match self {
             ContractClass::Cairo(cairo) => Some(cairo),
@@ -75,6 +76,8 @@ impl ContractClass {
         }
     }
 
+    #[cfg(test)]
+    #[allow(clippy::wrong_self_convention)]
     pub fn as_sierra(self) -> Option<sierra::SierraContractClass> {
         match self {
             ContractClass::Cairo(_) => None,
@@ -82,7 +85,8 @@ impl ContractClass {
         }
     }
 
-    pub fn class_hash(&self) -> anyhow::Result<ComputedClassHash> {
+    #[cfg(test)]
+    pub fn class_hash(&self) -> anyhow::Result<pathfinder_class_hash::ComputedClassHash> {
         match self {
             ContractClass::Cairo(c) => c.class_hash(),
             ContractClass::Sierra(c) => c.class_hash(),
