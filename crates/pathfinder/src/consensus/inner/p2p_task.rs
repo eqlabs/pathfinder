@@ -11,6 +11,7 @@
 //!    be proposed by us in another round at the same height
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -30,7 +31,7 @@ use pathfinder_consensus::{
     SignedVote,
 };
 use pathfinder_storage::Storage;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
@@ -42,11 +43,14 @@ use crate::validator::{
     ValidatorTransactionBatchStage,
 };
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub fn spawn(
     chain_id: ChainId,
     validator_address: ContractAddress,
     p2p_client: Client,
     storage: Storage,
+    incoming_proposals_cache: Arc<Mutex<BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>>>,
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
@@ -58,10 +62,6 @@ pub fn spawn(
     // Cache for finalized blocks that we created from our proposals and are
     // waiting to be committed to the database once consensus is reached.
     let mut my_finalized_blocks_cache = HashMap::new();
-    // Cache for proposals that we received from other validators and may need to be
-    // proposed by us in another round at the same height. The proposals are removed
-    // either when we gossip them or when decision is made at the same height.
-    let mut incoming_proposals_cache = BTreeMap::new();
     // TODO validators are long-lived but not persisted
     let mut validator_cache = HashMap::new();
 
@@ -88,11 +88,12 @@ pub fn spawn(
 
                     match event {
                         Event::Proposal(height_and_round, proposal_part) => {
+                            let mut cache = incoming_proposals_cache.lock().await;
                             match handle_incoming_proposal_part(
                                 chain_id,
                                 height_and_round,
                                 proposal_part,
-                                &mut incoming_proposals_cache,
+                                &mut cache,
                                 &mut validator_cache,
                                 &storage,
                             )
@@ -187,18 +188,18 @@ pub fn spawn(
                         } else {
                             // TODO this is here to catch a very rare case which I'm almost
                             // sure occurred at least once during tests on my machine.
+                            let mut cache = incoming_proposals_cache.lock().await;
                             tracing::warn!(
                                 "Engine requested gossiping a proposal for {height_and_round} via \
                                  ConsensusEvent::Gossip but we did not create it due to missing \
                                  respective ConsensusEvent::RequestProposal. my_proposals_cache: \
-                                 {my_proposals_cache:#?}, incoming_proposals_cache: \
-                                 {incoming_proposals_cache:#?}",
+                                 {my_proposals_cache:#?}, incoming_proposals_cache: {cache:#?}",
                             );
 
                             // The engine chose us for this round as proposer and requested that
                             // we gossip a proposal from a
                             // previous round.
-                            let mut prev_rounds_proposals = incoming_proposals_cache
+                            let mut prev_rounds_proposals = cache
                                 .remove(&proposal.height)
                                 .expect("Proposal was inserted into the cache");
                             // For now we just choose the proposal from the previous round, and
@@ -378,7 +379,8 @@ pub fn spawn(
                         height_and_round.height()
                     );
 
-                    let removed = incoming_proposals_cache
+                    let mut cache = incoming_proposals_cache.lock().await;
+                    let removed = cache
                         .remove(&height_and_round.height())
                         .unwrap_or_default()
                         .into_keys()
@@ -495,6 +497,28 @@ async fn handle_incoming_proposal_part(
             );
             Ok(None)
         }
+        ProposalPart::ProposalCommitment(proposal_commitment) => {
+            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
+                anyhow::bail!(
+                    "No ValidatorTransactionBatchStage for height and round {}",
+                    height_and_round
+                );
+            };
+
+            let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
+                anyhow::bail!(
+                    "Wrong validator stage for height and round {}",
+                    height_and_round
+                );
+            };
+
+            validator.record_proposal_commitment(proposal_commitment)?;
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::TransactionBatch(validator),
+            );
+            Ok(None)
+        }
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
@@ -537,10 +561,6 @@ async fn handle_incoming_proposal_part(
             )))
         }
         ProposalPart::TransactionsFin(_transactions_fin) => {
-            // TODO
-            Ok(None)
-        }
-        ProposalPart::ProposalCommitment(_proposal_commitment) => {
             // TODO
             Ok(None)
         }

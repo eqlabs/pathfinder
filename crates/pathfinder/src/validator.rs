@@ -5,7 +5,12 @@ use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
 use p2p_proto::common::Hash;
-use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
+use p2p_proto::consensus::{
+    BlockInfo,
+    ProposalCommitment,
+    ProposalInit,
+    TransactionVariant as ConsensusVariant,
+};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
@@ -18,12 +23,17 @@ use pathfinder_common::{
     BlockHash,
     BlockHeader,
     BlockNumber,
+    BlockTimestamp,
     ChainId,
     EntryPoint,
+    EventCommitment,
     L1DataAvailabilityMode,
+    ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
     StateCommitment,
+    StateDiffCommitment,
+    TransactionCommitment,
     TransactionHash,
 };
 use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConverter};
@@ -145,6 +155,7 @@ impl ValidatorBlockInfoStage {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
+            expected_block_header: None,
             block_executor,
             transactions: Vec::new(),
             receipts: Vec::new(),
@@ -223,6 +234,7 @@ impl ValidatorBlockInfoStage {
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
+            expected_block_header: None,
             block_executor,
             transactions: Vec::new(),
             receipts: Vec::new(),
@@ -234,6 +246,7 @@ impl ValidatorBlockInfoStage {
 pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
+    expected_block_header: Option<BlockHeader>,
     block_executor: BlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
@@ -409,12 +422,54 @@ impl ValidatorTransactionBatchStage {
         }
     }
 
+    pub fn record_proposal_commitment(
+        &mut self,
+        proposal_commitment: ProposalCommitment,
+    ) -> anyhow::Result<()> {
+        let expected_block_header = BlockHeader {
+            hash: BlockHash::ZERO,        // UNUSED
+            parent_hash: BlockHash::ZERO, // UNUSED
+            number: BlockNumber::new(proposal_commitment.block_number)
+                .context("ProposalCommitment block number exceeds i64::MAX")?,
+            timestamp: BlockTimestamp::new(proposal_commitment.timestamp)
+                .context("ProposalCommitment timestamp exceeds i64::MAX")?,
+            // TODO prices should be validated against proposal_commitment values
+            eth_l1_gas_price: self.block_info.eth_l1_gas_price,
+            strk_l1_gas_price: self.block_info.strk_l1_gas_price,
+            eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
+            strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
+            eth_l2_gas_price: self.block_info.eth_l2_gas_price,
+            strk_l2_gas_price: self.block_info.strk_l2_gas_price,
+            sequencer_address: SequencerAddress(proposal_commitment.builder.0),
+            starknet_version: StarknetVersion::from_str(&proposal_commitment.protocol_version)?,
+            event_commitment: EventCommitment(proposal_commitment.event_commitment.0),
+            state_commitment: StateCommitment::ZERO, // UNUSED
+            transaction_commitment: TransactionCommitment(
+                proposal_commitment.transaction_commitment.0,
+            ),
+            transaction_count: 0, // TODO validate concatenated_counts
+            event_count: 0,       // TODO validate concatenated_counts
+            l1_da_mode: match proposal_commitment.l1_da_mode {
+                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
+                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
+                    L1DataAvailabilityMode::Calldata
+                }
+            },
+            receipt_commitment: ReceiptCommitment(proposal_commitment.receipt_commitment.0),
+            state_diff_commitment: StateDiffCommitment(proposal_commitment.state_diff_commitment.0),
+            state_diff_length: 0, // TODO validate concatenated_counts
+        };
+        self.expected_block_header = Some(expected_block_header);
+        Ok(())
+    }
+
     pub fn consensus_finalize(
         self,
         proposal_commitment: Hash,
     ) -> anyhow::Result<ValidatorFinalizeStage> {
         let Self {
             block_info,
+            expected_block_header,
             block_executor,
             transactions,
             receipts,
@@ -430,6 +485,8 @@ impl ValidatorTransactionBatchStage {
         .entered();
 
         let start = Instant::now();
+
+        let expected_block_header = expected_block_header.context("Expected block header")?;
 
         let state_diff = block_executor.finalize()?;
 
@@ -465,12 +522,12 @@ impl ValidatorTransactionBatchStage {
             // Computed in ValidatorFinalizeStage::finalize()
             state_commitment: StateCommitment::ZERO,
             transaction_commitment,
-            transaction_count: transactions.len(),
-            event_count: events.iter().flatten().count(),
+            transaction_count: 0, // TODO validate concatenated_counts
+            event_count: 0,       // TODO validate concatenated_counts
             l1_da_mode: self.block_info.l1_da_mode,
             receipt_commitment,
             state_diff_commitment,
-            state_diff_length: state_update.state_diff_length(),
+            state_diff_length: 0, // TODO validate concatenated_counts
         };
 
         debug!(
@@ -479,7 +536,15 @@ impl ValidatorTransactionBatchStage {
             start.elapsed().as_millis()
         );
 
-        if state_diff_commitment.0 == proposal_commitment.0 {
+        if state_diff_commitment.0 != proposal_commitment.0 {
+            return Err(anyhow::anyhow!(
+                "expected {}, actual {}",
+                proposal_commitment,
+                state_diff_commitment
+            ));
+        }
+
+        if header == expected_block_header {
             Ok(ValidatorFinalizeStage {
                 header,
                 state_update,
@@ -489,9 +554,9 @@ impl ValidatorTransactionBatchStage {
             })
         } else {
             Err(anyhow::anyhow!(
-                "expected {}, actual {}",
-                proposal_commitment,
-                state_diff_commitment
+                "expected {:?}, actual {:?}",
+                expected_block_header,
+                header
             ))
         }
     }

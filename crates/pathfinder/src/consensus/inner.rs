@@ -1,7 +1,9 @@
 mod consensus_task;
 mod p2p_task;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p_proto::consensus::ProposalPart;
@@ -9,7 +11,7 @@ use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{ConsensusCommand, ConsensusEvent, NetworkMessage};
 use pathfinder_storage::Storage;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Mutex};
 
 use super::ConsensusTaskHandles;
 use crate::config::ConsensusConfig;
@@ -30,11 +32,17 @@ pub fn start(
     // TODO determine sufficient buffer size. 1 is not enough.
     let (tx_to_p2p, rx_from_consensus) = mpsc::channel::<P2PTaskEvent>(10);
 
+    // Cache for proposals that we received from other validators and may need to be
+    // proposed by us in another round at the same height. The proposals are removed
+    // either when we gossip them or when decision is made at the same height.
+    let incoming_proposals_cache = Arc::new(Mutex::new(BTreeMap::new()));
+
     let consensus_p2p_event_processing_handle = p2p_task::spawn(
         chain_id,
         config.my_validator_address,
         p2p_client,
         storage.clone(),
+        incoming_proposals_cache.clone(),
         p2p_event_rx,
         tx_to_consensus,
         rx_from_consensus,
@@ -50,6 +58,7 @@ pub fn start(
         info_watch_tx,
         chain_id,
         storage,
+        incoming_proposals_cache,
     );
 
     ConsensusTaskHandles {
