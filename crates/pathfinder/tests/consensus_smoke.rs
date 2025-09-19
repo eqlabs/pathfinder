@@ -14,7 +14,6 @@ mod test {
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
     use std::sync::atomic::AtomicBool;
-    use std::sync::LazyLock;
     use std::time::{Duration, Instant};
 
     use anyhow::Context;
@@ -22,13 +21,17 @@ mod test {
     use serde::Deserialize;
     use tokio::time::sleep;
 
-    // If the env variable `CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is set, the
-    // stdout and stderr logs of each Pathfinder instance will be dumped
-    // automatically to the parent process descriptors if the test fails. Otherwise
-    // you need to inspect the temporary directory that is created to hold the test
-    // artifacts.
+    // If the env variable `PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is
+    // set, the stdout and stderr logs of each Pathfinder instance will be
+    // dumped automatically to the parent process descriptors if the test fails.
+    // Otherwise you need to inspect the temporary directory that is created to
+    // hold the test artifacts.
     #[tokio::test]
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
+        PathfinderInstance::enable_log_dump(
+            std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
+        );
+
         const NUM_NODES: usize = 3;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
@@ -374,10 +377,7 @@ mod test {
         }
     }
 
-    // Dump logs by default in the ci-dev profile.
-    static DUMP_LOGS_ON_DROP: LazyLock<AtomicBool> = LazyLock::new(|| {
-        AtomicBool::new(std::env::var_os("CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some())
-    });
+    static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
     impl<'a> Config<'a> {
         const NAMES: &'static [&'static str] = &[
