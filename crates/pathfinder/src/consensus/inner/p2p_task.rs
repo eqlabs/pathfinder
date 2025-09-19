@@ -42,6 +42,7 @@ use crate::validator::{
     ValidatorTransactionBatchStage,
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: ChainId,
     validator_address: ContractAddress,

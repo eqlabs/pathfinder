@@ -40,6 +40,7 @@ use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn(
     chain_id: pathfinder_common::ChainId,
     config: ConsensusConfig,
