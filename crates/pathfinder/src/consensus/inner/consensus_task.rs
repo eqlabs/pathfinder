@@ -17,7 +17,7 @@ use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, L1DataAvailabilityMode};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
@@ -358,22 +358,14 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
-    // We need to figure out the proposal commitment value first.
     let db_conn = storage
         .connection()
         .context("Creating database connection")?;
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let proposal_commitment = validator.compute_proposal_commitment()?;
-    // Now we have all parts of the proposal, so it's time to produce the finalized
-    // block.
-    let db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
-    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let validator = validator.consensus_finalize(proposal_commitment)?;
+    let validator = validator.consensus_finalize0()?;
     let finalized_block = validator.finalize(storage.clone())?;
+    let proposal_commitment = Hash(finalized_block.header.state_diff_commitment.0);
 
     Ok((
         vec![
