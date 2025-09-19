@@ -23,6 +23,7 @@ mime = { workspace = true }
 pathfinder-class-hash = { path = "../class-hash" }
 pathfinder-common = { path = "../common" }
 pathfinder-compiler = { path = "../compiler" }
+pathfinder-consensus = { path = "../consensus" }
 pathfinder-crypto = { path = "../crypto" }
 pathfinder-ethereum = { path = "../ethereum" }
 pathfinder-executor = { path = "../executor" }
@@ -55,6 +56,7 @@ tower-http = { workspace = true, features = [
 ] }
 tracing = { workspace = true }
 util = { path = "../util" }
+validator-fetcher = { path = "../validator-fetcher" }
 zstd = { workspace = true }
 
 [dev-dependencies]

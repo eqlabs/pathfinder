@@ -10,4 +10,5 @@ pub fn register_routes() -> RpcRouterBuilder {
             "pathfinder_lastL1AcceptedBlockHashAndNumber",
             method::last_l1_accepted_block_hash_and_number,
         )
+        .register("pathfinder_fetchValidators", method::fetch_validators)
 }

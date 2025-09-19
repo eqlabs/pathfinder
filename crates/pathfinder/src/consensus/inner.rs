@@ -1,4 +1,5 @@
 mod consensus_task;
+mod fetch_validators;
 mod p2p_task;
 
 use std::path::PathBuf;

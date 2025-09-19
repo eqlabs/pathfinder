@@ -318,7 +318,7 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     pub fn recover<P: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<P>,
-    ) -> Self {
+    ) -> Result<Self, anyhow::Error> {
         use crate::wal::recovery;
 
         tracing::info!(
@@ -360,7 +360,7 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
                 "Recovering height from WAL"
             );
 
-            let validator_set = validator_sets.get_validator_set(height);
+            let validator_set = validator_sets.get_validator_set(height)?;
             let mut internal_consensus = consensus.create_consensus(height, &validator_set);
             internal_consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
             internal_consensus.recover_from_wal(entries);
@@ -373,7 +373,7 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
             "Completed consensus recovery"
         );
 
-        consensus
+        Ok(consensus)
     }
 
     fn create_consensus(
@@ -958,17 +958,8 @@ impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusEvent<V, A> {
 /// that are eligible to participate in consensus at any given height.
 ///
 /// This is useful for handling validator set changes across heights.
-pub trait ValidatorSetProvider<A>: Send + Sync {
-    /// Get the validator set for the given height.
-    ///
-    /// ## Arguments
-    ///
-    /// - `height`: The blockchain height
-    ///
-    /// ## Returns
-    ///
-    /// Returns the validator set for the given height.
-    fn get_validator_set(&self, height: u64) -> ValidatorSet<A>;
+pub trait ValidatorSetProvider<A> {
+    fn get_validator_set(&self, height: u64) -> Result<ValidatorSet<A>, anyhow::Error>;
 }
 
 /// A validator set provider that always returns the same validator set.
@@ -992,8 +983,8 @@ impl<A> StaticValidatorSetProvider<A> {
 }
 
 impl<A: Clone + Send + Sync> ValidatorSetProvider<A> for StaticValidatorSetProvider<A> {
-    fn get_validator_set(&self, _height: u64) -> ValidatorSet<A> {
-        self.validator_set.clone()
+    fn get_validator_set(&self, _height: u64) -> Result<ValidatorSet<A>, anyhow::Error> {
+        Ok(self.validator_set.clone())
     }
 }
 
