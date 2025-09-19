@@ -4,7 +4,7 @@ pub(crate) mod class;
 pub(crate) mod receipt;
 pub mod syncing;
 
-pub use class::*;
+pub(crate) use class::ContractClass;
 pub use request::BlockId;
 
 /// Groups all strictly input types of the RPC API.
@@ -425,7 +425,7 @@ pub mod request {
         pub version: TransactionVersion,
         pub signature: Vec<TransactionSignatureElem>,
 
-        pub contract_class: super::CairoContractClass,
+        pub contract_class: super::class::cairo::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -470,7 +470,7 @@ pub mod request {
         pub signature: Vec<TransactionSignatureElem>,
         pub nonce: TransactionNonce,
 
-        pub contract_class: super::CairoContractClass,
+        pub contract_class: super::class::cairo::CairoContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -518,7 +518,7 @@ pub mod request {
         pub nonce: TransactionNonce,
 
         pub compiled_class_hash: CasmHash,
-        pub contract_class: super::SierraContractClass,
+        pub contract_class: super::class::sierra::SierraContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -570,7 +570,7 @@ pub mod request {
         pub fee_data_availability_mode: DataAvailabilityMode,
 
         pub compiled_class_hash: CasmHash,
-        pub contract_class: super::SierraContractClass,
+        pub contract_class: super::class::sierra::SierraContractClass,
         pub sender_address: ContractAddress,
     }
 
@@ -1228,14 +1228,17 @@ pub mod request {
     }
 
     impl BroadcastedTransaction {
-        pub fn into_common(self, chain_id: ChainId) -> pathfinder_common::transaction::Transaction {
+        pub fn try_into_common(
+            self,
+            chain_id: ChainId,
+        ) -> anyhow::Result<pathfinder_common::transaction::Transaction> {
             use pathfinder_common::transaction::*;
 
             let query_only = self.version().has_query_version();
 
             let variant = match self {
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V0(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV0(DeclareTransactionV0V1 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1245,7 +1248,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V1(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV1(DeclareTransactionV0V1 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1255,7 +1258,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V2(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV2(DeclareTransactionV2 {
                         class_hash,
                         max_fee: declare.max_fee,
@@ -1266,7 +1269,7 @@ pub mod request {
                     })
                 }
                 BroadcastedTransaction::Declare(BroadcastedDeclareTransaction::V3(declare)) => {
-                    let class_hash = declare.contract_class.class_hash().unwrap().hash();
+                    let class_hash = declare.contract_class.class_hash()?.hash();
                     TransactionVariant::DeclareV3(DeclareTransactionV3 {
                         class_hash,
                         nonce: declare.nonce,
@@ -1343,7 +1346,7 @@ pub mod request {
             };
 
             let hash = variant.calculate_hash(chain_id, query_only);
-            Transaction { hash, variant }
+            Ok(Transaction { hash, variant })
         }
     }
 
@@ -1373,9 +1376,9 @@ pub mod request {
 
             use super::super::*;
             use crate::dto::DeserializeForVersion;
-            use crate::types::{
-                CairoContractClass,
-                ContractEntryPoints,
+            use crate::types::class::cairo::entry_point::ContractEntryPoints;
+            use crate::types::class::cairo::CairoContractClass;
+            use crate::types::class::sierra::{
                 SierraContractClass,
                 SierraEntryPoint,
                 SierraEntryPoints,
