@@ -325,94 +325,32 @@ impl ValidatorTransactionBatchStage {
         Ok(())
     }
 
-    /// Does not compute the state commitment and block hash. Returns
-    /// `Ok(Ok(ValidatorFinalizeStage))` if the expected block header
-    /// matches the computed one, `Ok(Err((expected, actual)))` if they do
-    /// not match, `Err` if there was an error during finalization.
-    ///
-    /// TODO remove this fn and the example that uses it (or modify the example
-    /// to use proper API)
-    pub fn finalize(
+    /// Finalizes the block, producing a header with all commitments except
+    /// the state commitment and block hash, which are computed in the last
+    /// stage. Also verifies that the computed proposal commitment matches the
+    /// expected one.
+    pub fn consensus_finalize(
         self,
-        mut expected_block_header: BlockHeader,
-    ) -> anyhow::Result<Result<ValidatorFinalizeStage, (BlockHeader, BlockHeader)>> {
-        let _span = tracing::debug_span!(
-            "Validator::finalize0",
-            height = %self.block_info.number,
-            num_transactions = %self.transactions.len(),
-        )
-        .entered();
+        expected_proposal_commitment: Hash,
+    ) -> anyhow::Result<ValidatorFinalizeStage> {
+        let next_stage = self.consensus_finalize0()?;
+        let actual_proposal_commitment = next_stage.header.state_diff_commitment.0;
 
-        let start = Instant::now();
-
-        let state_diff = self.block_executor.finalize()?;
-
-        let transaction_commitment =
-            calculate_transaction_commitment(&self.transactions, self.block_info.starknet_version)?;
-        let receipt_commitment = calculate_receipt_commitment(&self.receipts)?;
-        let events_ref_by_txn = self
-            .events
-            .iter()
-            .zip(self.transactions.iter().map(|t| t.hash))
-            .map(|(e, h)| (h, e.as_slice()))
-            .collect::<Vec<_>>();
-        let event_commitment =
-            calculate_event_commitment(&events_ref_by_txn, self.block_info.starknet_version)?;
-
-        let state_update = StateUpdateData::from(state_diff);
-        let state_diff_commitment = state_update.compute_state_diff_commitment();
-
-        expected_block_header.hash = BlockHash::ZERO; // UNUSED
-        expected_block_header.parent_hash = BlockHash::ZERO; // UNUSED
-        expected_block_header.state_commitment = StateCommitment::ZERO; // UNUSED
-
-        let header = BlockHeader {
-            hash: BlockHash::ZERO,        // UNUSED
-            parent_hash: BlockHash::ZERO, // UNUSED
-            number: self.block_info.number,
-            timestamp: self.block_info.timestamp,
-            eth_l1_gas_price: self.block_info.eth_l1_gas_price,
-            strk_l1_gas_price: self.block_info.strk_l1_gas_price,
-            eth_l1_data_gas_price: self.block_info.eth_l1_data_gas_price,
-            strk_l1_data_gas_price: self.block_info.strk_l1_data_gas_price,
-            eth_l2_gas_price: self.block_info.eth_l2_gas_price,
-            strk_l2_gas_price: self.block_info.strk_l2_gas_price,
-            sequencer_address: self.block_info.sequencer_address,
-            starknet_version: self.block_info.starknet_version,
-            event_commitment,
-            state_commitment: StateCommitment::ZERO, // UNUSED
-            transaction_commitment,
-            transaction_count: self.transactions.len(),
-            event_count: self.events.iter().flatten().count(),
-            l1_da_mode: self.block_info.l1_da_mode,
-            receipt_commitment,
-            state_diff_commitment,
-            state_diff_length: state_update.state_diff_length(),
-        };
-
-        debug!(
-            "Block {} finalized in {} ms",
-            self.block_info.number,
-            start.elapsed().as_millis()
-        );
-
-        if header == expected_block_header {
-            Ok(Ok(ValidatorFinalizeStage {
-                header,
-                state_update,
-                transactions: self.transactions,
-                receipts: self.receipts,
-                events: self.events,
-            }))
+        if actual_proposal_commitment == expected_proposal_commitment.0 {
+            Ok(next_stage)
         } else {
-            Ok(Err((expected_block_header, header)))
+            Err(anyhow::anyhow!(
+                "expected {}, actual {}",
+                expected_proposal_commitment,
+                actual_proposal_commitment
+            ))
         }
     }
 
-    pub fn consensus_finalize(
-        self,
-        proposal_commitment: Hash,
-    ) -> anyhow::Result<ValidatorFinalizeStage> {
+    /// Finalizes the block, producing a header with all commitments except
+    /// the state commitment and block hash, which are computed in the last
+    /// stage.
+    pub(crate) fn consensus_finalize0(self) -> anyhow::Result<ValidatorFinalizeStage> {
         let Self {
             block_info,
             block_executor,
@@ -479,21 +417,13 @@ impl ValidatorTransactionBatchStage {
             start.elapsed().as_millis()
         );
 
-        if state_diff_commitment.0 == proposal_commitment.0 {
-            Ok(ValidatorFinalizeStage {
-                header,
-                state_update,
-                transactions,
-                receipts,
-                events,
-            })
-        } else {
-            Err(anyhow::anyhow!(
-                "expected {}, actual {}",
-                proposal_commitment,
-                state_diff_commitment
-            ))
-        }
+        Ok(ValidatorFinalizeStage {
+            header,
+            state_update,
+            transactions,
+            receipts,
+            events,
+        })
     }
 
     /// This function is only used for dummy proposal creation.
