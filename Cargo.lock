@@ -6442,9 +6442,9 @@ checksum = "f4c7245a08504955605670dbf141fceab975f15ca21570696aebe9d2e71576bd"
 
 [[package]]
 name = "informalsystems-malachitebft-core-consensus"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d51a9e808428c40186f5afd2fe37104a79bf23a35c0e266c461a2f5b6a23e29b"
+checksum = "39d51597b6b71f8619eb59555160c2e36037bc32daa141b039c26c4a99cc78e0"
 dependencies = [
  "async-recursion",
  "derive-where",
@@ -6460,9 +6460,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-driver"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "775410c74f64a1ffaad2c49a356b3ed287d6dbeebe2c5c65392770d2dbaeb90b"
+checksum = "c9094edc8438b178665a98c8d5fe56b6d0927bb421e31320f72de41804af0fa7"
 dependencies = [
  "derive-where",
  "informalsystems-malachitebft-core-state-machine",
@@ -6473,9 +6473,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-state-machine"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6e0ada6ebf9b0129682604a3b152ec30d22ed7d20a750820b80660fa771854a"
+checksum = "e60a5770c3dd3d342a07481cbe0db8080b4966af59fde17212f19e324a5ccbbe"
 dependencies = [
  "derive-where",
  "displaydoc",
@@ -6484,9 +6484,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-types"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4035827f082354a25f13db3bda9c28693f17b70ddbb0d27df1d0e5d98913ce7"
+checksum = "14b42a90f82e60414ea29e79f96ff28a2eebf1b10f3107ab42208f049be33f9c"
 dependencies = [
  "bytes",
  "derive-where",
@@ -6496,9 +6496,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-core-votekeeper"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78d0a079a84af8fbc2dba7896f25dfc027a80fc7fd8501728a237f20b66ad042"
+checksum = "b6b13bbf2be8ac7bddcab1c0eb9316d0c6e5ffc7d01110e28f7863be2f407af5"
 dependencies = [
  "derive-where",
  "informalsystems-malachitebft-core-types",
@@ -6507,19 +6507,19 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-metrics"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07c14f61834a3e9e6a8ef048bbb0a15d10a2713fcb519bab4bc754d1220a1213"
+checksum = "508750b3dc4ca64defb9eb726e0c44e3faa854c3218a1ac26301bc4e47a6f472"
 dependencies = [
  "informalsystems-malachitebft-core-state-machine",
- "prometheus-client",
+ "prometheus-client 0.23.1",
 ]
 
 [[package]]
 name = "informalsystems-malachitebft-peer"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f2850f4e70b8393c8ec77b3dc91986e784ff45e1f82b95571d8cc1a3f9726ad"
+checksum = "da31c9d74b9013c19015f7421cecc041a0b42d6b57ffcd07e4eb246738bfee32"
 dependencies = [
  "bs58",
  "multihash",
@@ -6528,9 +6528,9 @@ dependencies = [
 
 [[package]]
 name = "informalsystems-malachitebft-signing-ed25519"
-version = "0.3.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85dc88f85c2d26500f45a7cde4864e1a92fdf41796a2bd2cf61be3df23c4b576"
+checksum = "48fd393df78dc83c6fcc1efa2e539017e419f6c5ef78f4a90afe5b3d99b197ce"
 dependencies = [
  "base64 0.22.1",
  "ed25519-consensus",
@@ -7077,7 +7077,7 @@ dependencies = [
  "libp2p-core",
  "libp2p-identity",
  "libp2p-swarm",
- "prometheus-client",
+ "prometheus-client 0.22.3",
  "quick-protobuf",
  "quick-protobuf-codec",
  "rand 0.8.5",
@@ -7192,7 +7192,7 @@ dependencies = [
  "libp2p-relay",
  "libp2p-swarm",
  "pin-project",
- "prometheus-client",
+ "prometheus-client 0.22.3",
  "web-time",
 ]
 
@@ -9281,6 +9281,18 @@ name = "prometheus-client"
 version = "0.22.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "504ee9ff529add891127c4827eb481bd69dc0ebc72e9a682e187db4caa60c3ca"
+dependencies = [
+ "dtoa",
+ "itoa",
+ "parking_lot 0.12.4",
+ "prometheus-client-derive-encode",
+]
+
+[[package]]
+name = "prometheus-client"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf41c1a7c32ed72abe5082fb19505b969095c12da9f5732a4bc9878757fd087c"
 dependencies = [
  "dtoa",
  "itoa",
