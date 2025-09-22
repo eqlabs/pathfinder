@@ -244,8 +244,11 @@ async fn recover_from_wal_restores_and_continues() {
     #[derive(Clone)]
     struct StaticSet(ValidatorSet<NodeAddress>);
     impl ValidatorSetProvider<NodeAddress> for StaticSet {
-        fn get_validator_set(&self, _height: u64) -> ValidatorSet<NodeAddress> {
-            self.0.clone()
+        fn get_validator_set(
+            &self,
+            _height: u64,
+        ) -> Result<ValidatorSet<NodeAddress>, anyhow::Error> {
+            Ok(self.0.clone())
         }
     }
 
@@ -253,7 +256,7 @@ async fn recover_from_wal_restores_and_continues() {
 
     // Now recover from WAL
     let mut consensus: Consensus<ConsensusValue, NodeAddress> =
-        Consensus::recover(config.clone(), Arc::new(StaticSet(validators)));
+        Consensus::recover(config.clone(), Arc::new(StaticSet(validators))).unwrap();
 
     debug!("------------ Driving consensus post WAL recovery ----------------");
 

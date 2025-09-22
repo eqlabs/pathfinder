@@ -1,0 +1,18 @@
+[package]
+name = "validator-fetcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+pathfinder-common = { path = "../common" }
+pathfinder-consensus = { path = "../consensus" }
+pathfinder-crypto = { path = "../crypto" }
+pathfinder-executor = { path = "../executor" }
+pathfinder-serde = { path = "../serde" }
+pathfinder-storage = { path = "../storage" }
+primitive-types = { workspace = true, features = ["serde"] }
+thiserror = { workspace = true }

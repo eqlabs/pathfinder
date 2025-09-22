@@ -76,6 +76,7 @@ tracing-subscriber = { workspace = true, features = [
 ] }
 url = { workspace = true }
 util = { path = "../util" }
+validator-fetcher = { path = "../validator-fetcher" }
 zeroize = { workspace = true }
 zstd = { workspace = true }
 
