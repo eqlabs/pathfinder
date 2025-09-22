@@ -29,7 +29,7 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, TransactionBehavior};
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
@@ -125,6 +125,10 @@ pub fn spawn(
                                 }
                                 Err(error) => {
                                     tracing::warn!(
+                                        "Error handling incoming proposal part for \
+                                         {height_and_round}: {error:#?}"
+                                    );
+                                    anyhow::bail!(
                                         "Error handling incoming proposal part for \
                                          {height_and_round}: {error:#?}"
                                     );
@@ -299,8 +303,6 @@ pub fn spawn(
                          {height_and_round} to the database ...",
                     );
                     let stopwatch = std::time::Instant::now();
-                    let storage = storage.clone();
-                    let fake_proposals_storage = fake_proposals_storage.clone();
 
                     let finalized_block = match my_finalized_blocks_cache.remove(&height_and_round)
                     {
@@ -322,6 +324,9 @@ pub fn spawn(
                             Either::Right(validator)
                         }
                     };
+
+                    let storage = storage.clone();
+                    let fake_proposals_storage = fake_proposals_storage.clone();
 
                     util::task::spawn_blocking(move |_| {
                         let finalized_block = match finalized_block {
@@ -387,7 +392,7 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
         .connection()
         .context("Creating database connection")?;
     let db_txn = db_conn
-        .transaction()
+        .transaction_with_behavior(TransactionBehavior::Immediate)
         .context("Creating database transaction")?;
     let block_number = header.number;
     db_txn

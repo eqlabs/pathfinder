@@ -30,7 +30,7 @@ use pathfinder_executor::types::{to_starknet_api_transaction, BlockInfoPriceConv
 use pathfinder_executor::{BlockExecutor, ClassInfo, IntoStarkFelt};
 use pathfinder_merkle_tree::starknet_state::update_starknet_state;
 use pathfinder_rpc::context::{ETH_FEE_TOKEN_ADDRESS, STRK_FEE_TOKEN_ADDRESS};
-use pathfinder_storage::Storage;
+use pathfinder_storage::{Storage, TransactionBehavior};
 use rayon::prelude::*;
 use tracing::debug;
 
@@ -485,7 +485,7 @@ impl ValidatorFinalizeStage {
 
         let mut db_conn = storage.connection().context("Create database connection")?;
         let db_txn = db_conn
-            .transaction()
+            .transaction_with_behavior(TransactionBehavior::Immediate)
             .context("Create database transaction")?;
 
         if let Some(parent_number) = header.number.parent() {
@@ -502,6 +502,8 @@ impl ValidatorFinalizeStage {
             header.number,
             storage.clone(),
         )?;
+
+        db_txn.commit().context("Committing database transaction")?;
 
         debug!(
             "Block {} tries updated in {} ms",
