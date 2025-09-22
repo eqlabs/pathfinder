@@ -1,5 +1,4 @@
-use anyhow::Context;
-use pathfinder_common::{BlockHeader, BlockId, ChainId, ContractAddress};
+use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
 use pathfinder_storage::Storage;
 use rand::rngs::OsRng;
@@ -21,20 +20,6 @@ impl L2ValidatorSetProvider {
             config,
         }
     }
-
-    fn get_block_header(&self) -> anyhow::Result<BlockHeader> {
-        let mut db_conn = self
-            .storage
-            .connection()
-            .context("Failed to create database connection")?;
-        let db_tx = db_conn
-            .transaction()
-            .context("Failed to create database transaction")?;
-        let block_header = db_tx
-            .block_header(BlockId::Latest)
-            .context("Querying latest block header")?;
-        block_header.ok_or_else(|| anyhow::anyhow!("No block header found"))
-    }
 }
 
 impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2ValidatorSetProvider {
@@ -42,13 +27,7 @@ impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2Validator
         &self,
         height: u64,
     ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
-        fetch_validators(
-            &self.storage,
-            self.chain_id,
-            self.get_block_header()?,
-            height,
-            &self.config,
-        )
+        fetch_validators(&self.storage, self.chain_id, height, &self.config)
     }
 }
 
@@ -73,12 +52,11 @@ impl pathfinder_consensus::ValidatorSetProvider<ContractAddress> for L2Validator
 pub fn fetch_validators(
     storage: &Storage,
     chain_id: ChainId,
-    block_header: BlockHeader,
     height: u64,
     config: &ConsensusConfig,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
     if config.validator_addresses.is_empty() {
-        fetch_validators_from_l2(storage, chain_id, block_header, height)
+        fetch_validators_from_l2(storage, chain_id, height)
     } else {
         create_validators_from_config(config)
     }
@@ -117,11 +95,9 @@ fn create_validators_from_config(
 fn fetch_validators_from_l2(
     storage: &Storage,
     chain_id: ChainId,
-    block_header: BlockHeader,
     height: u64,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
-    let validators =
-        validator_fetcher::get_validators_at_height(storage, chain_id, block_header, height)?;
+    let validators = validator_fetcher::get_validators_at_height(storage, chain_id, height)?;
     let validators = validators
         .into_iter()
         .map(|validator| Validator {

@@ -318,7 +318,7 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     pub fn recover<P: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
         validator_sets: Arc<P>,
-    ) -> Result<Self, anyhow::Error> {
+    ) -> anyhow::Result<Self> {
         use crate::wal::recovery;
 
         tracing::info!(

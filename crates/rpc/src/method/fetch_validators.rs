@@ -161,26 +161,11 @@ pub async fn fetch_validators(
     let result = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
 
-        let mut db_conn = context
-            .storage
-            .connection()
-            .context("Creating database connection")?;
-        let db_tx = db_conn
-            .transaction()
-            .context("Creating database transaction")?;
-
         // Always use the latest block for validator fetching
-        let block_id = pathfinder_common::BlockId::Latest;
-        let header = db_tx
-            .block_header(block_id)
-            .context("Querying latest block header")?
-            .ok_or(FetchValidatorsError::BlockNotFound)?;
-
         // Use the validator fetcher to get validators
         let validators = validator_fetcher::get_validators_at_height(
             &context.storage,
             context.chain_id,
-            header,
             input.height,
         )?;
 

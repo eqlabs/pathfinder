@@ -1,12 +1,5 @@
 use anyhow::Context;
-use pathfinder_common::{
-    BlockHeader,
-    CallParam,
-    CallResultValue,
-    ChainId,
-    ContractAddress,
-    EntryPoint,
-};
+use pathfinder_common::{CallParam, CallResultValue, ChainId, ContractAddress, EntryPoint};
 use pathfinder_consensus::PublicKey;
 use pathfinder_crypto::Felt;
 use pathfinder_executor::{ExecutionState, L1BlobDataAvailability};
@@ -83,7 +76,6 @@ fn get_validator_contract_address(
 pub fn get_validators_at_height(
     storage: &Storage,
     chain_id: ChainId,
-    block_header: BlockHeader,
     height: u64,
 ) -> Result<Vec<ValidatorInfo>, ValidatorFetcherError> {
     let mut db_conn = storage
@@ -94,13 +86,20 @@ pub fn get_validators_at_height(
         .transaction()
         .context("Failed to create database transaction")?;
 
+    // Always use the latest block for validator fetching
+    let block_id = pathfinder_common::BlockId::Latest;
+    let header = db_tx
+        .block_header(block_id)
+        .context("Querying latest block header")?
+        .ok_or(ValidatorFetcherError::BlockNotFound)?;
+
     // Get the hardcoded contract address for this network
     let contract_address = get_validator_contract_address(chain_id)?;
 
     // Create execution state for call
     let execution_state = ExecutionState::simulation(
         chain_id,
-        block_header,
+        header,
         None, // No pending state for this call
         L1BlobDataAvailability::Disabled,
         Default::default(),    // VersionedConstantsMap::default()
