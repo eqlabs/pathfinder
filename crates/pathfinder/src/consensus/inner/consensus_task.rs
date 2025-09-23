@@ -18,8 +18,22 @@ use std::vec;
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
 use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
-use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
+use p2p_proto::consensus::{
+    BlockInfo,
+    ProposalCommitment as ProposalCommitmentProto,
+    ProposalFin,
+    ProposalInit,
+    ProposalPart,
+};
+use pathfinder_common::{
+    BlockHash,
+    BlockNumber,
+    ChainId,
+    ConsensusInfo,
+    ContractAddress,
+    ProposalCommitment,
+    StarknetVersion,
+};
 use pathfinder_consensus::{
     Config,
     Consensus,
@@ -38,6 +52,11 @@ use tokio::sync::{mpsc, watch};
 use super::fetch_validators::L2ValidatorSetProvider;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
+use crate::state::block_hash::{
+    calculate_event_commitment,
+    calculate_receipt_commitment,
+    calculate_transaction_commitment,
+};
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
 #[allow(clippy::too_many_arguments)]
@@ -359,6 +378,20 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
+    let current_block = BlockNumber::new(height).context("Invalid height")?;
+    let parent_proposal_commitment_hash = if let Some(parent_number) = current_block.parent() {
+        let mut db_conn = storage
+            .connection()
+            .context("Creating database connection")?;
+        let db_txn = db_conn
+            .transaction()
+            .context("Create database transaction")?;
+        let hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
+        db_txn.commit()?;
+        hash
+    } else {
+        BlockHash::ZERO
+    };
     let db_conn = storage
         .connection()
         .context("Creating database connection")?;
@@ -366,7 +399,36 @@ fn create_empty_proposal(
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
     let validator = validator.consensus_finalize0()?;
     let finalized_block = validator.finalize(storage.clone())?;
-    let proposal_commitment = Hash(finalized_block.header.state_diff_commitment.0);
+    let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
+
+    // the only version handled by consensus, so far
+    let starknet_version = StarknetVersion::new(0, 14, 0, 0);
+    let transactions = vec![];
+    let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)?;
+    let transaction_events = vec![];
+    let event_commitment = calculate_event_commitment(&transaction_events, starknet_version)?;
+    let receipts = vec![];
+    let receipt_commitment = calculate_receipt_commitment(&receipts)?;
+    let proposal_commitment = ProposalCommitmentProto {
+      block_number: height,
+        parent_commitment: Hash(parent_proposal_commitment_hash.0),
+        builder: proposer,
+        timestamp,
+        protocol_version: starknet_version.to_string(),
+        old_state_root: Default::default(), // not used by 0.14.0
+        version_constant_commitment: Default::default(), // TODO
+        state_diff_commitment: proposal_commitment_hash,
+        transaction_commitment: Hash(transaction_commitment.0),
+        event_commitment: Hash(event_commitment.0),
+        receipt_commitment: Hash(receipt_commitment.0),
+        concatenated_counts: Default::default(), // should be the sum of lengths of inputs to *_commitment
+        l1_gas_price_fri: 1000,
+        l1_data_gas_price_fri: 2000,
+        l2_gas_price_fri: 3000,
+        l2_gas_used: 4000,
+        next_l2_gas_price_fri: 3000,
+        l1_da_mode: L1DataAvailabilityMode::Calldata,
+    };
 
     Ok((
         vec![
@@ -375,8 +437,9 @@ fn create_empty_proposal(
             // TODO empty proposal in the spec actually skips this part,
             // make sure our code handles the case where this part is missing
             ProposalPart::TransactionBatch(vec![]),
+            ProposalPart::ProposalCommitment(proposal_commitment),
             ProposalPart::Fin(ProposalFin {
-                proposal_commitment,
+                proposal_commitment: proposal_commitment_hash,
             }),
         ],
         finalized_block,
