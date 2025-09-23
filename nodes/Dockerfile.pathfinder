@@ -19,5 +19,6 @@ COPY --from=BUILD /pathfinder/target/release/pathfinder .
 # Create a few hardcoded identity files.
 RUN echo '{"private_key":"CAESQArAo83bMrNgftGfokSJ0XcP26bgn6WL3vXUhqUR8BbVVPsL0F/dGWu+VZPcnP3DhH24s5EaHVOinqv2BEkbfdc=","peer_id":"12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ"}' > identity1.json
 RUN echo '{"private_key":"CAESQB0FvSeC8TTUn/4de4v/qsmz+RkZRkPz84+a9E9fypyM8AK2KjyEM1C5HEyu8LpSwK0lXrO38JB/xAvkCLy3rCc=","peer_id":"12D3KooWRyGQzKzz1PcUZugCZnP1i6GRNXYjXHw4RqDHsSJ9XP5Q"}' > identity2.json
+RUN echo '{"private_key":"CAESQGH3fsFnE4UYs7wgwSr4/kvJ9HuZROgyCZyGxNWToi7k9mg9etYd2p+/oFoNjfh/3qftu8wcopgVa27qb4QVeqE=","peer_id":"12D3KooWSQEeptDHBm5xe72nbNd62AkBWUsawWF5uGt4RbFqvhGL"}' > identity3.json
 
 ENTRYPOINT ["/pathfinder/pathfinder"]
