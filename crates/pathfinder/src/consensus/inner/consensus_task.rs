@@ -48,6 +48,7 @@ pub fn spawn(
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
+    storage: Storage,
     fake_proposals_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     util::task::spawn(async move {

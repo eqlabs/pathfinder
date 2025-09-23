@@ -57,6 +57,7 @@ pub fn start(
         rx_from_p2p,
         info_watch_tx,
         fake_proposals_storage,
+        storage,
     );
 
     ConsensusTaskHandles {
