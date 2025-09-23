@@ -14,6 +14,7 @@ base64 = { workspace = true }
 fake = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
+governor = { workspace = true }
 ipnet = { workspace = true }
 libp2p = { workspace = true, features = [
     "autonat",
