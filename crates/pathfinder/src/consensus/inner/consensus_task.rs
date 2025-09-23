@@ -88,6 +88,9 @@ pub fn spawn(
         // height issues a positive decision. These commands are queued here
         // and will be issued to the consensus engine when the current height
         // is successfully decided upon.
+        //
+        // FIXME the queue is unnecessary if we make sure that in the p2p_task execution
+        // for H is only started if H-1 has been committed to the database.
         let mut commands_for_next_heights = VecDeque::<QueuedCommand>::new();
 
         start_height(
@@ -259,6 +262,7 @@ pub fn spawn(
                                     validator_set_provider.get_validator_set(current_height)?,
                                 );
 
+                                // FIXME This should wait until committed to the database.
                                 while let Some(cmd) = commands_for_next_heights.front() {
                                     if cmd.height() == current_height {
                                         let cmd = commands_for_next_heights
