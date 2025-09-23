@@ -77,96 +77,10 @@ impl ValidatorBlockInfoStage {
         })
     }
 
-    pub fn validate_block_info(
-        self,
-        block_info: BlockInfo,
-        workaround_starknet_version: StarknetVersion,
-        db_conn: pathfinder_storage::Connection,
-        // TODO eth_to_fri_rate is not suitable for current L2 data where there are 3 pairs of gas
-        // prices in both wei & fri and they give 2 different ethfri rates
-        workaround_l2_gas_price_wei: u128,
-        workaround_l1_gas_price_fri: u128,
-        workaround_l1_data_gas_price_fri: u128,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
-        let _span = tracing::debug_span!(
-            "Validator::validate_block_info",
-            height = %block_info.block_number,
-            timestamp = %block_info.timestamp,
-            builder = %block_info.builder.0,
-        )
-        .entered();
-
-        let Self {
-            chain_id,
-            proposal_height,
-        } = self;
-
-        anyhow::ensure!(
-            proposal_height == block_info.block_number,
-            "ProposalInit height does not match BlockInfo height: {} != {}",
-            proposal_height,
-            block_info.block_number,
-        );
-
-        // TODO(validator) validate block info (timestamp, gas prices)
-
-        let BlockInfo {
-            block_number,
-            timestamp,
-            builder,
-            l1_da_mode,
-            l2_gas_price_fri,
-            l1_gas_price_wei,
-            l1_data_gas_price_wei,
-            eth_to_strk_rate: _,
-        } = block_info;
-
-        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            block_number,
-            timestamp,
-            SequencerAddress(builder.0),
-            match l1_da_mode {
-                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
-                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
-                    L1DataAvailabilityMode::Calldata
-                }
-            },
-            BlockInfoPriceConverter::legacy(
-                l2_gas_price_fri,
-                l1_gas_price_wei,
-                l1_data_gas_price_wei,
-                workaround_l2_gas_price_wei,
-                workaround_l1_gas_price_fri,
-                workaround_l1_data_gas_price_fri,
-            ),
-            workaround_starknet_version,
-        )
-        .context("Creating internal BlockInfo representation")?;
-
-        let block_executor = BlockExecutor::new(
-            chain_id,
-            block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            db_conn,
-        )
-        .context("Creating BlockExecutor")?;
-
-        Ok(ValidatorTransactionBatchStage {
-            chain_id,
-            block_info,
-            expected_block_header: None,
-            block_executor,
-            transactions: Vec::new(),
-            receipts: Vec::new(),
-            events: Vec::new(),
-        })
-    }
-
     pub fn validate_consensus_block_info(
         self,
         block_info: BlockInfo,
-        db_conn: pathfinder_storage::Connection,
+        storage: Storage,
     ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -222,20 +136,11 @@ impl ValidatorBlockInfoStage {
         )
         .context("Creating internal BlockInfo representation")?;
 
-        let block_executor = BlockExecutor::new(
-            chain_id,
-            block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            db_conn,
-        )
-        .context("Creating BlockExecutor")?;
-
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor,
+            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -247,10 +152,73 @@ pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
-    block_executor: BlockExecutor,
+    block_executor: LazyBlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
+}
+
+enum LazyBlockExecutor {
+    Uninitialized {
+        chain_id: ChainId,
+        block_info: pathfinder_executor::types::BlockInfo,
+        storage: Storage,
+    },
+    Empty,
+    Initialized(BlockExecutor),
+}
+
+impl LazyBlockExecutor {
+    fn new(
+        chain_id: ChainId,
+        block_info: pathfinder_executor::types::BlockInfo,
+        storage: Storage,
+    ) -> Self {
+        LazyBlockExecutor::Uninitialized {
+            chain_id,
+            block_info,
+            storage,
+        }
+    }
+
+    fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
+        if let LazyBlockExecutor::Initialized(be) = self {
+            Ok(be)
+        } else {
+            let this = std::mem::replace(self, Self::Empty);
+            let LazyBlockExecutor::Uninitialized {
+                chain_id,
+                block_info,
+                storage,
+            } = this
+            else {
+                panic!("Unexpected state in LazyBlockExecutor");
+            };
+
+            let db_conn = storage.connection().context("Create database connection")?;
+            let be = BlockExecutor::new(
+                chain_id,
+                block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                db_conn,
+            )
+            .context("Creating BlockExecutor")?;
+            *self = LazyBlockExecutor::Initialized(be);
+            let LazyBlockExecutor::Initialized(be) = self else {
+                unreachable!("Block executor is initialized");
+            };
+            Ok(be)
+        }
+    }
+
+    fn take(mut self) -> anyhow::Result<BlockExecutor> {
+        self.get_or_init()?;
+        let LazyBlockExecutor::Initialized(be) = self else {
+            unreachable!("Block executor is initialized");
+        };
+        Ok(be)
+    }
 }
 
 impl ValidatorTransactionBatchStage {
@@ -295,6 +263,7 @@ impl ValidatorTransactionBatchStage {
 
         let (receipts, mut events): (Vec<_>, Vec<_>) = self
             .block_executor
+            .get_or_init()?
             .execute(executor_txns)?
             .into_iter()
             .unzip();
@@ -428,7 +397,7 @@ impl ValidatorTransactionBatchStage {
 
         let start = Instant::now();
 
-        let state_diff = block_executor.finalize()?;
+        let state_diff = block_executor.take()?.finalize()?;
 
         let transaction_commitment =
             calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
@@ -489,16 +458,6 @@ impl ValidatorTransactionBatchStage {
             receipts,
             events,
         })
-    }
-
-    /// This function is only used for dummy proposal creation.
-    /// TODO remove this function once more elaborate proposal creation for
-    /// tests is employed.
-    pub fn compute_proposal_commitment(self) -> anyhow::Result<Hash> {
-        let state_diff = self.block_executor.finalize()?;
-        let state_update = StateUpdateData::from(state_diff);
-        let state_diff_commitment = state_update.compute_state_diff_commitment();
-        Ok(Hash(state_diff_commitment.0))
     }
 }
 
