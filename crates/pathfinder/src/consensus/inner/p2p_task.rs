@@ -96,7 +96,7 @@ pub fn spawn(
                                 proposal_part,
                                 &mut incoming_proposals_cache,
                                 &mut validator_cache,
-                                &storage,
+                                storage.clone(),
                             )
                             .await
                             {
@@ -415,7 +415,7 @@ async fn handle_incoming_proposal_part(
     proposal_part: ProposalPart,
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
-    storage: &Storage,
+    storage: Storage,
 ) -> anyhow::Result<Option<(ProposalCommitment, ContractAddress)>> {
     let height = height_and_round.height();
     let round = height_and_round.round().into();
@@ -462,10 +462,7 @@ async fn handle_incoming_proposal_part(
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
-            let db_conn = storage
-                .connection()
-                .context("Creating database connection")?;
-            let new_validator = validator.validate_consensus_block_info(block_info, db_conn)?;
+            let new_validator = validator.validate_consensus_block_info(block_info, storage)?;
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(Box::new(new_validator)),
