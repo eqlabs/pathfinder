@@ -435,13 +435,10 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
-    let db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+        .validate_consensus_block_info(block_info.clone(), storage.clone())?;
     let validator = validator.consensus_finalize0()?;
-    let finalized_block = validator.finalize(storage.clone())?;
+    let finalized_block = validator.finalize(storage)?;
     let proposal_commitment = Hash(finalized_block.header.state_diff_commitment.0);
 
     Ok((
