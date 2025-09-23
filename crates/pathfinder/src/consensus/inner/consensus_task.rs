@@ -9,7 +9,7 @@
 //! 4. issues commands to the P2P task, for example to gossip a proposal or a
 //!    vote
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -28,6 +28,7 @@ use pathfinder_consensus::{
     NetworkMessage,
     Proposal,
     Round,
+    SignedProposal,
     SignedVote,
     ValidatorSet,
     ValidatorSetProvider,
@@ -80,7 +81,14 @@ pub fn spawn(
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
+        // TODO This is not probably needed anymore.
         let mut started_heights = HashSet::new();
+        // Proposals and votes for next heights after the current height, which are
+        // received from the network before the consensus engine for the current
+        // height issues a positive decision. These commands are queued here
+        // and will be issued to the consensus engine when the current height
+        // is successfully decided upon.
+        let mut commands_for_next_heights = VecDeque::<QueuedCommand>::new();
 
         start_height(
             &mut consensus,
@@ -250,6 +258,21 @@ pub fn spawn(
                                     current_height,
                                     validator_set_provider.get_validator_set(current_height)?,
                                 );
+
+                                while let Some(cmd) = commands_for_next_heights.front() {
+                                    if cmd.height() == current_height {
+                                        let cmd = commands_for_next_heights
+                                            .pop_front()
+                                            .expect("The front of the queue exists");
+                                        tracing::debug!(
+                                            "🧠 ⚙️  {validator_address} handling queued command \
+                                             {cmd:?}",
+                                        );
+                                        consensus.handle_command(cmd.into());
+                                    } else {
+                                        break;
+                                    }
+                                }
                             }
                         }
                         ConsensusEvent::Error(error) => {
@@ -295,16 +318,27 @@ pub fn spawn(
                                 }
                             }
 
-                            start_height(
-                                &mut consensus,
-                                &mut started_heights,
-                                cmd_height,
-                                validator_set_provider.get_validator_set(cmd_height)?,
-                            );
+                            if cmd_height > current_height {
+                                commands_for_next_heights.push_back((&cmd).try_into().expect(
+                                    "Proposal and Vote commands can be safely converted to \
+                                     QueuedCommand",
+                                ));
+                            }
+
+                            // start_height(
+                            //     &mut consensus,
+                            //     &mut started_heights,
+                            //     cmd_height,
+                            //     validator_set_provider.
+                            // get_validator_set(cmd_height)?,
+                            // );
                         }
                     }
 
-                    consensus.handle_command(cmd);
+                    // TODO check if we should handle commands for heights lower than the current
+                    if cmd_height <= current_height {
+                        consensus.handle_command(cmd);
+                    }
                 }
             }
 
@@ -324,6 +358,44 @@ fn start_height(
     if !started_heights.contains(&height) {
         started_heights.insert(height);
         consensus.handle_command(ConsensusCommand::StartHeight(height, validator_set));
+    }
+}
+
+#[derive(Debug)]
+enum QueuedCommand {
+    Proposal(SignedProposal<ConsensusValue, ContractAddress>),
+    Vote(SignedVote<ConsensusValue, ContractAddress>),
+}
+
+impl QueuedCommand {
+    fn height(&self) -> u64 {
+        match self {
+            QueuedCommand::Proposal(p) => p.proposal.height,
+            QueuedCommand::Vote(v) => v.vote.height,
+        }
+    }
+}
+
+impl TryFrom<&ConsensusCommand<ConsensusValue, ContractAddress>> for QueuedCommand {
+    type Error = anyhow::Error;
+
+    fn try_from(
+        value: &ConsensusCommand<ConsensusValue, ContractAddress>,
+    ) -> Result<Self, Self::Error> {
+        match value {
+            ConsensusCommand::Proposal(proposal) => Ok(QueuedCommand::Proposal(proposal.clone())),
+            ConsensusCommand::Vote(vote) => Ok(QueuedCommand::Vote(vote.clone())),
+            _ => anyhow::bail!("Only Proposal and Vote commands can be converted to QueuedCommand"),
+        }
+    }
+}
+
+impl From<QueuedCommand> for ConsensusCommand<ConsensusValue, ContractAddress> {
+    fn from(value: QueuedCommand) -> Self {
+        match value {
+            QueuedCommand::Proposal(proposal) => ConsensusCommand::Proposal(proposal),
+            QueuedCommand::Vote(vote) => ConsensusCommand::Vote(vote),
+        }
     }
 }
 

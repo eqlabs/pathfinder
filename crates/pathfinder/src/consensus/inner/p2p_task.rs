@@ -409,6 +409,9 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
     Ok(())
 }
 
+// FIXME any execution for height H must only be done when H-1 has been
+// committed to the database. Otherwise execution of H has inconsistent state
+// view.
 async fn handle_incoming_proposal_part(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
