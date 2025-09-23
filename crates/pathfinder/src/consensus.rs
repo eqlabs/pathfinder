@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use p2p::consensus::{Client, Event};
 use pathfinder_common::{ChainId, ConsensusInfo};
@@ -36,6 +36,7 @@ pub fn start(
     wal_directory: PathBuf,
     p2p_client: Client,
     p2p_event_rx: mpsc::UnboundedReceiver<Event>,
+    data_directory: &Path,
 ) -> ConsensusTaskHandles {
     inner::start(
         config,
@@ -44,6 +45,7 @@ pub fn start(
         wal_directory,
         p2p_client,
         p2p_event_rx,
+        data_directory,
     )
 }
 
@@ -58,6 +60,7 @@ mod inner {
         _: PathBuf,
         _: Client,
         _: mpsc::UnboundedReceiver<Event>,
+        _: &Path,
     ) -> ConsensusTaskHandles {
         ConsensusTaskHandles::pending()
     }

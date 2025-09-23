@@ -13,6 +13,7 @@ mod test {
     use std::fs::File;
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command};
+    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
 
     use anyhow::Context;
@@ -20,11 +21,22 @@ mod test {
     use serde::Deserialize;
     use tokio::time::sleep;
 
+    // If the env variable `PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is
+    // set, the stdout and stderr logs of each Pathfinder instance will be
+    // dumped automatically to the parent process descriptors if the test fails.
+    // Otherwise you need to inspect the temporary directory that is created to
+    // hold the test artifacts.
     #[tokio::test]
+    #[ignore = "FIXME The test sometimes fails due to a bug described in this issue: https://github.com/eqlabs/pathfinder/issues/3019"]
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
+        PathfinderInstance::enable_log_dump(
+            std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
+        );
+
         const NUM_NODES: usize = 3;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
-        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
+        const READY_TIMEOUT: Duration = Duration::from_secs(20);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(240);
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -47,17 +59,20 @@ mod test {
         let mut configs =
             Config::for_set(NUM_NODES, &pathfinder_bin, &fixture_dir, test_dir.path()).into_iter();
 
-        // Alice is the boot node, so we want her up and running first.
         let alice = PathfinderInstance::spawn(configs.next().unwrap())?;
-        alice.wait_for_ready(READY_POLL_INTERVAL).await;
+        alice
+            .wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
+            .await?;
 
         let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
         let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
 
-        tokio::join!(
-            bob.wait_for_ready(READY_POLL_INTERVAL),
-            charlie.wait_for_ready(READY_POLL_INTERVAL)
+        let (bob_rdy, charlie_rdy) = tokio::join!(
+            bob.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT),
+            charlie.wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
         );
+        bob_rdy?;
+        charlie_rdy?;
 
         let spawn_rpc_client = |rpc_port| {
             tokio::spawn(wait_for_height(
@@ -89,6 +104,8 @@ mod test {
                 a.context("Joining Alice's RPC client task")?;
                 b.context("Joining Bob's RPC client task")?;
                 c.context("Joining Charlie's RPC client task")?;
+                // Don't dump logs if the test succeeded.
+                PathfinderInstance::enable_log_dump(false);
                 Ok(())
             }
 
@@ -97,10 +114,6 @@ mod test {
                 Err(anyhow::anyhow!("Test interrupted by user"))
             }
         };
-
-        alice.terminate()?;
-        bob.terminate()?;
-        charlie.terminate()?;
 
         test_result
     }
@@ -150,11 +163,14 @@ mod test {
         highest_decided_height: Option<u64>,
     }
 
+    /// Successfully spawned pathfinder instance is terminated when dropped.
     struct PathfinderInstance {
         process: Child,
         name: &'static str,
         monitor_port: u16,
         rpc_port: u16,
+        stdout_path: PathBuf,
+        stderr_path: PathBuf,
     }
 
     #[derive(Debug, Clone)]
@@ -175,17 +191,13 @@ mod test {
         fn spawn(config: Config<'_>) -> anyhow::Result<Self> {
             let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
             let db_file = config.test_dir.join(format!("db-{}", config.name));
-            let stdout_file = File::create(
-                config.test_dir.join(format!("{}_stdout.log", config.name)),
-            )
-            .context(format!(
+            let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
+            let stdout_file = File::create(stdout_path.clone()).context(format!(
                 "Creating stdout log file for pathfinder instance {}",
                 config.name
             ))?;
-            let stderr_file = File::create(
-                config.test_dir.join(format!("{}_stderr.log", config.name)),
-            )
-            .context(format!(
+            let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
+            let stderr_file = File::create(stderr_path.clone()).context(format!(
                 "Creating stderr log file for pathfinder instance {}",
                 config.name
             ))?;
@@ -251,29 +263,46 @@ mod test {
                 name: config.name,
                 monitor_port: config.monitor_port,
                 rpc_port: config.rpc_port,
+                stdout_path,
+                stderr_path,
             })
         }
 
-        async fn wait_for_ready(&self, poll_interval: Duration) {
-            let stopwatch = Instant::now();
-            loop {
-                match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port)).await {
-                    Ok(response) if response.status() == StatusCode::OK => {
-                        println!(
-                            "Pathfinder instance {} ready after {} s",
-                            self.name,
-                            stopwatch.elapsed().as_secs()
-                        );
-                        return;
+        async fn wait_for_ready(
+            &self,
+            poll_interval: Duration,
+            timeout: Duration,
+        ) -> anyhow::Result<()> {
+            let fut = async move {
+                let stopwatch = Instant::now();
+                loop {
+                    match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port))
+                        .await
+                    {
+                        Ok(response) if response.status() == StatusCode::OK => {
+                            println!(
+                                "Pathfinder instance {} ready after {} s",
+                                self.name,
+                                stopwatch.elapsed().as_secs()
+                            );
+                            return;
+                        }
+                        _ => println!("Pathfinder instance {} not ready yet", self.name),
                     }
-                    _ => println!("Pathfinder instance {} not ready yet", self.name),
-                }
 
-                sleep(poll_interval).await;
+                    sleep(poll_interval).await;
+                }
+            };
+            if tokio::time::timeout(timeout, fut).await.is_err() {
+                anyhow::bail!(
+                    "Timeout waiting for Pathfinder instance {} to be ready",
+                    self.name
+                );
             }
+            Ok(())
         }
 
-        fn terminate(mut self) -> anyhow::Result<()> {
+        fn terminate(&mut self) {
             _ = Command::new("kill")
                 // It's supposed to be the default signal in `kill`, but let's be explicit.
                 .arg("-TERM")
@@ -299,36 +328,57 @@ mod test {
                     }
                     Err(e) => {
                         eprintln!(
-                            "Error waiting for Pathfinder instance {} (pid: {}) to terminate: {}",
+                            "Error waiting for Pathfinder instance {} (pid: {}) to terminate: {e}",
                             self.name,
                             self.process.id(),
-                            e
                         );
-                        self.process.kill().context(format!(
-                            "Killing Pathfinder instance {} (pid: {})",
-                            self.name,
-                            self.process.id()
-                        ))?;
+                        if let Err(error) = self.process.kill() {
+                            eprintln!(
+                                "Error killing Pathfinder instance {} (pid: {}): {error}",
+                                self.name,
+                                self.process.id(),
+                            );
+                        }
                     }
                 },
                 Err(e) => {
                     eprintln!(
-                        "Error terminating Pathfinder instance {} (pid: {}): {}",
+                        "Error terminating Pathfinder instance {} (pid: {}): {e}",
                         self.name,
                         self.process.id(),
-                        e
                     );
-                    self.process.kill().context(format!(
-                        "Killing Pathfinder instance {} (pid: {})",
-                        self.name,
-                        self.process.id()
-                    ))?;
+                    if let Err(error) = self.process.kill() {
+                        eprintln!(
+                            "Error killing Pathfinder instance {} (pid: {}): {error}",
+                            self.name,
+                            self.process.id(),
+                        );
+                    }
                 }
             }
+        }
 
-            Ok(())
+        fn enable_log_dump(enable: bool) {
+            DUMP_LOGS_ON_DROP.store(enable, std::sync::atomic::Ordering::Relaxed);
         }
     }
+
+    impl Drop for PathfinderInstance {
+        fn drop(&mut self) {
+            self.terminate();
+
+            if DUMP_LOGS_ON_DROP.load(std::sync::atomic::Ordering::Relaxed) {
+                let stdout = std::fs::read_to_string(&self.stdout_path)
+                    .unwrap_or("Error reading file".to_string());
+                println!("Pathfinder instance {} stdout log:\n{stdout}", self.name);
+                let stderr = std::fs::read_to_string(&self.stderr_path)
+                    .unwrap_or("Error reading file".to_string());
+                println!("Pathfinder instance {} stderr log:\n{stderr}", self.name);
+            }
+        }
+    }
+
+    static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
     impl<'a> Config<'a> {
         const NAMES: &'static [&'static str] = &[

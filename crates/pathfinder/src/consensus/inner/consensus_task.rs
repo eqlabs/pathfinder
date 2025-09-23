@@ -13,10 +13,11 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use std::vec;
 
 use anyhow::Context;
 use p2p::consensus::HeightAndRound;
-use p2p_proto::common::{Address, L1DataAvailabilityMode};
+use p2p_proto::common::{Address, Hash, L1DataAvailabilityMode};
 use p2p_proto::consensus::{BlockInfo, ProposalFin, ProposalInit, ProposalPart};
 use pathfinder_common::{BlockNumber, ChainId, ConsensusInfo, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
@@ -39,14 +40,16 @@ use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn(
+    chain_id: pathfinder_common::ChainId,
     config: ConsensusConfig,
     wal_directory: PathBuf,
     tx_to_p2p: mpsc::Sender<P2PTaskEvent>,
     mut rx_from_p2p: mpsc::Receiver<ConsensusTaskEvent>,
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
-    chain_id: ChainId, // For dummy proposal creation
-    storage: Storage,  // For dummy proposal creation
+    storage: Storage,
+    fake_proposals_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
     util::task::spawn(async move {
         // Get the validator address and validator set provider
@@ -115,13 +118,19 @@ pub fn spawn(
                                  {round}",
                             );
 
-                            let (wire_proposal, finalized_block) = create_empty_proposal(
-                                chain_id,
-                                height,
-                                round.into(),
-                                validator_address,
-                                storage.clone(),
-                            )?;
+                            let fake_proposals_storage = fake_proposals_storage.clone();
+                            let (wire_proposal, finalized_block) =
+                                util::task::spawn_blocking(move |_| {
+                                    create_empty_proposal(
+                                        chain_id,
+                                        height,
+                                        round.into(),
+                                        validator_address,
+                                        fake_proposals_storage,
+                                    )
+                                })
+                                .await?
+                                .context("Creating empty proposal")?;
 
                             let ProposalFin {
                                 proposal_commitment,
@@ -318,9 +327,9 @@ fn start_height(
     }
 }
 
-/// Create an empty proposal for the given height and round. Returns proposal
-/// parts that can be gossiped via P2P network and the finalized block that
-/// corresponds to this proposal.
+/// Create an empty proposal for the given height and round. Returns
+/// proposal parts that can be gossiped via P2P network and the
+/// finalized block that corresponds to this proposal.
 fn create_empty_proposal(
     chain_id: ChainId,
     height: u64,
@@ -350,22 +359,14 @@ fn create_empty_proposal(
         l1_data_gas_price_wei: 1,
         eth_to_strk_rate: 1_000_000_000,
     };
-    // We need to figure out the proposal commitment value first.
     let db_conn = storage
         .connection()
         .context("Creating database connection")?;
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
         .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let proposal_commitment = validator.compute_proposal_commitment()?;
-    // Now we have all parts of the proposal, so it's time to produce the finalized
-    // block.
-    let db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
-    let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), db_conn)?;
-    let validator = validator.consensus_finalize(proposal_commitment)?;
-    let finalized_block = validator.finalize(storage)?;
+    let validator = validator.consensus_finalize0()?;
+    let finalized_block = validator.finalize(storage.clone())?;
+    let proposal_commitment = Hash(finalized_block.header.state_diff_commitment.0);
 
     Ok((
         vec![
