@@ -10,7 +10,7 @@
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -19,7 +19,7 @@ use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
+use pathfinder_common::{BlockId, BlockNumber, ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -64,6 +64,11 @@ pub fn spawn(
     // proposed by us in another round at the same height. The proposals are removed
     // either when we gossip them or when decision is made at the same height.
     let mut incoming_proposals_cache = BTreeMap::new();
+    // Deferred P2P events that couldn't be processed yet because the block at
+    // height-1 was not committed to the database yet.
+    let mut deferred_p2p_events = HashMap::<u64, VecDeque<_>>::new();
+
+    let (deferred_now_ready_tx, mut deferred_now_ready_rx) = tokio::sync::mpsc::unbounded_channel();
     // TODO validators are long-lived but not persisted
     let mut validator_cache = HashMap::new();
 
@@ -82,70 +87,106 @@ pub fn spawn(
                 from_consensus = rx_from_consensus.recv() => {
                     from_consensus.expect("Receiver not to be dropped")
                 }
+                deferred_p2p_event = deferred_now_ready_rx.recv() => {
+                    P2PTaskEvent::P2PEvent(deferred_p2p_event.expect("Receiver not to be dropped"))
+                }
             };
 
             match p2p_task_event {
                 P2PTaskEvent::P2PEvent(event) => {
                     tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
-                    match event {
-                        Event::Proposal(height_and_round, proposal_part) => {
-                            match handle_incoming_proposal_part(
-                                chain_id,
-                                height_and_round,
-                                proposal_part,
-                                &mut incoming_proposals_cache,
-                                &mut validator_cache,
-                                storage.clone(),
-                            )
-                            .await
-                            {
-                                Ok(Some((proposal_commitment, proposer))) => {
-                                    let proposal = Proposal {
-                                        height: height_and_round.height(),
-                                        round: height_and_round.round().into(),
-                                        value: ConsensusValue(proposal_commitment),
-                                        pol_round: Round::nil(),
-                                        proposer,
-                                    };
+                    let defer_event = {
+                        let event_height = event.height();
+                        if let Some(required_db_height) = event_height.checked_sub(1) {
+                            let mut db_conn = storage
+                                .connection()
+                                .context("Creating database connection")?;
+                            let db_txn = db_conn
+                                .transaction()
+                                .context("Creating database transaction")?;
+                            !db_txn
+                                .block_exists(BlockId::Number(BlockNumber::new_or_panic(
+                                    required_db_height,
+                                )))
+                                .context("Checking if block exists")?
+                        } else {
+                            false
+                        }
+                    };
 
-                                    let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                        proposal,
-                                        signature: Signature::test(),
-                                    });
+                    if defer_event {
+                        tracing::info!(
+                            "🖧  ⏳ {validator_address} deferring p2p event for height {} because \
+                             block at height {} is not committed in the database yet",
+                            event.height(),
+                            event.height() - 1
+                        );
+                        deferred_p2p_events
+                            .entry(event.height())
+                            .or_default()
+                            .push_back(event);
+                    } else {
+                        match event {
+                            Event::Proposal(height_and_round, proposal_part) => {
+                                match handle_incoming_proposal_part(
+                                    chain_id,
+                                    height_and_round,
+                                    proposal_part,
+                                    &mut incoming_proposals_cache,
+                                    &mut validator_cache,
+                                    storage.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(Some((proposal_commitment, proposer))) => {
+                                        let proposal = Proposal {
+                                            height: height_and_round.height(),
+                                            round: height_and_round.round().into(),
+                                            value: ConsensusValue(proposal_commitment),
+                                            pol_round: Round::nil(),
+                                            proposer,
+                                        };
 
-                                    tx_to_consensus
-                                        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                        .await
-                                        .expect("Receiver not to be dropped");
-                                }
-                                Ok(None) => {
-                                    // Still waiting for more parts to complete
-                                    // the proposal.
-                                }
-                                Err(error) => {
-                                    tracing::warn!(
-                                        "Error handling incoming proposal part for \
-                                         {height_and_round}: {error:#?}"
-                                    );
-                                    anyhow::bail!(
-                                        "Error handling incoming proposal part for \
-                                         {height_and_round}: {error:#?}"
-                                    );
+                                        let cmd = ConsensusCommand::Proposal(SignedProposal {
+                                            proposal,
+                                            signature: Signature::test(),
+                                        });
+
+                                        tx_to_consensus
+                                            .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                            .await
+                                            .expect("Receiver not to be dropped");
+                                    }
+                                    Ok(None) => {
+                                        // Still waiting for more parts to
+                                        // complete
+                                        // the proposal.
+                                    }
+                                    Err(error) => {
+                                        tracing::warn!(
+                                            "Error handling incoming proposal part for \
+                                             {height_and_round}: {error:#?}"
+                                        );
+                                        anyhow::bail!(
+                                            "Error handling incoming proposal part for \
+                                             {height_and_round}: {error:#?}"
+                                        );
+                                    }
                                 }
                             }
-                        }
-                        Event::Vote(vote) => {
-                            let vote = p2p_vote_to_consensus_vote(vote);
-                            let cmd = ConsensusCommand::Vote(SignedVote {
-                                vote,
-                                signature: Signature::test(),
-                            });
+                            Event::Vote(vote) => {
+                                let vote = p2p_vote_to_consensus_vote(vote);
+                                let cmd = ConsensusCommand::Vote(SignedVote {
+                                    vote,
+                                    signature: Signature::test(),
+                                });
 
-                            tx_to_consensus
-                                .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                .await
-                                .expect("Receiver not to be dropped");
+                                tx_to_consensus
+                                    .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                    .await
+                                    .expect("Receiver not to be dropped");
+                            }
                         }
                     }
                 }
@@ -374,6 +415,15 @@ pub fn spawn(
                          height {} and rounds: {removed:?}",
                         height_and_round.height()
                     );
+
+                    let next_height = height_and_round.height() + 1;
+                    let can_process_now =
+                        deferred_p2p_events.remove(&next_height).unwrap_or_default();
+                    can_process_now.into_iter().for_each(|event| {
+                        deferred_now_ready_tx
+                            .send(event)
+                            .expect("Receiver not to be dropped");
+                    });
                 }
             }
         }
