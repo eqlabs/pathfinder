@@ -1118,7 +1118,7 @@ pub(crate) mod tests {
 
             tx.commit()?;
 
-            crate::pending::PendingData::from_pre_confirmed_and_pre_latest(
+            crate::pending::PendingData::try_from_pre_confirmed_and_pre_latest(
                 Box::new(pre_confirmed_block),
                 // Last L2 block, then pre-latest then this, so +2.
                 last_block_header.number + 2,
@@ -1128,6 +1128,7 @@ pub(crate) mod tests {
                     StateUpdate::default(),
                 ))),
             )
+            .unwrap()
         };
 
         let (tx, rx) = tokio::sync::watch::channel(Default::default());
@@ -1207,14 +1208,20 @@ pub(crate) mod tests {
                 fixtures::CASM_DEFINITION,
             )?;
 
-            let dummy_receipt = Receipt {
-                transaction_hash: TransactionHash(felt!("0x1")),
-                transaction_index: TransactionIndex::new_or_panic(0),
-                ..Default::default()
-            };
-
-            let transaction_receipts =
-                vec![Some((dummy_receipt, vec![])); pre_confirmed_transactions.len()];
+            let transaction_receipts: Vec<_> = pre_confirmed_transactions
+                .iter()
+                .enumerate()
+                .map(|(index, tx)| {
+                    Some((
+                        Receipt {
+                            transaction_hash: tx.hash,
+                            transaction_index: TransactionIndex::new_or_panic(index as u64),
+                            ..Default::default()
+                        },
+                        vec![],
+                    ))
+                })
+                .collect();
 
             let pre_confirmed_block = starknet_gateway_types::reply::PreConfirmedBlock {
                 l1_gas_price: GasPrices {
@@ -1241,12 +1248,13 @@ pub(crate) mod tests {
 
             tx.commit()?;
 
-            crate::pending::PendingData::from_pre_confirmed_and_pre_latest(
+            crate::pending::PendingData::try_from_pre_confirmed_and_pre_latest(
                 Box::new(pre_confirmed_block),
                 // No pre-latest block, so +1.
                 last_block_header.number + 1,
                 None,
             )
+            .unwrap()
         };
 
         let (tx, rx) = tokio::sync::watch::channel(Default::default());

@@ -884,10 +884,13 @@ mod tests {
 
         // Send pre-confirmed data, expecting it to be ignored.
         pending_data_tx
-            .send(crate::PendingData::from_pre_confirmed_block(
-                sample_pre_confirmed_block(num_blocks).into(),
-                BlockNumber::new_or_panic(num_blocks),
-            ))
+            .send(
+                crate::PendingData::try_from_pre_confirmed_block(
+                    sample_pre_confirmed_block(num_blocks).into(),
+                    BlockNumber::new_or_panic(num_blocks),
+                )
+                .unwrap(),
+            )
             .unwrap();
         assert!(sender_rx.is_empty());
 
@@ -964,10 +967,13 @@ mod tests {
 
         // Send pre-confirmed data.
         pending_data_tx
-            .send(crate::PendingData::from_pre_confirmed_block(
-                sample_pre_confirmed_block(num_blocks).into(),
-                BlockNumber::new_or_panic(num_blocks),
-            ))
+            .send(
+                crate::PendingData::try_from_pre_confirmed_block(
+                    sample_pre_confirmed_block(num_blocks).into(),
+                    BlockNumber::new_or_panic(num_blocks),
+                )
+                .unwrap(),
+            )
             .unwrap();
         let event = sender_rx.recv().await.unwrap().unwrap();
         let json: serde_json::Value = match event {
