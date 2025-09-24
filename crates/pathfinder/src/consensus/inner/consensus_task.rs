@@ -27,7 +27,6 @@ use pathfinder_consensus::{
     ConsensusEvent,
     NetworkMessage,
     Proposal,
-    ProposerSelector,
     Round,
     SignedVote,
     ValidatorSet,
@@ -37,7 +36,7 @@ use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
 use super::fetch_validators::L2ValidatorSetProvider;
-use super::select_proposer::FixedProposerSelector;
+use super::select_proposer::{get_proposer_selector, ProposerSelector};
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
@@ -59,11 +58,11 @@ pub fn spawn(
         let validator_set_provider =
             L2ValidatorSetProvider::new(storage.clone(), chain_id, config.clone());
 
-        // Enforce a fixed proposer for now
-        let proposer_selector = FixedProposerSelector::new(config.proposer_address);
+        // Get the proposer selector
+        let proposer_selector = get_proposer_selector(&config);
 
         let mut consensus =
-            Consensus::<ConsensusValue, ContractAddress, FixedProposerSelector>::recover(
+            Consensus::<ConsensusValue, ContractAddress, ProposerSelector>::recover(
                 Config::new(validator_address)
                     .with_wal_dir(wal_directory)
                     .with_history_depth(
@@ -325,11 +324,7 @@ pub fn spawn(
 }
 
 fn start_height(
-    consensus: &mut Consensus<
-        ConsensusValue,
-        ContractAddress,
-        impl ProposerSelector<ContractAddress>,
-    >,
+    consensus: &mut Consensus<ConsensusValue, ContractAddress, ProposerSelector>,
     started_heights: &mut HashSet<u64>,
     height: u64,
     validator_set: ValidatorSet<ContractAddress>,
