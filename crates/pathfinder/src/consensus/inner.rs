@@ -1,6 +1,7 @@
 mod consensus_task;
 mod fetch_validators;
 mod p2p_task;
+mod select_proposer;
 
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};

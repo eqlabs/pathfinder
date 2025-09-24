@@ -27,6 +27,7 @@ use pathfinder_consensus::{
     ConsensusEvent,
     NetworkMessage,
     Proposal,
+    ProposerSelector,
     Round,
     SignedVote,
     ValidatorSet,
@@ -36,6 +37,7 @@ use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
 use super::fetch_validators::L2ValidatorSetProvider;
+use super::select_proposer::FixedProposerSelector;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
@@ -54,22 +56,29 @@ pub fn spawn(
     util::task::spawn(async move {
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
-        let validator_set_provider = L2ValidatorSetProvider::new(storage.clone(), chain_id, config);
+        let validator_set_provider =
+            L2ValidatorSetProvider::new(storage.clone(), chain_id, config.clone());
 
-        let mut consensus = Consensus::recover(
-            Config::new(validator_address)
-                .with_wal_dir(wal_directory)
-                .with_history_depth(
-                    // TODO: We don't support round certificates yet, and we want to limit
-                    // rebroadcasting to a minimum. Rebroadcast timeouts will happen for historical
-                    // engines which are finalized because the effect `CancelAllTimeouts` is only
-                    // triggered upon a new round or a new height.
-                    0,
-                ),
-            // TODO use a dynamic validator set provider, once fetching the validator set from the
-            // staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
-            Arc::new(validator_set_provider.clone()),
-        )?;
+        // Enforce a fixed proposer for now
+        let proposer_selector = FixedProposerSelector::new(config.proposer_address);
+
+        let mut consensus =
+            Consensus::<ConsensusValue, ContractAddress, FixedProposerSelector>::recover(
+                Config::new(validator_address)
+                    .with_wal_dir(wal_directory)
+                    .with_history_depth(
+                        // TODO: We don't support round certificates yet, and we want to limit
+                        // rebroadcasting to a minimum. Rebroadcast timeouts will happen for
+                        // historical engines which are finalized because
+                        // the effect `CancelAllTimeouts` is only triggered
+                        // upon a new round or a new height.
+                        0,
+                    ),
+                // TODO use a dynamic validator set provider, once fetching the validator set from
+                // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
+                Arc::new(validator_set_provider.clone()),
+            )?
+            .with_proposer_selector(proposer_selector);
 
         // Get the current height
         let mut current_height = consensus.current_height().unwrap_or_default();
@@ -316,7 +325,11 @@ pub fn spawn(
 }
 
 fn start_height(
-    consensus: &mut Consensus<ConsensusValue, ContractAddress>,
+    consensus: &mut Consensus<
+        ConsensusValue,
+        ContractAddress,
+        impl ProposerSelector<ContractAddress>,
+    >,
     started_heights: &mut HashSet<u64>,
     height: u64,
     validator_set: ValidatorSet<ContractAddress>,
