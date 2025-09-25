@@ -19,7 +19,7 @@ use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{ChainId, ContractAddress, ProposalCommitment};
+use pathfinder_common::{BlockId, BlockNumber, ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -34,13 +34,7 @@ use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
 use crate::consensus::inner::ConsensusValue;
-use crate::validator::{
-    FinalizedBlock,
-    ValidatorBlockInfoStage,
-    ValidatorFinalizeStage,
-    ValidatorStage,
-    ValidatorTransactionBatchStage,
-};
+use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -66,6 +60,9 @@ pub fn spawn(
     let mut incoming_proposals_cache = BTreeMap::new();
     // TODO validators are long-lived but not persisted
     let mut validator_cache = HashMap::new();
+    // Contains transaction batches and proposal finalizations that are
+    // waiting for block-1 to be committed before they can be executed.
+    let mut deferred_executions = HashMap::new(); //<HeightAndRound, VecDeque<_>>::new();
 
     util::task::spawn(async move {
         loop {
@@ -96,6 +93,7 @@ pub fn spawn(
                                 proposal_part,
                                 &mut incoming_proposals_cache,
                                 &mut validator_cache,
+                                &mut deferred_executions,
                                 storage.clone(),
                             )
                             .await
@@ -121,7 +119,9 @@ pub fn spawn(
                                 }
                                 Ok(None) => {
                                     // Still waiting for more parts to complete
-                                    // the proposal.
+                                    // the proposal or the proposal is complete
+                                    // but cannot be executed yet, because the
+                                    // previous block is not committed yet.
                                 }
                                 Err(error) => {
                                     tracing::warn!(
@@ -374,6 +374,91 @@ pub fn spawn(
                          height {} and rounds: {removed:?}",
                         height_and_round.height()
                     );
+
+                    let mut removed = deferred_executions
+                        .extract_if(|hnr, _| hnr.height() == height_and_round.height() + 1);
+
+                    if let Some((hnr, deferred)) = removed.next() {
+                        tracing::debug!(
+                            "🖧  🚦 (CO-1) executing deferred stuff for height and round {hnr}"
+                        );
+
+                        // Only round 0 could be deferred, because if round > 0 was deferred, then
+                        // previous height would be already committed.
+                        assert_eq!(hnr.round(), 0);
+
+                        let Some(validator_stage) = validator_cache.remove(&hnr) else {
+                            anyhow::bail!(
+                                "No ValidatorTransactionBatchStage for height and round {hnr}",
+                            );
+                        };
+
+                        let ValidatorStage::TransactionBatch(mut validator) = validator_stage
+                        else {
+                            anyhow::bail!("Wrong validator stage for height and round {hnr}",);
+                        };
+
+                        let (validator, proposal_commitment_proposer) =
+                            util::task::spawn_blocking(move |_| {
+                                tracing::debug!(
+                                    "🖧  🚦 (CO-2) executing deferred transactions for height and \
+                                     round {hnr}"
+                                );
+
+                                validator.execute_transactions(deferred.transactions)?;
+
+                                anyhow::Ok(
+                                    if let Some((proposal_commitment, proposer)) =
+                                        deferred.proposal_commitment_proposer
+                                    {
+                                        tracing::debug!(
+                                            "🖧  🚦 (CO-3 a) finalizing consensus for height and \
+                                             round {hnr}"
+                                        );
+
+                                        let validator =
+                                            validator.consensus_finalize(proposal_commitment)?;
+                                        (
+                                            ValidatorStage::Finalize(Box::new(validator)),
+                                            Some((proposal_commitment, proposer)),
+                                        )
+                                    } else {
+                                        tracing::debug!(
+                                            "🖧  🚦 (CO-3 b) executing transaction batch for \
+                                             height and round {hnr}, no consensus finalize yet"
+                                        );
+
+                                        (ValidatorStage::TransactionBatch(validator), None)
+                                    },
+                                )
+                            })
+                            .await??;
+
+                        validator_cache.insert(hnr, validator);
+
+                        if let Some((proposal_commitment, proposer)) = proposal_commitment_proposer
+                        {
+                            let proposal = Proposal {
+                                height: hnr.height(),
+                                round: hnr.round().into(),
+                                value: ConsensusValue(ProposalCommitment(proposal_commitment.0)),
+                                pol_round: Round::nil(),
+                                proposer,
+                            };
+
+                            let cmd = ConsensusCommand::Proposal(SignedProposal {
+                                proposal,
+                                signature: Signature::test(),
+                            });
+
+                            tx_to_consensus
+                                .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+                                .await
+                                .expect("Receiver not to be dropped");
+                        }
+                    }
+
+                    assert!(removed.next().is_none());
                 }
             }
         }
@@ -409,12 +494,24 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
     Ok(())
 }
 
+#[derive(Debug, Clone, Default)]
+struct DeferredExecution {
+    pub transactions: Vec<p2p_proto::consensus::Transaction>,
+    pub proposal_commitment_proposer: Option<(p2p_proto::common::Hash, ContractAddress)>,
+}
+
 async fn handle_incoming_proposal_part(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
+    deferred_executions: &mut HashMap<
+        HeightAndRound,
+        // u64,
+        // VecDeque<Vec<p2p_proto::consensus::Transaction>>,
+        DeferredExecution,
+    >,
     storage: Storage,
 ) -> anyhow::Result<Option<(ProposalCommitment, ContractAddress)>> {
     let height = height_and_round.height();
@@ -479,6 +576,10 @@ async fn handle_incoming_proposal_part(
                 );
             }
 
+            tracing::debug!(
+                "🖧  🚦 (TB-1) executing transaction batch for height and round {height_and_round}"
+            );
+
             let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
                 anyhow::bail!(
                     "No ValidatorTransactionBatchStage for height and round {}",
@@ -493,13 +594,65 @@ async fn handle_incoming_proposal_part(
                 );
             };
 
-            let transactions = tx_batch.clone();
+            let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
-            let validator = util::task::spawn_blocking(move |_| {
-                validator.execute_transactions(transactions)?;
-                anyhow::Ok::<Box<ValidatorTransactionBatchStage>>(validator)
+
+            let storage = storage.clone();
+            let defer = util::task::spawn_blocking(move |_| {
+                let parent_block = height_and_round.height().checked_sub(1);
+                if let Some(parent_block) = parent_block {
+                    let parent_block = BlockNumber::new(parent_block)
+                        .context("Block number is larger than i64::MAX")?;
+                    let parent_block = BlockId::Number(parent_block);
+                    let mut db_conn = storage.connection()?;
+                    let db_txn = db_conn.transaction()?;
+                    let parent_committed = db_txn.block_exists(parent_block)?;
+                    Ok(!parent_committed)
+                } else {
+                    anyhow::Ok(false)
+                }
             })
             .await??;
+
+            let validator = if defer {
+                tracing::debug!(
+                    "🖧  🚦 (TB-2 a) deferring transaction batch for height and round \
+                     {height_and_round}"
+                );
+
+                deferred_executions
+                    .entry(height_and_round)
+                    .or_default()
+                    .transactions
+                    .extend(tx_batch);
+                validator
+            } else {
+                let deferred = deferred_executions.remove(&height_and_round);
+
+                tracing::debug!(
+                    "🖧  🚦 (TB-2 b) executing transaction batch for height and round \
+                     {height_and_round} with {} deferred transactions first",
+                    deferred.as_ref().map_or(0, |d| d.transactions.len())
+                );
+
+                // If there were deferred transactions, execute them first.
+                let tx_batch = if let Some(DeferredExecution {
+                    mut transactions, ..
+                }) = deferred
+                {
+                    transactions.extend(tx_batch);
+                    transactions
+                } else {
+                    tx_batch
+                };
+
+                util::task::spawn_blocking(move |_| {
+                    validator.execute_transactions(tx_batch)?;
+                    anyhow::Ok(validator)
+                })
+                .await??
+            };
+
             validator_cache.insert(
                 height_and_round,
                 ValidatorStage::TransactionBatch(validator),
@@ -531,6 +684,10 @@ async fn handle_incoming_proposal_part(
         ProposalPart::Fin(ProposalFin {
             proposal_commitment,
         }) => {
+            tracing::debug!(
+                "🖧  🚦 (PF-1) executing consensus finalize for height and round {height_and_round}"
+            );
+
             let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
                 anyhow::bail!(
                     "No ValidatorTransactionBatchStage for height and round {}",
@@ -538,7 +695,7 @@ async fn handle_incoming_proposal_part(
                 );
             };
 
-            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
+            let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
                 anyhow::bail!(
                     "Wrong validator stage for height and round {}",
                     height_and_round
@@ -559,22 +716,66 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
-            let validator = util::task::spawn_blocking(move |_| {
-                let validator = validator.consensus_finalize(proposal_commitment)?;
-                anyhow::Ok::<ValidatorFinalizeStage>(validator)
+            let storage = storage.clone();
+            let defer = util::task::spawn_blocking(move |_| {
+                let parent_block = height_and_round.height().checked_sub(1);
+                if let Some(parent_block) = parent_block {
+                    let parent_block = BlockNumber::new(parent_block)
+                        .context("Block number is larger than i64::MAX")?;
+                    let parent_block = BlockId::Number(parent_block);
+                    let mut db_conn = storage.connection()?;
+                    let db_txn = db_conn.transaction()?;
+                    let parent_committed = db_txn.block_exists(parent_block)?;
+                    Ok(!parent_committed)
+                } else {
+                    anyhow::Ok(false)
+                }
             })
-            .await
-            .context("Joining blocking task")?
-            .context("Verifying proposal commitment")?;
-            validator_cache.insert(
-                height_and_round,
-                ValidatorStage::Finalize(Box::new(validator)),
-            );
+            .await??;
 
-            Ok(Some((
-                ProposalCommitment(proposal_commitment.0),
-                ContractAddress(proposer.0),
-            )))
+            if defer {
+                tracing::debug!(
+                    "🖧  🚦 (PF-2 a) deferring consensus finalize for height and round \
+                     {height_and_round}"
+                );
+
+                deferred_executions
+                    .entry(height_and_round)
+                    .or_default()
+                    .proposal_commitment_proposer =
+                    Some((proposal_commitment, ContractAddress(proposer.0)));
+                validator_cache.insert(
+                    height_and_round,
+                    ValidatorStage::TransactionBatch(validator),
+                );
+                Ok(None)
+            } else {
+                let deferred = deferred_executions.remove(&height_and_round);
+
+                tracing::debug!(
+                    "🖧  🚦 (PF-2 b) executing consensus finalize for height and round \
+                     {height_and_round} with execution of {} deferred transactions first",
+                    deferred.as_ref().map_or(0, |d| d.transactions.len())
+                );
+
+                let validator = util::task::spawn_blocking(move |_| {
+                    if let Some(DeferredExecution { transactions, .. }) = deferred {
+                        validator.execute_transactions(transactions)?;
+                    }
+                    let validator = validator.consensus_finalize(proposal_commitment)?;
+                    anyhow::Ok(validator)
+                })
+                .await??;
+                validator_cache.insert(
+                    height_and_round,
+                    ValidatorStage::Finalize(Box::new(validator)),
+                );
+
+                Ok(Some((
+                    ProposalCommitment(proposal_commitment.0),
+                    ContractAddress(proposer.0),
+                )))
+            }
         }
         ProposalPart::TransactionsFin(_transactions_fin) => {
             // TODO

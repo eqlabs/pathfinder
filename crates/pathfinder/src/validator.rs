@@ -153,18 +153,26 @@ pub struct ValidatorTransactionBatchStage {
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
     block_executor: LazyBlockExecutor,
+    // deferred_transactions: VecDeque<Vec<p2p_proto::consensus::Transaction>>,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
 }
 
 enum LazyBlockExecutor {
+    /// This variant holds the data necessary to initialize the `BlockExecutor`
+    /// on first use.
     Uninitialized {
         chain_id: ChainId,
         block_info: pathfinder_executor::types::BlockInfo,
         storage: Storage,
     },
-    Empty,
+    /// This variant is used to temporarily take ownership of the
+    /// `chain_id`, `block_info` and `storage` fields while initializing
+    /// the `BlockExecutor` and occurs only briefly in
+    /// [`get_or_init()`](Self::get_or_init).
+    Initializing,
+    /// This variant holds the initialized `BlockExecutor`.
     Initialized(BlockExecutor),
 }
 
@@ -185,7 +193,7 @@ impl LazyBlockExecutor {
         if let LazyBlockExecutor::Initialized(be) = self {
             Ok(be)
         } else {
-            let this = std::mem::replace(self, Self::Empty);
+            let this = std::mem::replace(self, Self::Initializing);
             let LazyBlockExecutor::Uninitialized {
                 chain_id,
                 block_info,
