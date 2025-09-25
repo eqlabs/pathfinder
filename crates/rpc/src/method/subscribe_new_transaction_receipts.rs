@@ -902,7 +902,7 @@ mod tests {
             transaction_state_diffs: vec![],
             ..Default::default()
         };
-        PendingData::from_pre_confirmed_block(pre_confirmed_block.into(), block_number)
+        PendingData::try_from_pre_confirmed_block(pre_confirmed_block.into(), block_number).unwrap()
     }
 
     fn sample_pre_confirmed_receipt_message(

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -194,11 +195,11 @@ impl PendingData {
     ///
     /// Candidate transactions are filtered out and handled separately. State
     /// update is constructed from the per-transaction updates.
-    pub fn from_pre_confirmed_block(
+    pub fn try_from_pre_confirmed_block(
         block: Box<starknet_gateway_types::reply::PreConfirmedBlock>,
         number: BlockNumber,
-    ) -> Self {
-        Self::from_pre_confirmed_and_pre_latest(block, number, None)
+    ) -> anyhow::Result<Self> {
+        Self::try_from_pre_confirmed_and_pre_latest(block, number, None)
     }
 
     /// Converts a pre-confirmed block and optional pre-latest block fetched
@@ -209,8 +210,8 @@ impl PendingData {
     ///
     /// If the pre-latest block exists, the pre-confirmed block is expected to
     /// be its child.
-    pub fn from_pre_confirmed_and_pre_latest(
-        mut pre_confirmed_block: Box<starknet_gateway_types::reply::PreConfirmedBlock>,
+    pub fn try_from_pre_confirmed_and_pre_latest(
+        pre_confirmed_block: Box<starknet_gateway_types::reply::PreConfirmedBlock>,
         pre_confirmed_block_number: BlockNumber,
         pre_latest_data: Option<
             Box<(
@@ -219,17 +220,27 @@ impl PendingData {
                 StateUpdate,
             )>,
         >,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         // Get rid of Nones in transaction receipt
         let transaction_receipts: Vec<_> = pre_confirmed_block
             .transaction_receipts
             .into_iter()
             .flatten()
             .collect();
-        let number_of_pre_confirmed_transactions = transaction_receipts.len();
-        let candidate_transactions = pre_confirmed_block
-            .transactions
-            .split_off(number_of_pre_confirmed_transactions);
+
+        let pre_confirmed_transaction_hashes: HashSet<_> = transaction_receipts
+            .iter()
+            .map(|(receipt, _)| receipt.transaction_hash)
+            .collect();
+        let (pre_confirmed_transactions, candidate_transactions): (Vec<_>, Vec<_>) =
+            pre_confirmed_block
+                .transactions
+                .into_iter()
+                .partition(|tx| pre_confirmed_transaction_hashes.contains(&tx.hash));
+
+        if transaction_receipts.len() != pre_confirmed_transactions.len() {
+            anyhow::bail!("Mismatched transaction and receipt count in pre-confirmed block");
+        }
 
         // Compute aggregated state diff for the pre-confirmed block.
         let mut pre_confirmed_state_diff =
@@ -263,7 +274,7 @@ impl PendingData {
             timestamp: pre_confirmed_block.timestamp,
             starknet_version: pre_confirmed_block.starknet_version,
             l1_da_mode: pre_confirmed_block.l1_da_mode.into(),
-            transactions: pre_confirmed_block.transactions,
+            transactions: pre_confirmed_transactions,
             transaction_receipts,
         };
 
@@ -295,7 +306,7 @@ impl PendingData {
             Box::new(data)
         });
 
-        Self {
+        Ok(Self {
             block: Arc::new(PendingBlockVariant::PreConfirmed {
                 block: pre_confirmed_block.into(),
                 candidate_transactions,
@@ -303,7 +314,7 @@ impl PendingData {
             }),
             state_update: pre_confirmed_state_update,
             number: pre_confirmed_block_number,
-        }
+        })
     }
 
     fn empty_pending(latest: &BlockHeader) -> Self {
@@ -1407,7 +1418,8 @@ mod tests {
 
         // Convert the pre-confirmed block into pending data.
         let pending_data =
-            PendingData::from_pre_confirmed_block(pre_confirmed_block.into(), block_number);
+            PendingData::try_from_pre_confirmed_block(pre_confirmed_block.into(), block_number)
+                .unwrap();
 
         assert_eq!(pending_data.pending_block_number(), block_number);
 

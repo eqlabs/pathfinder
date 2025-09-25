@@ -685,16 +685,22 @@ async fn consumer(
                         .unwrap_or(number);
 
                     if next_block_number == latest_block_number + 1 {
-                        let pending = PendingData::from_pre_confirmed_and_pre_latest(
+                        match PendingData::try_from_pre_confirmed_and_pre_latest(
                             block,
                             number,
                             pre_latest_data,
-                        );
-                        let pre_latest_tx_count =
-                            pending.pre_latest_transactions().map(|txs| txs.len());
-                        let pre_confirmed_tx_count = pending.pending_transactions().len();
-                        pending_data.send_replace(pending);
-                        tracing::debug!(block_number = %number, %pre_confirmed_tx_count, ?pre_latest_tx_count, "Updated pre-confirmed data");
+                        ) {
+                            Ok(pending) => {
+                                let pre_latest_tx_count =
+                                    pending.pre_latest_transactions().map(|txs| txs.len());
+                                let pre_confirmed_tx_count = pending.pending_transactions().len();
+                                pending_data.send_replace(pending);
+                                tracing::debug!(block_number = %number, %pre_confirmed_tx_count, ?pre_latest_tx_count, "Updated pre-confirmed data");
+                            }
+                            Err(e) => {
+                                tracing::info!(block_number=%number, error=%e, "Failed to validate pre-confirmed data, skipping update");
+                            }
+                        }
                     }
 
                     None

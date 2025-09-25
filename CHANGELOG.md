@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pathfinder panics with "Block number Z is not in the range X..=Y" after starting up from an old Sepolia testnet database snapshot.
+- Pathfinder returns internal errors for some `starknet_getTransactionStatus` / `starknet_getTransactionReceipt` queries for transactions in the pre-confirmed block.
 
 ## [0.20.3] - 2025-09-09
 
