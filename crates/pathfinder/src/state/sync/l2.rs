@@ -261,11 +261,28 @@ where
                 // There is a race condition here: if the query for the signature was made
                 // _before_ the block was published -- but by the time we
                 // actually queried for the block it was there. In this case
-                // we just retry the signature download.
+                // we just retry the signature download until we get it.
                 let t_signature = std::time::Instant::now();
-                let signature = sequencer.signature(next.into()).await.with_context(|| {
-                    format!("Fetch signature for block {next:?} from sequencer")
-                })?;
+                let signature = loop {
+                    match sequencer.signature(next.into()).await {
+                        Ok(s) => {
+                            break s;
+                        }
+                        Err(SequencerError::StarknetError(err))
+                            if err.code
+                                == starknet_gateway_types::error::KnownStarknetErrorCode::BlockNotFound
+                                    .into() =>
+                        {
+                            // Wait a bit and retry
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            continue;
+                        }
+                        Err(err) => {
+                                            return Err(err)
+                            .context(format!("Fetch signature for block {next:?} from sequencer"))
+                        }
+                    }
+                };
                 (signature, t_signature.elapsed())
             }
             Err(err) => {
