@@ -4,14 +4,17 @@ use malachite_types::Height as _;
 use super::malachite::{Height, MalachiteContext};
 use crate::internal::ValidatorAddress;
 use crate::wal::WalEntry;
-use crate::{SignedProposal, SignedVote};
+use crate::{ProposerSelector, SignedProposal, SignedVote};
 
 // This is necessary because unfortunately most malachite types are not
 // serializable.
-impl<V: crate::ValuePayload, A: crate::ValidatorAddress>
-    From<MalachiteWalEntry<MalachiteContext<V, A>>> for WalEntry<V, A>
+impl<
+        V: crate::ValuePayload,
+        A: crate::ValidatorAddress,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > From<MalachiteWalEntry<MalachiteContext<V, A, P>>> for WalEntry<V, A>
 {
-    fn from(entry: MalachiteWalEntry<MalachiteContext<V, A>>) -> Self {
+    fn from(entry: MalachiteWalEntry<MalachiteContext<V, A, P>>) -> Self {
         match entry {
             MalachiteWalEntry::ConsensusMsg(msg) => {
                 let signature = *msg.signature();
@@ -74,9 +77,13 @@ impl<V, A> From<malachite_types::Timeout> for WalEntry<V, A> {
 }
 
 /// Convert a WAL entry to the corresponding malachite Input.
-pub(crate) fn convert_wal_entry_to_input<V: crate::ValuePayload, A: crate::ValidatorAddress>(
+pub(crate) fn convert_wal_entry_to_input<
+    V: crate::ValuePayload,
+    A: crate::ValidatorAddress,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+>(
     entry: WalEntry<V, A>,
-) -> Input<MalachiteContext<V, A>> {
+) -> Input<MalachiteContext<V, A, P>> {
     match entry {
         WalEntry::SignedProposal(proposal) => {
             tracing::debug!(

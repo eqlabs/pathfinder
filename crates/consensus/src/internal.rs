@@ -28,6 +28,7 @@ use crate::{
     ConsensusEvent,
     NetworkMessage,
     Proposal,
+    ProposerSelector,
     SignedProposal,
     SignedVote,
     ValidatorSet,
@@ -49,9 +50,12 @@ pub struct InternalParams<A> {
 ///
 /// We spawn a new instance of this entity for each height, as we might be
 /// involved in multiple consensus processes at the same time.
-pub struct InternalConsensus<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-{
-    state: State<MalachiteContext<V, A>>,
+pub struct InternalConsensus<
+    V: crate::ValuePayload + 'static,
+    A: crate::ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+> {
+    state: State<MalachiteContext<V, A, P>>,
     metrics: malachite_metrics::Metrics,
     input_queue: VecDeque<ConsensusCommand<V, A>>,
     output_queue: VecDeque<ConsensusEvent<V, A>>,
@@ -59,13 +63,17 @@ pub struct InternalConsensus<V: crate::ValuePayload + 'static, A: crate::Validat
     wal: Box<dyn WalSink<V, A>>,
 }
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    InternalConsensus<V, A>
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > InternalConsensus<V, A, P>
 {
     pub fn new(
         params: InternalParams<A>,
         timeout_values: TimeoutValues,
         wal: Box<dyn WalSink<V, A>>,
+        proposer_selector: P,
     ) -> Self {
         let params = Params {
             initial_height: Height::new(params.height),
@@ -75,7 +83,7 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
             value_payload: params.value_payload,
         };
 
-        let state = State::new(MalachiteContext::default(), params, 128);
+        let state = State::new(MalachiteContext::new(proposer_selector), params, 128);
         Self {
             state,
             metrics: Default::default(),
@@ -216,8 +224,8 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
     #[allow(clippy::result_large_err)]
     fn process_input(
         &mut self,
-        input: Input<MalachiteContext<V, A>>,
-    ) -> Result<(), Error<MalachiteContext<V, A>>> {
+        input: Input<MalachiteContext<V, A, P>>,
+    ) -> Result<(), Error<MalachiteContext<V, A, P>>> {
         let output = &mut self.output_queue;
         let validator_set = self.state.validator_set().clone();
 
@@ -232,13 +240,17 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
 
 #[allow(clippy::result_large_err)]
 #[allow(clippy::type_complexity)]
-fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
-    effect: Effect<MalachiteContext<V, A>>,
+fn handle_effect<
+    V: crate::ValuePayload + 'static,
+    A: crate::ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+>(
+    effect: Effect<MalachiteContext<V, A, P>>,
     validator_set: &malachite::ValidatorSet<V, A>,
     timeout_manager: &mut TimeoutManager,
     wal: &mut Box<dyn WalSink<V, A>>,
     output_queue: &mut VecDeque<ConsensusEvent<V, A>>,
-) -> Result<Resume<MalachiteContext<V, A>>, Error<MalachiteContext<V, A>>> {
+) -> Result<Resume<MalachiteContext<V, A, P>>, Error<MalachiteContext<V, A, P>>> {
     match effect {
         // Start a new round.
         Effect::StartRound(height, round, address, role, resume) => {
@@ -418,8 +430,12 @@ fn handle_effect<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 
 }
 
 /// Convert a signed consensus message to a consensus event.
-fn create_event<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
-    msg: SignedConsensusMsg<MalachiteContext<V, A>>,
+fn create_event<
+    V: crate::ValuePayload + 'static,
+    A: crate::ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+>(
+    msg: SignedConsensusMsg<MalachiteContext<V, A, P>>,
 ) -> ConsensusEvent<V, A> {
     use crate::NetworkMessage;
 
@@ -435,15 +451,23 @@ fn create_event<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + '
 }
 
 /// Convert a signed vote to a Malachite signed vote.
-fn convert_vote_in<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
+fn convert_vote_in<
+    V: crate::ValuePayload + 'static,
+    A: crate::ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+>(
     vote: SignedVote<V, A>,
-) -> malachite_types::SignedVote<MalachiteContext<V, A>> {
+) -> malachite_types::SignedVote<MalachiteContext<V, A, P>> {
     malachite_types::SignedVote::new(vote.vote.into(), vote.signature)
 }
 
 /// Convert a Malachite signed vote to a signed vote.
-fn convert_vote_out<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>(
-    vote: malachite_types::SignedVote<MalachiteContext<V, A>>,
+fn convert_vote_out<
+    V: crate::ValuePayload + 'static,
+    A: crate::ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+>(
+    vote: malachite_types::SignedVote<MalachiteContext<V, A, P>>,
 ) -> SignedVote<V, A> {
     SignedVote {
         vote: vote.message.into(),

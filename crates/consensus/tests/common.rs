@@ -1,7 +1,13 @@
 use std::fmt::Display;
 use std::time::Duration;
 
-use pathfinder_consensus::{Consensus, ConsensusEvent, ValidatorAddress, ValuePayload};
+use pathfinder_consensus::{
+    Consensus,
+    ConsensusEvent,
+    ProposerSelector,
+    ValidatorAddress,
+    ValuePayload,
+};
 use serde::{Deserialize, Serialize};
 use tokio::time::advance;
 use tracing_subscriber::EnvFilter;
@@ -35,8 +41,13 @@ impl Display for ConsensusValue {
 /// Advances simulated time and polls `Consensus` until a matching event is seen
 /// or max attempts are hit. Returns the matching event if found.
 #[allow(dead_code)]
-pub async fn drive_until<V: ValuePayload + 'static, A: ValidatorAddress + 'static, F>(
-    consensus: &mut Consensus<V, A>,
+pub async fn drive_until<
+    V: ValuePayload + 'static,
+    A: ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+    F,
+>(
+    consensus: &mut Consensus<V, A, P>,
     tick: Duration,
     max_attempts: usize,
     mut match_fn: F,

@@ -67,20 +67,57 @@
 //!     }
 //! }
 //!
+//! // Custom proposer selector that uses weighted selection
+//! #[derive(Clone)]
+//! struct WeightedProposerSelector;
+//!
+//! impl ProposerSelector<MyAddress> for WeightedProposerSelector {
+//!     fn select_proposer<'a>(
+//!         &self,
+//!         validator_set: &'a ValidatorSet<MyAddress>,
+//!         _height: u64,
+//!         round: u32,
+//!     ) -> &'a Validator<MyAddress> {
+//!         // Simple weighted selection based on voting power
+//!         let total_power: u64 = validator_set
+//!             .validators
+//!             .iter()
+//!             .map(|v| v.voting_power)
+//!             .sum();
+//!         let selection = (round as u64) % total_power;
+//!
+//!         let mut cumulative = 0;
+//!         for validator in &validator_set.validators {
+//!             cumulative += validator.voting_power;
+//!             if selection < cumulative {
+//!                 return validator;
+//!             }
+//!         }
+//!
+//!         // Fallback to first validator
+//!         &validator_set.validators[0]
+//!     }
+//! }
+//!
 //! #[tokio::main]
 //! async fn main() {
 //!     // Create configuration
 //!     let my_address = MyAddress("validator_1".to_string());
 //!     let config = Config::new(my_address.clone());
 //!
-//!     // Create consensus engine
-//!     let mut consensus = Consensus::new(config);
+//!     // Create consensus engine with custom proposer selector
+//!     let proposer_selector = WeightedProposerSelector;
+//!     let mut consensus = Consensus::new(config).with_proposer_selector(proposer_selector);
+//!
+//!     // Or use the default round-robin selector (no additional configuration needed)
+//!     // let mut consensus = Consensus::new(config);
 //!
 //!     // Start consensus at height 1
 //!     let validator_set = ValidatorSet::new(vec![Validator::new(
 //!         my_address.clone(),
 //!         PublicKey::from_bytes([0; 32]),
-//!     )]);
+//!     )
+//!     .with_voting_power(10)]);
 //!
 //!     consensus.handle_command(ConsensusCommand::StartHeight(1, validator_set));
 //!
@@ -233,17 +270,19 @@ impl<T> ValuePayload for T where
 {
 }
 
-/// Pathfinder consensus engine.
+/// # Pathfinder consensus engine
 ///
 /// This is the main consensus engine for Starknet nodes that implements
 /// Byzantine Fault Tolerant (BFT) consensus using the Malachite implementation
-/// of Tendermint. It's generic over validator addresses and consensus values,
-/// making it suitable for Starknet's consensus requirements.
+/// of Tendermint. It's generic over validator addresses, consensus values, and
+/// proposer selection algorithms, making it suitable for Starknet's consensus
+/// requirements.
 ///
 /// ## Generic Parameters
 ///
 /// - `V`: Your consensus value type (must implement `ValuePayload`)
 /// - `A`: Your validator address type (must implement `ValidatorAddress`)
+/// - `P`: Your proposer selector type (must implement `ProposerSelector<A>`)
 ///
 /// ## Usage
 ///
@@ -260,22 +299,42 @@ impl<T> ValuePayload for T where
 /// }
 /// ```
 ///
+/// ## Custom Proposer Selection
+///
+/// To use a custom proposer selector:
+///
+/// ```rust
+/// let config = Config::new(my_address);
+/// let custom_selector = WeightedProposerSelector;
+/// let mut consensus = Consensus::new(config).with_proposer_selector(custom_selector);
+/// ```
+///
 /// ## Crash Recovery
 ///
 /// The consensus engine supports crash recovery through write-ahead logging:
 ///
 /// ```rust
 /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-/// let mut consensus = Consensus::recover(config, validator_sets);
+/// let mut consensus = Consensus::recover(config, validator_sets)?;
 /// ```
-pub struct Consensus<V: ValuePayload + 'static, A: ValidatorAddress + 'static> {
-    internal: HashMap<u64, InternalConsensus<V, A>>,
+pub struct Consensus<
+    V: ValuePayload + 'static,
+    A: ValidatorAddress + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+> {
+    internal: HashMap<u64, InternalConsensus<V, A, P>>,
     event_queue: VecDeque<ConsensusEvent<V, A>>,
     config: Config<A>,
+    proposer_selector: P,
     min_kept_height: Option<u64>,
 }
 
-impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
+impl<
+        V: ValuePayload + 'static,
+        A: ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > Consensus<V, A, P>
+{
     /// Create a new consensus engine for the current validator.
     ///
     /// ## Arguments
@@ -289,12 +348,42 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     /// let config = Config::new(my_address);
     /// let mut consensus = Consensus::new(config);
     /// ```
-    pub fn new(config: Config<A>) -> Self {
-        Self {
+    pub fn new(config: Config<A>) -> DefaultConsensus<V, A> {
+        Consensus {
             internal: HashMap::new(),
             event_queue: VecDeque::new(),
             config,
+            proposer_selector: RoundRobinProposerSelector,
             min_kept_height: None,
+        }
+    }
+
+    /// Set the proposer selector for this consensus engine.
+    ///
+    /// This method consumes `self` and returns a new `Consensus` instance
+    /// with the specified proposer selector.
+    ///
+    /// ## Arguments
+    ///
+    /// - `proposer_selector`: The proposer selection algorithm to use
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// let config = Config::new(my_address);
+    /// let custom_selector = WeightedProposerSelector;
+    /// let mut consensus = Consensus::new(config).with_proposer_selector(custom_selector);
+    /// ```
+    pub fn with_proposer_selector<PS: ProposerSelector<A> + Send + Sync + 'static>(
+        self,
+        proposer_selector: PS,
+    ) -> Consensus<V, A, PS> {
+        Consensus {
+            internal: HashMap::new(),
+            event_queue: VecDeque::new(),
+            config: self.config,
+            proposer_selector,
+            min_kept_height: self.min_kept_height,
         }
     }
 
@@ -313,12 +402,12 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
     ///
     /// ```rust
     /// let validator_sets = Arc::new(StaticValidatorSetProvider::new(validator_set));
-    /// let mut consensus = Consensus::recover(config, validator_sets);
+    /// let mut consensus = Consensus::recover(config, validator_sets)?;
     /// ```
-    pub fn recover<P: ValidatorSetProvider<A> + 'static>(
+    pub fn recover<VS: ValidatorSetProvider<A> + 'static>(
         config: Config<A>,
-        validator_sets: Arc<P>,
-    ) -> anyhow::Result<Self> {
+        validator_sets: Arc<VS>,
+    ) -> anyhow::Result<DefaultConsensus<V, A>> {
         use crate::wal::recovery;
 
         tracing::info!(
@@ -380,7 +469,7 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
         &mut self,
         height: u64,
         validator_set: &ValidatorSet<A>,
-    ) -> InternalConsensus<V, A> {
+    ) -> InternalConsensus<V, A, P> {
         let params = InternalParams {
             height,
             validator_set: validator_set.clone(),
@@ -404,7 +493,12 @@ impl<V: ValuePayload + 'static, A: ValidatorAddress + 'static> Consensus<V, A> {
         };
 
         // A new consensus is created for every new height.
-        InternalConsensus::new(params, self.config.timeout_values.clone(), wal)
+        InternalConsensus::new(
+            params,
+            self.config.timeout_values.clone(),
+            wal,
+            self.proposer_selector.clone(),
+        )
     }
 
     /// Feed a command into the consensus engine.
@@ -961,6 +1055,79 @@ impl<V: Debug, A: Debug> std::fmt::Debug for ConsensusEvent<V, A> {
 pub trait ValidatorSetProvider<A> {
     fn get_validator_set(&self, height: u64) -> Result<ValidatorSet<A>, anyhow::Error>;
 }
+
+/// A trait for selecting the proposer for a given height and round.
+///
+/// This trait allows consumers to provide custom proposer selection logic
+/// instead of using the default round-robin approach. This is useful for
+/// implementing more sophisticated proposer selection algorithms like
+/// VRF-based selection, weighted selection, or other custom logic.
+///
+/// ## Example Implementation
+///
+/// ```rust
+/// use pathfinder_consensus::*;
+///
+/// struct RoundRobinProposerSelector;
+///
+/// impl<A: ValidatorAddress> ProposerSelector<A> for RoundRobinProposerSelector {
+///     fn select_proposer<'a>(
+///         &self,
+///         validator_set: &'a ValidatorSet<A>,
+///         height: u64,
+///         round: u32,
+///     ) -> &'a Validator<A> {
+///         let index = round as usize % validator_set.count();
+///         &validator_set.validators[index]
+///     }
+/// }
+/// ```
+pub trait ProposerSelector<A: ValidatorAddress>: Clone + Send + Sync {
+    /// Select the proposer for the given height and round.
+    ///
+    /// ## Arguments
+    ///
+    /// - `validator_set`: The set of validators eligible to propose
+    /// - `height`: The blockchain height
+    /// - `round`: The consensus round number
+    ///
+    /// ## Returns
+    ///
+    /// Returns a reference to the selected validator who should propose
+    /// for the given height and round.
+    fn select_proposer<'a>(
+        &self,
+        validator_set: &'a ValidatorSet<A>,
+        height: u64,
+        round: u32,
+    ) -> &'a Validator<A>;
+}
+
+/// A default proposer selector that uses round-robin selection.
+///
+/// This is the default proposer selection algorithm that selects proposers
+/// in a round-robin fashion based on the round number modulo the number of
+/// validators.
+#[derive(Clone, Default)]
+pub struct RoundRobinProposerSelector;
+
+impl<A: ValidatorAddress> ProposerSelector<A> for RoundRobinProposerSelector {
+    fn select_proposer<'a>(
+        &self,
+        validator_set: &'a ValidatorSet<A>,
+        _height: u64,
+        round: u32,
+    ) -> &'a Validator<A> {
+        let index = round as usize % validator_set.count();
+        &validator_set.validators[index]
+    }
+}
+
+/// A type alias for consensus with the default round-robin proposer selector.
+///
+/// This provides a convenient way to create consensus instances without
+/// specifying the proposer selector type.
+pub type DefaultConsensus<V, A> = Consensus<V, A, RoundRobinProposerSelector>;
 
 /// A validator set provider that always returns the same validator set.
 ///

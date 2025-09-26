@@ -71,7 +71,8 @@ async fn consensus_simulation() {
             while current_height <= NUM_HEIGHTS {
                 let height = current_height;
                 let config = Config::new(addr.clone()).with_wal_dir(wal_dir.clone());
-                let mut consensus = Consensus::new(config);
+                let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+                    DefaultConsensus::new(config);
                 consensus
                     .handle_command(ConsensusCommand::StartHeight(height, validator_set.clone()));
 

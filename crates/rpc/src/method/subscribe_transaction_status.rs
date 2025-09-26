@@ -991,17 +991,20 @@ mod tests {
     async fn transaction_found_in_pre_confirmed_block() {
         test_transaction_status_streaming(|subscription_id| {
             vec![
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(2)),
-                            variant: Default::default(),
-                        }],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 1,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(2)),
+                                variant: Default::default(),
+                            }],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 1,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 1,
@@ -1010,26 +1013,29 @@ mod tests {
                     }
                     .into(),
                 ),
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
-                            variant: Default::default(),
-                        }],
-                        // The fact that the receipt is present for this transaction means that it
-                        // belongs to the pre-confirmed block.
-                        transaction_receipts: vec![Some((
-                            Receipt {
-                                transaction_hash: TARGET_TX_HASH,
-                                ..Default::default()
-                            },
-                            vec![],
-                        ))],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 2,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TARGET_TX_HASH,
+                                variant: Default::default(),
+                            }],
+                            // The fact that the receipt is present for this transaction means that
+                            // it belongs to the pre-confirmed block.
+                            transaction_receipts: vec![Some((
+                                Receipt {
+                                    transaction_hash: TARGET_TX_HASH,
+                                    ..Default::default()
+                                },
+                                vec![],
+                            ))],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 2,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 2,
@@ -1086,17 +1092,20 @@ mod tests {
     async fn transaction_found_in_pre_latest_and_and_l2_block_sends_update_once() {
         test_transaction_status_streaming(|subscription_id| {
             vec![
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(2)),
-                            variant: Default::default(),
-                        }],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 1,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(2)),
+                                variant: Default::default(),
+                            }],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 1,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 1,
@@ -1105,26 +1114,29 @@ mod tests {
                     }
                     .into(),
                 ),
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
-                            variant: Default::default(),
-                        }],
-                        // The fact that the receipt is present for this transaction means that it
-                        // belongs to the pre-confirmed block.
-                        transaction_receipts: vec![Some((
-                            Receipt {
-                                transaction_hash: TARGET_TX_HASH,
-                                ..Default::default()
-                            },
-                            vec![],
-                        ))],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 2,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TARGET_TX_HASH,
+                                variant: Default::default(),
+                            }],
+                            // The fact that the receipt is present for this transaction means that
+                            // it belongs to the pre-confirmed block.
+                            transaction_receipts: vec![Some((
+                                Receipt {
+                                    transaction_hash: TARGET_TX_HASH,
+                                    ..Default::default()
+                                },
+                                vec![],
+                            ))],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 2,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
                     "method": "starknet_subscriptionTransactionStatus",
@@ -1139,61 +1151,64 @@ mod tests {
                         "subscription_id": subscription_id
                     }
                 })),
-                TestEvent::Pending(PendingData::from_pre_confirmed_and_pre_latest(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(3)),
-                            variant: Default::default(),
-                        }],
-                        transaction_receipts: vec![Some((
-                            Receipt {
-                                transaction_hash: TransactionHash(Felt::from_u64(3)),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_and_pre_latest(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(3)),
+                                variant: Default::default(),
+                            }],
+                            transaction_receipts: vec![Some((
+                                Receipt {
+                                    transaction_hash: TransactionHash(Felt::from_u64(3)),
+                                    ..Default::default()
+                                },
+                                vec![],
+                            ))],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 3,
+                        Some(Box::new((
+                            // Previous block promoted to pre-latest.
+                            BlockNumber::GENESIS + 2,
+                            PreLatestBlock {
+                                parent_hash: BlockHash(Felt::from_u64(2)),
+                                transaction_receipts: vec![
+                                    (
+                                        Receipt {
+                                            transaction_hash: TARGET_TX_HASH,
+                                            ..Default::default()
+                                        },
+                                        vec![],
+                                    ),
+                                    // Random tx receipt.
+                                    (
+                                        Receipt {
+                                            transaction_hash: TransactionHash(Felt::from_u64(123)),
+                                            ..Default::default()
+                                        },
+                                        vec![],
+                                    ),
+                                ],
+                                transactions: vec![
+                                    Transaction {
+                                        hash: TARGET_TX_HASH,
+                                        variant: Default::default(),
+                                    },
+                                    // Random transaction.
+                                    Transaction {
+                                        hash: TransactionHash(Felt::from_u64(123)),
+                                        variant: Default::default(),
+                                    },
+                                ],
                                 ..Default::default()
                             },
-                            vec![],
-                        ))],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 3,
-                    Some(Box::new((
-                        // Previous block promoted to pre-latest.
-                        BlockNumber::GENESIS + 2,
-                        PreLatestBlock {
-                            parent_hash: BlockHash(Felt::from_u64(2)),
-                            transaction_receipts: vec![
-                                (
-                                    Receipt {
-                                        transaction_hash: TARGET_TX_HASH,
-                                        ..Default::default()
-                                    },
-                                    vec![],
-                                ),
-                                // Random tx receipt.
-                                (
-                                    Receipt {
-                                        transaction_hash: TransactionHash(Felt::from_u64(123)),
-                                        ..Default::default()
-                                    },
-                                    vec![],
-                                ),
-                            ],
-                            transactions: vec![
-                                Transaction {
-                                    hash: TARGET_TX_HASH,
-                                    variant: Default::default(),
-                                },
-                                // Random transaction.
-                                Transaction {
-                                    hash: TransactionHash(Felt::from_u64(123)),
-                                    variant: Default::default(),
-                                },
-                            ],
-                            ..Default::default()
-                        },
-                        StateUpdate::default(),
-                    ))),
-                )),
+                            StateUpdate::default(),
+                        ))),
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::Message(serde_json::json!({
                     "jsonrpc": "2.0",
                     "method": "starknet_subscriptionTransactionStatus",
@@ -1237,17 +1252,20 @@ mod tests {
     async fn transaction_found_in_candidate_transactions() {
         test_transaction_status_streaming(|subscription_id| {
             vec![
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TransactionHash(Felt::from_u64(2)),
-                            variant: Default::default(),
-                        }],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 1,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TransactionHash(Felt::from_u64(2)),
+                                variant: Default::default(),
+                            }],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 1,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 1,
@@ -1256,20 +1274,23 @@ mod tests {
                     }
                     .into(),
                 ),
-                TestEvent::Pending(PendingData::from_pre_confirmed_block(
-                    PreConfirmedBlock {
-                        transactions: vec![Transaction {
-                            hash: TARGET_TX_HASH,
-                            variant: Default::default(),
-                        }],
-                        // The fact that the receipt is missing for this transaction means that it
-                        // belongs to the candidate transactions.
-                        transaction_receipts: vec![None],
-                        ..Default::default()
-                    }
-                    .into(),
-                    BlockNumber::GENESIS + 2,
-                )),
+                TestEvent::Pending(
+                    PendingData::try_from_pre_confirmed_block(
+                        PreConfirmedBlock {
+                            transactions: vec![Transaction {
+                                hash: TARGET_TX_HASH,
+                                variant: Default::default(),
+                            }],
+                            // The fact that the receipt is missing for this transaction means that
+                            // it belongs to the candidate transactions.
+                            transaction_receipts: vec![None],
+                            ..Default::default()
+                        }
+                        .into(),
+                        BlockNumber::GENESIS + 2,
+                    )
+                    .unwrap(),
+                ),
                 TestEvent::L2Block(
                     Block {
                         block_number: BlockNumber::GENESIS + 2,

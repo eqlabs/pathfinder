@@ -2,18 +2,10 @@ use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 
 use malachite_signing_ed25519::Ed25519;
-use malachite_types::{
-    Height as _,
-    NilOrVal,
-    Round,
-    SignedExtension,
-    ValidatorSet as MalachiteValidatorSet,
-    ValueId,
-    VoteType,
-};
+use malachite_types::{Height as _, NilOrVal, Round, SignedExtension, ValueId, VoteType};
 use serde::{Deserialize, Serialize};
 
-use crate::{PublicKey, VotingPower};
+use crate::{ProposerSelector, PublicKey, VotingPower};
 
 /// A validator address used to identify participants in the consensus protocol.
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Copy, Default, Hash, Serialize, Deserialize)]
@@ -144,8 +136,11 @@ impl<V, A> From<Proposal<V, A>> for crate::Proposal<V, A> {
     }
 }
 
-impl<A: crate::ValidatorAddress + 'static, V: crate::ValuePayload + 'static>
-    malachite_types::Proposal<MalachiteContext<V, A>> for Proposal<V, A>
+impl<
+        A: crate::ValidatorAddress + 'static,
+        V: crate::ValuePayload + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::Proposal<MalachiteContext<V, A, P>> for Proposal<V, A>
 {
     fn height(&self) -> Height {
         self.height
@@ -177,8 +172,11 @@ impl<A: crate::ValidatorAddress + 'static, V: crate::ValuePayload + 'static>
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(super) struct ProposalPart;
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    malachite_types::ProposalPart<MalachiteContext<V, A>> for ProposalPart
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::ProposalPart<MalachiteContext<V, A, P>> for ProposalPart
 {
     fn is_first(&self) -> bool {
         false
@@ -207,8 +205,11 @@ impl<A> From<crate::Validator<A>> for Validator<A> {
     }
 }
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    malachite_types::Validator<MalachiteContext<V, A>> for Validator<A>
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::Validator<MalachiteContext<V, A, P>> for Validator<A>
 {
     fn address(&self) -> &ValidatorAddress<A> {
         &self.address
@@ -243,8 +244,11 @@ impl<V, A> From<crate::ValidatorSet<A>> for ValidatorSet<V, A> {
     }
 }
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    malachite_types::ValidatorSet<MalachiteContext<V, A>> for ValidatorSet<V, A>
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::ValidatorSet<MalachiteContext<V, A, P>> for ValidatorSet<V, A>
 {
     fn count(&self) -> usize {
         self.validators.len()
@@ -333,8 +337,11 @@ impl<V, A> From<Vote<V, A>> for crate::Vote<V, A> {
     }
 }
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    malachite_types::Vote<MalachiteContext<V, A>> for Vote<V, A>
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::Vote<MalachiteContext<V, A, P>> for Vote<V, A>
 {
     fn height(&self) -> Height {
         self.height
@@ -360,28 +367,67 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
         &self.validator_address
     }
 
-    fn extension(&self) -> Option<&SignedExtension<MalachiteContext<V, A>>> {
+    fn extension(&self) -> Option<&SignedExtension<MalachiteContext<V, A, P>>> {
         None
     }
 
-    fn take_extension(&mut self) -> Option<SignedExtension<MalachiteContext<V, A>>> {
+    fn take_extension(&mut self) -> Option<SignedExtension<MalachiteContext<V, A, P>>> {
         None
     }
 
-    fn extend(self, _extension: SignedExtension<MalachiteContext<V, A>>) -> Self {
+    fn extend(self, _extension: SignedExtension<MalachiteContext<V, A, P>>) -> Self {
         self
     }
 }
 
 /// The malachite context for the consensus logic.
-#[derive(Clone, Default)]
-pub(super) struct MalachiteContext<V: Send + Sync + 'static, A: Send + Sync + 'static> {
+pub(super) struct MalachiteContext<
+    V: Send + Sync + 'static,
+    A: crate::ValidatorAddress + Send + Sync + 'static,
+    P: ProposerSelector<A> + Send + Sync + 'static,
+> {
+    proposer_selector: P,
     _phantom_a: PhantomData<A>,
     _phantom_v: PhantomData<V>,
 }
 
-impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
-    malachite_types::Context for MalachiteContext<V, A>
+impl<
+        V: Send + Sync + 'static,
+        A: crate::ValidatorAddress + Send + Sync + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > MalachiteContext<V, A, P>
+{
+    pub fn new(proposer_selector: P) -> Self {
+        Self {
+            proposer_selector,
+            _phantom_a: PhantomData,
+            _phantom_v: PhantomData,
+        }
+    }
+}
+
+impl<
+        V: Send + Sync + 'static,
+        A: crate::ValidatorAddress + Send + Sync + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > Clone for MalachiteContext<V, A, P>
+where
+    P: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            proposer_selector: self.proposer_selector.clone(),
+            _phantom_a: PhantomData,
+            _phantom_v: PhantomData,
+        }
+    }
+}
+
+impl<
+        V: crate::ValuePayload + 'static,
+        A: crate::ValidatorAddress + 'static,
+        P: ProposerSelector<A> + Send + Sync + 'static,
+    > malachite_types::Context for MalachiteContext<V, A, P>
 {
     type Address = ValidatorAddress<A>;
     type Height = Height;
@@ -407,11 +453,31 @@ impl<V: crate::ValuePayload + 'static, A: crate::ValidatorAddress + 'static>
         round: Round,
     ) -> &'a Self::Validator {
         let round = round.as_u32().expect("round is not nil");
-        let num_validators = validator_set.count();
-        let index = round as usize % num_validators;
+
+        // Convert the malachite validator set to our public API validator set
+        let public_validator_set = crate::ValidatorSet {
+            validators: validator_set
+                .validators
+                .iter()
+                .map(|v| crate::Validator {
+                    address: v.address.clone().into_inner(),
+                    public_key: v.public_key,
+                    voting_power: v.voting_power,
+                })
+                .collect(),
+        };
+
+        // Use the proposer selector to select the proposer
+        let selected_validator =
+            self.proposer_selector
+                .select_proposer(&public_validator_set, height.as_u64(), round);
+
+        // Find the corresponding validator in the malachite validator set
         let proposer = validator_set
-            .get_by_index(index)
-            .expect("validator not found");
+            .validators
+            .iter()
+            .find(|v| v.address.clone().into_inner() == selected_validator.address)
+            .expect("selected validator not found in validator set");
 
         tracing::debug!(
             proposer = ?proposer,
