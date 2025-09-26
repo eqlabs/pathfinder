@@ -10,7 +10,7 @@
 //! 5. caches proposals that we received from other validators and may need to
 //!    be proposed by us in another round at the same height
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::Context;
@@ -29,10 +29,17 @@ use pathfinder_consensus::{
     SignedProposal,
     SignedVote,
 };
-use pathfinder_storage::{Storage, TransactionBehavior};
+use pathfinder_storage::{Storage, Transaction, TransactionBehavior};
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
+use crate::consensus::inner::persist_proposals::{
+    foreign_proposal_parts,
+    last_proposal_parts,
+    own_proposal_parts,
+    persist_proposal_parts,
+    remove_proposal_parts,
+};
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{
     FinalizedBlock,
@@ -53,17 +60,9 @@ pub fn spawn(
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
     fake_proposals_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    // Cache for proposals that we created and are waiting to be gossiped upon a
-    // command from the consensus engine. Once the proposal is gossiped, it is
-    // removed from the cache.
-    let mut my_proposals_cache = HashMap::new();
     // Cache for finalized blocks that we created from our proposals and are
     // waiting to be committed to the database once consensus is reached.
     let mut my_finalized_blocks_cache = HashMap::new();
-    // Cache for proposals that we received from other validators and may need to be
-    // proposed by us in another round at the same height. The proposals are removed
-    // either when we gossip them or when decision is made at the same height.
-    let mut incoming_proposals_cache = BTreeMap::new();
     // TODO validators are long-lived but not persisted
     let mut validator_cache = HashMap::new();
 
@@ -92,9 +91,9 @@ pub fn spawn(
                         Event::Proposal(height_and_round, proposal_part) => {
                             match handle_incoming_proposal_part(
                                 chain_id,
+                                &validator_address,
                                 height_and_round,
                                 proposal_part,
-                                &mut incoming_proposals_cache,
                                 &mut validator_cache,
                                 &storage,
                             )
@@ -162,9 +161,19 @@ pub fn spawn(
                          hash {proposal_commitment}"
                     );
 
-                    let duplicate_encountered = my_proposals_cache
-                        .insert(height_and_round, proposal_parts)
-                        .is_some();
+                    let mut db_conn = storage
+                        .connection()
+                        .context("Creating database connection")?;
+                    let db_tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    let duplicate_encountered = persist_proposal_parts(
+                        db_tx,
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &validator_address,
+                        &proposal_parts,
+                    )?;
                     my_finalized_blocks_cache.insert(height_and_round, finalized_block);
 
                     if duplicate_encountered {
@@ -181,9 +190,11 @@ pub fn spawn(
                             proposal.round.as_u32().expect("Valid round"),
                         );
 
-                        let proposal_parts = if let Some(proposal_parts) =
-                            my_proposals_cache.remove(&height_and_round)
-                        {
+                        let proposal_parts = if let Some(proposal_parts) = query_own_proposal_parts(
+                            &storage,
+                            height_and_round,
+                            &validator_address,
+                        )? {
                             // TODO we're assuming that all proposals are valid and any failure
                             // to reach consensus in round 0
                             // always yields re-proposing the same
@@ -196,25 +207,28 @@ pub fn spawn(
                             tracing::warn!(
                                 "Engine requested gossiping a proposal for {height_and_round} via \
                                  ConsensusEvent::Gossip but we did not create it due to missing \
-                                 respective ConsensusEvent::RequestProposal. my_proposals_cache: \
-                                 {my_proposals_cache:#?}, incoming_proposals_cache: \
-                                 {incoming_proposals_cache:#?}",
+                                 respective ConsensusEvent::RequestProposal.",
                             );
 
                             // The engine chose us for this round as proposer and requested that
                             // we gossip a proposal from a
                             // previous round.
-                            let mut prev_rounds_proposals = incoming_proposals_cache
-                                .remove(&proposal.height)
-                                .expect("Proposal was inserted into the cache");
                             // For now we just choose the proposal from the previous round, and
                             // the rest are kept for debugging
                             // purposes.
-                            let (round, mut proposal_parts) = prev_rounds_proposals
-                                .pop_last()
-                                .expect("At least one proposal from a previous round");
+                            let mut db_conn = storage
+                                .connection()
+                                .context("Creating database connection")?;
+                            let db_tx = db_conn
+                                .transaction()
+                                .context("Creating database transaction")?;
+                            let Some((round, mut proposal_parts)) =
+                                last_proposal_parts(&db_tx, proposal.height, &validator_address)?
+                            else {
+                                panic!("At least one proposal from a previous round");
+                            };
                             assert_eq!(
-                                round.as_u32().expect("Round not to be None") + 1,
+                                round + 1,
                                 proposal.round.as_u32().expect("Round not to be None")
                             );
                             let ProposalInit {
@@ -233,6 +247,14 @@ pub fn spawn(
                             assert_ne!(*proposer, Address(proposal.proposer.0));
                             *round = proposal.round.as_u32().expect("Round not to be None");
                             *proposer = Address(proposal.proposer.0);
+                            let proposer_address = ContractAddress(proposal.proposer.0);
+                            persist_proposal_parts(
+                                db_tx,
+                                proposal.height,
+                                *round,
+                                &proposer_address,
+                                &proposal_parts,
+                            )?;
                             proposal_parts
                         };
 
@@ -325,6 +347,7 @@ pub fn spawn(
                         }
                     };
 
+                    let cleanup_storage = storage.clone();
                     let storage = storage.clone();
                     let fake_proposals_storage = fake_proposals_storage.clone();
 
@@ -336,7 +359,19 @@ pub fn spawn(
 
                         assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
-                        commit_finalized_block(storage, finalized_block.clone())?;
+                        commit_finalized_block(storage.clone(), finalized_block.clone())?;
+                        let mut db_conn = storage
+                            .connection()
+                            .context("Creating database connection")?;
+                        let db_tx = db_conn
+                            .transaction()
+                            .context("Creating database transaction")?;
+                        remove_proposal_parts(
+                            db_tx,
+                            height_and_round.height(),
+                            Some(height_and_round.round()),
+                        )?;
+
                         // Necessary for proper fake proposal creation at next heights.
                         commit_finalized_block(fake_proposals_storage, finalized_block)?;
 
@@ -363,17 +398,13 @@ pub fn spawn(
                         height_and_round.height()
                     );
 
-                    let removed = incoming_proposals_cache
-                        .remove(&height_and_round.height())
-                        .unwrap_or_default()
-                        .into_keys()
-                        .map(|round| round.as_u32().expect("Round not to be None"))
-                        .collect::<Vec<_>>();
-                    tracing::debug!(
-                        "🖧  🗑️ {validator_address} removed incoming proposals from cache for \
-                         height {} and rounds: {removed:?}",
-                        height_and_round.height()
-                    );
+                    let mut db_conn = cleanup_storage
+                        .connection()
+                        .context("Creating database connection")?;
+                    let db_tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    remove_proposal_parts(db_tx, height_and_round.height(), None)?;
                 }
             }
         }
@@ -409,18 +440,39 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
     Ok(())
 }
 
+struct ConnectionWrapper<'a>(Transaction<'a>);
+
+// Declaring the transaction thread-safe obviously doesn't _make_ it
+// thread-safe - it still must not be used across await points, and
+// moreover it must be checked manually that it isn't used across
+// await points, because the compiler doesn't see that.
+unsafe impl Send for ConnectionWrapper<'_> {}
+
 async fn handle_incoming_proposal_part(
     chain_id: ChainId,
+    validator_address: &ContractAddress,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
     storage: &Storage,
 ) -> anyhow::Result<Option<(ProposalCommitment, ContractAddress)>> {
-    let height = height_and_round.height();
-    let round = height_and_round.round().into();
-    let proposals_at_height = cache.entry(height).or_default();
-    let parts = proposals_at_height.entry(round).or_default();
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let (mut parts, wrapper) = {
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        let parts = foreign_proposal_parts(
+            &db_tx,
+            height_and_round.height(),
+            height_and_round.round(),
+            validator_address,
+        )?
+        .unwrap_or_default();
+        (parts, ConnectionWrapper(db_tx))
+    };
+
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {
             if !parts.is_empty() {
@@ -433,6 +485,15 @@ async fn handle_incoming_proposal_part(
 
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
+            let proposer_address = ContractAddress(proposal_init.proposer.0);
+            let updated = persist_proposal_parts(
+                wrapper.0,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
@@ -462,6 +523,21 @@ async fn handle_incoming_proposal_part(
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
+            let ProposalPart::Init(ProposalInit { proposer, .. }) =
+                parts.first().expect("Proposal Init")
+            else {
+                unreachable!("Proposal Init is inserted first");
+            };
+
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                wrapper.0,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
             let db_conn = storage
                 .connection()
                 .context("Creating database connection")?;
@@ -498,6 +574,21 @@ async fn handle_incoming_proposal_part(
 
             let transactions = tx_batch.clone();
             parts.push(proposal_part);
+            let ProposalPart::Init(ProposalInit { proposer, .. }) =
+                parts.first().expect("Proposal Init")
+            else {
+                unreachable!("Proposal Init is inserted first");
+            };
+
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                wrapper.0,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
             let validator = util::task::spawn_blocking(move |_| {
                 validator.execute_transactions(transactions)?;
                 anyhow::Ok::<Box<ValidatorTransactionBatchStage>>(validator)
@@ -562,6 +653,16 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                wrapper.0,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
+
             let validator = util::task::spawn_blocking(move |_| {
                 let validator = validator.consensus_finalize(proposal_commitment)?;
                 anyhow::Ok::<ValidatorFinalizeStage>(validator)
@@ -616,4 +717,23 @@ fn consensus_vote_to_p2p_vote(
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
     }
+}
+
+fn query_own_proposal_parts(
+    storage: &Storage,
+    height_and_round: HeightAndRound,
+    validator_address: &ContractAddress,
+) -> anyhow::Result<Option<Vec<ProposalPart>>> {
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_tx = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    own_proposal_parts(
+        &db_tx,
+        height_and_round.height(),
+        height_and_round.round(),
+        validator_address,
+    )
 }
