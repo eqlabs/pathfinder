@@ -153,7 +153,6 @@ pub struct ValidatorTransactionBatchStage {
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
     block_executor: LazyBlockExecutor,
-    // deferred_transactions: VecDeque<Vec<p2p_proto::consensus::Transaction>>,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
