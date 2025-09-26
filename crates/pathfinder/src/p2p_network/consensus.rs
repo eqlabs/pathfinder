@@ -55,6 +55,8 @@ mod inner {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
+            max_read_bytes_per_sec: config.core.max_read_bytes_per_sec,
+            max_write_bytes_per_sec: config.core.max_write_bytes_per_sec,
             kad_name: config.core.kad_name,
         };
         let keypair = identity::load_or_generate(config.core.identity_config_file.clone())
