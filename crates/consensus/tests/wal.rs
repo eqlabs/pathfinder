@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use pathfinder_consensus::*;
+use pathfinder_consensus::{DefaultConsensus, *};
 use tokio::sync::mpsc;
 use tokio::time::{pause, sleep, Duration};
 use tracing::{debug, error, info};
@@ -65,7 +65,8 @@ async fn wal_concurrent_heights_retention_test() {
 
         let handle = tokio::spawn(async move {
             let config = Config::new(addr.clone()).with_wal_dir(wal_dir);
-            let mut consensus = Consensus::new(config);
+            let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+                DefaultConsensus::new(config);
             // Start all heights up front
             for current_height in 1..=NUM_HEIGHTS {
                 let height = current_height;
@@ -178,7 +179,6 @@ async fn recover_from_wal_restores_and_continues() {
 
     use pathfinder_consensus::{
         Config,
-        Consensus,
         ConsensusCommand,
         ConsensusEvent,
         Proposal,
@@ -212,7 +212,8 @@ async fn recover_from_wal_restores_and_continues() {
 
     // Create and run consensus to log data to WAL
     {
-        let mut consensus = Consensus::new(config.clone());
+        let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+            DefaultConsensus::new(config.clone());
         consensus.handle_command(ConsensusCommand::StartHeight(height, validators.clone()));
 
         // Expect RequestProposal for round 0
@@ -255,8 +256,8 @@ async fn recover_from_wal_restores_and_continues() {
     debug!("---------------------- Recovering from WAL ----------------------");
 
     // Now recover from WAL
-    let mut consensus: Consensus<ConsensusValue, NodeAddress> =
-        Consensus::recover(config.clone(), Arc::new(StaticSet(validators))).unwrap();
+    let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+        DefaultConsensus::recover(config.clone(), Arc::new(StaticSet(validators))).unwrap();
 
     debug!("------------ Driving consensus post WAL recovery ----------------");
 

@@ -33,10 +33,10 @@ use p2p::{P2PConsensusConfig, P2PSyncConfig};
 struct Cli {
     #[arg(
         long,
-        value_name = "DIR", 
+        value_name = "DIR",
         value_hint = clap::ValueHint::DirPath,
         long_help = "Directory where the node should store its data",
-        env = "PATHFINDER_DATA_DIRECTORY", 
+        env = "PATHFINDER_DATA_DIRECTORY",
         default_value_os_t = (&std::path::Component::CurDir).into()
     )]
     data_directory: PathBuf,
@@ -45,7 +45,7 @@ struct Cli {
         long = "ethereum.password",
         long_help = "The optional password to use for the Ethereum API",
         value_name = None,
-        env = "PATHFINDER_ETHEREUM_API_PASSWORD", 
+        env = "PATHFINDER_ETHEREUM_API_PASSWORD",
     )]
     ethereum_password: Option<String>,
 
@@ -58,7 +58,7 @@ Examples:
     geth:    wss://localhost:8545",
         value_name = "HTTP(s) URL",
         value_hint = clap::ValueHint::Url,
-        env = "PATHFINDER_ETHEREUM_API_URL", 
+        env = "PATHFINDER_ETHEREUM_API_URL",
     )]
     ethereum_url: Url,
 
@@ -76,7 +76,7 @@ Examples:
         long_help = r"Comma separated list of domains from which Cross-Origin requests will be accepted by the RPC server.
 
 Use '*' to indicate any domain and an empty list to disable CORS.
-        
+
 Examples:
     single: http://one.io
     a list: http://first.com,http://second.com:1234
@@ -119,7 +119,7 @@ Examples:
         long_help = "Enable SQLite write-ahead logging",
         action = clap::ArgAction::Set,
         default_value = "true",
-        env = "PATHFINDER_SQLITE_WAL", 
+        env = "PATHFINDER_SQLITE_WAL",
     )]
     sqlite_wal: bool,
 
@@ -329,7 +329,7 @@ This should only be enabled for debugging purposes as it adds substantial proces
     #[arg(
         long = "rpc.get-events-event-filter-block-range-limit",
         long_help = format!(
-            "The maximum number of blocks to be covered by aggregate Bloom filters when querying for events. Each filter covers a {} block range. 
+            "The maximum number of blocks to be covered by aggregate Bloom filters when querying for events. Each filter covers a {} block range.
             This limit is used to prevent queries from taking too long.",
             pathfinder_storage::AGGREGATE_BLOOM_BLOCK_RANGE_LEN
         ),
@@ -547,7 +547,7 @@ Note that 'custom' requires also setting the --gateway-url and --feeder-gateway-
         value_name = "URL",
         value_hint = clap::ValueHint::Url,
         long_help = "Specify a custom Starknet feeder gateway url. Can be used to run pathfinder on a custom Starknet network, or to use a gateway proxy. Requires '--network custom'.",
-        env = "PATHFINDER_FEEDER_GATEWAY_URL", 
+        env = "PATHFINDER_FEEDER_GATEWAY_URL",
         required_if_eq("network", Network::Custom),
     )]
     feeder_gateway: Option<Url>,
@@ -880,9 +880,12 @@ pub struct NativeExecutionConfig;
 #[cfg(feature = "p2p")]
 #[derive(Clone)]
 pub struct ConsensusConfig {
-    /// Initially there will only be one proposer, operated by StarkWare.
-    pub proposer_address: ContractAddress,
+    /// Optionally, you can specify a fixed proposer address. Otherwise,  a
+    /// proposer will be chosen among the validators.
+    pub proposer_address: Option<ContractAddress>,
+    /// The validator address of the current node.
     pub my_validator_address: ContractAddress,
+    /// The validator addresses of all validators in the validator set.
     pub validator_addresses: Vec<ContractAddress>,
 }
 
@@ -1022,10 +1025,7 @@ impl ConsensusConfig {
             }
 
             Self {
-                proposer_address: ContractAddress(
-                    args.proposer_address
-                        .expect("Required if `is_consensus_enabled` is true"),
-                ),
+                proposer_address: args.proposer_address.map(ContractAddress),
                 my_validator_address: ContractAddress(
                     args.my_validator_address
                         .expect("Required if `is_consensus_enabled` is true"),

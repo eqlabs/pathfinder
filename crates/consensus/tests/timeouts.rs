@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use pathfinder_consensus::{
     Config,
-    Consensus,
     ConsensusCommand,
     ConsensusEvent,
+    DefaultConsensus,
     Proposal,
     PublicKey,
     Round,
@@ -45,7 +45,8 @@ async fn single_node_propose_timeout_advances_round() {
 
     // Create consensus instance
     let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
-    let mut consensus: Consensus<ConsensusValue, NodeAddress> = Consensus::new(config);
+    let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+        DefaultConsensus::new(config);
     let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
@@ -98,7 +99,8 @@ async fn single_node_prevote_timeout_advances_round() {
 
     // Create consensus instance
     let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
-    let mut consensus = Consensus::new(config);
+    let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+        DefaultConsensus::new(config);
     let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
@@ -165,7 +167,8 @@ async fn single_node_precommit_timeout_advances_round() {
 
     // Create consensus instance
     let config = Config::new(addr.clone()).with_wal_dir(temp_dir);
-    let mut consensus = Consensus::new(config);
+    let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
+        DefaultConsensus::new(config);
     let height = 1;
     consensus.handle_command(ConsensusCommand::StartHeight(height, validators));
 
