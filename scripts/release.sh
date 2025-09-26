@@ -90,15 +90,33 @@ fi
 # Push changes
 git push --set-upstream origin release/v${VERSION}
 
-# Wait for manual PR creation and merge
-echo -e "\n"
-echo "=========================================="
-echo "Next steps:"
-echo "1. Create a PR for branch 'release/v${VERSION}'"
-echo "2. Review and merge the PR to 'main'"
-echo "3. Come back here and press Enter to continue"
-echo "=========================================="
-echo -e "\nPress Enter once the PR has been merged to continue..."
+# Try to create PR automatically if gh CLI is available
+if command -v gh &> /dev/null; then
+    echo -e "\nCreating PR automatically with gh CLI..."
+    if PR_URL=$(gh pr create --title "chore: bump version to ${VERSION}" --body "Automated release PR for version ${VERSION}" --base main --head release/v${VERSION} 2>/dev/null); then
+        echo "PR created: $PR_URL"
+        echo -e "\nPlease review and merge the PR, then come back here and press Enter to continue..."
+    else
+        echo "Failed to create PR with gh CLI. Falling back to manual instructions..."
+        echo -e "\n"
+        echo "=========================================="
+        echo "Next steps:"
+        echo "1. Create a PR for branch 'release/v${VERSION}'"
+        echo "2. Review and merge the PR to 'main'"
+        echo "3. Come back here and press Enter to continue"
+        echo "=========================================="
+        echo -e "\nPress Enter once the PR has been merged to continue..."
+    fi
+else
+    echo -e "\n"
+    echo "=========================================="
+    echo "Next steps:"
+    echo "1. Create a PR for branch 'release/v${VERSION}'"
+    echo "2. Review and merge the PR to 'main'"
+    echo "3. Come back here and press Enter to continue"
+    echo "=========================================="
+    echo -e "\nPress Enter once the PR has been merged to continue..."
+fi
 read -r
 
 # Switch to main and pull latest
