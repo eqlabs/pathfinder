@@ -35,7 +35,7 @@ mod test {
         const NUM_NODES: usize = 3;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(240);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
