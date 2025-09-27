@@ -98,24 +98,13 @@ pub fn spawn(
                             )
                             .await
                             {
-                                Ok(Some((proposal_commitment, proposer))) => {
-                                    let proposal = Proposal {
-                                        height: height_and_round.height(),
-                                        round: height_and_round.round().into(),
-                                        value: ConsensusValue(proposal_commitment),
-                                        pol_round: Round::nil(),
-                                        proposer,
-                                    };
-
-                                    let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                        proposal,
-                                        signature: Signature::test(),
-                                    });
-
-                                    tx_to_consensus
-                                        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                        .await
-                                        .expect("Receiver not to be dropped");
+                                Ok(Some(commitment)) => {
+                                    send_proposal_to_consensus(
+                                        &tx_to_consensus,
+                                        height_and_round,
+                                        commitment,
+                                    )
+                                    .await;
                                 }
                                 Ok(None) => {
                                     // Still waiting for more parts to complete
@@ -402,44 +391,39 @@ pub fn spawn(
                             anyhow::bail!("Wrong validator stage for height and round {hnr}",);
                         };
 
-                        let (validator, proposal_commitment_proposer) =
-                            util::task::spawn_blocking(move |_| {
-                                // Execute deferred transactions first.
-                                validator.execute_transactions(deferred.transactions)?;
+                        let (validator, commitment) = util::task::spawn_blocking(move |_| {
+                            // Execute deferred transactions first.
+                            validator.execute_transactions(deferred.transactions)?;
 
-                                anyhow::Ok(
-                                    if let Some((proposal_commitment, proposer)) =
-                                        deferred.proposal_commitment_proposer
-                                    {
-                                        // We've executed all transactions at the height, we can now
-                                        // finalize the proposal.
-                                        let validator =
-                                            validator.consensus_finalize(proposal_commitment)?;
-                                        tracing::debug!(
-                                            "🖧  ⚙️ executed deferred finalized consensus for \
-                                             height and round {hnr}"
-                                        );
+                            anyhow::Ok(if let Some(commitment) = deferred.commitment {
+                                // We've executed all transactions at the height, we can now
+                                // finalize the proposal.
+                                let validator =
+                                    validator.consensus_finalize(commitment.proposal_commitment)?;
+                                tracing::debug!(
+                                    "🖧  ⚙️ executed deferred finalized consensus for height and \
+                                     round {hnr}"
+                                );
 
-                                        (
-                                            ValidatorStage::Finalize(Box::new(validator)),
-                                            Some((proposal_commitment, proposer)),
-                                        )
-                                    } else {
-                                        tracing::debug!(
-                                            "🖧  ⚙️ executed deferred transactions for height and \
-                                             round {hnr}, no consensus finalize yet"
-                                        );
-
-                                        // We've only executed the transaction batches that we have
-                                        // but apparently we haven't received the entire proposal so
-                                        // the rest of the transaction batches could be still be
-                                        // coming from the network, definitely the proposal fin is
-                                        // still missing for sure.
-                                        (ValidatorStage::TransactionBatch(validator), None)
-                                    },
+                                (
+                                    ValidatorStage::Finalize(Box::new(validator)),
+                                    Some(commitment),
                                 )
+                            } else {
+                                tracing::debug!(
+                                    "🖧  ⚙️ executed deferred transactions for height and round \
+                                     {hnr}, no consensus finalize yet"
+                                );
+
+                                // We've only executed the transaction batches that we have
+                                // but apparently we haven't received the entire proposal so
+                                // the rest of the transaction batches could be still be
+                                // coming from the network, definitely the proposal fin is
+                                // still missing for sure.
+                                (ValidatorStage::TransactionBatch(validator), None)
                             })
-                            .await??;
+                        })
+                        .await??;
 
                         validator_cache.insert(hnr, validator);
 
@@ -447,31 +431,42 @@ pub fn spawn(
                         // about it. Otherwise the rest of the transaction batches could be still be
                         // coming from the network, definitely the proposal fin is still missing for
                         // sure.
-                        if let Some((proposal_commitment, proposer)) = proposal_commitment_proposer
-                        {
-                            let proposal = Proposal {
-                                height: hnr.height(),
-                                round: hnr.round().into(),
-                                value: ConsensusValue(ProposalCommitment(proposal_commitment.0)),
-                                pol_round: Round::nil(),
-                                proposer,
-                            };
-
-                            let cmd = ConsensusCommand::Proposal(SignedProposal {
-                                proposal,
-                                signature: Signature::test(),
-                            });
-
-                            tx_to_consensus
-                                .send(ConsensusTaskEvent::CommandFromP2P(cmd))
-                                .await
-                                .expect("Receiver not to be dropped");
+                        if let Some(commitment) = commitment {
+                            send_proposal_to_consensus(&tx_to_consensus, hnr, commitment).await;
                         }
                     }
                 }
             }
         }
     })
+}
+
+async fn send_proposal_to_consensus(
+    tx_to_consensus: &mpsc::Sender<ConsensusTaskEvent>,
+    height_and_round: HeightAndRound,
+    commitment: ProposalCommitmentWithOrigin,
+) {
+    let ProposalCommitmentWithOrigin {
+        proposal_commitment,
+        proposer_address,
+    } = commitment;
+    let proposal = Proposal {
+        height: height_and_round.height(),
+        round: height_and_round.round().into(),
+        value: ConsensusValue(proposal_commitment),
+        pol_round: Round::nil(),
+        proposer: proposer_address,
+    };
+
+    let cmd = ConsensusCommand::Proposal(SignedProposal {
+        proposal,
+        signature: Signature::test(),
+    });
+
+    tx_to_consensus
+        .send(ConsensusTaskEvent::CommandFromP2P(cmd))
+        .await
+        .expect("Receiver not to be dropped");
 }
 
 fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> anyhow::Result<()> {
@@ -510,7 +505,14 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
 #[derive(Debug, Clone, Default)]
 struct DeferredExecution {
     pub transactions: Vec<p2p_proto::consensus::Transaction>,
-    pub proposal_commitment_proposer: Option<(p2p_proto::common::Hash, ContractAddress)>,
+    pub commitment: Option<ProposalCommitmentWithOrigin>,
+}
+
+/// Proposal commitment and the address of its proposer.
+#[derive(Debug, Copy, Clone, Default)]
+struct ProposalCommitmentWithOrigin {
+    pub proposal_commitment: ProposalCommitment,
+    pub proposer_address: ContractAddress,
 }
 
 /// Handles an incoming proposal part received from the P2P network. Returns
@@ -532,7 +534,7 @@ async fn handle_incoming_proposal_part(
     validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
     deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     storage: Storage,
-) -> anyhow::Result<Option<(ProposalCommitment, ContractAddress)>> {
+) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let height = height_and_round.height();
     let round = height_and_round.round().into();
     let proposals_at_height = incoming_proposals_cache.entry(height).or_default();
@@ -616,24 +618,7 @@ async fn handle_incoming_proposal_part(
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
 
-            let storage = storage.clone();
-            let defer = util::task::spawn_blocking(move |_| {
-                let parent_block = height_and_round.height().checked_sub(1);
-                if let Some(parent_block) = parent_block {
-                    let parent_block = BlockNumber::new(parent_block)
-                        .context("Block number is larger than i64::MAX")?;
-                    let parent_block = BlockId::Number(parent_block);
-                    let mut db_conn = storage.connection()?;
-                    let db_txn = db_conn.transaction()?;
-                    let parent_committed = db_txn.block_exists(parent_block)?;
-                    Ok(!parent_committed)
-                } else {
-                    anyhow::Ok(false)
-                }
-            })
-            .await??;
-
-            let validator = if defer {
+            let validator = if should_defer_execution(height_and_round, storage).await? {
                 tracing::debug!(
                     "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
                      deferred"
@@ -744,24 +729,12 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
-            let storage = storage.clone();
-            let defer = util::task::spawn_blocking(move |_| {
-                let parent_block = height_and_round.height().checked_sub(1);
-                if let Some(parent_block) = parent_block {
-                    let parent_block = BlockNumber::new(parent_block)
-                        .context("Block number is larger than i64::MAX")?;
-                    let parent_block = BlockId::Number(parent_block);
-                    let mut db_conn = storage.connection()?;
-                    let db_txn = db_conn.transaction()?;
-                    let parent_committed = db_txn.block_exists(parent_block)?;
-                    Ok(!parent_committed)
-                } else {
-                    anyhow::Ok(false)
-                }
-            })
-            .await??;
+            let commitment = ProposalCommitmentWithOrigin {
+                proposal_commitment: ProposalCommitment(proposal_commitment.0),
+                proposer_address: ContractAddress(proposer.0),
+            };
 
-            if defer {
+            if should_defer_execution(height_and_round, storage).await? {
                 // The proposal cannot be finalized yet, because the previous
                 // block is not committed yet. Defer its finalization.
                 tracing::debug!(
@@ -771,8 +744,7 @@ async fn handle_incoming_proposal_part(
                 deferred_executions
                     .entry(height_and_round)
                     .or_default()
-                    .proposal_commitment_proposer =
-                    Some((proposal_commitment, ContractAddress(proposer.0)));
+                    .commitment = Some(commitment);
                 validator_cache.insert(
                     height_and_round,
                     ValidatorStage::TransactionBatch(validator),
@@ -789,7 +761,7 @@ async fn handle_incoming_proposal_part(
                     if let Some(DeferredExecution { transactions, .. }) = deferred {
                         validator.execute_transactions(transactions)?;
                     }
-                    let validator = validator.consensus_finalize(proposal_commitment)?;
+                    let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
                     anyhow::Ok(validator)
                 })
                 .await??;
@@ -804,10 +776,7 @@ async fn handle_incoming_proposal_part(
                      were executed",
                 );
 
-                Ok(Some((
-                    ProposalCommitment(proposal_commitment.0),
-                    ContractAddress(proposer.0),
-                )))
+                Ok(Some(commitment))
             }
         }
         ProposalPart::TransactionsFin(_transactions_fin) => {
@@ -815,6 +784,31 @@ async fn handle_incoming_proposal_part(
             Ok(None)
         }
     }
+}
+
+/// Determine whether execution of proposal parts for `height_and_round` should
+/// be deferred because the previous block is not committed yet.
+async fn should_defer_execution(
+    height_and_round: HeightAndRound,
+    storage: Storage,
+) -> anyhow::Result<bool> {
+    let defer = util::task::spawn_blocking(move |_| {
+        let parent_block = height_and_round.height().checked_sub(1);
+        let defer = if let Some(parent_block) = parent_block {
+            let parent_block =
+                BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
+            let parent_block = BlockId::Number(parent_block);
+            let mut db_conn = storage.connection()?;
+            let db_txn = db_conn.transaction()?;
+            let parent_committed = db_txn.block_exists(parent_block)?;
+            !parent_committed
+        } else {
+            false
+        };
+        anyhow::Ok(defer)
+    })
+    .await??;
+    Ok(defer)
 }
 
 fn p2p_vote_to_consensus_vote(

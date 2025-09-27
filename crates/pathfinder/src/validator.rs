@@ -4,13 +4,7 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
-use p2p_proto::common::Hash;
-use p2p_proto::consensus::{
-    BlockInfo,
-    ProposalCommitment,
-    ProposalInit,
-    TransactionVariant as ConsensusVariant,
-};
+use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
@@ -28,6 +22,7 @@ use pathfinder_common::{
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
+    ProposalCommitment,
     ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
@@ -320,7 +315,7 @@ impl ValidatorTransactionBatchStage {
 
     pub fn record_proposal_commitment(
         &mut self,
-        proposal_commitment: ProposalCommitment,
+        proposal_commitment: p2p_proto::consensus::ProposalCommitment,
     ) -> anyhow::Result<()> {
         let expected_block_header = BlockHeader {
             hash: BlockHash::ZERO,        // UNUSED
@@ -365,12 +360,12 @@ impl ValidatorTransactionBatchStage {
     /// expected one.
     pub fn consensus_finalize(
         self,
-        expected_proposal_commitment: Hash,
+        expected_proposal_commitment: ProposalCommitment,
     ) -> anyhow::Result<ValidatorFinalizeStage> {
         let next_stage = self.consensus_finalize0()?;
-        let actual_proposal_commitment = next_stage.header.state_diff_commitment.0;
+        let actual_proposal_commitment = next_stage.header.state_diff_commitment;
 
-        if actual_proposal_commitment == expected_proposal_commitment.0 {
+        if actual_proposal_commitment.0 == expected_proposal_commitment.0 {
             Ok(next_stage)
         } else {
             Err(anyhow::anyhow!(
