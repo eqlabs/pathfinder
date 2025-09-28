@@ -85,6 +85,11 @@ pub fn spawn(
                 P2PTaskEvent::P2PEvent(event) => {
                     tracing::info!("🖧  💌 {validator_address} incoming p2p event: {event:?}");
 
+                    if is_outdated_p2p_event(storage.clone(), &event).await? {
+                        // TODO consider punishing the sender if the event is too old
+                        continue;
+                    }
+
                     match event {
                         Event::Proposal(height_and_round, proposal_part) => {
                             match handle_incoming_proposal_part(
@@ -441,6 +446,33 @@ pub fn spawn(
     })
 }
 
+/// Check whether the incoming p2p event is outdated, i.e. it refers to a block
+/// that is already committed to the database. If so, log it and return `true`,
+/// otherwise return `false`.
+async fn is_outdated_p2p_event(storage: Storage, event: &Event) -> anyhow::Result<bool> {
+    // Ignore messages that refer to already committed blocks.
+    let incoming_height = event.height();
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_txn = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    let latest_committed = db_txn.block_number(BlockId::Latest)?;
+    if let Some(latest_committed) = latest_committed {
+        if incoming_height <= latest_committed.get() {
+            tracing::info!(
+                "🖧  ⛔ ignoring incoming p2p event {} for height {incoming_height} because latest \
+                 committed block is {latest_committed}",
+                event.type_name()
+            );
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Send a proposal for a given height and round to the consensus engine.
 async fn send_proposal_to_consensus(
     tx_to_consensus: &mpsc::Sender<ConsensusTaskEvent>,
     height_and_round: HeightAndRound,
@@ -469,6 +501,7 @@ async fn send_proposal_to_consensus(
         .expect("Receiver not to be dropped");
 }
 
+/// Commit the given finalized block to the database.
 fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> anyhow::Result<()> {
     let FinalizedBlock {
         header,
@@ -811,6 +844,7 @@ async fn should_defer_execution(
     Ok(defer)
 }
 
+/// Convert a vote from `p2p_proto` format to `pathfinder_consensus`` format.
 fn p2p_vote_to_consensus_vote(
     vote: p2p_proto::consensus::Vote,
 ) -> pathfinder_consensus::Vote<ConsensusValue, ContractAddress> {
@@ -828,6 +862,7 @@ fn p2p_vote_to_consensus_vote(
     }
 }
 
+/// Convert a vote from `pathfinder_consensus` format to `p2p_proto` format.
 fn consensus_vote_to_p2p_vote(
     vote: pathfinder_consensus::Vote<ConsensusValue, ContractAddress>,
 ) -> p2p_proto::consensus::Vote {

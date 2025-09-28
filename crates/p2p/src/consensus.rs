@@ -55,6 +55,24 @@ pub enum Event {
     Vote(Vote),
 }
 
+impl Event {
+    /// Returns the height associated with the event.
+    pub fn height(&self) -> u64 {
+        match self {
+            Event::Proposal(hnr, _) => hnr.height(),
+            Event::Vote(vote) => vote.block_number,
+        }
+    }
+
+    /// Returns a static string representing the type of event.
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Event::Proposal(_, _) => "Proposal",
+            Event::Vote(_) => "Vote",
+        }
+    }
+}
+
 /// The state of the consensus P2P network.
 #[derive(Default, Debug)]
 pub struct State {
