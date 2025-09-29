@@ -437,9 +437,6 @@ fn create_empty_proposal(
         next_l2_gas_price_fri: 3000,
         l1_da_mode: L1DataAvailabilityMode::Calldata,
     };
-    // let finalized_block = validator.finalize(storage)?;
-    // let proposal_commitment =
-    // Hash(finalized_block.header.state_diff_commitment.0);
 
     Ok((
         vec![
