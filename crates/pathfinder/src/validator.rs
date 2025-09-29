@@ -214,6 +214,8 @@ impl LazyBlockExecutor {
         }
     }
 
+    /// Takes the initialized [`BlockExecutor`], invoking
+    /// [`get_or_init()`](Self::get_or_init) if necessary.
     fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
         self.get_or_init()?;
         let LazyBlockExecutor::Initialized(be) = self else {
