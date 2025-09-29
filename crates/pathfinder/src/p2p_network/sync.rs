@@ -68,6 +68,8 @@ mod inner {
                 max: 10,
                 interval: Duration::from_secs(1),
             },
+            max_read_bytes_per_sec: config.core.max_read_bytes_per_sec,
+            max_write_bytes_per_sec: config.core.max_write_bytes_per_sec,
             kad_name: config.core.kad_name,
         };
         let sync_config = p2p::sync::Config {
@@ -75,7 +77,11 @@ mod inner {
             response_timeout: config.response_timeout,
             max_concurrent_streams: config.max_concurrent_streams,
         };
-        let keypair = identity::load_or_generate(config.core.identity_config_file)?;
+        let keypair = identity::load_or_generate(config.core.identity_config_file.clone())
+            .context(format!(
+                "Loading identity file: {:?}",
+                config.core.identity_config_file
+            ))?;
         let listen_on = config.core.listen_on;
         let bootstrap_addresses = config.core.bootstrap_addresses;
         let mut predefined_peers = config.core.predefined_peers;

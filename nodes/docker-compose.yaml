@@ -11,28 +11,30 @@ services:
       - ../pathfinder-var.env
     restart: unless-stopped
     command: [
-      "--network",
-      "sepolia-testnet",
-      "--p2p.identity-config-file",
-      "identity1.json",
-      "--p2p.listen-on",
-      "/ip4/0.0.0.0/tcp/20002",
-      "--debug.restart-delay",
-      "5",
-      "--debug.pretty-log",
-      "true",
-      # Behave as a proxy into the sequencer gateway, fetching blocks
-      # from the centralized sequencer and storing them.
-      "--p2p.proxy",
-      "true",
-      # The RPC isn't used inside the docker network, so it's disabled by default.
-      # If you wish to enable it, remember to also expose the RPC port.
-      "--rpc.enable",
-      "false"
-    ]
+        "--network",
+        "sepolia-testnet",
+        "--ethereum.url",
+        "${PATHFINDER_ETHEREUM_API_URL}",
+        "--p2p.sync.identity-config-file",
+        "identity1.json",
+        "--p2p.sync.listen-on",
+        "/ip4/0.0.0.0/tcp/20002",
+        "--debug.restart-delay",
+        "5",
+        "--debug.pretty-log",
+        "true",
+        # Behave as a proxy into the sequencer gateway, fetching blocks
+        # from the centralized sequencer and storing them.
+        "--p2p.sync.proxy",
+        "true",
+        # The RPC isn't used inside the docker network, so it's disabled by default.
+        # If you wish to enable it, remember to also expose the RPC port.
+        "--rpc.enable",
+        "false",
+      ]
 
-  # Pure P2P pathfinder node.
-  pathfinder-p2p:
+  # Pure P2P pathfinder node 1.
+  pathfinder-p2p-1:
     build:
       context: ..
       dockerfile: nodes/Dockerfile.pathfinder
@@ -42,35 +44,56 @@ services:
       - ../pathfinder-var.env
     restart: unless-stopped
     command: [
-      "--network",
-      "sepolia-testnet",
-      "--p2p.identity-config-file",
-      "identity2.json",
-      "--p2p.listen-on",
-      "/ip4/0.0.0.0/tcp/20003",
-      "--debug.restart-delay",
-      "5",
-      "--debug.pretty-log",
-      "true",
-      # Bootstrap this node with the proxy pathfinder node. The proxy node will fetch blocks from
-      # the sequencer gateway and stream them to this node over a P2P connection.
-      "--p2p.bootstrap-addresses",
-      "/dns4/pathfinder-proxy/tcp/20002/p2p/12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ",
-      # The RPC isn't used inside the docker network, so it's disabled by default.
-      # If you wish to enable it, remember to also expose the RPC port.
-      "--rpc.enable",
-      "false"
-    ]
+        "--network",
+        "sepolia-testnet",
+        "--ethereum.url",
+        "${PATHFINDER_ETHEREUM_API_URL}",
+        "--p2p.sync.identity-config-file",
+        "identity2.json",
+        "--p2p.sync.listen-on",
+        "/ip4/0.0.0.0/tcp/20003",
+        "--debug.restart-delay",
+        "5",
+        "--debug.pretty-log",
+        "true",
+        # Bootstrap this node with the proxy pathfinder node. The proxy node will fetch blocks from
+        # the sequencer gateway and stream them to this node over a P2P connection.
+        "--p2p.sync.bootstrap-addresses",
+        "/dns4/pathfinder-proxy/tcp/20002/p2p/12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ",
+        # The RPC isn't used inside the docker network, so it's disabled by default.
+        # If you wish to enable it, remember to also expose the RPC port.
+        "--rpc.enable",
+        "false",
+      ]
 
-  # Latest version of the juno node.
-  juno:
-    image: nethermindeth/juno:v0.9.2
+  # Pure P2P pathfinder node 2.
+  pathfinder-p2p-2:
+    build:
+      context: ..
+      dockerfile: nodes/Dockerfile.pathfinder
+    environment:
+      - RUST_LOG=off,pathfinder=trace,p2p=trace,libp2p=trace,libp2p_core=trace,libp2p_noise=off,libp2p_gossipsub=trace,libp2p_kad=trace
+    env_file:
+      - ../pathfinder-var.env
+    restart: unless-stopped
     command: [
-      "--p2p",
-      "--p2p-addr",
-      "/ip4/0.0.0.0/tcp/20004",
-      "--log-level", "debug",
-      # Bootstrap this node with the other two nodes.
-      "--p2p-boot-peers",
-      "/dns4/pathfinder-proxy/tcp/20002/p2p/12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ,/dns4/pathfinder-p2p/tcp/20003/p2p/12D3KooWRyGQzKzz1PcUZugCZnP1i6GRNXYjXHw4RqDHsSJ9XP5Q",
-    ]
+        "--network",
+        "sepolia-testnet",
+        "--ethereum.url",
+        "${PATHFINDER_ETHEREUM_API_URL}",
+        "--p2p.sync.identity-config-file",
+        "identity3.json",
+        "--p2p.sync.listen-on",
+        "/ip4/0.0.0.0/tcp/20004",
+        "--debug.restart-delay",
+        "5",
+        "--debug.pretty-log",
+        "true",
+        # Bootstrap this node with the other two nodes.
+        "--p2p.sync.bootstrap-addresses",
+        "/dns4/pathfinder-proxy/tcp/20002/p2p/12D3KooWFY6SaqJkRxJDepwvBi4Rw36iMUGZrejW69qkjYQQ2ydQ,/dns4/pathfinder-p2p-1/tcp/20003/p2p/12D3KooWRyGQzKzz1PcUZugCZnP1i6GRNXYjXHw4RqDHsSJ9XP5Q",
+        # The RPC isn't used inside the docker network, so it's disabled by default.
+        # If you wish to enable it, remember to also expose the RPC port.
+        "--rpc.enable",
+        "false",
+      ]

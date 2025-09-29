@@ -1,2 +1,6 @@
 [files]
 extend-exclude = ["crates/gateway-test-fixtures/fixtures/contracts/*.json"]
+
+[default.extend-identifiers]
+# A P2P peer ID found in `nodes/Dockerfile.pathfinder`
+12D3KooWSQEeptDHBm5xe72nbNd62AkBWUsawWF5uGt4RbFqvhGL = "12D3KooWSQEeptDHBm5xe72nbNd62AkBWUsawWF5uGt4RbFqvhGL"

@@ -25,6 +25,10 @@ mod transport;
 use builder::Builder;
 pub use libp2p;
 pub use peer_data::PeerData;
+pub use transport::rate_limit::{
+    MIN_BYTES_PER_SEC as TRANSPORT_MIN_BYTES_PER_SEC,
+    MIN_BYTES_PER_SEC_PRETTY as TRANSPORT_MIN_BYTES_PER_SEC_PRETTY,
+};
 
 /// Creates a new sync P2P network.
 pub fn new_sync(

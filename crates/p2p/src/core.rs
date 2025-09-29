@@ -69,6 +69,7 @@ pub enum TestEvent {
 
 /// Configuration for the core p2p network.
 pub mod config {
+    use std::num::NonZeroU32;
     use std::time::Duration;
 
     use ipnet::IpNet;
@@ -95,6 +96,10 @@ pub mod config {
         /// remains.
         pub bootstrap_period: Option<Duration>,
         pub inbound_connections_rate_limit: RateLimit,
+        /// Maximum read bytes per second per connection.
+        pub max_read_bytes_per_sec: Option<NonZeroU32>,
+        /// Maximum write bytes per second per connection.
+        pub max_write_bytes_per_sec: Option<NonZeroU32>,
         /// Custom protocol name for Kademlia
         pub kad_name: Option<String>,
     }
@@ -122,6 +127,8 @@ pub mod config {
                     max: 1000,
                     interval: Duration::from_secs(1),
                 },
+                max_read_bytes_per_sec: None,
+                max_write_bytes_per_sec: None,
                 kad_name: Default::default(),
             }
         }

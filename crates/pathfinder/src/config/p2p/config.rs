@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use clap::CommandFactory;
@@ -17,6 +18,8 @@ pub struct P2PCoreConfig {
     pub max_inbound_relayed_connections: usize,
     pub max_outbound_connections: usize,
     pub ip_whitelist: Vec<IpNet>,
+    pub max_read_bytes_per_sec: Option<NonZeroU32>,
+    pub max_write_bytes_per_sec: Option<NonZeroU32>,
     pub kad_name: Option<String>,
     pub direct_connection_timeout: Duration,
     pub eviction_timeout: Duration,
@@ -101,6 +104,18 @@ macro_rules! impl_from_p2p_cli {
                             .exit()
                     }
 
+                    if cli.[<$target:lower _max_read_bytes_per_sec>].is_some_and(|max_read| max_read < p2p::TRANSPORT_MIN_BYTES_PER_SEC) ||
+                          cli.[<$target:lower _max_write_bytes_per_sec>].is_some_and(|max_write| max_write < p2p::TRANSPORT_MIN_BYTES_PER_SEC) {
+                        Cli::command()
+                            .error(ErrorKind::ValueValidation, format!(
+                            "P2P IO rate limit must be at least {}
+
+Note: this is the minimum value that should provide normal P2P behaviour and avoid timeouts",
+                            p2p::TRANSPORT_MIN_BYTES_PER_SEC_PRETTY
+                        ))
+                        .exit()
+                    }
+
                     Self {
                         identity_config_file: cli.[< $target:lower _identity_config_file>],
                         listen_on: parse_multiaddr_vec(concat!("p2p.", stringify!($target:lower), ".listen-on"), cli.[<$target:lower _listen_on>]),
@@ -119,6 +134,8 @@ macro_rules! impl_from_p2p_cli {
                         kad_name: cli.[<$target:lower _kad_name>],
                         direct_connection_timeout: Duration::from_secs(cli.[<$target:lower _direct_connection_timeout>].into()),
                         eviction_timeout: Duration::from_secs(cli.[<$target:lower _eviction_timeout>].into()),
+                        max_read_bytes_per_sec: cli.[<$target:lower _max_read_bytes_per_sec>],
+                        max_write_bytes_per_sec: cli.[<$target:lower _max_write_bytes_per_sec>],
                     }
                 }
             }

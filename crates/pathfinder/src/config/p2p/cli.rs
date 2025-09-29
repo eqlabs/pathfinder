@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use ipnet::IpNet;
 
 /// For a given `target`, this macro defines a `P2PTargetCoreCli` struct that
@@ -120,6 +122,24 @@ Example:
                     env = "PATHFINDER_P2P_" $target:upper "_EXPERIMENTAL_EVICTION_TIMEOUT"
                 )]
                 pub [<$target:lower _eviction_timeout>]: u32,
+
+                #[arg(
+                    long = "p2p." $target:lower ".experimental.max-read-bytes-per-sec",
+                    long_help = "Maximum read rate per connection in bytes per second.",
+                    value_name = "BYTES_PER_SECOND",
+                    env = "PATHFINDER_P2P_" $target:upper "_EXPERIMENTAL_MAX_READ_BYTES_PER_SEC",
+                    requires = $target:lower "_max_write_bytes_per_sec"
+                )]
+                pub [<$target:lower _max_read_bytes_per_sec>]: Option<NonZeroU32>,
+
+                #[arg(
+                    long = "p2p." $target:lower ".experimental.max-write-bytes-per-sec",
+                    long_help = "Maximum write rate per connection in bytes per second.",
+                    value_name = "BYTES_PER_SECOND",
+                    env = "PATHFINDER_P2P_" $target:upper "_EXPERIMENTAL_MAX_WRITE_BYTES_PER_SEC",
+                    requires = $target:lower "_max_read_bytes_per_sec"
+                )]
+                pub [<$target:lower _max_write_bytes_per_sec>]: Option<NonZeroU32>,
             }
         }
     };
