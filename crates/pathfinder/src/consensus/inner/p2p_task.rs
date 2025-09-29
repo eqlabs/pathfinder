@@ -335,6 +335,7 @@ impl ValidatorCache {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn finalize_and_commit_block(
     validator_address: ContractAddress,
     height_and_round: HeightAndRound,
@@ -474,7 +475,7 @@ async fn execute_deferred_for_next_height(
         // coming from the network, definitely the proposal fin is still missing for
         // sure.
         if let Some(commitment) = commitment {
-            send_proposal_to_consensus(&tx_to_consensus, hnr, commitment).await;
+            send_proposal_to_consensus(tx_to_consensus, hnr, commitment).await;
         }
     }
 
