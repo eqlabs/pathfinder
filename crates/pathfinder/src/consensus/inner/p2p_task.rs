@@ -59,7 +59,7 @@ pub fn spawn(
     // either when we gossip them or when decision is made at the same height.
     let mut incoming_proposals_cache = BTreeMap::new();
     // TODO validators are long-lived but not persisted
-    let mut validator_cache = HashMap::new();
+    let mut validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let mut deferred_executions = HashMap::new();
@@ -317,6 +317,24 @@ pub fn spawn(
     })
 }
 
+struct ValidatorCache(HashMap<HeightAndRound, ValidatorStage>);
+
+impl ValidatorCache {
+    fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    fn insert(&mut self, hnr: HeightAndRound, stage: ValidatorStage) {
+        self.0.insert(hnr, stage);
+    }
+
+    fn remove(&mut self, hnr: &HeightAndRound) -> anyhow::Result<ValidatorStage> {
+        self.0
+            .remove(hnr)
+            .context(format!("No ValidatorStage for height and round {hnr}"))
+    }
+}
+
 async fn finalize_and_commit_block(
     validator_address: ContractAddress,
     height_and_round: HeightAndRound,
@@ -325,7 +343,7 @@ async fn finalize_and_commit_block(
     fake_proposals_storage: Storage,
     my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
     incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
-    validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
+    validator_cache: &mut ValidatorCache,
 ) -> anyhow::Result<()> {
     tracing::info!(
         "🖧  💾 {validator_address} Finalizing and committing block at {height_and_round} to the \
@@ -338,12 +356,8 @@ async fn finalize_and_commit_block(
         Some(block) => Either::Left(block),
         // Incoming proposal has been executed and needs to be finalized now.
         None => {
-            let Some(validator) = validator_cache.remove(&height_and_round) else {
-                anyhow::bail!("No ValidatorFinalizeStage for height and round {height_and_round}",);
-            };
-            let ValidatorStage::Finalize(validator) = validator else {
-                anyhow::bail!("Wrong validator stage for height and round {height_and_round}",);
-            };
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let validator = validator_stage.try_into_finalize_stage()?;
             Either::Right(validator)
         }
     };
@@ -401,7 +415,7 @@ async fn finalize_and_commit_block(
 async fn execute_deferred_for_next_height(
     height_and_round: HeightAndRound,
     tx_to_consensus: &mpsc::Sender<ConsensusTaskEvent>,
-    validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
+    validator_cache: &mut ValidatorCache,
     deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
 ) -> anyhow::Result<()> {
     // Retrieve and execute any deferred transactions or proposal finalizations
@@ -418,13 +432,8 @@ async fn execute_deferred_for_next_height(
     if let Some((hnr, deferred)) = deferred.into_iter().next_back() {
         tracing::debug!("🖧  ⚙️ executing deferred proposal for height and round {hnr}");
 
-        let Some(validator_stage) = validator_cache.remove(&hnr) else {
-            anyhow::bail!("No ValidatorTransactionBatchStage for height and round {hnr}",);
-        };
-
-        let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
-            anyhow::bail!("Wrong validator stage for height and round {hnr}",);
-        };
+        let validator_stage = validator_cache.remove(&hnr)?;
+        let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
         let (validator, commitment) = util::task::spawn_blocking(move |_| {
             // Execute deferred transactions first.
@@ -590,7 +599,7 @@ async fn handle_incoming_proposal_part(
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
     incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
-    validator_cache: &mut HashMap<HeightAndRound, ValidatorStage>,
+    validator_cache: &mut ValidatorCache,
     deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
     storage: Storage,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
@@ -623,19 +632,8 @@ async fn handle_incoming_proposal_part(
                 );
             }
 
-            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                anyhow::bail!(
-                    "No ValidatorBlockInfoStage for height and round {}",
-                    height_and_round
-                );
-            };
-
-            let ValidatorStage::BlockInfo(validator) = validator_stage else {
-                anyhow::bail!(
-                    "Wrong validator stage for height and round {}",
-                    height_and_round
-                );
-            };
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let validator = validator_stage.try_into_block_info_stage()?;
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
@@ -660,19 +658,8 @@ async fn handle_incoming_proposal_part(
                 "🖧  ⚙️ executing transaction batch for height and round {height_and_round}..."
             );
 
-            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                anyhow::bail!(
-                    "No ValidatorTransactionBatchStage for height and round {}",
-                    height_and_round
-                );
-            };
-
-            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
-                anyhow::bail!(
-                    "Wrong validator stage for height and round {}",
-                    height_and_round
-                );
-            };
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let validator = validator_stage.try_into_transaction_batch_stage()?;
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
@@ -693,19 +680,8 @@ async fn handle_incoming_proposal_part(
             Ok(None)
         }
         ProposalPart::ProposalCommitment(proposal_commitment) => {
-            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                anyhow::bail!(
-                    "No ValidatorTransactionBatchStage for height and round {}",
-                    height_and_round
-                );
-            };
-
-            let ValidatorStage::TransactionBatch(mut validator) = validator_stage else {
-                anyhow::bail!(
-                    "Wrong validator stage for height and round {}",
-                    height_and_round
-                );
-            };
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
             validator.record_proposal_commitment(proposal_commitment)?;
             validator_cache.insert(
@@ -721,19 +697,8 @@ async fn handle_incoming_proposal_part(
                 "🖧  ⚙️ finalizing consensus for height and round {height_and_round}..."
             );
 
-            let Some(validator_stage) = validator_cache.remove(&height_and_round) else {
-                anyhow::bail!(
-                    "No ValidatorTransactionBatchStage for height and round {}",
-                    height_and_round
-                );
-            };
-
-            let ValidatorStage::TransactionBatch(validator) = validator_stage else {
-                anyhow::bail!(
-                    "Wrong validator stage for height and round {}",
-                    height_and_round
-                );
-            };
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let validator = validator_stage.try_into_transaction_batch_stage()?;
 
             if !validator.has_proposal_commitment() {
                 anyhow::bail!(

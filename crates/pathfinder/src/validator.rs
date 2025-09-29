@@ -567,6 +567,42 @@ pub enum ValidatorStage {
     Finalize(Box<ValidatorFinalizeStage>),
 }
 
+impl ValidatorStage {
+    pub fn try_into_block_info_stage(self) -> anyhow::Result<ValidatorBlockInfoStage> {
+        match self {
+            ValidatorStage::BlockInfo(stage) => Ok(stage),
+            _ => anyhow::bail!("Expected block info stage, got {}", self.variant_name()),
+        }
+    }
+
+    pub fn try_into_transaction_batch_stage(
+        self,
+    ) -> anyhow::Result<Box<ValidatorTransactionBatchStage>> {
+        match self {
+            ValidatorStage::TransactionBatch(stage) => Ok(stage),
+            _ => anyhow::bail!(
+                "Expected transaction batch stage, got {}",
+                self.variant_name()
+            ),
+        }
+    }
+
+    pub fn try_into_finalize_stage(self) -> anyhow::Result<Box<ValidatorFinalizeStage>> {
+        match self {
+            ValidatorStage::Finalize(stage) => Ok(stage),
+            _ => anyhow::bail!("Expected finalize stage, got {}", self.variant_name()),
+        }
+    }
+
+    fn variant_name(&self) -> &'static str {
+        match self {
+            ValidatorStage::BlockInfo(_) => "BlockInfo",
+            ValidatorStage::TransactionBatch(_) => "TransactionBatch",
+            ValidatorStage::Finalize(_) => "Finalize",
+        }
+    }
+}
+
 /// Maps consensus transaction to a pair of:
 /// - common transaction, which is used for verifying the transaction hash
 /// - executor transaction, which is used for executing the transaction
