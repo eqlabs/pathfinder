@@ -380,7 +380,7 @@ pub fn spawn(
                     // transactions or proposal finalization for lower rounds, they are already
                     // outdated and can be discarded. `deferred_executions` is sorted by (height,
                     // round) in ascending order, so we can just take the last entry.
-                    if let Some((hnr, deferred)) = deferred.into_iter().last() {
+                    if let Some((hnr, deferred)) = deferred.into_iter().next_back() {
                         tracing::debug!(
                             "🖧  ⚙️ executing deferred proposal for height and round {hnr}"
                         );
@@ -555,7 +555,7 @@ struct ProposalCommitmentWithOrigin {
 /// - an incomplete proposal has been received but all of the received parts
 ///   have been executed,
 /// - an incomplete proposal has been received but it cannot be executed yet,
-///  because the previous block is not committed yet,
+///   because the previous block is not committed yet,
 /// - a complete proposal has been received but it cannot be executed yet.
 ///
 /// Returns `Err` if there was an error processing the proposal part.

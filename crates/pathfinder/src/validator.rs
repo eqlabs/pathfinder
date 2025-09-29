@@ -158,7 +158,7 @@ enum LazyBlockExecutor {
     /// on first use.
     Uninitialized {
         chain_id: ChainId,
-        block_info: pathfinder_executor::types::BlockInfo,
+        block_info: Box<pathfinder_executor::types::BlockInfo>,
         storage: Storage,
     },
     /// This variant is used to temporarily take ownership of the
@@ -167,7 +167,7 @@ enum LazyBlockExecutor {
     /// [`get_or_init()`](Self::get_or_init).
     Initializing,
     /// This variant holds the initialized `BlockExecutor`.
-    Initialized(BlockExecutor),
+    Initialized(Box<BlockExecutor>),
 }
 
 impl LazyBlockExecutor {
@@ -178,7 +178,7 @@ impl LazyBlockExecutor {
     ) -> Self {
         LazyBlockExecutor::Uninitialized {
             chain_id,
-            block_info,
+            block_info: Box::new(block_info),
             storage,
         }
     }
@@ -200,13 +200,13 @@ impl LazyBlockExecutor {
             let db_conn = storage.connection().context("Create database connection")?;
             let be = BlockExecutor::new(
                 chain_id,
-                block_info,
+                *block_info,
                 ETH_FEE_TOKEN_ADDRESS,
                 STRK_FEE_TOKEN_ADDRESS,
                 db_conn,
             )
             .context("Creating BlockExecutor")?;
-            *self = LazyBlockExecutor::Initialized(be);
+            *self = LazyBlockExecutor::Initialized(Box::new(be));
             let LazyBlockExecutor::Initialized(be) = self else {
                 unreachable!("Block executor is initialized");
             };
@@ -214,7 +214,7 @@ impl LazyBlockExecutor {
         }
     }
 
-    fn take(mut self) -> anyhow::Result<BlockExecutor> {
+    fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
         self.get_or_init()?;
         let LazyBlockExecutor::Initialized(be) = self else {
             unreachable!("Block executor is initialized");
