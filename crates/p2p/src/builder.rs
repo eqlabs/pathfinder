@@ -82,6 +82,9 @@ impl<B> Builder<B, AppBehaviourSet> {
         #[cfg(not(test))]
         assert!(enable_kademlia, "Kademlia must be enabled in production");
 
+        let max_read_bytes_per_sec = cfg.max_read_bytes_per_sec;
+        let max_write_bytes_per_sec = cfg.max_write_bytes_per_sec;
+
         let core_behaviour_builder = core::Behaviour::builder(keypair.clone(), chain_id, cfg);
 
         #[cfg(test)]
@@ -95,8 +98,22 @@ impl<B> Builder<B, AppBehaviourSet> {
             .app_behaviour(app_behaviour.expect("App behaviour is set in this phase"))
             .build();
 
+        let transport = match (max_read_bytes_per_sec, max_write_bytes_per_sec) {
+            (None, None) => transport::create(&keypair, relay_transport),
+            (Some(max_read), Some(max_write)) => {
+                tracing::info!(
+                    "Enabling transport rate limit: read={} B/s, write={} B/s",
+                    max_read,
+                    max_write
+                );
+                transport::create_with_rate_limit(&keypair, relay_transport, max_read, max_write)
+            }
+            // This is enforced through CLI args.
+            _ => panic!("Both read and write limits must be set to enable transport rate limiting"),
+        };
+
         let swarm = Swarm::new(
-            transport::create(&keypair, relay_transport),
+            transport,
             behaviour,
             local_peer_id,
             swarm::Config::with_tokio_executor(),

@@ -77,6 +77,7 @@ ff = "0.13"
 flate2 = "1.0.27"
 futures = { version = "0.3", default-features = false }
 futures-bounded = "0.3.0"
+governor = "0.10.1"
 hex = "0.4.3"
 http = "1.0.0"
 http-body = "1.0.0"
