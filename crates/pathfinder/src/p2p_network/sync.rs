@@ -77,7 +77,11 @@ mod inner {
             response_timeout: config.response_timeout,
             max_concurrent_streams: config.max_concurrent_streams,
         };
-        let keypair = identity::load_or_generate(config.core.identity_config_file)?;
+        let keypair = identity::load_or_generate(config.core.identity_config_file.clone())
+            .context(format!(
+                "Loading identity file: {:?}",
+                config.core.identity_config_file
+            ))?;
         let listen_on = config.core.listen_on;
         let bootstrap_addresses = config.core.bootstrap_addresses;
         let mut predefined_peers = config.core.predefined_peers;
