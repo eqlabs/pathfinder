@@ -27,7 +27,6 @@ mod test {
     // Otherwise you need to inspect the temporary directory that is created to
     // hold the test artifacts.
     #[tokio::test]
-    #[ignore = "FIXME The test sometimes fails due to a bug described in this issue: https://github.com/eqlabs/pathfinder/issues/3019"]
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
         PathfinderInstance::enable_log_dump(
             std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
@@ -36,7 +35,7 @@ mod test {
         const NUM_NODES: usize = 3;
         const MIN_REQUIRED_DECIDED_HEIGHT: u64 = 20;
         const READY_TIMEOUT: Duration = Duration::from_secs(20);
-        const TEST_TIMEOUT: Duration = Duration::from_secs(240);
+        const TEST_TIMEOUT: Duration = Duration::from_secs(120);
         const READY_POLL_INTERVAL: Duration = Duration::from_millis(500);
         const HEIGHT_POLL_INTERVAL: Duration = Duration::from_secs(1);
 

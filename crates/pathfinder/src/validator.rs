@@ -4,13 +4,7 @@ use std::time::Instant;
 use anyhow::Context;
 use p2p::sync::client::conv::TryFromDto;
 use p2p_proto::class::Cairo1Class;
-use p2p_proto::common::Hash;
-use p2p_proto::consensus::{
-    BlockInfo,
-    ProposalCommitment,
-    ProposalInit,
-    TransactionVariant as ConsensusVariant,
-};
+use p2p_proto::consensus::{BlockInfo, ProposalInit, TransactionVariant as ConsensusVariant};
 use p2p_proto::sync::transaction::{DeclareV3WithoutClass, TransactionVariant as SyncVariant};
 use p2p_proto::transaction::DeclareV3WithClass;
 use pathfinder_common::class_definition::{SelectorAndFunctionIndex, SierraEntryPoints};
@@ -28,6 +22,7 @@ use pathfinder_common::{
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
+    ProposalCommitment,
     ReceiptCommitment,
     SequencerAddress,
     StarknetVersion,
@@ -77,96 +72,10 @@ impl ValidatorBlockInfoStage {
         })
     }
 
-    pub fn validate_block_info(
-        self,
-        block_info: BlockInfo,
-        workaround_starknet_version: StarknetVersion,
-        db_conn: pathfinder_storage::Connection,
-        // TODO eth_to_fri_rate is not suitable for current L2 data where there are 3 pairs of gas
-        // prices in both wei & fri and they give 2 different ethfri rates
-        workaround_l2_gas_price_wei: u128,
-        workaround_l1_gas_price_fri: u128,
-        workaround_l1_data_gas_price_fri: u128,
-    ) -> anyhow::Result<ValidatorTransactionBatchStage> {
-        let _span = tracing::debug_span!(
-            "Validator::validate_block_info",
-            height = %block_info.block_number,
-            timestamp = %block_info.timestamp,
-            builder = %block_info.builder.0,
-        )
-        .entered();
-
-        let Self {
-            chain_id,
-            proposal_height,
-        } = self;
-
-        anyhow::ensure!(
-            proposal_height == block_info.block_number,
-            "ProposalInit height does not match BlockInfo height: {} != {}",
-            proposal_height,
-            block_info.block_number,
-        );
-
-        // TODO(validator) validate block info (timestamp, gas prices)
-
-        let BlockInfo {
-            block_number,
-            timestamp,
-            builder,
-            l1_da_mode,
-            l2_gas_price_fri,
-            l1_gas_price_wei,
-            l1_data_gas_price_wei,
-            eth_to_strk_rate: _,
-        } = block_info;
-
-        let block_info = pathfinder_executor::types::BlockInfo::try_from_proposal(
-            block_number,
-            timestamp,
-            SequencerAddress(builder.0),
-            match l1_da_mode {
-                p2p_proto::common::L1DataAvailabilityMode::Blob => L1DataAvailabilityMode::Blob,
-                p2p_proto::common::L1DataAvailabilityMode::Calldata => {
-                    L1DataAvailabilityMode::Calldata
-                }
-            },
-            BlockInfoPriceConverter::legacy(
-                l2_gas_price_fri,
-                l1_gas_price_wei,
-                l1_data_gas_price_wei,
-                workaround_l2_gas_price_wei,
-                workaround_l1_gas_price_fri,
-                workaround_l1_data_gas_price_fri,
-            ),
-            workaround_starknet_version,
-        )
-        .context("Creating internal BlockInfo representation")?;
-
-        let block_executor = BlockExecutor::new(
-            chain_id,
-            block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            db_conn,
-        )
-        .context("Creating BlockExecutor")?;
-
-        Ok(ValidatorTransactionBatchStage {
-            chain_id,
-            block_info,
-            expected_block_header: None,
-            block_executor,
-            transactions: Vec::new(),
-            receipts: Vec::new(),
-            events: Vec::new(),
-        })
-    }
-
     pub fn validate_consensus_block_info(
         self,
         block_info: BlockInfo,
-        db_conn: pathfinder_storage::Connection,
+        storage: Storage,
     ) -> anyhow::Result<ValidatorTransactionBatchStage> {
         let _span = tracing::debug_span!(
             "Validator::validate_block_info",
@@ -222,20 +131,11 @@ impl ValidatorBlockInfoStage {
         )
         .context("Creating internal BlockInfo representation")?;
 
-        let block_executor = BlockExecutor::new(
-            chain_id,
-            block_info,
-            ETH_FEE_TOKEN_ADDRESS,
-            STRK_FEE_TOKEN_ADDRESS,
-            db_conn,
-        )
-        .context("Creating BlockExecutor")?;
-
         Ok(ValidatorTransactionBatchStage {
             chain_id,
             block_info,
             expected_block_header: None,
-            block_executor,
+            block_executor: LazyBlockExecutor::new(chain_id, block_info, storage),
             transactions: Vec::new(),
             receipts: Vec::new(),
             events: Vec::new(),
@@ -247,10 +147,82 @@ pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
     expected_block_header: Option<BlockHeader>,
-    block_executor: BlockExecutor,
+    block_executor: LazyBlockExecutor,
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
+}
+
+enum LazyBlockExecutor {
+    /// This variant holds the data necessary to initialize the `BlockExecutor`
+    /// on first use.
+    Uninitialized {
+        chain_id: ChainId,
+        block_info: Box<pathfinder_executor::types::BlockInfo>,
+        storage: Storage,
+    },
+    /// This variant is used to temporarily take ownership of the
+    /// `chain_id`, `block_info` and `storage` fields while initializing
+    /// the `BlockExecutor` and occurs only briefly in
+    /// [`get_or_init()`](Self::get_or_init).
+    Initializing,
+    /// This variant holds the initialized `BlockExecutor`.
+    Initialized(Box<BlockExecutor>),
+}
+
+impl LazyBlockExecutor {
+    fn new(
+        chain_id: ChainId,
+        block_info: pathfinder_executor::types::BlockInfo,
+        storage: Storage,
+    ) -> Self {
+        LazyBlockExecutor::Uninitialized {
+            chain_id,
+            block_info: Box::new(block_info),
+            storage,
+        }
+    }
+
+    fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
+        if let LazyBlockExecutor::Initialized(be) = self {
+            Ok(be)
+        } else {
+            let this = std::mem::replace(self, Self::Initializing);
+            let LazyBlockExecutor::Uninitialized {
+                chain_id,
+                block_info,
+                storage,
+            } = this
+            else {
+                panic!("Unexpected state in LazyBlockExecutor");
+            };
+
+            let db_conn = storage.connection().context("Create database connection")?;
+            let be = BlockExecutor::new(
+                chain_id,
+                *block_info,
+                ETH_FEE_TOKEN_ADDRESS,
+                STRK_FEE_TOKEN_ADDRESS,
+                db_conn,
+            )
+            .context("Creating BlockExecutor")?;
+            *self = LazyBlockExecutor::Initialized(Box::new(be));
+            let LazyBlockExecutor::Initialized(be) = self else {
+                unreachable!("Block executor is initialized");
+            };
+            Ok(be)
+        }
+    }
+
+    /// Takes the initialized [`BlockExecutor`], invoking
+    /// [`get_or_init()`](Self::get_or_init) if necessary.
+    fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
+        self.get_or_init()?;
+        let LazyBlockExecutor::Initialized(be) = self else {
+            unreachable!("Block executor is initialized");
+        };
+        Ok(be)
+    }
 }
 
 impl ValidatorTransactionBatchStage {
@@ -295,6 +267,7 @@ impl ValidatorTransactionBatchStage {
 
         let (receipts, mut events): (Vec<_>, Vec<_>) = self
             .block_executor
+            .get_or_init()?
             .execute(executor_txns)?
             .into_iter()
             .unzip();
@@ -344,7 +317,7 @@ impl ValidatorTransactionBatchStage {
 
     pub fn record_proposal_commitment(
         &mut self,
-        proposal_commitment: ProposalCommitment,
+        proposal_commitment: p2p_proto::consensus::ProposalCommitment,
     ) -> anyhow::Result<()> {
         let expected_block_header = BlockHeader {
             hash: BlockHash::ZERO,        // UNUSED
@@ -389,12 +362,12 @@ impl ValidatorTransactionBatchStage {
     /// expected one.
     pub fn consensus_finalize(
         self,
-        expected_proposal_commitment: Hash,
+        expected_proposal_commitment: ProposalCommitment,
     ) -> anyhow::Result<ValidatorFinalizeStage> {
         let next_stage = self.consensus_finalize0()?;
-        let actual_proposal_commitment = next_stage.header.state_diff_commitment.0;
+        let actual_proposal_commitment = next_stage.header.state_diff_commitment;
 
-        if actual_proposal_commitment == expected_proposal_commitment.0 {
+        if actual_proposal_commitment.0 == expected_proposal_commitment.0 {
             Ok(next_stage)
         } else {
             Err(anyhow::anyhow!(
@@ -428,7 +401,7 @@ impl ValidatorTransactionBatchStage {
 
         let start = Instant::now();
 
-        let state_diff = block_executor.finalize()?;
+        let state_diff = block_executor.take()?.finalize()?;
 
         let transaction_commitment =
             calculate_transaction_commitment(&transactions, block_info.starknet_version)?;
@@ -489,16 +462,6 @@ impl ValidatorTransactionBatchStage {
             receipts,
             events,
         })
-    }
-
-    /// This function is only used for dummy proposal creation.
-    /// TODO remove this function once more elaborate proposal creation for
-    /// tests is employed.
-    pub fn compute_proposal_commitment(self) -> anyhow::Result<Hash> {
-        let state_diff = self.block_executor.finalize()?;
-        let state_update = StateUpdateData::from(state_diff);
-        let state_diff_commitment = state_update.compute_state_diff_commitment();
-        Ok(Hash(state_diff_commitment.0))
     }
 }
 
@@ -602,6 +565,42 @@ pub enum ValidatorStage {
     BlockInfo(ValidatorBlockInfoStage),
     TransactionBatch(Box<ValidatorTransactionBatchStage>),
     Finalize(Box<ValidatorFinalizeStage>),
+}
+
+impl ValidatorStage {
+    pub fn try_into_block_info_stage(self) -> anyhow::Result<ValidatorBlockInfoStage> {
+        match self {
+            ValidatorStage::BlockInfo(stage) => Ok(stage),
+            _ => anyhow::bail!("Expected block info stage, got {}", self.variant_name()),
+        }
+    }
+
+    pub fn try_into_transaction_batch_stage(
+        self,
+    ) -> anyhow::Result<Box<ValidatorTransactionBatchStage>> {
+        match self {
+            ValidatorStage::TransactionBatch(stage) => Ok(stage),
+            _ => anyhow::bail!(
+                "Expected transaction batch stage, got {}",
+                self.variant_name()
+            ),
+        }
+    }
+
+    pub fn try_into_finalize_stage(self) -> anyhow::Result<Box<ValidatorFinalizeStage>> {
+        match self {
+            ValidatorStage::Finalize(stage) => Ok(stage),
+            _ => anyhow::bail!("Expected finalize stage, got {}", self.variant_name()),
+        }
+    }
+
+    fn variant_name(&self) -> &'static str {
+        match self {
+            ValidatorStage::BlockInfo(_) => "BlockInfo",
+            ValidatorStage::TransactionBatch(_) => "TransactionBatch",
+            ValidatorStage::Finalize(_) => "Finalize",
+        }
+    }
 }
 
 /// Maps consensus transaction to a pair of:

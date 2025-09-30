@@ -394,22 +394,22 @@ fn create_empty_proposal(
         let db_txn = db_conn
             .transaction()
             .context("Create database transaction")?;
+        // TODO it should probably be not a block hash but the state diff commitment of
+        // the parent block
         let hash = db_txn.block_hash(parent_number.into())?.unwrap_or_default();
         db_txn.commit()?;
         hash
     } else {
         BlockHash::ZERO
     };
-    let db_conn = storage
-        .connection()
-        .context("Creating database connection")?;
+
     let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init.clone())?
-        .validate_consensus_block_info(block_info.clone(), db_conn)?;
+        .validate_consensus_block_info(block_info.clone(), storage.clone())?;
     let validator = validator.consensus_finalize0()?;
     let finalized_block = validator.finalize(storage.clone())?;
     let proposal_commitment_hash = Hash(finalized_block.header.state_diff_commitment.0);
 
-    // the only version handled by consensus, so far
+    // The only version handled by consensus, so far
     let starknet_version = StarknetVersion::new(0, 14, 0, 0);
     let transactions = vec![];
     let transaction_commitment = calculate_transaction_commitment(&transactions, starknet_version)?;
