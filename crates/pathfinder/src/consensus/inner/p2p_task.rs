@@ -11,6 +11,7 @@
 //!    be proposed by us in another round at the same height
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -33,6 +34,13 @@ use pathfinder_storage::{Storage, TransactionBehavior};
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
+use crate::consensus::inner::persist_proposals::{
+    foreign_proposal_parts,
+    last_proposal_parts,
+    own_proposal_parts,
+    persist_proposal_parts,
+    remove_proposal_parts,
+};
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
@@ -45,24 +53,16 @@ pub fn spawn(
     mut p2p_event_rx: mpsc::UnboundedReceiver<Event>,
     tx_to_consensus: mpsc::Sender<ConsensusTaskEvent>,
     mut rx_from_consensus: mpsc::Receiver<P2PTaskEvent>,
-    fake_proposals_storage: Storage,
+    consensus_storage: Storage,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
-    // Cache for proposals that we created and are waiting to be gossiped upon a
-    // command from the consensus engine. Once the proposal is gossiped, it is
-    // removed from the cache.
-    let mut my_proposals_cache = HashMap::new();
     // Cache for finalized blocks that we created from our proposals and are
     // waiting to be committed to the database once consensus is reached.
     let mut my_finalized_blocks_cache = HashMap::new();
-    // Cache for proposals that we received from other validators and may need to be
-    // proposed by us in another round at the same height. The proposals are removed
-    // either when we gossip them or when decision is made at the same height.
-    let mut incoming_proposals_cache = BTreeMap::new();
     // TODO validators are long-lived but not persisted
-    let mut validator_cache = ValidatorCache::new();
+    let validator_cache = ValidatorCache::new();
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
-    let mut deferred_executions = HashMap::new();
+    let deferred_executions = Arc::new(Mutex::new(HashMap::new()));
 
     util::task::spawn(async move {
         loop {
@@ -92,17 +92,25 @@ pub fn spawn(
 
                     match event {
                         Event::Proposal(height_and_round, proposal_part) => {
-                            match handle_incoming_proposal_part(
-                                chain_id,
-                                height_and_round,
-                                proposal_part,
-                                &mut incoming_proposals_cache,
-                                &mut validator_cache,
-                                &mut deferred_executions,
-                                storage.clone(),
-                            )
-                            .await
-                            {
+                            let vcache = validator_cache.clone();
+                            let dex = deferred_executions.clone();
+                            let storage = storage.clone();
+                            let consensus_storage = consensus_storage.clone();
+                            let result = util::task::spawn_blocking(async move |_| {
+                                handle_incoming_proposal_part(
+                                    chain_id,
+                                    validator_address,
+                                    height_and_round,
+                                    proposal_part,
+                                    vcache,
+                                    dex,
+                                    storage,
+                                    consensus_storage,
+                                )
+                            })
+                            .await?
+                            .await;
+                            match result {
                                 Ok(Some(commitment)) => {
                                     send_proposal_to_consensus(
                                         &tx_to_consensus,
@@ -156,9 +164,19 @@ pub fn spawn(
                          hash {proposal_commitment}"
                     );
 
-                    let duplicate_encountered = my_proposals_cache
-                        .insert(height_and_round, proposal_parts)
-                        .is_some();
+                    let mut db_conn = consensus_storage
+                        .connection()
+                        .context("Creating database connection")?;
+                    let db_tx = db_conn
+                        .transaction()
+                        .context("Creating database transaction")?;
+                    let duplicate_encountered = persist_proposal_parts(
+                        db_tx,
+                        height_and_round.height(),
+                        height_and_round.round(),
+                        &validator_address,
+                        &proposal_parts,
+                    )?;
                     my_finalized_blocks_cache.insert(height_and_round, finalized_block);
 
                     if duplicate_encountered {
@@ -175,9 +193,11 @@ pub fn spawn(
                             proposal.round.as_u32().expect("Valid round"),
                         );
 
-                        let proposal_parts = if let Some(proposal_parts) =
-                            my_proposals_cache.remove(&height_and_round)
-                        {
+                        let proposal_parts = if let Some(proposal_parts) = query_own_proposal_parts(
+                            &consensus_storage,
+                            height_and_round,
+                            &validator_address,
+                        )? {
                             // TODO we're assuming that all proposals are valid and any failure
                             // to reach consensus in round 0
                             // always yields re-proposing the same
@@ -190,25 +210,28 @@ pub fn spawn(
                             tracing::warn!(
                                 "Engine requested gossiping a proposal for {height_and_round} via \
                                  ConsensusEvent::Gossip but we did not create it due to missing \
-                                 respective ConsensusEvent::RequestProposal. my_proposals_cache: \
-                                 {my_proposals_cache:#?}, incoming_proposals_cache: \
-                                 {incoming_proposals_cache:#?}",
+                                 respective ConsensusEvent::RequestProposal.",
                             );
 
                             // The engine chose us for this round as proposer and requested that
                             // we gossip a proposal from a
                             // previous round.
-                            let mut prev_rounds_proposals = incoming_proposals_cache
-                                .remove(&proposal.height)
-                                .expect("Proposal was inserted into the cache");
                             // For now we just choose the proposal from the previous round, and
                             // the rest are kept for debugging
                             // purposes.
-                            let (round, mut proposal_parts) = prev_rounds_proposals
-                                .pop_last()
-                                .expect("At least one proposal from a previous round");
+                            let mut db_conn = consensus_storage
+                                .connection()
+                                .context("Creating database connection")?;
+                            let db_tx = db_conn
+                                .transaction()
+                                .context("Creating database transaction")?;
+                            let Some((round, mut proposal_parts)) =
+                                last_proposal_parts(&db_tx, proposal.height, &validator_address)?
+                            else {
+                                panic!("At least one proposal from a previous round");
+                            };
                             assert_eq!(
-                                round.as_u32().expect("Round not to be None") + 1,
+                                round + 1,
                                 proposal.round.as_u32().expect("Round not to be None")
                             );
                             let ProposalInit {
@@ -227,6 +250,14 @@ pub fn spawn(
                             assert_ne!(*proposer, Address(proposal.proposer.0));
                             *round = proposal.round.as_u32().expect("Round not to be None");
                             *proposer = Address(proposal.proposer.0);
+                            let proposer_address = ContractAddress(proposal.proposer.0);
+                            persist_proposal_parts(
+                                db_tx,
+                                proposal.height,
+                                *round,
+                                &proposer_address,
+                                &proposal_parts,
+                            )?;
                             proposal_parts
                         };
 
@@ -297,18 +328,17 @@ pub fn spawn(
                         height_and_round,
                         value,
                         storage.clone(),
-                        fake_proposals_storage.clone(),
+                        consensus_storage.clone(),
                         &mut my_finalized_blocks_cache,
-                        &mut incoming_proposals_cache,
-                        &mut validator_cache,
+                        validator_cache.clone(),
                     )
                     .await?;
 
                     execute_deferred_for_next_height(
                         height_and_round,
                         &tx_to_consensus,
-                        &mut validator_cache,
-                        &mut deferred_executions,
+                        validator_cache.clone(),
+                        deferred_executions.clone(),
                     )
                     .await?;
                 }
@@ -317,19 +347,22 @@ pub fn spawn(
     })
 }
 
-struct ValidatorCache(HashMap<HeightAndRound, ValidatorStage>);
+#[derive(Clone)]
+struct ValidatorCache(Arc<Mutex<HashMap<HeightAndRound, ValidatorStage>>>);
 
 impl ValidatorCache {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(Arc::new(Mutex::new(HashMap::new())))
     }
 
     fn insert(&mut self, hnr: HeightAndRound, stage: ValidatorStage) {
-        self.0.insert(hnr, stage);
+        let mut cache = self.0.lock().unwrap();
+        cache.insert(hnr, stage);
     }
 
     fn remove(&mut self, hnr: &HeightAndRound) -> anyhow::Result<ValidatorStage> {
-        self.0
+        let mut cache = self.0.lock().unwrap();
+        cache
             .remove(hnr)
             .context(format!("No ValidatorStage for height and round {hnr}"))
     }
@@ -341,10 +374,9 @@ async fn finalize_and_commit_block(
     height_and_round: HeightAndRound,
     value: ConsensusValue,
     storage: Storage,
-    fake_proposals_storage: Storage,
+    consensus_storage: Storage,
     my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
-    incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
-    validator_cache: &mut ValidatorCache,
+    mut validator_cache: ValidatorCache,
 ) -> anyhow::Result<()> {
     tracing::info!(
         "🖧  💾 {validator_address} Finalizing and committing block at {height_and_round} to the \
@@ -363,20 +395,19 @@ async fn finalize_and_commit_block(
         }
     };
 
-    let storage = storage.clone();
-    let fake_proposals_storage = fake_proposals_storage.clone();
-
+    let storage2 = storage.clone();
+    let consensus_storage2 = consensus_storage.clone();
     util::task::spawn_blocking(move |_| {
         let finalized_block = match finalized_block {
             Either::Left(block) => block,
-            Either::Right(validator) => validator.finalize(storage.clone())?,
+            Either::Right(validator) => validator.finalize(storage2.clone())?,
         };
 
         assert_eq!(value.0 .0, finalized_block.header.state_diff_commitment.0);
 
-        commit_finalized_block(storage, finalized_block.clone())?;
+        commit_finalized_block(storage2, finalized_block.clone())?;
         // Necessary for proper fake proposal creation at next heights.
-        commit_finalized_block(fake_proposals_storage, finalized_block)?;
+        commit_finalized_block(consensus_storage2, finalized_block)?;
 
         anyhow::Ok(())
     })
@@ -398,17 +429,13 @@ async fn finalize_and_commit_block(
         height_and_round.height()
     );
 
-    let removed = incoming_proposals_cache
-        .remove(&height_and_round.height())
-        .unwrap_or_default()
-        .into_keys()
-        .map(|round| round.as_u32().expect("Round not to be None"))
-        .collect::<Vec<_>>();
-    tracing::debug!(
-        "🖧  🗑️ {validator_address} removed incoming proposals from cache for height {} and \
-         rounds: {removed:?}",
-        height_and_round.height()
-    );
+    let mut db_conn = consensus_storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_tx = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    remove_proposal_parts(db_tx, height_and_round.height(), None)?;
 
     Ok(())
 }
@@ -416,14 +443,16 @@ async fn finalize_and_commit_block(
 async fn execute_deferred_for_next_height(
     height_and_round: HeightAndRound,
     tx_to_consensus: &mpsc::Sender<ConsensusTaskEvent>,
-    validator_cache: &mut ValidatorCache,
-    deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
+    mut validator_cache: ValidatorCache,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
 ) -> anyhow::Result<()> {
     // Retrieve and execute any deferred transactions or proposal finalizations
     // for the next height, if any. Sort by (height, round) in ascending order.
-    let deferred = deferred_executions
-        .extract_if(|hnr, _| hnr.height() == height_and_round.height() + 1)
-        .collect::<BTreeMap<_, _>>();
+    let deferred = {
+        let mut dex = deferred_executions.lock().unwrap();
+        dex.extract_if(|hnr, _| hnr.height() == height_and_round.height() + 1)
+            .collect::<BTreeMap<_, _>>()
+    };
 
     // Execute deferred transactions and proposal finalization only for the last
     // stored deferred round in the height, because if there are any deferred
@@ -595,19 +624,31 @@ struct ProposalCommitmentWithOrigin {
 /// - a complete proposal has been received but it cannot be executed yet.
 ///
 /// Returns `Err` if there was an error processing the proposal part.
-async fn handle_incoming_proposal_part(
+#[allow(clippy::too_many_arguments)]
+fn handle_incoming_proposal_part(
     chain_id: ChainId,
+    validator_address: ContractAddress,
     height_and_round: HeightAndRound,
     proposal_part: ProposalPart,
-    incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
-    validator_cache: &mut ValidatorCache,
-    deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
+    mut validator_cache: ValidatorCache,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
     storage: Storage,
+    consensus_storage: Storage,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
-    let height = height_and_round.height();
-    let round = height_and_round.round().into();
-    let proposals_at_height = incoming_proposals_cache.entry(height).or_default();
-    let parts = proposals_at_height.entry(round).or_default();
+    let mut db_conn = consensus_storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_tx = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    let mut parts = foreign_proposal_parts(
+        &db_tx,
+        height_and_round.height(),
+        height_and_round.round(),
+        &validator_address,
+    )?
+    .unwrap_or_default();
+
     match proposal_part {
         ProposalPart::Init(ref prop_init) => {
             if !parts.is_empty() {
@@ -620,6 +661,15 @@ async fn handle_incoming_proposal_part(
 
             let proposal_init = prop_init.clone();
             parts.push(proposal_part);
+            let proposer_address = ContractAddress(proposal_init.proposer.0);
+            let updated = persist_proposal_parts(
+                db_tx,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(!updated);
             let validator = ValidatorBlockInfoStage::new(chain_id, proposal_init)?;
             validator_cache.insert(height_and_round, ValidatorStage::BlockInfo(validator));
             Ok(None)
@@ -638,6 +688,21 @@ async fn handle_incoming_proposal_part(
 
             let block_info = block_info.clone();
             parts.push(proposal_part);
+            let ProposalPart::Init(ProposalInit { proposer, .. }) =
+                parts.first().expect("Proposal Init")
+            else {
+                unreachable!("Proposal Init is inserted first");
+            };
+
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                db_tx,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
             let new_validator = validator.validate_consensus_block_info(block_info, storage)?;
             validator_cache.insert(
                 height_and_round,
@@ -664,6 +729,21 @@ async fn handle_incoming_proposal_part(
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
+            let ProposalPart::Init(ProposalInit { proposer, .. }) =
+                parts.first().expect("Proposal Init")
+            else {
+                unreachable!("Proposal Init is inserted first");
+            };
+
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                db_tx,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
 
             let validator = defer_or_execute_txn_batch(
                 height_and_round,
@@ -671,8 +751,7 @@ async fn handle_incoming_proposal_part(
                 storage.clone(),
                 validator,
                 deferred_executions,
-            )
-            .await?;
+            )?;
 
             validator_cache.insert(
                 height_and_round,
@@ -715,6 +794,16 @@ async fn handle_incoming_proposal_part(
                 unreachable!("Proposal Init is inserted first");
             };
 
+            let proposer_address = ContractAddress(proposer.0);
+            let updated = persist_proposal_parts(
+                db_tx,
+                height_and_round.height(),
+                height_and_round.round(),
+                &proposer_address,
+                &parts,
+            )?;
+            assert!(updated);
+
             let (validator, proposal_commitment) = defer_or_execute_proposal_fin(
                 height_and_round,
                 proposal_commitment,
@@ -722,8 +811,7 @@ async fn handle_incoming_proposal_part(
                 storage,
                 validator,
                 deferred_executions,
-            )
-            .await?;
+            )?;
 
             validator_cache.insert(height_and_round, validator);
             Ok(proposal_commitment)
@@ -740,14 +828,14 @@ async fn handle_incoming_proposal_part(
 /// appended to the list of deferred transactions for the height and round. If
 /// execution is performed, any previously deferred transactions for the height
 /// and round are executed first, then the current batch is executed.
-async fn defer_or_execute_txn_batch(
+fn defer_or_execute_txn_batch(
     height_and_round: HeightAndRound,
     tx_batch: Vec<p2p_proto::consensus::Transaction>,
     storage: Storage,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
-    deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
 ) -> Result<Box<crate::validator::ValidatorTransactionBatchStage>, anyhow::Error> {
-    let validator = if should_defer_execution(height_and_round, storage).await? {
+    let validator = if should_defer_execution(height_and_round, storage)? {
         tracing::debug!(
             "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is deferred"
         );
@@ -755,6 +843,7 @@ async fn defer_or_execute_txn_batch(
         // The current transaction batch cannot be executed yet, because the
         // previous block is not committed yet. Defer its execution by appending
         // it to the list of deferred transactions for the height and round.
+        let mut deferred_executions = deferred_executions.lock().unwrap();
         deferred_executions
             .entry(height_and_round)
             .or_default()
@@ -765,6 +854,7 @@ async fn defer_or_execute_txn_batch(
         // The current transaction batch can be executed now, because the
         // previous block is committed. First execute any deferred transactions
         // for the height and round, if any, then execute the current batch.
+        let mut deferred_executions = deferred_executions.lock().unwrap();
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
 
@@ -779,11 +869,7 @@ async fn defer_or_execute_txn_batch(
             tx_batch
         };
 
-        let validator = util::task::spawn_blocking(move |_| {
-            validator.execute_transactions(tx_batch)?;
-            anyhow::Ok(validator)
-        })
-        .await??;
+        validator.execute_transactions(tx_batch)?;
 
         tracing::debug!(
             "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
@@ -801,26 +887,27 @@ async fn defer_or_execute_txn_batch(
 /// commitment and proposer address are stored for later finalization. If
 /// execution is performed, any previously deferred transactions for the height
 /// and round are executed first, then the proposal is finalized.
-async fn defer_or_execute_proposal_fin(
+fn defer_or_execute_proposal_fin(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
     proposer: &Address,
     storage: Storage,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
-    deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
+    deferred_executions: Arc<Mutex<HashMap<HeightAndRound, DeferredExecution>>>,
 ) -> anyhow::Result<(ValidatorStage, Option<ProposalCommitmentWithOrigin>)> {
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
         proposer_address: ContractAddress(proposer.0),
     };
 
-    if should_defer_execution(height_and_round, storage).await? {
+    if should_defer_execution(height_and_round, storage)? {
         // The proposal cannot be finalized yet, because the previous
         // block is not committed yet. Defer its finalization.
         tracing::debug!(
             "🖧  ⚙️ consensus finalize for height and round {height_and_round} is deferred"
         );
 
+        let mut deferred_executions = deferred_executions.lock().unwrap();
         deferred_executions
             .entry(height_and_round)
             .or_default()
@@ -830,17 +917,14 @@ async fn defer_or_execute_proposal_fin(
         // The proposal can be finalized now, because the previous
         // block is committed. First execute any deferred transactions
         // for the height and round, if any, then finalize the proposal.
+        let mut deferred_executions = deferred_executions.lock().unwrap();
         let deferred = deferred_executions.remove(&height_and_round);
         let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
 
-        let validator = util::task::spawn_blocking(move |_| {
-            if let Some(DeferredExecution { transactions, .. }) = deferred {
-                validator.execute_transactions(transactions)?;
-            }
-            let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
-            anyhow::Ok(validator)
-        })
-        .await??;
+        if let Some(DeferredExecution { transactions, .. }) = deferred {
+            validator.execute_transactions(transactions)?;
+        }
+        let validator = validator.consensus_finalize(commitment.proposal_commitment)?;
 
         tracing::debug!(
             "🖧  ⚙️ consensus finalization for height and round {height_and_round} is complete, \
@@ -856,26 +940,22 @@ async fn defer_or_execute_proposal_fin(
 
 /// Determine whether execution of proposal parts for `height_and_round` should
 /// be deferred because the previous block is not committed yet.
-async fn should_defer_execution(
+fn should_defer_execution(
     height_and_round: HeightAndRound,
     storage: Storage,
 ) -> anyhow::Result<bool> {
-    let defer = util::task::spawn_blocking(move |_| {
-        let parent_block = height_and_round.height().checked_sub(1);
-        let defer = if let Some(parent_block) = parent_block {
-            let parent_block =
-                BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
-            let parent_block = BlockId::Number(parent_block);
-            let mut db_conn = storage.connection()?;
-            let db_txn = db_conn.transaction()?;
-            let parent_committed = db_txn.block_exists(parent_block)?;
-            !parent_committed
-        } else {
-            false
-        };
-        anyhow::Ok(defer)
-    })
-    .await??;
+    let parent_block = height_and_round.height().checked_sub(1);
+    let defer = if let Some(parent_block) = parent_block {
+        let parent_block =
+            BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
+        let parent_block = BlockId::Number(parent_block);
+        let mut db_conn = storage.connection()?;
+        let db_txn = db_conn.transaction()?;
+        let parent_committed = db_txn.block_exists(parent_block)?;
+        !parent_committed
+    } else {
+        false
+    };
     Ok(defer)
 }
 
@@ -911,4 +991,23 @@ fn consensus_vote_to_p2p_vote(
         proposal_commitment: vote.value.map(|v| Hash(v.0 .0)),
         voter: Address(vote.validator_address.0),
     }
+}
+
+fn query_own_proposal_parts(
+    consensus_storage: &Storage,
+    height_and_round: HeightAndRound,
+    validator_address: &ContractAddress,
+) -> anyhow::Result<Option<Vec<ProposalPart>>> {
+    let mut db_conn = consensus_storage
+        .connection()
+        .context("Creating database connection")?;
+    let db_tx = db_conn
+        .transaction()
+        .context("Creating database transaction")?;
+    own_proposal_parts(
+        &db_tx,
+        height_and_round.height(),
+        height_and_round.round(),
+        validator_address,
+    )
 }
