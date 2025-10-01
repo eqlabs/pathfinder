@@ -3,11 +3,15 @@
 //! anytime!
 
 use crate::jsonrpc::{RpcRouter, RpcRouterBuilder};
-use crate::method::{consensus_info, fetch_validators};
+use crate::method::{consensus_info, fetch_proposers, fetch_validators};
 
 pub fn register_routes() -> RpcRouterBuilder {
     RpcRouter::builder(crate::RpcVersion::PathfinderV01)
         .register("pathfinder_consensusInfo", consensus_info::consensus_info)
+        .register(
+            "pathfinder_fetchProposers",
+            fetch_proposers::fetch_proposers,
+        )
         .register(
             "pathfinder_fetchValidators",
             fetch_validators::fetch_validators,
