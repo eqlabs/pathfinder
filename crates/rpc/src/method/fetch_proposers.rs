@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_consensus_fetcher as consensus_fetcher;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
@@ -20,9 +21,9 @@ impl From<anyhow::Error> for FetchProposersError {
     }
 }
 
-impl From<validator_fetcher::ValidatorFetcherError> for FetchProposersError {
-    fn from(err: validator_fetcher::ValidatorFetcherError) -> Self {
-        use validator_fetcher::ValidatorFetcherError::*;
+impl From<consensus_fetcher::ConsensusFetcherError> for FetchProposersError {
+    fn from(err: consensus_fetcher::ConsensusFetcherError) -> Self {
+        use consensus_fetcher::ConsensusFetcherError::*;
         match err {
             Database(e) => Self::Internal(e),
             ContractCall(msg) => {
@@ -118,8 +119,8 @@ impl crate::dto::SerializeForVersion for Vec<ProposerInfoResponse> {
     }
 }
 
-impl From<Vec<validator_fetcher::ProposerInfo>> for Output {
-    fn from(proposers: Vec<validator_fetcher::ProposerInfo>) -> Self {
+impl From<Vec<consensus_fetcher::ProposerInfo>> for Output {
+    fn from(proposers: Vec<consensus_fetcher::ProposerInfo>) -> Self {
         let proposers = proposers
             .into_iter()
             .map(|proposer| ProposerInfoResponse {
@@ -164,7 +165,7 @@ pub async fn fetch_proposers(
 
         // Always use the latest block for proposer fetching
         // Use the validator fetcher to get proposers
-        let proposers = validator_fetcher::get_proposers_at_height(
+        let proposers = consensus_fetcher::get_proposers_at_height(
             &context.storage,
             context.chain_id,
             input.height,

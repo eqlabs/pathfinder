@@ -1,5 +1,6 @@
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
+use pathfinder_consensus_fetcher as consensus_fetcher;
 use pathfinder_storage::Storage;
 use rand::rngs::OsRng;
 
@@ -97,7 +98,7 @@ fn fetch_validators_from_l2(
     chain_id: ChainId,
     height: u64,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
-    let validators = validator_fetcher::get_validators_at_height(storage, chain_id, height)?;
+    let validators = consensus_fetcher::get_validators_at_height(storage, chain_id, height)?;
     let validators = validators
         .into_iter()
         .map(|validator| Validator {

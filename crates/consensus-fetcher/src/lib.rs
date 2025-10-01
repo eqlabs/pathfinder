@@ -30,7 +30,7 @@ pub struct ProposerInfo {
 
 /// Error types for validator fetching operations
 #[derive(Error, Debug)]
-pub enum ValidatorFetcherError {
+pub enum ConsensusFetcherError {
     #[error("Database error: {0}")]
     Database(#[from] anyhow::Error),
 
@@ -56,7 +56,7 @@ pub enum ValidatorFetcherError {
     UnsupportedNetwork(String),
 }
 
-impl From<pathfinder_executor::CallError> for ValidatorFetcherError {
+impl From<pathfinder_executor::CallError> for ConsensusFetcherError {
     fn from(err: pathfinder_executor::CallError) -> Self {
         use pathfinder_executor::CallError::*;
         match err {
@@ -72,7 +72,7 @@ impl From<pathfinder_executor::CallError> for ValidatorFetcherError {
 /// Returns the validator contract address for the given network
 fn get_validator_contract_address(
     chain_id: ChainId,
-) -> Result<ContractAddress, ValidatorFetcherError> {
+) -> Result<ContractAddress, ConsensusFetcherError> {
     match chain_id {
         ChainId::SEPOLIA_TESTNET => {
             // Sepolia testnet mock validator contract
@@ -82,11 +82,11 @@ fn get_validator_contract_address(
         }
         ChainId::MAINNET => {
             // TODO: Add mainnet validator contract address when available
-            Err(ValidatorFetcherError::UnsupportedNetwork(
+            Err(ConsensusFetcherError::UnsupportedNetwork(
                 chain_id.as_str().to_string(),
             ))
         }
-        _ => Err(ValidatorFetcherError::UnsupportedNetwork(
+        _ => Err(ConsensusFetcherError::UnsupportedNetwork(
             chain_id.as_str().to_string(),
         )),
     }
@@ -95,7 +95,7 @@ fn get_validator_contract_address(
 /// Returns the proposer contract address for the given network
 fn get_proposer_contract_address(
     chain_id: ChainId,
-) -> Result<ContractAddress, ValidatorFetcherError> {
+) -> Result<ContractAddress, ConsensusFetcherError> {
     match chain_id {
         ChainId::SEPOLIA_TESTNET => {
             // Sepolia testnet mock proposer contract
@@ -106,11 +106,11 @@ fn get_proposer_contract_address(
         }
         ChainId::MAINNET => {
             // TODO: Add mainnet proposer contract address when available
-            Err(ValidatorFetcherError::UnsupportedNetwork(
+            Err(ConsensusFetcherError::UnsupportedNetwork(
                 chain_id.as_str().to_string(),
             ))
         }
-        _ => Err(ValidatorFetcherError::UnsupportedNetwork(
+        _ => Err(ConsensusFetcherError::UnsupportedNetwork(
             chain_id.as_str().to_string(),
         )),
     }
@@ -124,7 +124,7 @@ pub fn get_validators_at_height(
     storage: &Storage,
     chain_id: ChainId,
     height: u64,
-) -> Result<Vec<ValidatorInfo>, ValidatorFetcherError> {
+) -> Result<Vec<ValidatorInfo>, ConsensusFetcherError> {
     let mut db_conn = storage
         .connection()
         .context("Failed to create database connection")?;
@@ -138,7 +138,7 @@ pub fn get_validators_at_height(
     let header = db_tx
         .block_header(block_id)
         .context("Querying latest block header")?
-        .ok_or(ValidatorFetcherError::BlockNotFound)?;
+        .ok_or(ConsensusFetcherError::BlockNotFound)?;
 
     // Get the hardcoded contract address for this network
     let contract_address = get_validator_contract_address(chain_id)?;
@@ -183,7 +183,7 @@ pub fn get_proposers_at_height(
     storage: &Storage,
     chain_id: ChainId,
     height: u64,
-) -> Result<Vec<ProposerInfo>, ValidatorFetcherError> {
+) -> Result<Vec<ProposerInfo>, ConsensusFetcherError> {
     let mut db_conn = storage
         .connection()
         .context("Failed to create database connection")?;
@@ -197,7 +197,7 @@ pub fn get_proposers_at_height(
     let header = db_tx
         .block_header(block_id)
         .context("Querying latest block header")?
-        .ok_or(ValidatorFetcherError::BlockNotFound)?;
+        .ok_or(ConsensusFetcherError::BlockNotFound)?;
 
     // Get the hardcoded contract address for this network
     let contract_address = get_proposer_contract_address(chain_id)?;
@@ -243,9 +243,9 @@ pub fn get_proposers_at_height(
 fn parse_validators_from_result(
     result: Vec<CallResultValue>,
     height: u64,
-) -> Result<Vec<ValidatorInfo>, ValidatorFetcherError> {
+) -> Result<Vec<ValidatorInfo>, ConsensusFetcherError> {
     if result.is_empty() {
-        return Err(ValidatorFetcherError::NoValidators { height });
+        return Err(ConsensusFetcherError::NoValidators { height });
     }
 
     // The contract returns an array with length first, then ValidatorInfo structs
@@ -266,7 +266,7 @@ fn parse_validators_from_result(
     // Validate that we have the expected number of elements
     let expected_elements = array_length * 3; // 3 fields per validator
     if data.len() != expected_elements as usize {
-        return Err(ValidatorFetcherError::InvalidValidatorData(format!(
+        return Err(ConsensusFetcherError::InvalidValidatorData(format!(
             "Expected {} elements for {} validators, got {}",
             expected_elements,
             array_length,
@@ -277,7 +277,7 @@ fn parse_validators_from_result(
     // Process the data in chunks of 3 (address, public_key, voting_power)
     for (i, chunk) in data.chunks(3).enumerate() {
         if chunk.len() != 3 {
-            return Err(ValidatorFetcherError::InvalidValidatorData(format!(
+            return Err(ConsensusFetcherError::InvalidValidatorData(format!(
                 "Invalid chunk length {} at index {}",
                 chunk.len(),
                 i
@@ -303,12 +303,12 @@ fn parse_validators_from_result(
     }
 
     if validators.is_empty() {
-        return Err(ValidatorFetcherError::NoValidators { height });
+        return Err(ConsensusFetcherError::NoValidators { height });
     }
 
     // Validate that we processed the expected number of validators
     if validators.len() != array_length as usize {
-        return Err(ValidatorFetcherError::InvalidValidatorData(format!(
+        return Err(ConsensusFetcherError::InvalidValidatorData(format!(
             "Expected {} validators, processed {}",
             array_length,
             validators.len()
@@ -327,9 +327,9 @@ fn parse_validators_from_result(
 fn parse_proposers_from_result(
     result: Vec<CallResultValue>,
     height: u64,
-) -> Result<Vec<ProposerInfo>, ValidatorFetcherError> {
+) -> Result<Vec<ProposerInfo>, ConsensusFetcherError> {
     if result.is_empty() {
-        return Err(ValidatorFetcherError::NoProposers { height });
+        return Err(ConsensusFetcherError::NoProposers { height });
     }
 
     // The contract returns an array with length first, then ProposerInfo structs
@@ -350,7 +350,7 @@ fn parse_proposers_from_result(
     // Validate that we have the expected number of elements
     let expected_elements = array_length * 3; // 3 fields per proposer
     if data.len() != expected_elements as usize {
-        return Err(ValidatorFetcherError::InvalidProposerData(format!(
+        return Err(ConsensusFetcherError::InvalidProposerData(format!(
             "Expected {} elements for {} proposers, got {}",
             expected_elements,
             array_length,
@@ -361,7 +361,7 @@ fn parse_proposers_from_result(
     // Process the data in chunks of 3 (address, public_key, priority)
     for (i, chunk) in data.chunks(3).enumerate() {
         if chunk.len() != 3 {
-            return Err(ValidatorFetcherError::InvalidProposerData(format!(
+            return Err(ConsensusFetcherError::InvalidProposerData(format!(
                 "Invalid chunk length {} at index {}",
                 chunk.len(),
                 i
@@ -387,12 +387,12 @@ fn parse_proposers_from_result(
     }
 
     if proposers.is_empty() {
-        return Err(ValidatorFetcherError::NoProposers { height });
+        return Err(ConsensusFetcherError::NoProposers { height });
     }
 
     // Validate that we processed the expected number of proposers
     if proposers.len() != array_length as usize {
-        return Err(ValidatorFetcherError::InvalidProposerData(format!(
+        return Err(ConsensusFetcherError::InvalidProposerData(format!(
             "Expected {} proposers, processed {}",
             array_length,
             proposers.len()
@@ -403,7 +403,7 @@ fn parse_proposers_from_result(
 }
 
 /// Attempts to convert a Felt to a PublicKey
-pub fn felt_to_public_key(felt: &Felt) -> Result<PublicKey, ValidatorFetcherError> {
+pub fn felt_to_public_key(felt: &Felt) -> Result<PublicKey, ConsensusFetcherError> {
     // Convert Felt to bytes (32 bytes for Ed25519 public key)
     let mut key_bytes = [0u8; 32];
     let felt_bytes = felt.to_be_bytes();
@@ -421,16 +421,16 @@ pub fn felt_to_public_key(felt: &Felt) -> Result<PublicKey, ValidatorFetcherErro
     // If it fails, it means the contract returned invalid key data
     match std::panic::catch_unwind(|| PublicKey::from_bytes(key_bytes)) {
         Ok(public_key) => Ok(public_key),
-        Err(_) => Err(ValidatorFetcherError::InvalidValidatorData(
+        Err(_) => Err(ConsensusFetcherError::InvalidValidatorData(
             "Invalid public key data from contract".to_string(),
         )),
     }
 }
 
 /// Helper function to create a contract address from a hex string
-pub fn parse_contract_address(hex_str: &str) -> Result<ContractAddress, ValidatorFetcherError> {
+pub fn parse_contract_address(hex_str: &str) -> Result<ContractAddress, ConsensusFetcherError> {
     let felt = Felt::from_hex_str(hex_str).map_err(|e| {
-        ValidatorFetcherError::InvalidValidatorData(format!("Invalid contract address: {e}"))
+        ConsensusFetcherError::InvalidValidatorData(format!("Invalid contract address: {e}"))
     })?;
     Ok(ContractAddress(felt))
 }

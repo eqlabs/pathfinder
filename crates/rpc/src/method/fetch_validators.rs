@@ -1,4 +1,5 @@
 use anyhow::Context;
+use pathfinder_consensus_fetcher as consensus_fetcher;
 
 use crate::context::RpcContext;
 use crate::error::ApplicationError;
@@ -20,9 +21,9 @@ impl From<anyhow::Error> for FetchValidatorsError {
     }
 }
 
-impl From<validator_fetcher::ValidatorFetcherError> for FetchValidatorsError {
-    fn from(err: validator_fetcher::ValidatorFetcherError) -> Self {
-        use validator_fetcher::ValidatorFetcherError::*;
+impl From<consensus_fetcher::ConsensusFetcherError> for FetchValidatorsError {
+    fn from(err: consensus_fetcher::ConsensusFetcherError) -> Self {
+        use consensus_fetcher::ConsensusFetcherError::*;
         match err {
             Database(e) => Self::Internal(e),
             ContractCall(msg) => {
@@ -118,8 +119,8 @@ impl crate::dto::SerializeForVersion for Vec<ValidatorInfoResponse> {
     }
 }
 
-impl From<Vec<validator_fetcher::ValidatorInfo>> for Output {
-    fn from(validators: Vec<validator_fetcher::ValidatorInfo>) -> Self {
+impl From<Vec<consensus_fetcher::ValidatorInfo>> for Output {
+    fn from(validators: Vec<consensus_fetcher::ValidatorInfo>) -> Self {
         let validators = validators
             .into_iter()
             .map(|validator| ValidatorInfoResponse {
@@ -164,7 +165,7 @@ pub async fn fetch_validators(
 
         // Always use the latest block for validator fetching
         // Use the validator fetcher to get validators
-        let validators = validator_fetcher::get_validators_at_height(
+        let validators = consensus_fetcher::get_validators_at_height(
             &context.storage,
             context.chain_id,
             input.height,
