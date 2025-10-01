@@ -75,6 +75,7 @@ fn create_validators_from_config(
     let validators = std::iter::once(validator_address)
         .chain(config.validator_addresses.clone())
         .map(|address| {
+            // TODO: This is obviously not production ready.
             let sk = SigningKey::new(OsRng);
             let vk = sk.verification_key();
             let public_key = PublicKey::from_bytes(vk.to_bytes());

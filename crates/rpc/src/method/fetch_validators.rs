@@ -5,62 +5,6 @@ use crate::context::RpcContext;
 use crate::error::ApplicationError;
 use crate::RpcVersion;
 
-#[derive(Debug)]
-pub enum FetchValidatorsError {
-    Internal(anyhow::Error),
-    Custom(anyhow::Error),
-    BlockNotFound,
-    ContractNotFound,
-    NoValidators { height: u64 },
-    InvalidValidatorData(String),
-}
-
-impl From<anyhow::Error> for FetchValidatorsError {
-    fn from(e: anyhow::Error) -> Self {
-        Self::Internal(e)
-    }
-}
-
-impl From<consensus_fetcher::ConsensusFetcherError> for FetchValidatorsError {
-    fn from(err: consensus_fetcher::ConsensusFetcherError) -> Self {
-        use consensus_fetcher::ConsensusFetcherError::*;
-        match err {
-            Database(e) => Self::Internal(e),
-            ContractCall(msg) => {
-                if msg.contains("Contract not found") {
-                    Self::ContractNotFound
-                } else {
-                    Self::Custom(anyhow::anyhow!(msg))
-                }
-            }
-            NoValidators { height } => Self::NoValidators { height },
-            InvalidValidatorData(msg) => Self::InvalidValidatorData(msg),
-            BlockNotFound => Self::BlockNotFound,
-            UnsupportedNetwork(chain_id) => {
-                Self::Custom(anyhow::anyhow!("Unsupported network: {}", chain_id))
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl From<FetchValidatorsError> for ApplicationError {
-    fn from(value: FetchValidatorsError) -> Self {
-        match value {
-            FetchValidatorsError::BlockNotFound => ApplicationError::BlockNotFound,
-            FetchValidatorsError::ContractNotFound => ApplicationError::ContractNotFound,
-            FetchValidatorsError::NoValidators { .. } => {
-                ApplicationError::Custom(anyhow::anyhow!("No validators found"))
-            }
-            FetchValidatorsError::InvalidValidatorData(msg) => {
-                ApplicationError::Custom(anyhow::anyhow!(msg))
-            }
-            FetchValidatorsError::Internal(e) => ApplicationError::Internal(e),
-            FetchValidatorsError::Custom(e) => ApplicationError::Custom(e),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     pub height: u64,
@@ -158,23 +102,19 @@ pub async fn fetch_validators(
     context: RpcContext,
     input: Input,
     _rpc_version: RpcVersion,
-) -> Result<Output, FetchValidatorsError> {
+) -> Result<Output, ApplicationError> {
     let span = tracing::Span::current();
-    let result = util::task::spawn_blocking(move |_| {
+    let validators = util::task::spawn_blocking(move |_| {
         let _g = span.enter();
-
-        // Always use the latest block for validator fetching
-        // Use the validator fetcher to get validators
-        let validators = consensus_fetcher::get_validators_at_height(
+        consensus_fetcher::get_validators_at_height(
             &context.storage,
             context.chain_id,
             input.height,
-        )?;
-
-        Ok(Output::from(validators))
+        )
     })
     .await
-    .context("Database read panic or shutting down")?;
+    .context("Database read panic or shutting down")?
+    .map_err(ApplicationError::from)?;
 
-    result
+    Ok(Output::from(validators))
 }

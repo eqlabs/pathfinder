@@ -49,8 +49,8 @@ use pathfinder_consensus::{
 use pathfinder_storage::Storage;
 use tokio::sync::{mpsc, watch};
 
+use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
-use super::select_proposer::{get_proposer_selector, ProposerSelector};
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
 use crate::config::ConsensusConfig;
 use crate::state::block_hash::{
@@ -78,10 +78,10 @@ pub fn spawn(
             L2ValidatorSetProvider::new(storage.clone(), chain_id, config.clone());
 
         // Get the proposer selector
-        let proposer_selector = get_proposer_selector(&config);
+        let proposer_selector = L2ProposerSelector::new(storage.clone(), chain_id, config.clone());
 
         let mut consensus =
-            Consensus::<ConsensusValue, ContractAddress, ProposerSelector>::recover(
+            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover(
                 Config::new(validator_address)
                     .with_wal_dir(wal_directory)
                     .with_history_depth(
@@ -343,7 +343,7 @@ pub fn spawn(
 }
 
 fn start_height(
-    consensus: &mut Consensus<ConsensusValue, ContractAddress, ProposerSelector>,
+    consensus: &mut Consensus<ConsensusValue, ContractAddress, L2ProposerSelector>,
     started_heights: &mut HashSet<u64>,
     height: u64,
     validator_set: ValidatorSet<ContractAddress>,

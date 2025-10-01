@@ -234,6 +234,92 @@ pub fn get_proposers_at_height(
     parse_proposers_from_result(result, height)
 }
 
+/// Generic parser for consensus participants from contract call results
+///
+/// Parses an array of structs where each struct contains:
+/// - address: ContractAddress
+/// - public_key: felt252 (32 bytes as a single felt)
+/// - value: u64 (voting_power for validators, priority for proposers)
+fn parse_consensus_participants_from_result<T, F>(
+    result: Vec<CallResultValue>,
+    _height: u64,
+    create_participant: F,
+    no_participants_error: ConsensusFetcherError,
+    invalid_data_error: fn(String) -> ConsensusFetcherError,
+) -> Result<Vec<T>, ConsensusFetcherError>
+where
+    F: Fn(ContractAddress, PublicKey, u64) -> T,
+{
+    if result.is_empty() {
+        return Err(no_participants_error);
+    }
+
+    // The contract returns an array with length first, then participant structs
+    // Format: [length, address1, public_key1, value1, address2, public_key2,
+    // value2, ...]
+    let mut participants = Vec::new();
+
+    // The first element is the array length
+    let first_element = result[0].0;
+    let first_bytes = first_element.to_be_bytes();
+    let array_length = u64::from_be_bytes(first_bytes[24..32].try_into().unwrap());
+
+    // Skip the first element (array length) and process the data
+    // The remaining elements are the participant data (address, public_key, value)
+    // for each participant
+    let data = &result[1..];
+
+    // Validate that we have the expected number of elements
+    let expected_elements = array_length * 3; // 3 fields per participant
+    if data.len() != expected_elements as usize {
+        return Err(invalid_data_error(format!(
+            "Expected {} elements for {} participants, got {}",
+            expected_elements,
+            array_length,
+            data.len()
+        )));
+    }
+
+    // Process the data in chunks of 3 (address, public_key, value)
+    for (i, chunk) in data.chunks(3).enumerate() {
+        if chunk.len() != 3 {
+            return Err(invalid_data_error(format!(
+                "Invalid chunk length {} at index {}",
+                chunk.len(),
+                i
+            )));
+        }
+
+        let address = ContractAddress(chunk[0].0);
+        let public_key_felt = chunk[1].0;
+        let value_felt = chunk[2].0;
+
+        // Convert value from Felt to u64
+        let value_bytes = value_felt.to_be_bytes();
+        let value = u64::from_be_bytes(value_bytes[24..32].try_into().unwrap());
+
+        // Convert the actual public_key Felt to PublicKey
+        let public_key = felt_to_public_key(&public_key_felt)?;
+
+        participants.push(create_participant(address, public_key, value));
+    }
+
+    if participants.is_empty() {
+        return Err(no_participants_error);
+    }
+
+    // Validate that we processed the expected number of participants
+    if participants.len() != array_length as usize {
+        return Err(invalid_data_error(format!(
+            "Expected {} participants, processed {}",
+            array_length,
+            participants.len()
+        )));
+    }
+
+    Ok(participants)
+}
+
 /// Parses the contract call result into a vector of ValidatorInfo
 /// The mock contract now returns an array of ValidatorInfo structs, where each
 /// struct contains:
@@ -244,78 +330,17 @@ fn parse_validators_from_result(
     result: Vec<CallResultValue>,
     height: u64,
 ) -> Result<Vec<ValidatorInfo>, ConsensusFetcherError> {
-    if result.is_empty() {
-        return Err(ConsensusFetcherError::NoValidators { height });
-    }
-
-    // The contract returns an array with length first, then ValidatorInfo structs
-    // Format: [length, address1, public_key1, voting_power1, address2, public_key2,
-    // voting_power2, ...]
-    let mut validators = Vec::new();
-
-    // The first element is the array length
-    let first_element = result[0].0;
-    let first_bytes = first_element.to_be_bytes();
-    let array_length = u64::from_be_bytes(first_bytes[24..32].try_into().unwrap());
-
-    // Skip the first element (array length) and process the data
-    // The remaining elements are the validator data (address, public_key,
-    // voting_power) for each validator
-    let data = &result[1..];
-
-    // Validate that we have the expected number of elements
-    let expected_elements = array_length * 3; // 3 fields per validator
-    if data.len() != expected_elements as usize {
-        return Err(ConsensusFetcherError::InvalidValidatorData(format!(
-            "Expected {} elements for {} validators, got {}",
-            expected_elements,
-            array_length,
-            data.len()
-        )));
-    }
-
-    // Process the data in chunks of 3 (address, public_key, voting_power)
-    for (i, chunk) in data.chunks(3).enumerate() {
-        if chunk.len() != 3 {
-            return Err(ConsensusFetcherError::InvalidValidatorData(format!(
-                "Invalid chunk length {} at index {}",
-                chunk.len(),
-                i
-            )));
-        }
-
-        let address = ContractAddress(chunk[0].0);
-        let public_key_felt = chunk[1].0;
-        let voting_power_felt = chunk[2].0;
-
-        // Convert voting_power from Felt to u64
-        let voting_power_bytes = voting_power_felt.to_be_bytes();
-        let voting_power = u64::from_be_bytes(voting_power_bytes[24..32].try_into().unwrap());
-
-        // Convert the actual public_key Felt to PublicKey
-        let public_key = felt_to_public_key(&public_key_felt)?;
-
-        validators.push(ValidatorInfo {
+    parse_consensus_participants_from_result(
+        result,
+        height,
+        |address, public_key, voting_power| ValidatorInfo {
             address,
             public_key,
             voting_power,
-        });
-    }
-
-    if validators.is_empty() {
-        return Err(ConsensusFetcherError::NoValidators { height });
-    }
-
-    // Validate that we processed the expected number of validators
-    if validators.len() != array_length as usize {
-        return Err(ConsensusFetcherError::InvalidValidatorData(format!(
-            "Expected {} validators, processed {}",
-            array_length,
-            validators.len()
-        )));
-    }
-
-    Ok(validators)
+        },
+        ConsensusFetcherError::NoValidators { height },
+        ConsensusFetcherError::InvalidValidatorData,
+    )
 }
 
 /// Parses the contract call result into a vector of ProposerInfo
@@ -328,78 +353,17 @@ fn parse_proposers_from_result(
     result: Vec<CallResultValue>,
     height: u64,
 ) -> Result<Vec<ProposerInfo>, ConsensusFetcherError> {
-    if result.is_empty() {
-        return Err(ConsensusFetcherError::NoProposers { height });
-    }
-
-    // The contract returns an array with length first, then ProposerInfo structs
-    // Format: [length, address1, public_key1, priority1, address2, public_key2,
-    // priority2, ...]
-    let mut proposers = Vec::new();
-
-    // The first element is the array length
-    let first_element = result[0].0;
-    let first_bytes = first_element.to_be_bytes();
-    let array_length = u64::from_be_bytes(first_bytes[24..32].try_into().unwrap());
-
-    // Skip the first element (array length) and process the data
-    // The remaining elements are the proposer data (address, public_key,
-    // priority) for each proposer
-    let data = &result[1..];
-
-    // Validate that we have the expected number of elements
-    let expected_elements = array_length * 3; // 3 fields per proposer
-    if data.len() != expected_elements as usize {
-        return Err(ConsensusFetcherError::InvalidProposerData(format!(
-            "Expected {} elements for {} proposers, got {}",
-            expected_elements,
-            array_length,
-            data.len()
-        )));
-    }
-
-    // Process the data in chunks of 3 (address, public_key, priority)
-    for (i, chunk) in data.chunks(3).enumerate() {
-        if chunk.len() != 3 {
-            return Err(ConsensusFetcherError::InvalidProposerData(format!(
-                "Invalid chunk length {} at index {}",
-                chunk.len(),
-                i
-            )));
-        }
-
-        let address = ContractAddress(chunk[0].0);
-        let public_key_felt = chunk[1].0;
-        let priority_felt = chunk[2].0;
-
-        // Convert priority from Felt to u64
-        let priority_bytes = priority_felt.to_be_bytes();
-        let priority = u64::from_be_bytes(priority_bytes[24..32].try_into().unwrap());
-
-        // Convert the actual public_key Felt to PublicKey
-        let public_key = felt_to_public_key(&public_key_felt)?;
-
-        proposers.push(ProposerInfo {
+    parse_consensus_participants_from_result(
+        result,
+        height,
+        |address, public_key, priority| ProposerInfo {
             address,
             public_key,
             priority,
-        });
-    }
-
-    if proposers.is_empty() {
-        return Err(ConsensusFetcherError::NoProposers { height });
-    }
-
-    // Validate that we processed the expected number of proposers
-    if proposers.len() != array_length as usize {
-        return Err(ConsensusFetcherError::InvalidProposerData(format!(
-            "Expected {} proposers, processed {}",
-            array_length,
-            proposers.len()
-        )));
-    }
-
-    Ok(proposers)
+        },
+        ConsensusFetcherError::NoProposers { height },
+        ConsensusFetcherError::InvalidProposerData,
+    )
 }
 
 /// Attempts to convert a Felt to a PublicKey
