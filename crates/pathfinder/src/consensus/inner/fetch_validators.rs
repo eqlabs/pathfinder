@@ -1,5 +1,6 @@
 use pathfinder_common::{ChainId, ContractAddress};
 use pathfinder_consensus::{PublicKey, SigningKey, Validator, ValidatorSet};
+use pathfinder_consensus_fetcher as consensus_fetcher;
 use pathfinder_storage::Storage;
 use rand::rngs::OsRng;
 
@@ -74,6 +75,7 @@ fn create_validators_from_config(
     let validators = std::iter::once(validator_address)
         .chain(config.validator_addresses.clone())
         .map(|address| {
+            // TODO: This is obviously not production ready.
             let sk = SigningKey::new(OsRng);
             let vk = sk.verification_key();
             let public_key = PublicKey::from_bytes(vk.to_bytes());
@@ -97,7 +99,7 @@ fn fetch_validators_from_l2(
     chain_id: ChainId,
     height: u64,
 ) -> Result<ValidatorSet<ContractAddress>, anyhow::Error> {
-    let validators = validator_fetcher::get_validators_at_height(storage, chain_id, height)?;
+    let validators = consensus_fetcher::get_validators_at_height(storage, chain_id, height)?;
     let validators = validators
         .into_iter()
         .map(|validator| Validator {

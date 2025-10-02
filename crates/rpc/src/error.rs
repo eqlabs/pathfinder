@@ -321,6 +321,40 @@ impl ApplicationError {
     }
 }
 
+// TODO: This can be safely removed once the temporary fetching methods are
+// removed.
+impl From<pathfinder_consensus_fetcher::ConsensusFetcherError> for ApplicationError {
+    fn from(err: pathfinder_consensus_fetcher::ConsensusFetcherError) -> Self {
+        use pathfinder_consensus_fetcher::ConsensusFetcherError::*;
+        match err {
+            Database(e) => ApplicationError::Internal(e),
+            ContractCall(msg) => {
+                if msg.contains("Contract not found") {
+                    ApplicationError::ContractNotFound
+                } else {
+                    ApplicationError::Custom(anyhow::anyhow!(msg))
+                }
+            }
+            NoValidators { .. } => ApplicationError::Custom(anyhow::anyhow!("No validators found")),
+            NoProposers { .. } => ApplicationError::Custom(anyhow::anyhow!("No proposers found")),
+            InvalidValidatorData(msg) => ApplicationError::Custom(anyhow::anyhow!(msg)),
+            InvalidProposerData(msg) => ApplicationError::Custom(anyhow::anyhow!(msg)),
+            BlockNotFound => ApplicationError::BlockNotFound,
+            UnsupportedNetwork(chain_id) => {
+                ApplicationError::Custom(anyhow::anyhow!("Unsupported network: {}", chain_id))
+            }
+        }
+    }
+}
+
+// TODO: This can be safely removed once the temporary fetching methods are
+// removed.
+impl From<anyhow::Error> for ApplicationError {
+    fn from(err: anyhow::Error) -> Self {
+        ApplicationError::Internal(err)
+    }
+}
+
 fn error_stack_frames_to_json(frames: &[pathfinder_executor::Frame]) -> serde_json::Value {
     let last_string_frame_contents = frames
         .iter()

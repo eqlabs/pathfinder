@@ -221,7 +221,7 @@ mod test {
                     format!("--http-rpc=127.0.0.1:{}", config.rpc_port).as_str(),
                     "--consensus.enable=true",
                     // Currently the proposer address always points to Alice (0x1).
-                    "--consensus.proposer-address=0x1",
+                    "--consensus.proposer-addresses=0x1",
                     format!(
                         "--consensus.my-validator-address={:#x}",
                         config.my_validator_address

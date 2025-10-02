@@ -620,16 +620,6 @@ struct ConsensusCli {
     is_consensus_enabled: bool,
 
     #[arg(
-        long = "consensus.proposer-address",
-        long_help = "Address of the sole proposer for the consensus protocol.",
-        value_name = "ADDRESS",
-        value_parser = parse_felt,
-        env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESS",
-        required_if_eq("is_consensus_enabled", "true"),
-    )]
-    proposer_address: Option<Felt>,
-
-    #[arg(
         long = "consensus.my-validator-address",
         long_help = "Address of this validator node.",
         value_name = "ADDRESS",
@@ -649,6 +639,16 @@ struct ConsensusCli {
         required_if_eq("is_consensus_enabled", "true"),
     )]
     validator_addresses: Vec<Felt>,
+
+    #[arg(
+        long = "consensus.proposer-addresses",
+        long_help = "Addresses of proposers. If provided, these will be used instead of fetching from L2.",
+        value_name = "ADDRESS_LIST",
+        value_parser = parse_felt,
+        value_delimiter = ',',
+        env = "PATHFINDER_CONSENSUS_PROPOSER_ADDRESSES",
+    )]
+    proposer_addresses: Vec<Felt>,
 }
 
 #[derive(clap::ValueEnum, Clone, serde::Deserialize)]
@@ -880,13 +880,12 @@ pub struct NativeExecutionConfig;
 #[cfg(feature = "p2p")]
 #[derive(Clone)]
 pub struct ConsensusConfig {
-    /// Optionally, you can specify a fixed proposer address. Otherwise,  a
-    /// proposer will be chosen among the validators.
-    pub proposer_address: Option<ContractAddress>,
     /// The validator address of the current node.
     pub my_validator_address: ContractAddress,
     /// The validator addresses of all validators in the validator set.
     pub validator_addresses: Vec<ContractAddress>,
+    /// The proposer addresses of all proposers in the proposer set.
+    pub proposer_addresses: Vec<ContractAddress>,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1025,13 +1024,17 @@ impl ConsensusConfig {
             }
 
             Self {
-                proposer_address: args.proposer_address.map(ContractAddress),
                 my_validator_address: ContractAddress(
                     args.my_validator_address
                         .expect("Required if `is_consensus_enabled` is true"),
                 ),
                 validator_addresses: args
                     .validator_addresses
+                    .into_iter()
+                    .map(ContractAddress)
+                    .collect(),
+                proposer_addresses: args
+                    .proposer_addresses
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),

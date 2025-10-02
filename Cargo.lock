@@ -8515,6 +8515,7 @@ dependencies = [
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-consensus",
+ "pathfinder-consensus-fetcher",
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
@@ -8552,7 +8553,6 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "util",
- "validator-fetcher",
  "warp",
  "zeroize",
  "zstd",
@@ -8650,6 +8650,21 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "pathfinder-consensus-fetcher"
+version = "0.20.4"
+dependencies = [
+ "anyhow",
+ "pathfinder-common",
+ "pathfinder-consensus",
+ "pathfinder-crypto",
+ "pathfinder-executor",
+ "pathfinder-serde",
+ "pathfinder-storage",
+ "primitive-types",
+ "thiserror 2.0.16",
 ]
 
 [[package]]
@@ -8764,6 +8779,7 @@ dependencies = [
  "pathfinder-common",
  "pathfinder-compiler",
  "pathfinder-consensus",
+ "pathfinder-consensus-fetcher",
  "pathfinder-crypto",
  "pathfinder-ethereum",
  "pathfinder-executor",
@@ -8794,7 +8810,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "util",
- "validator-fetcher",
  "zstd",
 ]
 
@@ -12072,21 +12087,6 @@ dependencies = [
  "url",
  "validator_derive",
  "validator_types",
-]
-
-[[package]]
-name = "validator-fetcher"
-version = "0.20.4"
-dependencies = [
- "anyhow",
- "pathfinder-common",
- "pathfinder-consensus",
- "pathfinder-crypto",
- "pathfinder-executor",
- "pathfinder-serde",
- "pathfinder-storage",
- "primitive-types",
- "thiserror 2.0.16",
 ]
 
 [[package]]
