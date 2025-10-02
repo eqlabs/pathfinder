@@ -517,12 +517,13 @@ async fn send_proposal_to_consensus(
     let ProposalCommitmentWithOrigin {
         proposal_commitment,
         proposer_address,
+        pol_round,
     } = commitment;
     let proposal = Proposal {
         height: height_and_round.height(),
         round: height_and_round.round().into(),
         value: ConsensusValue(proposal_commitment),
-        pol_round: Round::nil(),
+        pol_round,
         proposer: proposer_address,
     };
 
@@ -578,10 +579,21 @@ struct DeferredExecution {
 }
 
 /// Proposal commitment and the address of its proposer.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Clone)]
 struct ProposalCommitmentWithOrigin {
     pub proposal_commitment: ProposalCommitment,
     pub proposer_address: ContractAddress,
+    pub pol_round: Round,
+}
+
+impl Default for ProposalCommitmentWithOrigin {
+    fn default() -> Self {
+        Self {
+            proposal_commitment: ProposalCommitment::default(),
+            proposer_address: ContractAddress::default(),
+            pol_round: Round::nil(),
+        }
+    }
 }
 
 /// Handles an incoming proposal part received from the P2P network. Returns
@@ -709,8 +721,11 @@ async fn handle_incoming_proposal_part(
             }
 
             parts.push(proposal_part);
-            let ProposalPart::Init(ProposalInit { proposer, .. }) =
-                parts.first().expect("Proposal Init")
+            let ProposalPart::Init(ProposalInit {
+                proposer,
+                valid_round,
+                ..
+            }) = parts.first().expect("Proposal Init")
             else {
                 unreachable!("Proposal Init is inserted first");
             };
@@ -719,6 +734,7 @@ async fn handle_incoming_proposal_part(
                 height_and_round,
                 proposal_commitment,
                 proposer,
+                *valid_round,
                 storage,
                 validator,
                 deferred_executions,
@@ -805,6 +821,7 @@ async fn defer_or_execute_proposal_fin(
     height_and_round: HeightAndRound,
     proposal_commitment: Hash,
     proposer: &Address,
+    valid_round: Option<u32>,
     storage: Storage,
     mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
     deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
@@ -812,6 +829,7 @@ async fn defer_or_execute_proposal_fin(
     let commitment = ProposalCommitmentWithOrigin {
         proposal_commitment: ProposalCommitment(proposal_commitment.0),
         proposer_address: ContractAddress(proposer.0),
+        pol_round: valid_round.map(Round::new).unwrap_or(Round::nil()),
     };
 
     if should_defer_execution(height_and_round, storage).await? {
