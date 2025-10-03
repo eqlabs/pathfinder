@@ -96,7 +96,7 @@ pub fn spawn(
                             let dex = deferred_executions.clone();
                             let storage = storage.clone();
                             let consensus_storage = consensus_storage.clone();
-                            let result = util::task::spawn_blocking(async move |_| {
+                            let result = util::task::spawn_blocking(move |_| {
                                 handle_incoming_proposal_part(
                                     chain_id,
                                     validator_address,
@@ -108,8 +108,7 @@ pub fn spawn(
                                     consensus_storage,
                                 )
                             })
-                            .await?
-                            .await;
+                            .await?;
                             match result {
                                 Ok(Some(commitment)) => {
                                     send_proposal_to_consensus(
