@@ -95,7 +95,7 @@ pub fn spawn(
                             let vcache = validator_cache.clone();
                             let dex = deferred_executions.clone();
                             let storage = storage.clone();
-                            let consensus_storage = consensus_storage.clone();
+                            let consensus_storage2 = consensus_storage.clone();
                             let result = util::task::spawn_blocking(move |_| {
                                 handle_incoming_proposal_part(
                                     chain_id,
@@ -105,7 +105,7 @@ pub fn spawn(
                                     vcache,
                                     dex,
                                     storage,
-                                    consensus_storage,
+                                    consensus_storage2,
                                 )
                             })
                             .await?;
@@ -163,21 +163,27 @@ pub fn spawn(
                          hash {proposal_commitment}"
                     );
 
-                    let mut db_conn = consensus_storage
-                        .connection()
-                        .context("Creating database connection")?;
-                    let db_tx = db_conn
-                        .transaction()
-                        .context("Creating database transaction")?;
-                    let duplicate_encountered = persist_proposal_parts(
-                        db_tx,
-                        height_and_round.height(),
-                        height_and_round.round(),
-                        &validator_address,
-                        &proposal_parts,
-                    )?;
-                    my_finalized_blocks_cache.insert(height_and_round, finalized_block);
+                    let consensus_storage2 = consensus_storage.clone();
+                    let duplicate_encountered = util::task::spawn_blocking(move |_| {
+                        let mut db_conn = consensus_storage2
+                            .connection()
+                            .context("Creating database connection")?;
+                        let db_tx = db_conn
+                            .transaction()
+                            .context("Creating database transaction")?;
+                        let duplicate_encountered = persist_proposal_parts(
+                            db_tx,
+                            height_and_round.height(),
+                            height_and_round.round(),
+                            &validator_address,
+                            &proposal_parts,
+                        )?;
 
+                        anyhow::Ok(duplicate_encountered)
+                    })
+                    .await??;
+
+                    my_finalized_blocks_cache.insert(height_and_round, finalized_block);
                     if duplicate_encountered {
                         tracing::warn!("Duplicate proposal cache request for {height_and_round}!");
                     }
@@ -192,73 +198,84 @@ pub fn spawn(
                             proposal.round.as_u32().expect("Valid round"),
                         );
 
-                        let proposal_parts = if let Some(proposal_parts) = query_own_proposal_parts(
-                            &consensus_storage,
-                            height_and_round,
-                            &validator_address,
-                        )? {
-                            // TODO we're assuming that all proposals are valid and any failure
-                            // to reach consensus in round 0
-                            // always yields re-proposing the same
-                            // proposal in following rounds. This will change once proposal
-                            // validation is integrated.
-                            proposal_parts
-                        } else {
-                            // TODO this is here to catch a very rare case which I'm almost
-                            // sure occurred at least once during tests on my machine.
-                            tracing::warn!(
-                                "Engine requested gossiping a proposal for {height_and_round} via \
-                                 ConsensusEvent::Gossip but we did not create it due to missing \
-                                 respective ConsensusEvent::RequestProposal.",
-                            );
+                        let consensus_storage2 = consensus_storage.clone();
+                        let consensus_storage3 = consensus_storage.clone();
+                        let proposal_parts = util::task::spawn_blocking(move |_| {
+                            let proposal_parts = if let Some(proposal_parts) =
+                                query_own_proposal_parts(
+                                    consensus_storage2,
+                                    height_and_round,
+                                    &validator_address,
+                                )? {
+                                // TODO we're assuming that all proposals are valid and any failure
+                                // to reach consensus in round 0
+                                // always yields re-proposing the same
+                                // proposal in following rounds. This will change once proposal
+                                // validation is integrated.
+                                proposal_parts
+                            } else {
+                                // TODO this is here to catch a very rare case which I'm almost
+                                // sure occurred at least once during tests on my machine.
+                                tracing::warn!(
+                                    "Engine requested gossiping a proposal for {height_and_round} \
+                                     via ConsensusEvent::Gossip but we did not create it due to \
+                                     missing respective ConsensusEvent::RequestProposal.",
+                                );
 
-                            // The engine chose us for this round as proposer and requested that
-                            // we gossip a proposal from a
-                            // previous round.
-                            // For now we just choose the proposal from the previous round, and
-                            // the rest are kept for debugging
-                            // purposes.
-                            let mut db_conn = consensus_storage
-                                .connection()
-                                .context("Creating database connection")?;
-                            let db_tx = db_conn
-                                .transaction()
-                                .context("Creating database transaction")?;
-                            let Some((round, mut proposal_parts)) =
-                                last_proposal_parts(&db_tx, proposal.height, &validator_address)?
-                            else {
-                                panic!("At least one proposal from a previous round");
+                                // The engine chose us for this round as proposer and requested that
+                                // we gossip a proposal from a
+                                // previous round.
+                                // For now we just choose the proposal from the previous round, and
+                                // the rest are kept for debugging
+                                // purposes.
+                                let mut db_conn = consensus_storage3
+                                    .connection()
+                                    .context("Creating database connection")?;
+                                let db_tx = db_conn
+                                    .transaction()
+                                    .context("Creating database transaction")?;
+                                let Some((round, mut proposal_parts)) = last_proposal_parts(
+                                    &db_tx,
+                                    proposal.height,
+                                    &validator_address,
+                                )?
+                                else {
+                                    panic!("At least one proposal from a previous round");
+                                };
+                                assert_eq!(
+                                    round + 1,
+                                    proposal.round.as_u32().expect("Round not to be None")
+                                );
+                                let ProposalInit {
+                                    round, proposer, ..
+                                } = proposal_parts
+                                    .first_mut()
+                                    .and_then(ProposalPart::as_init_mut)
+                                    .expect("First part to be Init");
+                                // Since the proposal comes from some previous round we need to
+                                // correct the round number and
+                                // proposer address.
+                                assert_ne!(
+                                    *round,
+                                    proposal.round.as_u32().expect("Round not to be None")
+                                );
+                                assert_ne!(*proposer, Address(proposal.proposer.0));
+                                *round = proposal.round.as_u32().expect("Round not to be None");
+                                *proposer = Address(proposal.proposer.0);
+                                let proposer_address = ContractAddress(proposal.proposer.0);
+                                persist_proposal_parts(
+                                    db_tx,
+                                    proposal.height,
+                                    *round,
+                                    &proposer_address,
+                                    &proposal_parts,
+                                )?;
+                                proposal_parts
                             };
-                            assert_eq!(
-                                round + 1,
-                                proposal.round.as_u32().expect("Round not to be None")
-                            );
-                            let ProposalInit {
-                                round, proposer, ..
-                            } = proposal_parts
-                                .first_mut()
-                                .and_then(ProposalPart::as_init_mut)
-                                .expect("First part to be Init");
-                            // Since the proposal comes from some previous round we need to
-                            // correct the round number and
-                            // proposer address.
-                            assert_ne!(
-                                *round,
-                                proposal.round.as_u32().expect("Round not to be None")
-                            );
-                            assert_ne!(*proposer, Address(proposal.proposer.0));
-                            *round = proposal.round.as_u32().expect("Round not to be None");
-                            *proposer = Address(proposal.proposer.0);
-                            let proposer_address = ContractAddress(proposal.proposer.0);
-                            persist_proposal_parts(
-                                db_tx,
-                                proposal.height,
-                                *round,
-                                &proposer_address,
-                                &proposal_parts,
-                            )?;
-                            proposal_parts
-                        };
+
+                            anyhow::Ok(proposal_parts)
+                        })
+                        .await??;
 
                         loop {
                             tracing::info!(
@@ -428,14 +445,17 @@ async fn finalize_and_commit_block(
         height_and_round.height()
     );
 
-    let mut db_conn = consensus_storage
-        .connection()
-        .context("Creating database connection")?;
-    let db_tx = db_conn
-        .transaction()
-        .context("Creating database transaction")?;
-    remove_proposal_parts(db_tx, height_and_round.height(), None)?;
-
+    util::task::spawn_blocking(move |_| {
+        let mut db_conn = consensus_storage
+            .connection()
+            .context("Creating database connection")?;
+        let db_tx = db_conn
+            .transaction()
+            .context("Creating database transaction")?;
+        remove_proposal_parts(db_tx, height_and_round.height(), None)?;
+        anyhow::Ok(())
+    })
+    .await??;
     Ok(())
 }
 
@@ -1011,7 +1031,7 @@ fn consensus_vote_to_p2p_vote(
 }
 
 fn query_own_proposal_parts(
-    consensus_storage: &Storage,
+    consensus_storage: Storage,
     height_and_round: HeightAndRound,
     validator_address: &ContractAddress,
 ) -> anyhow::Result<Option<Vec<ProposalPart>>> {
