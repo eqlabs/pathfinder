@@ -17,11 +17,14 @@ use pathfinder_storage::JournalMode;
 use reqwest::Url;
 use util::percentage::Percentage;
 
+pub mod integration_testing;
 pub mod p2p;
 
 #[cfg(feature = "p2p")]
 use p2p::cli::{P2PConsensusCli, P2PSyncCli};
 use p2p::{P2PConsensusConfig, P2PSyncConfig};
+
+use crate::config::integration_testing::IntegrationTestingConfig;
 
 #[derive(Parser)]
 #[command(name = "Pathfinder")]
@@ -402,6 +405,16 @@ This should only be enabled for debugging purposes as it adds substantial proces
         value_parser = parse_fee_estimation_epsilon
     )]
     fee_estimation_epsilon: Percentage,
+
+    #[cfg_attr(
+        all(feature = "integration-testing", feature = "p2p", debug_assertions),
+        clap(flatten)
+    )]
+    #[cfg_attr(
+        not(all(feature = "integration-testing", feature = "p2p", debug_assertions)),
+        clap(skip)
+    )]
+    integration_testing: integration_testing::IntegrationTestingCli,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
@@ -842,6 +855,7 @@ pub struct Config {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
+    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 pub struct Ethereum {
@@ -1101,6 +1115,7 @@ impl Config {
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
             consensus: ConsensusConfig::parse_or_exit(cli.consensus),
+            integration_testing: IntegrationTestingConfig::parse(cli.integration_testing),
         }
     }
 }

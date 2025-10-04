@@ -8,6 +8,9 @@
 //! cargo test --test consensus_smoke -p pathfinder -F p2p -- --nocapture
 //! ```
 
+// TODO add an integration test that makes sure that the integration testing
+// config is not available for the release build.
+
 #[cfg(feature = "p2p")]
 mod test {
     use std::fs::File;
