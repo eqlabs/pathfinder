@@ -403,6 +403,14 @@ fn simulate_transaction<'tx>(
         }
         Err(error) => {
             tracing::debug!(%error, %tx_index, "Transaction simulation failed");
+
+            // Check if the error is due to running out of gas. Transactions might run out
+            // of gas during validation, in which case we don't get a revert
+            // error.
+            if failed_with_insufficient_l2_gas_error(&error) {
+                return Err(TransactionSimulationError::OutOfGas(initial_state));
+            }
+
             let error = TransactionExecutorError::new(tx_index, error);
             Err(TransactionSimulationError::ExecutionError(error.into()))
         }
@@ -652,10 +660,18 @@ fn get_max_l2_gas_amount_covered_by_balance(
     }
 }
 
+const OUT_OF_GAS_CAIRO_STRING: &str = "0x4f7574206f6620676173 ('Out of gas')";
+
 fn failed_with_insufficient_l2_gas(tx_info: &TransactionExecutionInfo) -> bool {
     let Some(revert_error) = &tx_info.revert_error else {
         return false;
     };
 
-    revert_error.to_string().contains("Out of gas")
+    revert_error.to_string().contains(OUT_OF_GAS_CAIRO_STRING)
+}
+
+fn failed_with_insufficient_l2_gas_error(
+    error: &blockifier::blockifier::transaction_executor::TransactionExecutorError,
+) -> bool {
+    error.to_string().contains(OUT_OF_GAS_CAIRO_STRING)
 }
