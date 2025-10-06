@@ -24,20 +24,20 @@ mod enabled {
     }
 
     fn up_to_10_height_parser() -> RangedU64ValueParser {
-        (0..=10).try_into().expect("Conversion succeeds")
+        (0..=10).into()
     }
 
     #[derive(Clone)]
     pub struct IntegrationTestingConfig {
-        inject_failure_on_proposal_rx: Option<u64>,
-        inject_failure_on_proposal_decided: Option<u64>,
+        _inject_failure_on_proposal_rx: Option<u64>,
+        _inject_failure_on_proposal_decided: Option<u64>,
     }
 
     impl IntegrationTestingConfig {
         pub fn parse(cli: IntegrationTestingCli) -> Self {
             Self {
-                inject_failure_on_proposal_rx: cli.inject_failure_on_proposal_rx,
-                inject_failure_on_proposal_decided: cli.inject_failure_on_proposal_decided,
+                _inject_failure_on_proposal_rx: cli.inject_failure_on_proposal_rx,
+                _inject_failure_on_proposal_decided: cli.inject_failure_on_proposal_decided,
             }
         }
     }

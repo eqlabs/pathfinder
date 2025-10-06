@@ -35,8 +35,7 @@ fn pathfinder_release_doesnt_have_integration_testing_cli(
     assert!(!output.status.success());
     assert!(
         std_err.starts_with(format!("error: unexpected argument '{cli_arg_name}' found").as_str()),
-        "Got:\n[STDERR_BEGIN]\n{}[STDERR_END]",
-        std_err
+        "Got:\n[STDERR_BEGIN]\n{std_err}[STDERR_END]",
     );
 
     Ok(())
