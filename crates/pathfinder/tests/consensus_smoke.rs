@@ -13,15 +13,9 @@ mod common;
 
 #[cfg(feature = "p2p")]
 mod test {
-    use std::fs::File;
-    use std::path::{Path, PathBuf};
-    use std::process::{Child, Command};
-    use std::sync::atomic::AtomicBool;
     use std::time::{Duration, Instant};
 
     use anyhow::Context;
-    use http::StatusCode;
-    use serde::Deserialize;
     use tokio::time::sleep;
 
     use super::common::pathfinder_instance::{
