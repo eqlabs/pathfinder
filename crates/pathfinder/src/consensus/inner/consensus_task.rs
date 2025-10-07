@@ -10,7 +10,7 @@
 //!    vote
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::vec;
@@ -27,6 +27,7 @@ use p2p_proto::consensus::{
 };
 use pathfinder_common::{
     BlockHash,
+    BlockId,
     BlockNumber,
     ChainId,
     ConsensusInfo,
@@ -52,13 +53,88 @@ use tokio::sync::{mpsc, watch};
 use super::fetch_proposers::L2ProposerSelector;
 use super::fetch_validators::L2ValidatorSetProvider;
 use super::{ConsensusTaskEvent, ConsensusValue, HeightExt, P2PTaskEvent};
-use crate::config::ConsensusConfig;
+use crate::config::{integration_testing, ConsensusConfig};
 use crate::state::block_hash::{
     calculate_event_commitment,
     calculate_receipt_commitment,
     calculate_transaction_commitment,
 };
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
+
+#[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+fn fail_on(
+    current_height: u64,
+    failure_height: Option<u64>,
+    prefix: &str,
+    data_directory: PathBuf,
+) {
+    let Some(failure_height) = failure_height else {
+        return;
+    };
+
+    if current_height != failure_height {
+        return;
+    }
+
+    let marker_file = data_directory.join(format!("fail_on_{prefix}_{failure_height}"));
+
+    if marker_file.exists() {
+        let x = std::fs::remove_file(&marker_file).inspect_err(|err| {
+            tracing::error!(
+                "Failed to remove marker file {}: {err}",
+                marker_file.display()
+            );
+        });
+        tracing::error!(
+            "💥 ❌ Integration testing: removed file {}, result {x:?}",
+            marker_file.display()
+        );
+    } else {
+        let x = std::fs::File::create(&marker_file).inspect_err(|err| {
+            tracing::error!(
+                "Failed to create marker file {}: {err}",
+                marker_file.display()
+            );
+        });
+        tracing::error!(
+            "💥 ✅ Integration testing: created file {}, result {x:?}",
+            marker_file.display()
+        );
+        tracing::error!(
+            "💥 💥 Integration testing: failing at height {failure_height} on {prefix} as \
+             configured"
+        );
+        std::process::exit(1);
+    }
+}
+
+fn fail_on_proposal_decided(
+    _current_height: u64,
+    _data_directory: PathBuf,
+    _integration_testing: &integration_testing::IntegrationTestingConfig,
+) {
+    #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+    fail_on(
+        _current_height,
+        _integration_testing.inject_failure_on_proposal_decided,
+        "proposal_decided",
+        _data_directory,
+    );
+}
+
+fn fail_on_proposal_rx(
+    _current_height: u64,
+    _data_directory: PathBuf,
+    _integration_testing: &integration_testing::IntegrationTestingConfig,
+) {
+    #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
+    fail_on(
+        _current_height,
+        _integration_testing.inject_failure_on_proposal_rx,
+        "proposal_rx",
+        _data_directory,
+    );
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn(
@@ -70,7 +146,25 @@ pub fn spawn(
     info_watch_tx: watch::Sender<Option<ConsensusInfo>>,
     storage: Storage,
     fake_proposals_storage: Storage,
+    data_directory: &Path,
 ) -> tokio::task::JoinHandle<anyhow::Result<()>> {
+    let mut db_conn = storage
+        .connection()
+        .context("Creating database connection")
+        .expect("TODO");
+    let db_txn = db_conn
+        .transaction()
+        .context("Creating database transaction")
+        .expect("TODO");
+    let highest_finalized = db_txn
+        .block_number(BlockId::Latest)
+        .expect("TODO")
+        .map(|x| x.get());
+    drop(db_txn);
+    drop(db_conn);
+
+    let data_directory = data_directory.to_path_buf();
+
     util::task::spawn(async move {
         // Get the validator address and validator set provider
         let validator_address = config.my_validator_address;
@@ -81,7 +175,7 @@ pub fn spawn(
         let proposer_selector = L2ProposerSelector::new(storage.clone(), chain_id, config.clone());
 
         let mut consensus =
-            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover(
+            Consensus::<ConsensusValue, ContractAddress, L2ProposerSelector>::recover_with_proposal_selector(
                 Config::new(validator_address)
                     .with_wal_dir(wal_directory)
                     .with_history_depth(
@@ -95,8 +189,9 @@ pub fn spawn(
                 // TODO use a dynamic validator set provider, once fetching the validator set from
                 // the staking contract is implemented. Related issue: https://github.com/eqlabs/pathfinder/issues/2936
                 Arc::new(validator_set_provider.clone()),
-            )?
-            .with_proposer_selector(proposer_selector);
+                proposer_selector,
+                highest_finalized,
+            )?;
 
         // Get the current height
         let mut current_height = consensus.current_height().unwrap_or_default();
@@ -107,6 +202,11 @@ pub fn spawn(
         // Related issue: https://github.com/eqlabs/pathfinder/issues/2934
         let mut last_nil_vote_height = None;
 
+        // TODO FIXME this should be taken from WAL & DB
+        // This set is used to make sure we only start each height once and is used when
+        // a new height needs to be started upon a proposal or vote for H arriving
+        // before H-1 has been decided upon. Such race conditions occur very often in a
+        // network with low latency.
         let mut started_heights = HashSet::new();
 
         start_height(
@@ -234,6 +334,12 @@ pub fn spawn(
                                  round {round}",
                             );
 
+                            fail_on_proposal_decided(
+                                height,
+                                data_directory.clone(),
+                                &config.integration_testing,
+                            );
+
                             let height_and_round = HeightAndRound::new(height, round);
 
                             tx_to_p2p
@@ -305,6 +411,15 @@ pub fn spawn(
                         // consensus engine is already started for this new height carried in those
                         // messages.
                         ConsensusCommand::Proposal(_) | ConsensusCommand::Vote(_) => {
+                            match cmd {
+                                ConsensusCommand::Proposal(_) => fail_on_proposal_rx(
+                                    cmd_height,
+                                    data_directory.clone(),
+                                    &config.integration_testing,
+                                ),
+                                _ => {}
+                            };
+
                             // TODO catch up with the current height of the consensus network using
                             // sync, for the time being just observe the height in the rebroadcasted
                             // votes or in the proposals.

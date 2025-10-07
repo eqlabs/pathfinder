@@ -855,7 +855,6 @@ pub struct Config {
     pub submission_tracker_time_limit: NonZeroU64,
     pub submission_tracker_size_limit: NonZeroUsize,
     pub consensus: Option<ConsensusConfig>,
-    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 pub struct Ethereum {
@@ -900,6 +899,9 @@ pub struct ConsensusConfig {
     pub validator_addresses: Vec<ContractAddress>,
     /// The proposer addresses of all proposers in the proposer set.
     pub proposer_addresses: Vec<ContractAddress>,
+    /// Integration testing config, only available on debug builds with `p2p`
+    /// and `integration-testing` features enabled.
+    pub integration_testing: integration_testing::IntegrationTestingConfig,
 }
 
 #[cfg(not(feature = "p2p"))]
@@ -1009,21 +1011,24 @@ impl NativeExecutionConfig {
 
 #[cfg(not(feature = "p2p"))]
 impl ConsensusConfig {
-    fn parse_or_exit(_: ()) -> Option<Self> {
+    fn parse_or_exit(_: (), _: integration_testing::IntegrationTestingConfig) -> Option<Self> {
         None
     }
 }
 
 #[cfg(feature = "p2p")]
 impl ConsensusConfig {
-    fn parse_or_exit(args: ConsensusCli) -> Option<Self> {
-        args.is_consensus_enabled.then(|| {
-            let my_validator_address = args
+    fn parse_or_exit(
+        consensus_cli: ConsensusCli,
+        integration_testing: integration_testing::IntegrationTestingConfig,
+    ) -> Option<Self> {
+        consensus_cli.is_consensus_enabled.then(|| {
+            let my_validator_address = consensus_cli
                 .my_validator_address
                 .as_ref()
                 .expect("Required if `is_consensus_enabled` is true");
             let unique_validator_addresses = std::iter::once(my_validator_address)
-                .chain(args.validator_addresses.iter())
+                .chain(consensus_cli.validator_addresses.iter())
                 .collect::<HashSet<_>>();
 
             if unique_validator_addresses.len() < 3 {
@@ -1039,19 +1044,21 @@ impl ConsensusConfig {
 
             Self {
                 my_validator_address: ContractAddress(
-                    args.my_validator_address
+                    consensus_cli
+                        .my_validator_address
                         .expect("Required if `is_consensus_enabled` is true"),
                 ),
-                validator_addresses: args
+                validator_addresses: consensus_cli
                     .validator_addresses
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),
-                proposer_addresses: args
+                proposer_addresses: consensus_cli
                     .proposer_addresses
                     .into_iter()
                     .map(ContractAddress)
                     .collect(),
+                integration_testing,
             }
         })
     }
@@ -1114,8 +1121,10 @@ impl Config {
             native_execution: NativeExecutionConfig::parse(cli.native_execution),
             submission_tracker_time_limit: cli.submission_tracker_time_limit,
             submission_tracker_size_limit: cli.submission_tracker_size_limit,
-            consensus: ConsensusConfig::parse_or_exit(cli.consensus),
-            integration_testing: IntegrationTestingConfig::parse(cli.integration_testing),
+            consensus: ConsensusConfig::parse_or_exit(
+                cli.consensus,
+                IntegrationTestingConfig::parse(cli.integration_testing),
+            ),
         }
     }
 }

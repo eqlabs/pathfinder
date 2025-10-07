@@ -68,6 +68,7 @@ pub fn start(
         info_watch_tx,
         consensus_storage,
         storage,
+        data_directory,
     );
 
     ConsensusTaskHandles {
