@@ -1,4 +1,6 @@
 mod consensus_task;
+mod conv;
+mod dto;
 mod fetch_proposers;
 mod fetch_validators;
 mod p2p_task;

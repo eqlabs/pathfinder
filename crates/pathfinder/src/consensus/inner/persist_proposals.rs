@@ -1,15 +1,10 @@
 use anyhow::Context;
 use p2p_proto::consensus::ProposalPart;
-use p2p_proto::{ToProtobuf, TryFromProtobuf};
 use pathfinder_common::ContractAddress;
 use pathfinder_storage::Transaction;
-use prost::Message;
 
-#[derive(Clone, PartialEq, Message)]
-pub struct ProposalParts {
-    #[prost(message, repeated, tag = "1")]
-    pub parts: ::prost::alloc::vec::Vec<p2p_proto::proto::consensus::consensus::ProposalPart>,
-}
+use crate::consensus::inner::conv::{IntoProto, TryIntoDto};
+use crate::consensus::inner::dto;
 
 pub fn persist_proposal_parts(
     db_tx: Transaction<'_>,
@@ -18,11 +13,13 @@ pub fn persist_proposal_parts(
     proposer: &ContractAddress,
     parts: &[ProposalPart],
 ) -> anyhow::Result<bool> {
-    let prost_parts = ProposalParts {
-        parts: parts.iter().map(|p| p.clone().to_protobuf()).collect(),
-    };
-    let mut buf = vec![];
-    prost_parts.encode(&mut buf)?;
+    let serde_parts = parts
+        .iter()
+        .map(|p| dto::ProposalPart::try_into_dto(p.clone()))
+        .collect::<Result<Vec<dto::ProposalPart>, _>>()?;
+    let proposal_parts = dto::ProposalParts::V0(serde_parts);
+    let buf = bincode::serde::encode_to_vec(proposal_parts, bincode::config::standard())
+        .context("Serializing proposal parts")?;
     let updated = db_tx.persist_consensus_proposal_parts(height, round, proposer, &buf[..])?;
     db_tx.commit()?;
     Ok(updated)
@@ -71,12 +68,12 @@ pub fn last_proposal_parts(
 }
 
 fn decode_proposal_parts(buf: &[u8]) -> anyhow::Result<Vec<ProposalPart>> {
-    let prost_parts: ProposalParts = Message::decode(buf)?;
-    let parts = prost_parts
-        .parts
-        .iter()
-        .map(|p| ProposalPart::try_from_protobuf(p.clone(), "parts"))
-        .collect::<Result<Vec<ProposalPart>, _>>()?;
+    let proposal_parts: dto::ProposalParts =
+        bincode::serde::decode_from_slice(buf, bincode::config::standard())
+            .context("Deserializing proposal parts")?
+            .0;
+    let dto::ProposalParts::V0(serde_parts) = proposal_parts;
+    let parts = serde_parts.into_iter().map(|p| p.into_proto()).collect();
     Ok(parts)
 }
 
