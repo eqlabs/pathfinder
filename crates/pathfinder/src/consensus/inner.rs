@@ -59,6 +59,7 @@ pub fn start(
         info_watch_tx,
         fake_proposals_storage,
         storage,
+        data_directory,
     );
 
     ConsensusTaskHandles {

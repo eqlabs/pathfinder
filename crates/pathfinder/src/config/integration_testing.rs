@@ -29,15 +29,15 @@ mod enabled {
 
     #[derive(Clone)]
     pub struct IntegrationTestingConfig {
-        _inject_failure_on_proposal_rx: Option<u64>,
-        _inject_failure_on_proposal_decided: Option<u64>,
+        pub inject_failure_on_proposal_rx: Option<u64>,
+        pub inject_failure_on_proposal_decided: Option<u64>,
     }
 
     impl IntegrationTestingConfig {
         pub fn parse(cli: IntegrationTestingCli) -> Self {
             Self {
-                _inject_failure_on_proposal_rx: cli.inject_failure_on_proposal_rx,
-                _inject_failure_on_proposal_decided: cli.inject_failure_on_proposal_decided,
+                inject_failure_on_proposal_rx: cli.inject_failure_on_proposal_rx,
+                inject_failure_on_proposal_decided: cli.inject_failure_on_proposal_decided,
             }
         }
     }

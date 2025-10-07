@@ -110,6 +110,9 @@ impl PathfinderInstance {
                  12D3KooWDJryKaxjwNCk6yTtZ4GbtbLrH7JrEUTngvStaDttLtid"
             ));
         }
+        if config.name == "Bob" {
+            command.arg("--integration-testing.inject-failure.on-proposal-decided=1");
+        }
 
         let process = command
             .spawn()
