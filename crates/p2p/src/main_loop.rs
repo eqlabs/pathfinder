@@ -16,6 +16,8 @@ use crate::core::{Behaviour, Command, Event, TestCommand, TestEvent};
 use crate::test_utils;
 use crate::{ApplicationBehaviour, EmptyResultSender};
 
+const COMMAND_CHANNEL_SIZE_LIMIT: usize = 1024;
+
 /// This is our main loop for P2P networking.
 /// It handles the incoming events from the swarm and the commands from the
 /// outside world (most likely a p2p client).
@@ -144,6 +146,9 @@ where
         let mut network_status_interval = tokio::time::interval(Duration::from_secs(5));
         // Check the peer status every 30 seconds
         let mut peer_status_interval = tokio::time::interval(Duration::from_secs(30));
+        // Keep track of whether we've already emitted a warning about the
+        // command channel size exceeding the limit, to avoid spamming the logs.
+        let mut channel_size_warning_emitted = false;
 
         loop {
             let network_status_tick = network_status_interval.tick();
@@ -156,8 +161,20 @@ where
                 _ = network_status_tick => self.dump_network_status(),
                 _ = peer_status_tick => self.dump_dht_and_connected_peers(),
                 // Handle commands from the outside world
-                command = self.command_receiver.recv() => self.handle_command(
-                    command.expect("At least one sender is retained by the main loop")).await,
+                command = self.command_receiver.recv() => {
+                    // Unbounded channel size monitoring.
+                    let channel_size = self.command_receiver.len();
+                    if channel_size > COMMAND_CHANNEL_SIZE_LIMIT {
+                        if !channel_size_warning_emitted {
+                            tracing::warn!(%channel_size, "Command channel size exceeded limit");
+                            channel_size_warning_emitted = true;
+                        }
+                    } else {
+                        channel_size_warning_emitted = false;
+                    }
+
+                    self.handle_command(command.expect("At least one sender is retained by the main loop")).await
+                },
                 // Handle events from the inside of the p2p network
                 Some(event) = self.swarm.next() => self.handle_event(event).await,
             }
