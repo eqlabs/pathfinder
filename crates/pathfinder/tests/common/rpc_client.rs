@@ -7,7 +7,12 @@ use tokio::time::sleep;
 
 /// Waits until the node at `rpc_port` has reached at least `height`.
 /// Polls every `poll_interval`.
-pub async fn wait_for_height(rpc_port: u16, height: u64, poll_interval: Duration) {
+pub async fn wait_for_height(
+    name: &'static str,
+    rpc_port: u16,
+    height: u64,
+    poll_interval: Duration,
+) {
     loop {
         // Sleeping first actually makes sense here, because the node will likely not
         // have any decided heights immediately after the RPC server is ready.
@@ -22,7 +27,7 @@ pub async fn wait_for_height(rpc_port: u16, height: u64, poll_interval: Duration
             .send()
             .await
         else {
-            println!("Node on port {rpc_port} not responding yet");
+            println!("Pathfinder instance {name:<7} not responding yet");
             continue;
         };
 
@@ -32,7 +37,7 @@ pub async fn wait_for_height(rpc_port: u16, height: u64, poll_interval: Duration
             },
         } = reply.json::<Reply>().await.unwrap();
 
-        println!("Node on port {rpc_port} highest_decided_height: {highest_decided_height:?}");
+        println!("Pathfinder instance {name:<7} decided height: {highest_decided_height:?}");
 
         if let Some(highest_decided_height) = highest_decided_height {
             if highest_decided_height >= height {

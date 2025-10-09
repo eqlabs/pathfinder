@@ -25,6 +25,7 @@ mod test {
         PathfinderInstance,
     };
     use super::common::rpc_client::wait_for_height;
+    use crate::common::pathfinder_instance::respawn_on_fail;
 
     // If the env variable `PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL` is
     // set, the stdout and stderr logs of each Pathfinder instance will be
@@ -32,6 +33,7 @@ mod test {
     // Otherwise you need to inspect the temporary directory that is created to
     // hold the test artifacts.
     #[tokio::test]
+    // TODO rename consensus_3_nodes_happy_path
     async fn consensus_3_node_smoke_test() -> anyhow::Result<()> {
         PathfinderInstance::enable_log_dump(
             std::env::var_os("PATHFINDER_CONSENSUS_TEST_DUMP_CHILD_LOGS_ON_FAIL").is_some(),
@@ -68,7 +70,10 @@ mod test {
             .wait_for_ready(READY_POLL_INTERVAL, READY_TIMEOUT)
             .await?;
 
-        let bob = PathfinderInstance::spawn(configs.next().unwrap())?;
+        let bob_cfg = configs.next().unwrap();
+        let bob_rpc_port = bob_cfg.rpc_port;
+
+        let mut bob = PathfinderInstance::spawn(bob_cfg.clone())?;
         let charlie = PathfinderInstance::spawn(configs.next().unwrap())?;
 
         let (bob_rdy, charlie_rdy) = tokio::join!(
@@ -78,9 +83,10 @@ mod test {
         bob_rdy?;
         charlie_rdy?;
 
-        let spawn_rpc_client = |rpc_port| {
+        let spawn_rpc_client = |instance: &PathfinderInstance| {
             tokio::spawn(wait_for_height(
-                rpc_port,
+                instance.name(),
+                instance.rpc_port(),
                 MIN_REQUIRED_DECIDED_HEIGHT,
                 HEIGHT_POLL_INTERVAL,
             ))
@@ -91,9 +97,17 @@ mod test {
             stopwatch.elapsed().as_secs()
         );
 
-        let alice_client = spawn_rpc_client(alice.rpc_port());
-        let bob_client = spawn_rpc_client(bob.rpc_port());
-        let charlie_client = spawn_rpc_client(charlie.rpc_port());
+        let alice_client = spawn_rpc_client(&alice);
+        let bob_client = spawn_rpc_client(&bob);
+        let charlie_client = spawn_rpc_client(&charlie);
+
+        let _guard = respawn_on_fail(
+            bob,
+            bob_cfg,
+            READY_POLL_INTERVAL,
+            READY_TIMEOUT,
+            TEST_TIMEOUT,
+        );
 
         let test_result = tokio::select! {
             _ = sleep(TEST_TIMEOUT) => {
@@ -121,4 +135,6 @@ mod test {
 
         test_result
     }
+
+    async fn consensus_3_nodes_bob_fails_and_recovers() {}
 }

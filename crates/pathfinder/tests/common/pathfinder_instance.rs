@@ -1,16 +1,21 @@
 //! Utilities for spawning and managing Pathfinder instances.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::AtomicBool;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use http::StatusCode;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-/// Successfully spawned Pathfinder instance is terminated when dropped.
+/// Represents a running Pathfinder instance.
 pub struct PathfinderInstance {
     process: Child,
     name: &'static str,
@@ -18,11 +23,14 @@ pub struct PathfinderInstance {
     rpc_port: u16,
     stdout_path: PathBuf,
     stderr_path: PathBuf,
+    /// `true` if [`PathfinderInstance::exited_wit_error`] returned
+    /// `Ok(_)`.
+    is_terminated: bool,
 }
 
 /// Configuration for a Pathfinder instance.
 #[derive(Debug, Clone)]
-pub struct Config<'a> {
+pub struct Config {
     pub name: &'static str,
     pub monitor_port: u16,
     pub rpc_port: u16,
@@ -30,33 +38,31 @@ pub struct Config<'a> {
     pub boot_port: Option<u16>,
     pub my_validator_address: u8,
     pub validator_addresses: Vec<u8>,
-    pub pathfinder_bin: &'a PathBuf,
-    pub fixture_dir: &'a PathBuf,
-    pub test_dir: &'a Path,
+    pub pathfinder_bin: PathBuf,
+    pub fixture_dir: PathBuf,
+    pub test_dir: PathBuf,
 }
 
 impl PathfinderInstance {
     /// Spawns a new Pathfinder instance with the given configuration. The
     /// instance is not guaranteed to be ready after this function returns.
-    /// Use `wait_for_ready` to wait until the instance is ready to accept
-    /// requests.
+    /// Use [`wait_for_ready`](PathfinderInstance::wait_for_ready) to wait until
+    /// the instance is ready to accept requests.
     ///
     /// # Important
+    ///
     /// The spawned instance will be terminated when the returned
-    /// `PathfinderInstance` is dropped.
-    pub fn spawn(config: Config<'_>) -> anyhow::Result<Self> {
+    /// [`PathfinderInstance`] is dropped, unless
+    /// [`exited_with_error`](PathfinderInstance::exited_with_error) already
+    /// returned `Ok(_)`, which means that the instance has already exited.
+    pub fn spawn(config: Config) -> anyhow::Result<Self> {
         let id_file = config.fixture_dir.join(format!("id_{}.json", config.name));
         let db_file = config.test_dir.join(format!("db-{}", config.name));
         let stdout_path = config.test_dir.join(format!("{}_stdout.log", config.name));
-        let stdout_file = File::create(stdout_path.clone()).context(format!(
-            "Creating stdout log file for pathfinder instance {}",
-            config.name
-        ))?;
+        let stdout_file = create_log_file(&config, &stdout_path)?;
         let stderr_path = config.test_dir.join(format!("{}_stderr.log", config.name));
-        let stderr_file = File::create(stderr_path.clone()).context(format!(
-            "Creating stderr log file for pathfinder instance {}",
-            config.name
-        ))?;
+        let stderr_file = create_log_file(&config, &stderr_path)?;
+
         let mut command = Command::new(config.pathfinder_bin);
         let command = command
             .stdout(stdout_file)
@@ -111,12 +117,21 @@ impl PathfinderInstance {
             ));
         }
         if config.name == "Bob" {
-            command.arg("--integration-testing.inject-failure.on-proposal-decided=1");
+            command.arg("--integration-testing.inject-failure.on-proposal-rx=2");
+            // command.arg("--integration-testing.inject-failure.
+            // on-proposal-decided=4");
         }
 
         let process = command
             .spawn()
             .context(format!("Spawning pathfinder process for {}", config.name))?;
+
+        println!(
+            "Pathfinder instance {:<7} (pid: {}) has been spawned",
+            config.name,
+            process.id()
+        );
+
         Ok(Self {
             process,
             name: config.name,
@@ -124,7 +139,27 @@ impl PathfinderInstance {
             rpc_port: config.rpc_port,
             stdout_path,
             stderr_path,
+            is_terminated: false,
         })
+    }
+
+    /// Checks if the instance has exited with a non-zero exit code.
+    pub fn exited_with_error(&mut self) -> anyhow::Result<bool> {
+        match self.process.try_wait() {
+            Ok(Some(status)) if !status.success() => {
+                self.is_terminated = true;
+                Ok(true)
+            }
+            Ok(Some(_)) | Ok(None) => {
+                self.is_terminated = true;
+                Ok(false)
+            }
+            Err(e) => Err(anyhow::anyhow!(
+                "Error checking if Pathfinder instance {} (pid: {}) has exited: {e}",
+                self.name,
+                self.process.id()
+            )),
+        }
     }
 
     /// Waits until the instance is ready to accept requests on the monitor
@@ -141,13 +176,13 @@ impl PathfinderInstance {
                 match reqwest::get(format!("http://127.0.0.1:{}/ready", self.monitor_port)).await {
                     Ok(response) if response.status() == StatusCode::OK => {
                         println!(
-                            "Pathfinder instance {} ready after {} s",
+                            "Pathfinder instance {:<7} ready after {} s",
                             self.name,
                             stopwatch.elapsed().as_secs()
                         );
                         return;
                     }
-                    _ => println!("Pathfinder instance {} not ready yet", self.name),
+                    _ => println!("Pathfinder instance {:<7} not ready yet", self.name),
                 }
 
                 sleep(poll_interval).await;
@@ -162,11 +197,30 @@ impl PathfinderInstance {
         Ok(())
     }
 
+    pub fn name(&self) -> &'static str {
+        self.name
+    }
+
     pub fn rpc_port(&self) -> u16 {
         self.rpc_port
     }
 
     fn terminate(&mut self) {
+        if self.is_terminated {
+            println!(
+                "Pathfinder instance {:<7} (pid: {}) has already exited",
+                self.name,
+                self.process.id()
+            );
+            return;
+        }
+
+        println!(
+            "Pathfinder instance {:<7} (pid: {}) terminating...",
+            self.name,
+            self.process.id()
+        );
+
         _ = Command::new("kill")
             // It's supposed to be the default signal in `kill`, but let's be explicit.
             .arg("-TERM")
@@ -177,7 +231,7 @@ impl PathfinderInstance {
         match self.process.try_wait() {
             Ok(Some(status)) => {
                 println!(
-                    "Pathfinder instance {} (pid: {}) terminated with status: {status}",
+                    "Pathfinder instance {:<7} (pid: {}) terminated with status: {status}",
                     self.name,
                     self.process.id()
                 );
@@ -185,20 +239,20 @@ impl PathfinderInstance {
             Ok(None) => match self.process.wait() {
                 Ok(status) => {
                     println!(
-                        "Pathfinder instance {} (pid: {}) terminated with status: {status}",
+                        "Pathfinder instance {:<7} (pid: {}) terminated with status: {status}",
                         self.name,
                         self.process.id()
                     );
                 }
                 Err(e) => {
                     eprintln!(
-                        "Error waiting for Pathfinder instance {} (pid: {}) to terminate: {e}",
+                        "Error waiting for Pathfinder instance {:<7} (pid: {}) to terminate: {e}",
                         self.name,
                         self.process.id(),
                     );
                     if let Err(error) = self.process.kill() {
                         eprintln!(
-                            "Error killing Pathfinder instance {} (pid: {}): {error}",
+                            "Error killing Pathfinder instance {:<7} (pid: {}): {error}",
                             self.name,
                             self.process.id(),
                         );
@@ -207,13 +261,13 @@ impl PathfinderInstance {
             },
             Err(e) => {
                 eprintln!(
-                    "Error terminating Pathfinder instance {} (pid: {}): {e}",
+                    "Error terminating Pathfinder instance {:<7} (pid: {}): {e}",
                     self.name,
                     self.process.id(),
                 );
                 if let Err(error) = self.process.kill() {
                     eprintln!(
-                        "Error killing Pathfinder instance {} (pid: {}): {error}",
+                        "Error killing Pathfinder instance {:<7} (pid: {}): {error}",
                         self.name,
                         self.process.id(),
                     );
@@ -227,6 +281,19 @@ impl PathfinderInstance {
     }
 }
 
+fn create_log_file(config: &Config, stdout_path: &PathBuf) -> Result<File, anyhow::Error> {
+    let stdout_file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(stdout_path.clone())
+        .context(format!(
+            "Creating log file {} for Pathfinder instance {}",
+            stdout_path.display(),
+            config.name
+        ))?;
+    Ok(stdout_file)
+}
+
 impl Drop for PathfinderInstance {
     fn drop(&mut self) {
         self.terminate();
@@ -234,17 +301,31 @@ impl Drop for PathfinderInstance {
         if DUMP_LOGS_ON_DROP.load(std::sync::atomic::Ordering::Relaxed) {
             let stdout = std::fs::read_to_string(&self.stdout_path)
                 .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {} stdout log:\n{stdout}", self.name);
+            println!("Pathfinder instance {:<7} stdout log:\n{stdout}", self.name);
             let stderr = std::fs::read_to_string(&self.stderr_path)
                 .unwrap_or("Error reading file".to_string());
-            println!("Pathfinder instance {} stderr log:\n{stderr}", self.name);
+            println!("Pathfinder instance {:<7} stderr log:\n{stderr}", self.name);
         }
     }
 }
 
 static DUMP_LOGS_ON_DROP: AtomicBool = AtomicBool::new(true);
 
-impl<'a> Config<'a> {
+static SIGCHLD_WATCH: LazyLock<watch::Receiver<Option<()>>> = LazyLock::new(|| {
+    let mut child_signal = signal(SignalKind::child()).unwrap();
+    let (tx, rx) = tokio::sync::watch::channel(None);
+
+    tokio::spawn(async move {
+        loop {
+            child_signal.recv().await;
+            _ = tx.send(Some(()));
+        }
+    });
+
+    rx
+});
+
+impl Config {
     const NAMES: &'static [&'static str] = &[
         "Alice", "Bob", "Charlie", "Dan", "Eve", "Frank", "Grace", "Heidi",
     ];
@@ -252,9 +333,9 @@ impl<'a> Config<'a> {
     /// The first node will always be the boot node.
     pub fn for_set(
         set_size: usize,
-        pathfinder_bin: &'a PathBuf,
-        fixture_dir: &'a PathBuf,
-        test_dir: &'a Path,
+        pathfinder_bin: &Path,
+        fixture_dir: &Path,
+        test_dir: &Path,
     ) -> Vec<Self> {
         assert!(
             set_size <= Self::NAMES.len(),
@@ -272,9 +353,9 @@ impl<'a> Config<'a> {
                 // The set is deduplicated when consensus task is started, so including the own
                 // validator address is fine.
                 validator_addresses: (1..=set_size as u8).collect::<Vec<_>>(),
-                test_dir,
-                pathfinder_bin,
-                fixture_dir,
+                test_dir: test_dir.to_path_buf(),
+                pathfinder_bin: pathfinder_bin.to_path_buf(),
+                fixture_dir: fixture_dir.to_path_buf(),
             })
             .collect()
     }
@@ -306,4 +387,66 @@ pub fn fixture_dir() -> PathBuf {
 
 fn manifest_dir_path() -> PathBuf {
     PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+}
+
+/// A guard that aborts the task when dropped.
+pub struct AbortGuard {
+    jh: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for AbortGuard {
+    fn drop(&mut self) {
+        self.jh.abort();
+    }
+}
+
+impl From<JoinHandle<()>> for AbortGuard {
+    fn from(jh: JoinHandle<()>) -> Self {
+        Self { jh }
+    }
+}
+
+/// Monitors `instance` for exit with non-zero exit code. If that happens,
+/// respawns the instance with `config` and waits for it to be ready. The
+/// respawned instance is not returned, but it will be kept alive until the end
+/// of the test (i.e., until `test_timeout` is reached).
+pub fn respawn_on_fail(
+    mut instance: PathfinderInstance,
+    config: Config,
+    ready_poll_interval: Duration,
+    ready_timeout: Duration,
+    test_timeout: Duration,
+) -> AbortGuard {
+    let mut child_signal =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child()).unwrap();
+
+    tokio::spawn(async move {
+        if let Some(_) = child_signal.recv().await {
+            println!("Got SIGCHLD!");
+            match instance.exited_with_error() {
+                Ok(true) => {
+                    println!("Respawning {}...", instance.name());
+                    drop(instance);
+                    let mut instance = PathfinderInstance::spawn(config).unwrap();
+                    instance
+                        .wait_for_ready(ready_poll_interval, ready_timeout)
+                        .await
+                        .unwrap();
+                    println!("{} is ready again", instance.name());
+                    // Let the instance exist for the rest of the test.
+                    tokio::time::sleep(test_timeout).await;
+                }
+                Ok(false) => {
+                    println!("{} exited cleanly, not respawning", instance.name());
+                    drop(instance);
+                }
+                Err(e) => {
+                    eprintln!("Error checking if {} exited cleanly: {e}", instance.name());
+                    // Assume that the process did not exit, the worst that can
+                    // happen is that the kill on drop will fail.
+                }
+            }
+        }
+    })
+    .into()
 }
