@@ -7,28 +7,18 @@ use pathfinder_common::ContractAddress;
 use crate::prelude::*;
 
 impl Transaction<'_> {
-    pub fn ensure_consensus_proposals(&self) -> anyhow::Result<bool> {
-        let count = self.inner().query_row(
-            r"SELECT count(*)
-            FROM sqlite_schema
-            WHERE type='table' AND name='consensus_proposals'",
-            [],
-            |row| row.get_i64(0),
-        )?;
-        if count == 0 {
-            self.inner().execute(
-                r"CREATE TABLE consensus_proposals (
+    pub fn ensure_consensus_proposals_table_exists(&self) -> anyhow::Result<()> {
+        self.inner().execute(
+            r"CREATE TABLE IF NOT EXISTS consensus_proposals (
                     height      INTEGER NOT NULL,
                     round       INTEGER NOT NULL,
                     proposer    BLOB NOT NULL,
                     parts       BLOB NOT NULL,
                     UNIQUE(height, round, proposer)
-                    )",
-                [],
-            )?;
-        }
-
-        Ok(count == 0)
+            )",
+            [],
+        )?;
+        Ok(())
     }
 
     pub fn persist_consensus_proposal_parts(

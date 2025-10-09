@@ -89,7 +89,7 @@ fn open_consensus_storage(data_directory: &Path) -> anyhow::Result<Storage> {
     let db_tx = db_conn
         .transaction()
         .context("Creating database transaction")?;
-    db_tx.ensure_consensus_proposals()?;
+    db_tx.ensure_consensus_proposals_table_exists()?;
     db_tx.commit()?;
     Ok(consensus_storage)
 }
