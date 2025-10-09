@@ -61,6 +61,22 @@ use crate::state::block_hash::{
 };
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage};
 
+// TODO cases
+//
+// 1. on first part of proposal rx
+// 2. after last part of proposal rx
+// 3. on prevote on proposal
+// 4. on precommit on proposal
+// 5. on proposal decided
+// 6. on proposal committed
+//
+// Setup:
+// A. 3 nodes, A, B, C, A is proposer, B fails, the network always halts
+// - test should pass in 1
+// - will fail in other cases, because proposals are not persisted yet
+//
+// B. 4 nodes, A, B, C, D, A is proposer, B fails, the network continues
+//- tests will fail because the node needs to catch up with finalized blocks
 #[cfg(all(feature = "p2p", feature = "integration-testing", debug_assertions))]
 fn fail_on(
     current_height: u64,
@@ -122,6 +138,7 @@ fn fail_on_proposal_decided(
     );
 }
 
+// TODO rename - fail on first proposal part RX
 fn fail_on_proposal_rx(
     _current_height: u64,
     _data_directory: PathBuf,
