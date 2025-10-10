@@ -1,3 +1,4 @@
+pub mod batch_execution;
 mod consensus_task;
 mod fetch_proposers;
 mod fetch_validators;
