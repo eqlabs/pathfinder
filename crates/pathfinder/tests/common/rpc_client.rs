@@ -3,11 +3,29 @@
 use std::time::Duration;
 
 use serde::Deserialize;
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
+
+use crate::common::pathfinder_instance::PathfinderInstance;
+
+/// Spawns a task which waits until the node at `rpc_port` has reached at least
+/// `height`. Polls every `poll_interval`.
+pub fn wait_for_height(
+    instance: &PathfinderInstance,
+    height: u64,
+    poll_interval: Duration,
+) -> JoinHandle<()> {
+    tokio::spawn(wait_for_height_fut(
+        instance.name(),
+        instance.rpc_port(),
+        height,
+        poll_interval,
+    ))
+}
 
 /// Waits until the node at `rpc_port` has reached at least `height`.
 /// Polls every `poll_interval`.
-pub async fn wait_for_height(
+async fn wait_for_height_fut(
     name: &'static str,
     rpc_port: u16,
     height: u64,
