@@ -19,7 +19,7 @@ use p2p::consensus::{Client, Event, HeightAndRound};
 use p2p::libp2p::gossipsub::PublishError;
 use p2p_proto::common::{Address, Hash};
 use p2p_proto::consensus::{ProposalFin, ProposalInit, ProposalPart};
-use pathfinder_common::{BlockId, BlockNumber, ChainId, ContractAddress, ProposalCommitment};
+use pathfinder_common::{BlockId, ChainId, ContractAddress, ProposalCommitment};
 use pathfinder_consensus::{
     ConsensusCommand,
     NetworkMessage,
@@ -33,6 +33,12 @@ use pathfinder_storage::{Storage, TransactionBehavior};
 use tokio::sync::mpsc;
 
 use super::{ConsensusTaskEvent, P2PTaskEvent};
+use crate::consensus::inner::batch_execution::{
+    should_defer_execution,
+    BatchExecutionManager,
+    DeferredExecution,
+    ProposalCommitmentWithOrigin,
+};
 use crate::consensus::inner::ConsensusValue;
 use crate::validator::{FinalizedBlock, ValidatorBlockInfoStage, ValidatorStage};
 
@@ -63,6 +69,9 @@ pub fn spawn(
     // Contains transaction batches and proposal finalizations that are
     // waiting for previous block to be committed before they can be executed.
     let mut deferred_executions = HashMap::new();
+    // Manages batch execution with checkpoint-based rollback for TransactionsFin
+    // support
+    let mut batch_execution_manager = BatchExecutionManager::new();
 
     util::task::spawn(async move {
         loop {
@@ -99,6 +108,7 @@ pub fn spawn(
                                 &mut incoming_proposals_cache,
                                 &mut validator_cache,
                                 &mut deferred_executions,
+                                &mut batch_execution_manager,
                                 storage.clone(),
                             )
                             .await
@@ -301,6 +311,7 @@ pub fn spawn(
                         &mut my_finalized_blocks_cache,
                         &mut incoming_proposals_cache,
                         &mut validator_cache,
+                        &mut batch_execution_manager,
                     )
                     .await?;
 
@@ -345,6 +356,7 @@ async fn finalize_and_commit_block(
     my_finalized_blocks_cache: &mut HashMap<HeightAndRound, FinalizedBlock>,
     incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut ValidatorCache,
+    batch_execution_manager: &mut BatchExecutionManager,
 ) -> anyhow::Result<()> {
     tracing::info!(
         "🖧  💾 {validator_address} Finalizing and committing block at {height_and_round} to the \
@@ -407,6 +419,13 @@ async fn finalize_and_commit_block(
     tracing::debug!(
         "🖧  🗑️ {validator_address} removed incoming proposals from cache for height {} and \
          rounds: {removed:?}",
+        height_and_round.height()
+    );
+
+    // Clean up batch execution state for this height
+    batch_execution_manager.cleanup(&height_and_round);
+    tracing::debug!(
+        "🖧  🗑️ {validator_address} cleaned up batch execution state for height {}",
         height_and_round.height()
     );
 
@@ -568,34 +587,6 @@ fn commit_finalized_block(storage: Storage, finalized_block: FinalizedBlock) -> 
     Ok(())
 }
 
-/// Represents transactions received from the network that are waiting for
-/// previous block to be committed before they can be executed. Also holds
-/// optional proposal commitment and proposer address in case that the entire
-/// proposal has been received.
-#[derive(Debug, Clone, Default)]
-struct DeferredExecution {
-    pub transactions: Vec<p2p_proto::consensus::Transaction>,
-    pub commitment: Option<ProposalCommitmentWithOrigin>,
-}
-
-/// Proposal commitment and the address of its proposer.
-#[derive(Debug, Clone)]
-struct ProposalCommitmentWithOrigin {
-    pub proposal_commitment: ProposalCommitment,
-    pub proposer_address: ContractAddress,
-    pub pol_round: Round,
-}
-
-impl Default for ProposalCommitmentWithOrigin {
-    fn default() -> Self {
-        Self {
-            proposal_commitment: ProposalCommitment::default(),
-            proposer_address: ContractAddress::default(),
-            pol_round: Round::nil(),
-        }
-    }
-}
-
 /// Handles an incoming proposal part received from the P2P network. Returns
 /// `Ok(Some((proposal_commitment, proposer_address)))` if the proposal is
 /// complete and has been executed. Otherwise returns `Ok(None)`, which means
@@ -607,6 +598,7 @@ impl Default for ProposalCommitmentWithOrigin {
 /// - a complete proposal has been received but it cannot be executed yet.
 ///
 /// Returns `Err` if there was an error processing the proposal part.
+#[allow(clippy::too_many_arguments)]
 async fn handle_incoming_proposal_part(
     chain_id: ChainId,
     height_and_round: HeightAndRound,
@@ -614,6 +606,7 @@ async fn handle_incoming_proposal_part(
     incoming_proposals_cache: &mut BTreeMap<u64, BTreeMap<Round, Vec<ProposalPart>>>,
     validator_cache: &mut ValidatorCache,
     deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
+    batch_execution_manager: &mut BatchExecutionManager,
     storage: Storage,
 ) -> anyhow::Result<Option<ProposalCommitmentWithOrigin>> {
     let height = height_and_round.height();
@@ -672,19 +665,22 @@ async fn handle_incoming_proposal_part(
             );
 
             let validator_stage = validator_cache.remove(&height_and_round)?;
-            let validator = validator_stage.try_into_transaction_batch_stage()?;
+            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
 
             let tx_batch = tx_batch.clone();
             parts.push(proposal_part);
 
-            let validator = defer_or_execute_txn_batch(
-                height_and_round,
-                tx_batch,
-                storage.clone(),
-                validator,
-                deferred_executions,
-            )
-            .await?;
+            // Use BatchExecutionManager to handle optimistic execution with checkpoints and
+            // deferral
+            batch_execution_manager
+                .process_batch_with_deferral(
+                    height_and_round,
+                    tx_batch,
+                    &mut validator,
+                    storage.clone(),
+                    deferred_executions,
+                )
+                .await?;
 
             validator_cache.insert(
                 height_and_round,
@@ -744,72 +740,26 @@ async fn handle_incoming_proposal_part(
             validator_cache.insert(height_and_round, validator);
             Ok(proposal_commitment)
         }
-        ProposalPart::TransactionsFin(_transactions_fin) => {
-            // TODO
+        ProposalPart::TransactionsFin(transactions_fin) => {
+            tracing::debug!(
+                "🖧  ⚙️ handling TransactionsFin for height and round {height_and_round}..."
+            );
+
+            let validator_stage = validator_cache.remove(&height_and_round)?;
+            let mut validator = validator_stage.try_into_transaction_batch_stage()?;
+
+            // Use BatchExecutionManager to handle TransactionsFin with rollback
+            batch_execution_manager
+                .process_transactions_fin(height_and_round, transactions_fin, &mut validator)
+                .await?;
+
+            validator_cache.insert(
+                height_and_round,
+                ValidatorStage::TransactionBatch(validator),
+            );
             Ok(None)
         }
     }
-}
-
-/// Either defer or execute the given transaction batch depending on whether
-/// the previous block is committed yet. If execution is deferred, the batch is
-/// appended to the list of deferred transactions for the height and round. If
-/// execution is performed, any previously deferred transactions for the height
-/// and round are executed first, then the current batch is executed.
-async fn defer_or_execute_txn_batch(
-    height_and_round: HeightAndRound,
-    tx_batch: Vec<p2p_proto::consensus::Transaction>,
-    storage: Storage,
-    mut validator: Box<crate::validator::ValidatorTransactionBatchStage>,
-    deferred_executions: &mut HashMap<HeightAndRound, DeferredExecution>,
-) -> Result<Box<crate::validator::ValidatorTransactionBatchStage>, anyhow::Error> {
-    let validator = if should_defer_execution(height_and_round, storage).await? {
-        tracing::debug!(
-            "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is deferred"
-        );
-
-        // The current transaction batch cannot be executed yet, because the
-        // previous block is not committed yet. Defer its execution by appending
-        // it to the list of deferred transactions for the height and round.
-        deferred_executions
-            .entry(height_and_round)
-            .or_default()
-            .transactions
-            .extend(tx_batch);
-        validator
-    } else {
-        // The current transaction batch can be executed now, because the
-        // previous block is committed. First execute any deferred transactions
-        // for the height and round, if any, then execute the current batch.
-        let deferred = deferred_executions.remove(&height_and_round);
-        let deferred_txns_len = deferred.as_ref().map_or(0, |d| d.transactions.len());
-
-        // If there were deferred transactions, execute them first.
-        let tx_batch = if let Some(DeferredExecution {
-            mut transactions, ..
-        }) = deferred
-        {
-            transactions.extend(tx_batch);
-            transactions
-        } else {
-            tx_batch
-        };
-
-        let validator = util::task::spawn_blocking(move |_| {
-            validator.execute_transactions(tx_batch)?;
-            anyhow::Ok(validator)
-        })
-        .await??;
-
-        tracing::debug!(
-            "🖧  ⚙️ transaction batch execution for height and round {height_and_round} is \
-             complete, additionally {deferred_txns_len} previously deferred transactions were \
-             executed",
-        );
-
-        validator
-    };
-    Ok(validator)
 }
 
 /// Either defer or execute the proposal finalization depending on whether
@@ -870,31 +820,6 @@ async fn defer_or_execute_proposal_fin(
             Some(commitment),
         ))
     }
-}
-
-/// Determine whether execution of proposal parts for `height_and_round` should
-/// be deferred because the previous block is not committed yet.
-async fn should_defer_execution(
-    height_and_round: HeightAndRound,
-    storage: Storage,
-) -> anyhow::Result<bool> {
-    let defer = util::task::spawn_blocking(move |_| {
-        let parent_block = height_and_round.height().checked_sub(1);
-        let defer = if let Some(parent_block) = parent_block {
-            let parent_block =
-                BlockNumber::new(parent_block).context("Block number is larger than i64::MAX")?;
-            let parent_block = BlockId::Number(parent_block);
-            let mut db_conn = storage.connection()?;
-            let db_txn = db_conn.transaction()?;
-            let parent_committed = db_txn.block_exists(parent_block)?;
-            !parent_committed
-        } else {
-            false
-        };
-        anyhow::Ok(defer)
-    })
-    .await??;
-    Ok(defer)
 }
 
 /// Convert a vote from `p2p_proto` format to `pathfinder_consensus`` format.
