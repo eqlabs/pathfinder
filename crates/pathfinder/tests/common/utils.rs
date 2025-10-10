@@ -1,10 +1,12 @@
 //! Test utilities for Pathfinder integration tests.
 
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use tempfile::Builder;
+use tokio::task::{JoinError, JoinHandle};
+use tokio::time::sleep;
 
 use crate::common::pathfinder_instance::{Config, PathfinderInstance};
 
@@ -53,6 +55,32 @@ pub fn log_elapsed(stopwatch: Instant) {
         "Test setup completed after {} s",
         stopwatch.elapsed().as_secs()
     );
+}
+
+/// Waits for either all RPC client tasks to complete, the test timeout to
+/// elapse, or for the user to interrupt the test with Ctrl-C.
+pub async fn wait_for_test_end(
+    rpc_client_handles: Vec<JoinHandle<()>>,
+    test_timeout: Duration,
+) -> anyhow::Result<()> {
+    tokio::select! {
+        _ = sleep(test_timeout) => {
+            eprintln!("Test timed out after {test_timeout:?}");
+            Err(anyhow::anyhow!("Test timed out after {test_timeout:?}"))
+        }
+
+        test_result = futures::future::join_all(rpc_client_handles) => {
+            test_result.into_iter().collect::<Result<Vec<_>, JoinError>>().context("Joining all RPC client tasks")?;
+            // Don't dump logs if the test succeeded.
+            PathfinderInstance::enable_log_dump(false);
+            Ok(())
+        }
+
+        _ = tokio::signal::ctrl_c() => {
+            eprintln!("Received Ctrl-C, terminating test early");
+            Err(anyhow::anyhow!("Test interrupted by user"))
+        }
+    }
 }
 
 fn pathfinder_bin() -> PathBuf {

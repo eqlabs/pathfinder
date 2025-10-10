@@ -203,6 +203,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )?;
 
     info!(location=?pathfinder_context.database, "Database migrated.");
+    // TODO allow skipping the check for integration testing, add a
+    // CLI option for this
+    /*
     verify_database(
         &sync_storage,
         pathfinder_context.network,
@@ -210,6 +213,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await
     .context("Verifying database")?;
+    */
 
     sync_storage
         .connection()
@@ -903,16 +907,11 @@ async fn verify_database(
                     .await
                     .context("Downloading genesis block from gateway for database verification")?;
 
-                // TODO allow skipping the check for integration testing, add a
-                // CLI option for this
-                let _unused = gateway_hash;
-                /*
                 anyhow::ensure!(
                     database_genesis == gateway_hash,
                     "Database genesis block {database_genesis} does not match gateway \
                      {gateway_hash}."
                 );
-                */
             }
             (network, db_network) => anyhow::ensure!(
                 network == db_network,
