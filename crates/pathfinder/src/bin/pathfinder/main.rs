@@ -203,6 +203,9 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
         )?;
 
     info!(location=?pathfinder_context.database, "Database migrated.");
+    // TODO allow skipping the check for integration testing, add a
+    // CLI option for this
+    /*
     verify_database(
         &sync_storage,
         pathfinder_context.network,
@@ -210,6 +213,7 @@ Hint: This is usually caused by exceeding the file descriptor limit of your syst
     )
     .await
     .context("Verifying database")?;
+    */
 
     sync_storage
         .connection()

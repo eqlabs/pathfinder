@@ -234,6 +234,7 @@ pub(crate) mod recovery {
     #[allow(clippy::type_complexity)]
     pub(crate) fn recover_incomplete_heights<V, A>(
         wal_dir: &Path,
+        highest_finalized: Option<u64>,
     ) -> Result<Vec<(u64, Vec<WalEntry<V, A>>)>, std::io::Error>
     where
         V: for<'de> Deserialize<'de>,
@@ -258,9 +259,13 @@ pub(crate) mod recovery {
         // not finalized.
         for (height, path) in files {
             let entries = read_entries(&path)?;
-            let is_finalized = entries
-                .iter()
-                .any(|e| matches!(e, WalEntry::Decision { .. }));
+            // TODO WalEntry::Decision doesn't necessarily mean the height is finalized,
+            // because it can still be missing in the DB.
+            let is_finalized = entries.iter().any(|e| {
+                matches!(e, WalEntry::Decision { .. })
+                    || highest_finalized
+                        .is_some_and(|highest_finalized| height <= highest_finalized)
+            });
             if is_finalized {
                 tracing::debug!(
                     height = %height,

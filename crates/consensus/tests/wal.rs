@@ -257,7 +257,7 @@ async fn recover_from_wal_restores_and_continues() {
 
     // Now recover from WAL
     let mut consensus: DefaultConsensus<ConsensusValue, NodeAddress> =
-        DefaultConsensus::recover(config.clone(), Arc::new(StaticSet(validators))).unwrap();
+        DefaultConsensus::recover(config.clone(), Arc::new(StaticSet(validators)), None).unwrap();
 
     debug!("------------ Driving consensus post WAL recovery ----------------");
 
