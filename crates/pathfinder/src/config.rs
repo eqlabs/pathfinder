@@ -945,7 +945,7 @@ impl DebugConfig {
     fn parse(_: ()) -> Self {
         Self {
             pretty_log: false,
-            restart_delay: Duration::from_secs(60),
+            restart_delay: Duration::from_secs(5),
         }
     }
 }
