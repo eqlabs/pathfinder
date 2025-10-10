@@ -19,6 +19,7 @@ use pathfinder_common::{
     BlockNumber,
     BlockTimestamp,
     ChainId,
+    ClassHash,
     EntryPoint,
     EventCommitment,
     L1DataAvailabilityMode,
@@ -53,6 +54,8 @@ pub fn new(
     ValidatorBlockInfoStage::new(chain_id, proposal_init)
 }
 
+/// Validates the basic block metadata and proposal information before any
+/// transaction processing.
 #[derive(Debug)]
 pub struct ValidatorBlockInfoStage {
     chain_id: ChainId,
@@ -143,6 +146,7 @@ impl ValidatorBlockInfoStage {
     }
 }
 
+/// Executes transactions and manages the block execution state.
 pub struct ValidatorTransactionBatchStage {
     chain_id: ChainId,
     block_info: pathfinder_executor::types::BlockInfo,
@@ -151,6 +155,21 @@ pub struct ValidatorTransactionBatchStage {
     transactions: Vec<Transaction>,
     receipts: Vec<Receipt>,
     events: Vec<Vec<Event>>,
+}
+
+/// Checkpoint of execution state after a batch.
+#[derive(Clone, Debug)]
+pub struct ExecutionCheckpoint {
+    /// All transactions executed up to this point
+    pub transactions: Vec<Transaction>,
+    /// All receipts generated up to this point
+    pub receipts: Vec<Receipt>,
+    /// All events generated up to this point
+    pub events: Vec<Vec<Event>>,
+    /// Transaction index for the next batch
+    pub next_txn_idx: usize,
+    /// Declared deprecated classes up to this point
+    pub declared_deprecated_classes: Vec<ClassHash>,
 }
 
 enum LazyBlockExecutor {
@@ -166,8 +185,12 @@ enum LazyBlockExecutor {
     /// the `BlockExecutor` and occurs only briefly in
     /// [`get_or_init()`](Self::get_or_init).
     Initializing,
-    /// This variant holds the initialized `BlockExecutor`.
-    Initialized(Box<BlockExecutor>),
+    /// This variant holds the initialized `BlockExecutor` and keeps the storage
+    /// reference for potential restoration.
+    Initialized {
+        executor: Box<BlockExecutor>,
+        storage: Storage,
+    },
 }
 
 impl LazyBlockExecutor {
@@ -184,8 +207,8 @@ impl LazyBlockExecutor {
     }
 
     fn get_or_init(&mut self) -> anyhow::Result<&mut BlockExecutor> {
-        if let LazyBlockExecutor::Initialized(be) = self {
-            Ok(be)
+        if let LazyBlockExecutor::Initialized { executor, .. } = self {
+            Ok(executor)
         } else {
             let this = std::mem::replace(self, Self::Initializing);
             let LazyBlockExecutor::Uninitialized {
@@ -206,11 +229,14 @@ impl LazyBlockExecutor {
                 db_conn,
             )
             .context("Creating BlockExecutor")?;
-            *self = LazyBlockExecutor::Initialized(Box::new(be));
-            let LazyBlockExecutor::Initialized(be) = self else {
+            *self = LazyBlockExecutor::Initialized {
+                executor: Box::new(be),
+                storage,
+            };
+            let LazyBlockExecutor::Initialized { executor, .. } = self else {
                 unreachable!("Block executor is initialized");
             };
-            Ok(be)
+            Ok(executor)
         }
     }
 
@@ -218,10 +244,10 @@ impl LazyBlockExecutor {
     /// [`get_or_init()`](Self::get_or_init) if necessary.
     fn take(mut self) -> anyhow::Result<Box<BlockExecutor>> {
         self.get_or_init()?;
-        let LazyBlockExecutor::Initialized(be) = self else {
+        let LazyBlockExecutor::Initialized { executor, .. } = self else {
             unreachable!("Block executor is initialized");
         };
-        Ok(be)
+        Ok(executor)
     }
 }
 
@@ -313,6 +339,94 @@ impl ValidatorTransactionBatchStage {
 
     pub fn has_proposal_commitment(&self) -> bool {
         self.expected_block_header.is_some()
+    }
+
+    /// Create a checkpoint of the current execution state
+    pub fn create_checkpoint(&self) -> anyhow::Result<ExecutionCheckpoint> {
+        // TODO: Assumption... We should get the actual next transaction
+        // index from the executor rather than just counting stored transactions
+        let next_txn_idx = self.transactions.len();
+
+        // TODO: Assumption... We should track declared deprecated classes
+        // during execution to ensure accurate rollback state
+        let declared_deprecated_classes = Vec::new();
+
+        Ok(ExecutionCheckpoint {
+            transactions: self.transactions.clone(),
+            receipts: self.receipts.clone(),
+            events: self.events.clone(),
+            next_txn_idx,
+            declared_deprecated_classes,
+        })
+    }
+
+    /// Restore from a checkpoint
+    pub fn restore_from_checkpoint(
+        &mut self,
+        checkpoint: ExecutionCheckpoint,
+    ) -> anyhow::Result<()> {
+        // Restore the accumulated state
+        self.transactions = checkpoint.transactions;
+        self.receipts = checkpoint.receipts;
+        self.events = checkpoint.events;
+
+        // Get the storage reference
+        let storage = match &self.block_executor {
+            LazyBlockExecutor::Uninitialized { storage, .. } => storage.clone(),
+            LazyBlockExecutor::Initialized { storage, .. } => storage.clone(),
+            LazyBlockExecutor::Initializing => {
+                return Err(anyhow::anyhow!(
+                    "Cannot restore checkpoint: executor is initializing"
+                ));
+            }
+        };
+
+        // Create a new executor
+        let db_conn = storage.connection().context("Create database connection")?;
+        let mut new_executor = BlockExecutor::new(
+            self.chain_id,
+            self.block_info,
+            ETH_FEE_TOKEN_ADDRESS,
+            STRK_FEE_TOKEN_ADDRESS,
+            db_conn,
+        )
+        .context("Creating BlockExecutor")?;
+
+        // Execute all transactions up to the checkpoint
+        if !self.transactions.is_empty() {
+            // Convert transactions to executor format
+            let executor_txns = self
+                .transactions
+                .iter()
+                .map(|tx| {
+                    let api_txn = to_starknet_api_transaction(tx.variant.clone())?;
+                    let tx_hash =
+                        starknet_api::transaction::TransactionHash(tx.hash.0.into_starkfelt());
+                    pathfinder_executor::Transaction::from_api(
+                        api_txn,
+                        tx_hash,
+                        None, // TODO: handle class info
+                        None, // TODO: handle paid fee on L1
+                        None, // TODO: handle deployed address
+                        pathfinder_executor::AccountTransactionExecutionFlags::default(),
+                    )
+                    .map_err(|e| anyhow::anyhow!("Failed to create executor transaction: {}", e))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?;
+
+            // Execute the transactions
+            new_executor
+                .execute(executor_txns)
+                .map_err(|e| anyhow::anyhow!("Failed to execute transactions: {}", e))?;
+        }
+
+        // Update the executor
+        self.block_executor = LazyBlockExecutor::Initialized {
+            executor: Box::new(new_executor),
+            storage,
+        };
+
+        Ok(())
     }
 
     pub fn record_proposal_commitment(
@@ -465,6 +579,7 @@ impl ValidatorTransactionBatchStage {
     }
 }
 
+/// Finalizes the block by computing commitments and updating the database.
 pub struct ValidatorFinalizeStage {
     header: BlockHeader,
     state_update: StateUpdateData,
